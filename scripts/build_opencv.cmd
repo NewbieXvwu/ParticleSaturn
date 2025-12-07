@@ -1,14 +1,15 @@
 @echo off
+REM OpenCV 精简构建脚本 - 用于 ParticleSaturn 项目
+REM 此脚本记录了项目所需的 OpenCV CMake 配置
+
+cd /d "%~dp0.."
 
 set OPENCV_SRC=HandTracker\libs\opencv
 set BUILD_DIR=%OPENCV_SRC%\build
 
-REM 创建构建目录
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 
-cd "%BUILD_DIR%"
-
-cmake .. ^
+cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DBUILD_SHARED_LIBS=OFF ^
     -DBUILD_WITH_STATIC_CRT=ON ^
     -DBUILD_opencv_world=ON ^
@@ -71,5 +72,5 @@ cmake .. ^
     -DOPENCV_DNN_OPENCL=OFF
 
 echo.
-echo CMake 配置完成，请使用 Visual Studio 打开 %BUILD_DIR%\OpenCV.slnx 进行编译
-echo 或运行: cmake --build . --config Release
+echo CMake 配置完成
+echo 编译命令: cmake --build "%BUILD_DIR%" --config Release
