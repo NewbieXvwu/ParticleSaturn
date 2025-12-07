@@ -72,5 +72,7 @@ cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DOPENCV_DNN_OPENCL=OFF
 
 echo.
-echo CMake 配置完成
-echo 编译命令: cmake --build "%BUILD_DIR%" --config Release
+echo CMake 配置完成，开始编译...
+cmake --build "%BUILD_DIR%" --config Release
+
+pause
