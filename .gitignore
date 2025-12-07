@@ -1,0 +1,42 @@
+# Visual Studio 编译产物
+bin/
+.vs/
+x64/
+Debug/
+Release/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.iobj
+*.ipdb
+
+# Visual Studio 用户配置文件
+*.user
+*.suo
+*.aps
+
+# 预编译头文件
+*.pch
+*.gch
+
+# IntelliSense 数据库
+*.VC.db
+*.VC.opendb
+
+# 构建日志
+*.log
+*.tlog/
+
+# 临时文件
+*.tmp
+*~
+
+# macOS
+.DS_Store
+
+# OpenCV（需要用户自行下载）
+HandTracker/libs/opencv/

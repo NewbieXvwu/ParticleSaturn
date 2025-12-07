@@ -1,0 +1,154 @@
+#pragma once
+// 渲染器 - OpenGL 渲染工具、FBO 管理、着色器编译
+
+// 模糊效果帧缓冲
+struct BlurFramebuffer {
+    GLuint fbo = 0, tex = 0;
+    int w = 0, h = 0;
+    
+    void Init(int width, int height) {
+        w = width; h = height;
+        if (fbo) { glDeleteFramebuffers(1, &fbo); glDeleteTextures(1, &tex); }
+        glGenFramebuffers(1, &fbo); glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+};
+
+// Uniform 位置缓存（避免重复查询）
+struct UniformCache {
+    GLint comp_uDt, comp_uHandScale, comp_uHandHas, comp_uParticleCount;
+    GLint sat_proj, sat_view, sat_model, sat_uTime, sat_uScale, sat_uPixelRatio, sat_uDensityComp, sat_uScreenHeight;
+    GLint star_proj, star_view, star_model, star_uTime;
+    GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at;
+    GLint ui_proj, ui_uColor;
+};
+
+namespace Renderer {
+
+// 创建着色器程序
+inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc) {
+    unsigned int program = glCreateProgram();
+    unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vertexSrc, 0);
+    glCompileShader(vs);
+    unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &fragmentSrc, 0);
+    glCompileShader(fs);
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
+}
+
+// 初始化 Uniform 缓存
+inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, 
+                              unsigned int pStar, unsigned int pPlanet, unsigned int pUI) {
+    uc.comp_uDt = glGetUniformLocation(pComp, "uDt");
+    uc.comp_uHandScale = glGetUniformLocation(pComp, "uHandScale");
+    uc.comp_uHandHas = glGetUniformLocation(pComp, "uHandHas");
+    uc.comp_uParticleCount = glGetUniformLocation(pComp, "uParticleCount");
+    
+    uc.sat_proj = glGetUniformLocation(pSaturn, "projection");
+    uc.sat_view = glGetUniformLocation(pSaturn, "view");
+    uc.sat_model = glGetUniformLocation(pSaturn, "model");
+    uc.sat_uTime = glGetUniformLocation(pSaturn, "uTime");
+    uc.sat_uScale = glGetUniformLocation(pSaturn, "uScale");
+    uc.sat_uPixelRatio = glGetUniformLocation(pSaturn, "uPixelRatio");
+    uc.sat_uDensityComp = glGetUniformLocation(pSaturn, "uDensityComp");
+    uc.sat_uScreenHeight = glGetUniformLocation(pSaturn, "uScreenHeight");
+    
+    uc.star_proj = glGetUniformLocation(pStar, "projection");
+    uc.star_view = glGetUniformLocation(pStar, "view");
+    uc.star_model = glGetUniformLocation(pStar, "model");
+    uc.star_uTime = glGetUniformLocation(pStar, "uTime");
+    
+    uc.pl_p = glGetUniformLocation(pPlanet, "p");
+    uc.pl_v = glGetUniformLocation(pPlanet, "v");
+    uc.pl_m = glGetUniformLocation(pPlanet, "m");
+    uc.pl_ld = glGetUniformLocation(pPlanet, "ld");
+    uc.pl_c1 = glGetUniformLocation(pPlanet, "c1");
+    uc.pl_c2 = glGetUniformLocation(pPlanet, "c2");
+    uc.pl_ns = glGetUniformLocation(pPlanet, "ns");
+    uc.pl_at = glGetUniformLocation(pPlanet, "at");
+    
+    uc.ui_proj = glGetUniformLocation(pUI, "projection");
+    uc.ui_uColor = glGetUniformLocation(pUI, "uColor");
+}
+
+// 七段数码管数字定义（用于 FPS 显示）
+const int DIGITS[10][7] = {
+    {1,1,1,1,1,1,0}, {0,1,1,0,0,0,0}, {1,1,0,1,1,0,1}, {1,1,1,1,0,0,1}, {0,1,1,0,0,1,1},
+    {1,0,1,1,0,1,1}, {1,0,1,1,1,1,1}, {1,1,1,0,0,0,0}, {1,1,1,1,1,1,1}, {1,1,1,1,0,1,1}
+};
+
+inline void AddDigitGeometry(std::vector<float>& verts, float x, float y, float w, float h, int num) {
+    if (num < 0 || num > 9) return;
+    float p[6][2] = { {x,y + h}, {x + w,y + h}, {x + w,y + h / 2}, {x + w,y}, {x,y}, {x,y + h / 2} };
+    auto line = [&](int i1, int i2) { 
+        verts.push_back(p[i1][0]); verts.push_back(p[i1][1]); 
+        verts.push_back(p[i2][0]); verts.push_back(p[i2][1]); 
+    };
+    if (DIGITS[num][0]) line(0, 1); if (DIGITS[num][1]) line(1, 2); if (DIGITS[num][2]) line(2, 3);
+    if (DIGITS[num][3]) line(3, 4); if (DIGITS[num][4]) line(4, 5); if (DIGITS[num][5]) line(5, 0);
+    if (DIGITS[num][6]) line(5, 2);
+}
+
+// 创建球体网格
+inline void CreateSphere(unsigned int& vao, unsigned int& indexCount, float radius) {
+    std::vector<float> data;
+    std::vector<unsigned int> indices;
+    int X = 64, Y = 64;
+    float PI = 3.14159f;
+    
+    for (int y = 0; y <= Y; y++) {
+        for (int x = 0; x <= X; x++) {
+            float xS = (float)x / X, yS = (float)y / Y;
+            float xP = cos(xS * 2 * PI) * sin(yS * PI);
+            float yP = cos(yS * PI);
+            float zP = sin(xS * 2 * PI) * sin(yS * PI);
+            data.insert(data.end(), { xP * radius, yP * radius, zP * radius, xP, yP, zP, xS, yS });
+        }
+    }
+    
+    for (int y = 0; y < Y; y++) {
+        for (int x = 0; x < X; x++) {
+            indices.insert(indices.end(), {
+                (unsigned)((y + 1) * (X + 1) + x),
+                (unsigned)(y * (X + 1) + x),
+                (unsigned)(y * (X + 1) + x + 1),
+                (unsigned)((y + 1) * (X + 1) + x),
+                (unsigned)(y * (X + 1) + x + 1),
+                (unsigned)((y + 1) * (X + 1) + x + 1)
+            });
+        }
+    }
+    
+    indexCount = (unsigned int)indices.size();
+    unsigned int vbo, ebo;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * 4, data.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * 4, indices.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, 0, 32, (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, 0, 32, (void*)12);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, 0, 32, (void*)24);
+}
+
+} // namespace Renderer

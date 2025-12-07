@@ -1,0 +1,7 @@
+// Resource file for embedding ONNX models
+// Used only in Release_Static configuration
+
+#include "resource.h"
+
+IDR_PALM_MODEL RCDATA "HandTracker\\models\\palm_detection_nchw_fp16.onnx"
+IDR_HAND_MODEL RCDATA "HandTracker\\models\\hand_landmark_nchw_fp16.onnx"

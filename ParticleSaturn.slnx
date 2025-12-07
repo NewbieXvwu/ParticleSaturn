@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="ReleaseStatic" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="HandTracker/HandTracker.vcxproj" Id="5e61eab3-9b1a-4682-b365-cbcefd05430d">
+    <BuildType Solution="ReleaseStatic|x64" Project="Release_Static" />
+  </Project>
+  <Project Path="ParticleSaturn.vcxproj" Id="a32e3ffe-6917-4502-bebc-6abe7bf3d177">
+    <BuildDependency Project="HandTracker/HandTracker.vcxproj" />
+    <BuildType Solution="ReleaseStatic|x64" Project="Release_Static" />
+  </Project>
+</Solution>
