@@ -92,4 +92,8 @@ echo.
 echo CMake 配置完成，开始编译...
 cmake --build "%BUILD_DIR%" --config Release
 
+echo.
+echo 编译完成，开始安装...
+cmake --install "%BUILD_DIR%" --config Release --prefix "%BUILD_DIR%\install"
+
 pause
