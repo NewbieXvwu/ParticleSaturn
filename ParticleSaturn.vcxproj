@@ -28,6 +28,7 @@
     <ProjectGuid>{a32e3ffe-6917-4502-bebc-6abe7bf3d177}</ProjectGuid>
     <RootNamespace>ParticleSaturn</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <OpenCVRuntime Condition="'$(OpenCVRuntime)'==''">vc18</OpenCVRuntime>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -172,14 +173,14 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;C:\Users\User\Desktop\ParticleSaturn\HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>false</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)bin\$(Platform)\$(Configuration)\;C:\Users\User\Desktop\ParticleSaturn\HandTracker\libs\opencv\build\install\x64\vc18\staticlib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)bin\$(Platform)\$(Configuration)\;$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>HandTracker.lib;opencv_world4130.lib;libprotobuf.lib;libjpeg-turbo.lib;libpng.lib;zlib.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;shlwapi.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
       <OptimizeReferences>true</OptimizeReferences>
