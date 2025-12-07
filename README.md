@@ -37,11 +37,10 @@
 git clone --recursive https://github.com/NewbieXvwu/ParticleSaturn.git
 cd ParticleSaturn
 
-# 构建 OpenCV（使用项目剪枝配置）
+# 构建 OpenCV（自动配置、编译、安装）
 scripts\build_opencv.cmd
-cmake --build HandTracker\libs\opencv\build --config Release
 
-# 用 Visual Studio 打开 ParticleSaturn.slnx 编译
+# 用 Visual Studio 打开 ParticleSaturn.slnx 编译项目
 ```
 
 ## 许可
