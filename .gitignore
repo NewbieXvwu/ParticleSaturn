@@ -23,7 +23,7 @@ Release/
 *.pch
 *.gch
 
-# IntelliSense 数据库
+# IntelliSense 数据�?
 *.VC.db
 *.VC.opendb
 
@@ -38,5 +38,6 @@ Release/
 # macOS
 .DS_Store
 
-# OpenCV（需要用户自行下载）
-HandTracker/libs/opencv/
+# 依赖�?- 使用 Git Submodule 管理
+
+

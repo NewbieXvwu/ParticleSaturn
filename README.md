@@ -1,6 +1,6 @@
 # Particle Saturn
 
-120 万粒子实时渲染的土星模拟器，支持手势追踪交互。
+实时渲染的OpenGL土星模拟，支持手势追踪交互。
 
 ![OpenGL 4.3](https://img.shields.io/badge/OpenGL-4.3-blue)
 ![Windows](https://img.shields.io/badge/Platform-Windows-lightgrey)
@@ -27,24 +27,22 @@
 ### 依赖
 
 - Visual Studio 2022
-- CMake
+- OpenCV（剪枝后）
+- Dear ImGui
+- GLFW、GLAD、GLM
 
 ### 步骤
 
-1. 克隆仓库
 ```bash
-git clone https://github.com/NewbieXvwu/ParticleSaturn.git
+git clone --recursive https://github.com/NewbieXvwu/ParticleSaturn.git
 cd ParticleSaturn
-```
 
-2. 下载并构建 OpenCV
-```bash
-git clone --depth 1 --branch 4.10.0 https://github.com/opencv/opencv.git HandTracker/libs/opencv
+# 构建 OpenCV（使用项目剪枝配置）
 scripts\build_opencv.cmd
 cmake --build HandTracker\libs\opencv\build --config Release
-```
 
-3. 用 Visual Studio 打开 `ParticleSaturn.slnx` 编译
+# 用 Visual Studio 打开 ParticleSaturn.slnx 编译
+```
 
 ## 许可
 
