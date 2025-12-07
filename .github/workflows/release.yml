@@ -31,10 +31,10 @@ jobs:
         shell: cmd
 
       - name: Build Release
-        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /m
 
       - name: Build ReleaseStatic
-        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /m
 
       - name: Set version name
         id: version
@@ -65,14 +65,17 @@ jobs:
       - name: Create zip archive (maximum compression)
         run: 7z a -tzip -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.zip ./release_artifacts/*
 
-      - name: Upload artifacts
+      - name: Upload artifact (Release)
         uses: actions/upload-artifact@v4
         with:
           name: ParticleSaturn-${{ steps.version.outputs.name }}
-          path: |
-            ParticleSaturn-${{ steps.version.outputs.name }}.7z
-            ParticleSaturn-${{ steps.version.outputs.name }}.zip
-            bin/x64/Release_Static/ParticleSaturn.exe
+          path: release_artifacts/
+
+      - name: Upload artifact (Static)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-Static-${{ steps.version.outputs.name }}
+          path: bin/x64/Release_Static/ParticleSaturn.exe
 
       - name: Upload Release assets
         if: github.event_name == 'release'

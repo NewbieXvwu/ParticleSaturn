@@ -52,6 +52,16 @@ scripts\build_opencv.cmd
 # 用 Visual Studio 打开 ParticleSaturn.slnx 编译项目
 ```
 
+### Visual Studio 2022 用户
+
+项目默认使用 VS2026 (v145) 工具集。如需使用 VS2022 编译：
+
+1. 在项目属性中将 Platform Toolset 改为 `v143`
+2. 编译时指定 OpenCV 运行时版本（VS2022 编译的 OpenCV 使用 `vc17` 目录）：
+   ```bash
+   msbuild ParticleSaturn.slnx /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:Configuration=Release /p:Platform=x64
+   ```
+
 ## 📄 许可
 
 本项目基于 [MIT License](LICENSE) 开源。
