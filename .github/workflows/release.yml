@@ -1,0 +1,84 @@
+name: Build Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Cache OpenCV build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: HandTracker/libs/opencv/build/install
+          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
+
+      - name: Build OpenCV
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: scripts\build_opencv.cmd
+        shell: cmd
+
+      - name: Build Release
+        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+
+      - name: Build ReleaseStatic
+        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+
+      - name: Set version name
+        id: version
+        run: |
+          if ("${{ github.event_name }}" -eq "release") {
+            echo "name=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "name=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Prepare Release artifacts
+        run: |
+          $releaseDir = "release_artifacts"
+          New-Item -ItemType Directory -Force -Path $releaseDir
+          
+          # Copy Release build files
+          Copy-Item "bin/x64/Release/ParticleSaturn.exe" $releaseDir/
+          Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
+          Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
+          
+          # Copy and rename model files
+          Copy-Item "HandTracker/models/palm_detection_nchw_fp16.onnx" "$releaseDir/palm_detection_nchw.onnx"
+          Copy-Item "HandTracker/models/hand_landmark_nchw_fp16.onnx" "$releaseDir/hand_landmark_nchw.onnx"
+
+      - name: Create 7z archive (ultra compression)
+        run: 7z a -t7z -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.7z ./release_artifacts/*
+
+      - name: Create zip archive (maximum compression)
+        run: 7z a -tzip -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.zip ./release_artifacts/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-${{ steps.version.outputs.name }}
+          path: |
+            ParticleSaturn-${{ steps.version.outputs.name }}.7z
+            ParticleSaturn-${{ steps.version.outputs.name }}.zip
+            bin/x64/Release_Static/ParticleSaturn.exe
+
+      - name: Upload Release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ParticleSaturn-${{ steps.version.outputs.name }}.7z
+            ParticleSaturn-${{ steps.version.outputs.name }}.zip
+            bin/x64/Release_Static/ParticleSaturn.exe
