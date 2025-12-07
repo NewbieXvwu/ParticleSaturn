@@ -18,6 +18,9 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Setup vcpkg
+        run: vcpkg integrate install
+
       - name: Cache OpenCV build
         id: cache-opencv
         uses: actions/cache@v4
