@@ -26,4 +26,4 @@ jobs:
           check-path: |
             src
             HandTracker
-          exclude-regex: 'libs/.*'
+          exclude-regex: '(libs|OldCodeBackup)/.*'
