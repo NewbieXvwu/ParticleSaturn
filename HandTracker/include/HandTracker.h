@@ -9,28 +9,27 @@
 #endif
 
 extern "C" {
-    // 设置嵌入式模型数据（静态链接时在 InitTracker 前调用）
-    HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size,
-                                     const void* hand_data, size_t hand_size);
+// 设置嵌入式模型数据（静态链接时在 InitTracker 前调用）
+HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const void* hand_data, size_t hand_size);
 
-    // 初始化手部追踪器
-    // camera_id: 摄像头索引（通常为 0）
-    // model_dir: 模型目录路径（使用嵌入式模型时可为 nullptr）
-    HAND_API bool InitTracker(int camera_id, const char* model_dir);
+// 初始化手部追踪器
+// camera_id: 摄像头索引（通常为 0）
+// model_dir: 模型目录路径（使用嵌入式模型时可为 nullptr）
+HAND_API bool InitTracker(int camera_id, const char* model_dir);
 
-    // 获取手部追踪数据（已平滑处理）
-    // out_scale: 缩放值（拇指-食指距离）
-    // out_rot_x: X 轴旋转（0.0~1.0）
-    // out_rot_y: Y 轴旋转（0.0~1.0）
-    // out_has_hand: 是否检测到手部
-    HAND_API bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand);
+// 获取手部追踪数据（已平滑处理）
+// out_scale: 缩放值（拇指-食指距离）
+// out_rot_x: X 轴旋转（0.0~1.0）
+// out_rot_y: Y 轴旋转（0.0~1.0）
+// out_has_hand: 是否检测到手部
+HAND_API bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand);
 
-    // 释放资源并关闭摄像头
-    HAND_API void ReleaseTracker();
+// 释放资源并关闭摄像头
+HAND_API void ReleaseTracker();
 
-    // 启用/禁用 OpenCV 调试窗口
-    HAND_API void SetTrackerDebugMode(bool enabled);
+// 启用/禁用 OpenCV 调试窗口
+HAND_API void SetTrackerDebugMode(bool enabled);
 
-    // 获取当前调试模式状态
-    HAND_API bool GetTrackerDebugMode();
+// 获取当前调试模式状态
+HAND_API bool GetTrackerDebugMode();
 }
