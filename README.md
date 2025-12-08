@@ -33,23 +33,28 @@
 | 依赖 | 说明 |
 |:-----|:-----|
 | [Visual Studio 2026](https://visualstudio.microsoft.com/) | C++ 开发环境 |
-| [MediaPipe](https://github.com/google-ai-edge/mediapipe) | 手势追踪 |
-| [OpenCV](https://opencv.org/) | 计算机视觉库 |
-| [Dear ImGui](https://github.com/ocornut/imgui) | 即时模式 GUI |
-| [GLFW](https://www.glfw.org/) | 窗口管理 |
-| [GLAD](https://glad.dav1d.de/) | OpenGL 加载器 |
-| [GLM](https://github.com/g-truc/glm) | 数学库 |
+| [vcpkg](https://github.com/microsoft/vcpkg) | C++ 包管理器 |
+| [OpenCV](https://opencv.org/) | 计算机视觉库（作为 submodule） |
+| [Dear ImGui](https://github.com/ocornut/imgui) | 即时模式 GUI（作为 submodule） |
+| GLFW, GLAD, GLM | 通过 vcpkg 自动安装 |
 
 ### 步骤
 
 ```bash
+# 1. 安装 vcpkg（如果还没有）
+git clone https://github.com/microsoft/vcpkg.git
+cd vcpkg && bootstrap-vcpkg.bat && vcpkg integrate install
+cd ..
+
+# 2. 克隆项目
 git clone --recursive https://github.com/NewbieXvwu/ParticleSaturn.git
 cd ParticleSaturn
 
-# 构建 OpenCV（自动配置、编译、安装）
+# 3. 构建 OpenCV（自动配置、编译、安装，约 10-20 分钟）
 scripts\build_opencv.cmd
 
-# 用 Visual Studio 打开 ParticleSaturn.slnx 编译项目
+# 4. 用 Visual Studio 打开 ParticleSaturn.slnx 编译项目
+#    首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM
 ```
 
 ### Visual Studio 2022 用户
