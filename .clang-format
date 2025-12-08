@@ -1,0 +1,58 @@
+# Particle Saturn 代码风格配置
+# 基于 Microsoft 风格，根据现有代码调整
+
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: c++20
+
+# 缩进
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+NamespaceIndentation: None
+
+# 大括号
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+
+# 列宽
+ColumnLimit: 120
+
+# 指针和引用
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# 空格
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# 对齐
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: true
+AlignTrailingComments: true
+
+# 换行
+AllowAllParametersOfDeclarationOnNextLine: true
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+BreakConstructorInitializers: BeforeColon
+
+# Include 排序
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# 其他
+FixNamespaceComments: true
+MaxEmptyLinesToKeep: 2

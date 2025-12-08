@@ -1,0 +1,29 @@
+name: Code Format Check
+
+on:
+  push:
+    paths:
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+  pull_request:
+    paths:
+      - '**.cpp'
+      - '**.h'
+      - '**.hpp'
+  workflow_dispatch:
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check code format
+        uses: jidicula/clang-format-action@v4.14.0
+        with:
+          clang-format-version: '18'
+          check-path: |
+            src
+            HandTracker
+          exclude-regex: 'libs/.*'
