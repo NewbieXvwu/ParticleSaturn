@@ -8,8 +8,8 @@
 #endif
 
 // OpenGL 相关
-#include <GLFW/glfw3.h>
 #include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
 // GLM 数学库
 #include <glm/glm.hpp>
