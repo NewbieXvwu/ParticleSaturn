@@ -4,14 +4,12 @@
 // Windows 平台相关
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
-#define NOGDI
 #include <Windows.h>
-#undef NOGDI
 #endif
 
 // OpenGL 相关
-#include <GLFW/glfw3.h>
 #include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
 // GLM 数学库
 #include <glm/glm.hpp>
