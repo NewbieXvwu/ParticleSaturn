@@ -1,7 +1,8 @@
-name: Code Format Check
+name: Code Format
 
 on:
   push:
+    branches: [main]
     paths:
       - '**.cpp'
       - '**.h'
@@ -18,12 +19,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check code format
-        uses: jidicula/clang-format-action@v4.14.0
         with:
-          clang-format-version: '18'
-          check-path: |
-            src
-            HandTracker
-          exclude-regex: '(libs|OldCodeBackup)/.*'
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      - name: Run clang-format
+        run: |
+          find src HandTracker -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | \
+            xargs clang-format-18 -i
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto-format code with clang-format"
+          file_pattern: "*.cpp *.h *.hpp"
