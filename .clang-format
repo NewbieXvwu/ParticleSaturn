@@ -11,6 +11,8 @@ TabWidth: 4
 UseTab: Never
 IndentCaseLabels: false
 NamespaceIndentation: None
+IndentAccessModifiers: false
+LambdaBodyIndentation: Signature
 
 # 大括号
 BreakBeforeBraces: Attach
@@ -19,6 +21,7 @@ AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AllowShortLambdasOnASingleLine: All
+InsertBraces: true
 
 # 列宽
 ColumnLimit: 120
@@ -37,9 +40,9 @@ SpacesInSquareBrackets: false
 
 # 对齐
 AlignAfterOpenBracket: Align
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
-AlignOperands: true
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignOperands: AlignAfterOperator
 AlignTrailingComments: true
 
 # 换行
@@ -48,11 +51,17 @@ BinPackArguments: true
 BinPackParameters: true
 BreakBeforeBinaryOperators: None
 BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: NextLine
+SeparateDefinitionBlocks: Always
 
 # Include 排序
-SortIncludes: false
-IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+
+# 类相关
+EmptyLineBeforeAccessModifier: LogicalBlock
+QualifierAlignment: Left
 
 # 其他
 FixNamespaceComments: true
-MaxEmptyLinesToKeep: 2
+MaxEmptyLinesToKeep: 1

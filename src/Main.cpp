@@ -7,41 +7,41 @@
 #include "Resource.h"
 #endif
 
-#include "Utils.h"
-#include "Shaders.h"
 #include "DebugLog.h"
-#include "Renderer.h"
-#include "ParticleSystem.h"
-#include "WindowManager.h"
-#include "UIManager.h"
 #include "HandTracker.h"
+#include "ParticleSystem.h"
+#include "Renderer.h"
+#include "Shaders.h"
+#include "UIManager.h"
+#include "Utils.h"
+#include "WindowManager.h"
 
 // 全局状态
-const unsigned int INIT_WIDTH = 1920;
+const unsigned int INIT_WIDTH  = 1920;
 const unsigned int INIT_HEIGHT = 1080;
 
-unsigned int g_scrWidth = INIT_WIDTH;
-unsigned int g_scrHeight = INIT_HEIGHT;
-bool g_windowResized = true;
+unsigned int g_scrWidth      = INIT_WIDTH;
+unsigned int g_scrHeight     = INIT_HEIGHT;
+bool         g_windowResized = true;
 
-std::vector<int> g_availableBackdrops = { 0 };
-int g_backdropIndex = 0;
-bool g_useTransparent = false;
+std::vector<int> g_availableBackdrops = {0};
+int              g_backdropIndex      = 0;
+bool             g_useTransparent     = false;
 
 bool g_isFullscreen = false;
-int g_windowedX = 100, g_windowedY = 100;
-int g_windowedW = INIT_WIDTH, g_windowedH = INIT_HEIGHT;
+int  g_windowedX = 100, g_windowedY = 100;
+int  g_windowedW = INIT_WIDTH, g_windowedH = INIT_HEIGHT;
 
-bool g_showDebugWindow = false;
-bool g_showCameraDebug = false;
-float g_dpiScale = 1.0f;
-bool g_isDarkMode = true;
+bool  g_showDebugWindow = false;
+bool  g_showCameraDebug = false;
+float g_dpiScale        = 1.0f;
+bool  g_isDarkMode      = true;
 
-bool g_enableImGuiBlur = true;
-float g_blurStrength = 2.0f;
+bool  g_enableImGuiBlur = true;
+float g_blurStrength    = 2.0f;
 
 unsigned int g_activeParticleCount = MAX_PARTICLES;
-float g_currentPixelRatio = 1.0f;
+float        g_currentPixelRatio   = 1.0f;
 
 std::map<ImGuiID, UIAnimState> g_animStates;
 
@@ -49,7 +49,7 @@ int main() {
     // 重定向 cout 到调试日志
     static DebugStreamBuf debugBuf(std::cout.rdbuf());
     std::cout.rdbuf(&debugBuf);
-    
+
     std::cout << "[Main] Particle Saturn starting..." << std::endl;
 
     glfwInit();
@@ -58,7 +58,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
-    
+
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
@@ -66,7 +66,7 @@ int main() {
 
 #ifdef _WIN32
     ImmAssociateContext(glfwGetWin32Window(window), NULL);
-    
+
     HWND hwnd = glfwGetWin32Window(window);
     if (hwnd) {
         WindowManager::SetTitleBarDarkMode(hwnd, true);
@@ -90,8 +90,8 @@ int main() {
         if (hPalmData && hHandData) {
             const void* palmData = LockResource(hPalmData);
             const void* handData = LockResource(hHandData);
-            DWORD palmSize = SizeofResource(NULL, hPalmRes);
-            DWORD handSize = SizeofResource(NULL, hHandRes);
+            DWORD       palmSize = SizeofResource(NULL, hPalmRes);
+            DWORD       handSize = SizeofResource(NULL, hHandRes);
             SetEmbeddedModels(palmData, palmSize, handData, handSize);
             std::cout << "[Main] Embedded models loaded" << std::endl;
         }
@@ -114,12 +114,12 @@ int main() {
 
     // 创建着色器程序
     unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
-    unsigned int pStar = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
+    unsigned int pStar   = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
     unsigned int pPlanet = Renderer::CreateProgram(Shaders::VertexPlanet, Shaders::FragmentPlanet);
-    unsigned int pUI = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
-    unsigned int pQuad = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
-    unsigned int pBlur = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
-    
+    unsigned int pUI     = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
+    unsigned int pQuad   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
+    unsigned int pBlur   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
+
     unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(cs, 1, &Shaders::ComputeSaturn, 0);
     glCompileShader(cs);
@@ -132,7 +132,7 @@ int main() {
     glGenFramebuffers(1, &fbo);
     glGenTextures(1, &fboTex);
     glGenRenderbuffers(1, &rbo);
-    
+
     auto resizeFBO = [&](int width, int height) {
         glBindTexture(GL_TEXTURE_2D, fboTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -146,15 +146,15 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     };
     resizeFBO(g_scrWidth, g_scrHeight);
-    
+
     // 模糊效果 FBO
     BlurFramebuffer fboBlur1, fboBlur2;
     fboBlur1.Init(g_scrWidth / 6, g_scrHeight / 6);
     fboBlur2.Init(g_scrWidth / 6, g_scrHeight / 6);
-    
+
     // 全屏四边形 VAO
     unsigned int vaoQuad, vboQuad;
-    float quadVerts[] = { -1,-1, 1,-1, -1,1, 1,1 };
+    float        quadVerts[] = {-1, -1, 1, -1, -1, 1, 1, 1};
     glGenVertexArrays(1, &vaoQuad);
     glGenBuffers(1, &vboQuad);
     glBindVertexArray(vaoQuad);
@@ -169,15 +169,15 @@ int main() {
     ParticleSystem::InitParticles(particles);
     unsigned int ssbo, vaoParticles;
     ParticleSystem::CreateBuffers(ssbo, vaoParticles, particles);
-    
+
     // 创建星空背景
     unsigned int vaoStars, vboStars;
     ParticleSystem::CreateStars(vaoStars, vboStars);
-    
+
     // 创建行星网格
     unsigned int vaoPlanet, idxPlanet;
     Renderer::CreateSphere(vaoPlanet, idxPlanet, 1.0f);
-    
+
     // UI 渲染 VAO
     unsigned int vaoUI, vboUI;
     glGenVertexArrays(1, &vaoUI);
@@ -197,8 +197,8 @@ int main() {
     Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI);
 
     // 投影和视图矩阵
-    glm::mat4 proj = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
-    glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    glm::mat4 proj   = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
+    glm::mat4 view   = glm::lookAt(glm::vec3(0, 0, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     glm::mat4 projUI = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
 
     // UI 顶点缓冲
@@ -207,27 +207,27 @@ int main() {
 
     // 动画状态
     SmoothState currentAnim;
-    HandState handState;
-    float autoTime = 0;
+    HandState   handState;
+    float       autoTime = 0;
 
     // 主循环变量
-    float lastFrame = 0;
-    int frameCount = 0;
-    float lastFpsTime = 0;
-    float currentFps = 60.0f;
-    int lastDisplayedFps = 60;
+    float lastFrame        = 0;
+    int   frameCount       = 0;
+    float lastFpsTime      = 0;
+    float currentFps       = 60.0f;
+    int   lastDisplayedFps = 60;
 
     // 主渲染循环
     while (!glfwWindowShouldClose(window)) {
-        float t = (float)glfwGetTime();
-        float dt = t - lastFrame;
+        float t   = (float)glfwGetTime();
+        float dt  = t - lastFrame;
         lastFrame = t;
 
         // 处理窗口大小变化
         if (g_windowResized) {
-            g_windowResized = false;
-            proj = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
-            projUI = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
+            g_windowResized  = false;
+            proj             = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
+            projUI           = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
             lastDisplayedFps = -1;
             resizeFBO(g_scrWidth, g_scrHeight);
             fboBlur1.Init(g_scrWidth / 6, g_scrHeight / 6);
@@ -240,19 +240,21 @@ int main() {
         // 动态 LOD 调整
         frameCount++;
         if (t - lastFpsTime >= 0.5f) {
-            currentFps = frameCount / (t - lastFpsTime);
-            frameCount = 0;
+            currentFps  = frameCount / (t - lastFpsTime);
+            frameCount  = 0;
             lastFpsTime = t;
             if (currentFps < 45.0f) {
-                if (g_activeParticleCount > MIN_PARTICLES)
+                if (g_activeParticleCount > MIN_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.9f);
-                else if (g_currentPixelRatio > 0.7f)
+                } else if (g_currentPixelRatio > 0.7f) {
                     g_currentPixelRatio -= 0.05f;
+                }
             } else if (currentFps > 58.0f) {
-                if (g_currentPixelRatio < 1.0f)
+                if (g_currentPixelRatio < 1.0f) {
                     g_currentPixelRatio += 0.05f;
-                else if (g_activeParticleCount < MAX_PARTICLES)
+                } else if (g_activeParticleCount < MAX_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.1f);
+                }
             }
         }
 
@@ -260,20 +262,20 @@ int main() {
         float targetScale, targetRotX, targetRotY;
         if (!handState.hasHand) {
             autoTime += 0.005f;
-            targetScale = 1.0f + sin(autoTime) * 0.2f;
-            targetRotX = 0.4f + sin(autoTime * 0.3f) * 0.15f;
-            targetRotY = 0.0f;
-            float lerpFactor = 0.08f;
+            targetScale       = 1.0f + sin(autoTime) * 0.2f;
+            targetRotX        = 0.4f + sin(autoTime * 0.3f) * 0.15f;
+            targetRotY        = 0.0f;
+            float lerpFactor  = 0.08f;
             currentAnim.scale = Lerp(currentAnim.scale, targetScale, lerpFactor);
-            currentAnim.rotX = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
-            currentAnim.rotY = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
+            currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
+            currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
         } else {
-            targetScale = handState.scale;
-            targetRotX = -0.6f + handState.rotY * 1.6f;
-            targetRotY = (handState.rotX - 0.5f) * 2.0f;
+            targetScale       = handState.scale;
+            targetRotX        = -0.6f + handState.rotY * 1.6f;
+            targetRotY        = (handState.rotX - 0.5f) * 2.0f;
             currentAnim.scale = targetScale;
-            currentAnim.rotX = targetRotX;
-            currentAnim.rotY = targetRotY;
+            currentAnim.rotX  = targetRotX;
+            currentAnim.rotY  = targetRotY;
         }
 
         // 计算粒子物理
@@ -292,9 +294,9 @@ int main() {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
         glm::mat4 mSat = glm::mat4(1.f);
-        mSat = glm::rotate(mSat, currentAnim.rotX, glm::vec3(1, 0, 0));
-        mSat = glm::rotate(mSat, currentAnim.rotY, glm::vec3(0, 1, 0));
-        mSat = glm::rotate(mSat, 0.466f, glm::vec3(0, 0, 1));
+        mSat           = glm::rotate(mSat, currentAnim.rotX, glm::vec3(1, 0, 0));
+        mSat           = glm::rotate(mSat, currentAnim.rotY, glm::vec3(0, 1, 0));
+        mSat           = glm::rotate(mSat, 0.466f, glm::vec3(0, 0, 1));
 
         // 渲染星空
         glUseProgram(pStar);
@@ -314,7 +316,7 @@ int main() {
         glUniform1f(uc.sat_uTime, t);
         glUniform1f(uc.sat_uScale, currentAnim.scale);
         glUniform1f(uc.sat_uPixelRatio, g_currentPixelRatio);
-        float ratio = (float)g_activeParticleCount / MAX_PARTICLES;
+        float ratio       = (float)g_activeParticleCount / MAX_PARTICLES;
         float densityComp = 0.6f / pow(ratio, 0.7f) / pow(g_currentPixelRatio, 0.5f);
         glUniform1f(uc.sat_uDensityComp, densityComp);
         glUniform1f(uc.sat_uScreenHeight, (float)g_scrHeight);
@@ -329,12 +331,12 @@ int main() {
         glUniformMatrix4fv(uc.pl_v, 1, 0, &view[0][0]);
         glUniform3f(uc.pl_ld, 1, .5, 1);
         glBindVertexArray(vaoPlanet);
-        
+
         auto drawPlanet = [&](glm::vec3 pos, float r, glm::vec3 c1, glm::vec3 c2, float ns, float at) {
             glm::mat4 m = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
-            m = glm::translate(m, pos);
-            m = glm::rotate(m, t * 0.1f, glm::vec3(0, 1, 0));
-            m = glm::scale(m, glm::vec3(r));
+            m           = glm::translate(m, pos);
+            m           = glm::rotate(m, t * 0.1f, glm::vec3(0, 1, 0));
+            m           = glm::scale(m, glm::vec3(r));
             glUniformMatrix4fv(uc.pl_m, 1, 0, &m[0][0]);
             glUniform3f(uc.pl_c1, c1.x, c1.y, c1.z);
             glUniform3f(uc.pl_c2, c2.x, c2.y, c2.z);
@@ -342,9 +344,9 @@ int main() {
             glUniform1f(uc.pl_at, at);
             glDrawElements(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0);
         };
-        drawPlanet({ -300,120,-450 }, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8, .3f);
-        drawPlanet({ 380,-100,-600 }, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5, .6f);
-        drawPlanet({ -180,-220,-350 }, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15, .1f);
+        drawPlanet({-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8, .3f);
+        drawPlanet({380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5, .6f);
+        drawPlanet({-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15, .1f);
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
@@ -353,11 +355,12 @@ int main() {
         if (displayFps != lastDisplayedFps) {
             lastDisplayedFps = displayFps;
             uiVerts.clear();
-            std::string fpsStr = std::to_string(displayFps);
-            float xCursor = (float)g_scrWidth - 60.0f;
-            float numSize = 20.0f;
+            std::string fpsStr  = std::to_string(displayFps);
+            float       xCursor = (float)g_scrWidth - 60.0f;
+            float       numSize = 20.0f;
             for (int i = (int)fpsStr.length() - 1; i >= 0; i--) {
-                Renderer::AddDigitGeometry(uiVerts, xCursor, (float)g_scrHeight - 40, numSize, numSize * 1.8f, fpsStr[i] - '0');
+                Renderer::AddDigitGeometry(uiVerts, xCursor, (float)g_scrHeight - 40, numSize, numSize * 1.8f,
+                                           fpsStr[i] - '0');
                 xCursor -= (numSize + 10.0f);
             }
             glBindBuffer(GL_ARRAY_BUFFER, vboUI);
@@ -365,8 +368,9 @@ int main() {
         }
         glUseProgram(pUI);
         glUniformMatrix4fv(uc.ui_proj, 1, 0, &projUI[0][0]);
-        glm::vec3 fpsCol = (currentFps > 50) ? glm::vec3(0.3, 1.0, 0.3) : 
-                          ((currentFps > 30) ? glm::vec3(1.0, 0.6, 0.0) : glm::vec3(1.0, 0.2, 0.2));
+        glm::vec3 fpsCol = (currentFps > 50)
+                             ? glm::vec3(0.3, 1.0, 0.3)
+                             : ((currentFps > 30) ? glm::vec3(1.0, 0.6, 0.0) : glm::vec3(1.0, 0.2, 0.2));
         glUniform3fv(uc.ui_uColor, 1, &fpsCol[0]);
         glBindVertexArray(vaoUI);
         glLineWidth(2.0f);
@@ -418,7 +422,7 @@ int main() {
             glBlendFunc(GL_ONE, GL_ZERO);
         }
         glClear(GL_COLOR_BUFFER_BIT);
-        
+
         glUseProgram(pQuad);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fboTex);
@@ -431,26 +435,27 @@ int main() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        
+
         if (g_showDebugWindow) {
             ImGui::SetNextWindowSize(ImVec2(450 * g_dpiScale, 600 * g_dpiScale), ImGuiCond_FirstUseEver);
-            ImGuiStyle& style = ImGui::GetStyle();
-            ImVec4 originalWindowBg = style.Colors[ImGuiCol_WindowBg];
-            
+            ImGuiStyle& style            = ImGui::GetStyle();
+            ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
+
             ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
             ImGui::Begin("Debug Panel", &g_showDebugWindow, ImGuiWindowFlags_NoCollapse);
-            
-            ImVec2 pos = ImGui::GetWindowPos();
-            ImVec2 size = ImGui::GetWindowSize();
-            ImDrawList* dl = ImGui::GetWindowDrawList();
+
+            ImVec2      pos  = ImGui::GetWindowPos();
+            ImVec2      size = ImGui::GetWindowSize();
+            ImDrawList* dl   = ImGui::GetWindowDrawList();
 
             if (g_enableImGuiBlur) {
                 ImVec2 uv0 = ImVec2(pos.x / g_scrWidth, 1.0f - pos.y / g_scrHeight);
                 ImVec2 uv1 = ImVec2((pos.x + size.x) / g_scrWidth, 1.0f - (pos.y + size.y) / g_scrHeight);
-                dl->AddImage((ImTextureID)(intptr_t)fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1);
+                dl->AddImage((ImTextureID)(intptr_t)fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
+                             uv1);
                 ImU32 tintColor = g_isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
                 dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
                 ImU32 highlight = g_isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
@@ -458,18 +463,19 @@ int main() {
             } else {
                 // Use the saved original background color instead of the overridden transparent one
                 ImVec4 bgCol = originalWindowBg;
-                bgCol.w = 0.95f;
-                dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol), style.WindowRounding);
+                bgCol.w      = 0.95f;
+                dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
+                                  style.WindowRounding);
             }
             ImGui::PopStyleColor(4);
-            
+
             if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::Text("FPS: %.1f", currentFps);
                 ImGui::Text("Particles: %u / %u", g_activeParticleCount, MAX_PARTICLES);
                 ImGui::Text("Pixel Ratio: %.2f", g_currentPixelRatio);
                 ImGui::Text("Resolution: %u x %u", g_scrWidth, g_scrHeight);
             }
-            
+
             if (ImGui::CollapsingHeader("Hand Tracking", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::Text("Hand Detected: %s", handState.hasHand ? "Yes" : "No");
                 ImGui::Text("Scale: %.3f", handState.scale);
@@ -486,7 +492,7 @@ int main() {
                     g_showCameraDebug = cameraDebug;
                 }
             }
-            
+
             if (ImGui::CollapsingHeader("Visuals")) {
                 if (UIManager::ToggleMD3("Dark Mode", &g_isDarkMode, dt)) {
                     UIManager::ApplyMaterialYouTheme(g_isDarkMode);
@@ -502,14 +508,14 @@ int main() {
             }
 
             if (ImGui::CollapsingHeader("Window")) {
-                const char* backdropNames[] = { "Solid Black", "Acrylic", "Mica" };
+                const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
                 if (g_backdropIndex < (int)g_availableBackdrops.size()) {
                     ImGui::Text("Backdrop: %s", backdropNames[g_availableBackdrops[g_backdropIndex]]);
                 }
                 ImGui::Text("Fullscreen: %s", g_isFullscreen ? "Yes" : "No");
                 ImGui::Text("Transparent: %s", g_useTransparent ? "Yes" : "No");
             }
-            
+
             if (ImGui::CollapsingHeader("Log", ImGuiTreeNodeFlags_DefaultOpen)) {
                 if (ImGui::Button("Clear")) {
                     DebugLog::Instance().Clear();
@@ -521,10 +527,10 @@ int main() {
                 }
                 DebugLog::Instance().Draw();
             }
-            
+
             ImGui::End();
         }
-        
+
         ImGui::Render();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -534,15 +540,17 @@ int main() {
 
         // Key handling
         static bool keyB_pressed = false, keyF11_pressed = false, keyF3_pressed = false;
-        
+
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
             if (!keyF3_pressed) {
-                keyF3_pressed = true;
+                keyF3_pressed     = true;
                 g_showDebugWindow = !g_showDebugWindow;
                 std::cout << "[Main] Debug window: " << (g_showDebugWindow ? "shown" : "hidden") << std::endl;
             }
-        } else keyF3_pressed = false;
-        
+        } else {
+            keyF3_pressed = false;
+        }
+
 #ifdef _WIN32
         HWND hwnd = glfwGetWin32Window(window);
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
@@ -553,8 +561,10 @@ int main() {
                     WindowManager::SetBackdropMode(hwnd, g_availableBackdrops[g_backdropIndex]);
                 }
             }
-        } else keyB_pressed = false;
-        
+        } else {
+            keyB_pressed = false;
+        }
+
         if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS) {
             if (!keyF11_pressed) {
                 keyF11_pressed = true;
@@ -563,10 +573,14 @@ int main() {
                     WindowManager::SetBackdropMode(hwnd, g_availableBackdrops[g_backdropIndex]);
                 }
             }
-        } else keyF11_pressed = false;
+        } else {
+            keyF11_pressed = false;
+        }
 #endif
-        
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE)) break;
+
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {
+            break;
+        }
     }
 
     // Cleanup
