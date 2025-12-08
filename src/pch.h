@@ -4,7 +4,9 @@
 // Windows 平台相关
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#define NOGDI
 #include <Windows.h>
+#undef NOGDI
 #endif
 
 // OpenGL 相关
