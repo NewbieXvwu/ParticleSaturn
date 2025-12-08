@@ -37,7 +37,7 @@
 // #define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
 
 //---- Don't define obsolete functions/enums/behaviors. Consider enabling from time to time after updating to clean your
-//code of obsolete function/names.
+// code of obsolete function/names.
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 //---- Disable all of Dear ImGui or don't implement standard windows/tools.
@@ -86,13 +86,13 @@
 // #define IMGUI_USER_H_FILENAME         "my_folder/my_imgui_user.h"
 
 //---- Pack vertex colors as BGRA8 instead of RGBA8 (to avoid converting from one to another). Need dedicated backend
-//support. #define IMGUI_USE_BGRA_PACKED_COLOR
+// support. #define IMGUI_USE_BGRA_PACKED_COLOR
 
 //---- Use legacy CRC32-adler tables (used before 1.91.6), in order to preserve old .ini data that you cannot afford to
-//invalidate. #define IMGUI_USE_LEGACY_CRC32_ADLER
+// invalidate. #define IMGUI_USE_LEGACY_CRC32_ADLER
 
 //---- Use 32-bit for ImWchar (default is 16-bit) to support Unicode planes 1-16. (e.g. point beyond 0xFFFF like
-//emoticons, dingbats, symbols, shapes, ancient languages, etc...) #define IMGUI_USE_WCHAR32
+// emoticons, dingbats, symbols, shapes, ancient languages, etc...) #define IMGUI_USE_WCHAR32
 
 //---- Avoid multiple STB libraries implementations, or redefine path/filenames to prioritize another version
 // By default the embedded implementations are declared static and not available outside of Dear ImGui sources files.
@@ -105,13 +105,13 @@
 // defined.
 
 //---- Use stb_sprintf.h for a faster implementation of vsnprintf instead of the one from libc (unless
-//IMGUI_DISABLE_DEFAULT_FORMAT_FUNCTIONS is defined)
+// IMGUI_DISABLE_DEFAULT_FORMAT_FUNCTIONS is defined)
 // Compatibility checks of arguments and formats done by clang and GCC will be disabled in order to support the extra
 // formats provided by stb_sprintf.h.
 // #define IMGUI_USE_STB_SPRINTF
 
 //---- Use FreeType to build and rasterize the font atlas (instead of stb_truetype which is embedded by default in Dear
-//ImGui)
+// ImGui)
 // Requires FreeType headers to be available in the include path. Requires program to be compiled with
 // 'misc/freetype/imgui_freetype.cpp' (in this repository) + the FreeType library (not provided). Note that
 // imgui_freetype.cpp may be used _without_ this define, if you manually call ImFontAtlas::SetFontLoader(). The define
@@ -167,7 +167,7 @@
 // #define IM_DEBUG_BREAK  __debugbreak()
 
 //---- Debug Tools: Enable highlight ID conflicts _before_ hovering items. When io.ConfigDebugHighlightIdConflicts is
-//set.
+// set.
 // (THIS WILL SLOW DOWN DEAR IMGUI. Only use occasionally and disable after use)
 // #define IMGUI_DEBUG_HIGHLIGHT_ALL_ID_CONFLICTS
 
