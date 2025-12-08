@@ -56,8 +56,8 @@ cd ParticleSaturn
 # 3. 构建 OpenCV（自动配置、编译、安装，约 10-20 分钟）
 scripts\build_opencv.cmd
 
-# 4. 用 Visual Studio 打开 ParticleSaturn.slnx 编译项目
-#    首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM
+# 4. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
+msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64
 ```
 
 ### Visual Studio 2022 用户
