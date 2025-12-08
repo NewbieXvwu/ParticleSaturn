@@ -13,6 +13,8 @@ on:
 
 jobs:
   clang-format:
+    # Skip if commit is from this workflow (auto-format PR merge)
+    if: "!contains(github.event.head_commit.message, 'style: auto-format code with clang-format')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
