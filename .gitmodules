@@ -2,3 +2,6 @@
 	path = HandTracker/libs/opencv
 	url = https://github.com/opencv/opencv.git
 	ignore = dirty
+[submodule "libs/imgui"]
+	path = libs/imgui
+	url = https://github.com/ocornut/imgui.git
