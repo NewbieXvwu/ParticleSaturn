@@ -34,9 +34,12 @@
 |:-----|:-----|
 | [Visual Studio 2026](https://visualstudio.microsoft.com/) | C++ 开发环境 |
 | [vcpkg](https://github.com/microsoft/vcpkg) | C++ 包管理器 |
-| [OpenCV](https://opencv.org/) | 计算机视觉库（作为 submodule） |
-| [Dear ImGui](https://github.com/ocornut/imgui) | 即时模式 GUI（作为 submodule） |
-| GLFW, GLAD, GLM | 通过 vcpkg 自动安装 |
+| [MediaPipe](https://github.com/google-ai-edge/mediapipe) | 手势追踪模型 |
+| [OpenCV](https://opencv.org/) | 计算机视觉库 |
+| [Dear ImGui](https://github.com/ocornut/imgui) | 即时模式 GUI |
+| [GLFW](https://www.glfw.org/) | 窗口管理 |
+| [GLAD](https://glad.dav1d.de/) | OpenGL 加载器 |
+| [GLM](https://github.com/g-truc/glm) | 数学库 |
 
 ### 步骤
 
