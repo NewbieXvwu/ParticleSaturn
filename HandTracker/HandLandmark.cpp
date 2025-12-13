@@ -1,12 +1,12 @@
 #include "HandLandmark.h"
 
-#include <algorithm>
-#include <fstream>
-#include <iostream>
-
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+
+#include <algorithm>
+#include <fstream>
+#include <iostream>
 
 HandLandmark::HandLandmark() {}
 
@@ -59,8 +59,8 @@ static inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_inv,
-                           std::vector<cv::Point2f>& landmarks, bool is_left_hand) {
+float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_inv, std::vector<cv::Point2f>& landmarks,
+                           bool is_left_hand) {
     landmarks.clear();
 
     if (roi_image.empty() || !interpreter) {
@@ -70,7 +70,7 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
     // 如果是左手，需要翻转图像（模型是针对右手训练的）
     cv::Mat input_image = roi_image;
     if (is_left_hand) {
-        cv::flip(roi_image, input_image, 1);  // 水平翻转
+        cv::flip(roi_image, input_image, 1); // 水平翻转
     }
 
     // Resize input
@@ -99,9 +99,9 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
     // - size=1: handedness (0=left, 1=right)
     // - size=1: hand_presence score
     // - size=63: world_landmarks
-    float        hand_presence    = 1.0f;
-    const float* landmarks_data   = nullptr;
-    bool         found_landmarks  = false;
+    float                              hand_presence   = 1.0f;
+    const float*                       landmarks_data  = nullptr;
+    bool                               found_landmarks = false;
     std::vector<std::pair<int, float>> single_outputs;
 
     for (size_t i = 0; i < interpreter->outputs().size(); i++) {

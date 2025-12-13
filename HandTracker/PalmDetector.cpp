@@ -1,15 +1,15 @@
 #define _USE_MATH_DEFINES
 #include "PalmDetector.h"
 
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
+
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
 #include <numeric>
-
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 
 PalmDetector::PalmDetector() {}
 
@@ -65,7 +65,6 @@ bool PalmDetector::loadFromMemory(const void* data, size_t size) {
     return true;
 }
 
-
 // Generate SSD-style anchor boxes
 void PalmDetector::generateAnchors() {
     anchors.clear();
@@ -114,8 +113,8 @@ static float computeIoU(const cv::Rect& a, const cv::Rect& b) {
 }
 
 // 非极大值抑制 (NMS)
-static void NMSBoxes(const std::vector<cv::Rect>& boxes, const std::vector<float>& scores,
-                     float scoreThreshold, float nmsThreshold, std::vector<int>& indices) {
+static void NMSBoxes(const std::vector<cv::Rect>& boxes, const std::vector<float>& scores, float scoreThreshold,
+                     float nmsThreshold, std::vector<int>& indices) {
     indices.clear();
 
     // 按置信度降序排列的索引
@@ -126,12 +125,16 @@ static void NMSBoxes(const std::vector<cv::Rect>& boxes, const std::vector<float
     std::vector<bool> suppressed(boxes.size(), false);
 
     for (int i : order) {
-        if (suppressed[i] || scores[i] < scoreThreshold) continue;
+        if (suppressed[i] || scores[i] < scoreThreshold) {
+            continue;
+        }
 
         indices.push_back(i);
 
         for (int j : order) {
-            if (suppressed[j] || i == j) continue;
+            if (suppressed[j] || i == j) {
+                continue;
+            }
             if (computeIoU(boxes[i], boxes[j]) > nmsThreshold) {
                 suppressed[j] = true;
             }
@@ -198,7 +201,7 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
     float cy = det.rect.y + h * 0.5f;
 
     float rotation = det.rotation;
-    float shift_y  = -0.5f;  // shift towards wrist
+    float shift_y  = -0.5f; // shift towards wrist
 
     float dx = -(h * shift_y) * std::sin(rotation);
     float dy = (h * shift_y) * std::cos(rotation);
@@ -207,14 +210,14 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
     det.hand_cy = cy + dy;
 
     float long_side = std::max(w, h);
-    det.hand_w      = long_side * 2.6f;  // expand 2.6x to include entire hand
+    det.hand_w      = long_side * 2.6f; // expand 2.6x to include entire hand
     det.hand_h      = long_side * 2.6f;
 
     float half_w = det.hand_w * 0.5f;
     float half_h = det.hand_h * 0.5f;
 
-    cv::Point2f corners[4] = {cv::Point2f(-half_w, -half_h), cv::Point2f(half_w, -half_h),
-                              cv::Point2f(half_w, half_h), cv::Point2f(-half_w, half_h)};
+    cv::Point2f corners[4] = {cv::Point2f(-half_w, -half_h), cv::Point2f(half_w, -half_h), cv::Point2f(half_w, half_h),
+                              cv::Point2f(-half_w, half_h)};
 
     // Rotate four corners
     float cos_r = std::cos(rotation);
@@ -226,7 +229,6 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
         det.hand_pos[i] = cv::Point2f(det.hand_cx + rx, det.hand_cy + ry);
     }
 }
-
 
 std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob_threshold, float nms_threshold) {
     std::vector<PalmDetection> results;
@@ -293,8 +295,8 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
     std::vector<cv::Rect> rects;
     std::vector<float>    confidences;
     for (auto& det : candidates) {
-        rects.push_back(cv::Rect((int)(det.rect.x * 1000), (int)(det.rect.y * 1000),
-                                 (int)(det.rect.width * 1000), (int)(det.rect.height * 1000)));
+        rects.push_back(cv::Rect((int)(det.rect.x * 1000), (int)(det.rect.y * 1000), (int)(det.rect.width * 1000),
+                                 (int)(det.rect.height * 1000)));
         confidences.push_back(det.score);
     }
 

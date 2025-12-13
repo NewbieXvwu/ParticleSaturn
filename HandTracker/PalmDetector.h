@@ -2,13 +2,13 @@
 #ifndef PALM_DETECTOR_H
 #define PALM_DETECTOR_H
 
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model.h"
+
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
-
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model.h"
 
 // Palm detection result
 struct PalmDetection {

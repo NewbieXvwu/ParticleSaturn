@@ -32,5 +32,4 @@ HAND_API void SetTrackerDebugMode(bool enabled);
 
 // 获取当前调试模式状态
 HAND_API bool GetTrackerDebugMode();
-
 }

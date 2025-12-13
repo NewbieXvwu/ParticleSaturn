@@ -1,5 +1,6 @@
-#include "HandLandmark.h"
 #include "HandTracker.h"
+
+#include "HandLandmark.h"
 #include "PalmDetector.h"
 
 #include <algorithm>
@@ -237,10 +238,10 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             // - 如果拇指在中指的右边（x更大），则是左手（用户的右手镜像后）
             // - 如果拇指在中指的左边（x更小），则是右手（用户的左手镜像后）
             // 使用关键点 0(手腕), 2(中指根部) 和手掌方向来判断
-            float wrist_x      = palm.landmarks[0].x;
-            float middle_x     = palm.landmarks[2].x;
-            float wrist_y      = palm.landmarks[0].y;
-            float middle_y     = palm.landmarks[2].y;
+            float wrist_x  = palm.landmarks[0].x;
+            float middle_x = palm.landmarks[2].x;
+            float wrist_y  = palm.landmarks[0].y;
+            float middle_y = palm.landmarks[2].y;
 
             // 计算手掌朝向向量（从手腕到中指根部）
             float palm_dir_x = middle_x - wrist_x;
@@ -249,17 +250,17 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             // 使用叉积判断：如果拇指在手掌方向的右侧，则是左手
             // 这里用关键点1（拇指侧）和关键点5（小指侧）的相对位置
             // 或者简单地用关键点的x坐标差异
-            float thumb_side_x = palm.landmarks[1].x;  // 拇指侧关键点
-            float pinky_side_x = palm.landmarks[5].x;  // 小指侧关键点（如果有的话）
+            float thumb_side_x = palm.landmarks[1].x; // 拇指侧关键点
+            float pinky_side_x = palm.landmarks[5].x; // 小指侧关键点（如果有的话）
 
             // 简化判断：在镜像图像中，如果拇指侧在中指的右边，是左手
             // 计算拇指侧相对于手腕-中指连线的位置
-            float cross = palm_dir_x * (palm.landmarks[1].y - wrist_y) - palm_dir_y * (thumb_side_x - wrist_x);
-            is_left_hand = (cross > 0);  // 叉积为正表示拇指在左侧（镜像后的左手）
+            float cross  = palm_dir_x * (palm.landmarks[1].y - wrist_y) - palm_dir_y * (thumb_side_x - wrist_x);
+            is_left_hand = (cross > 0); // 叉积为正表示拇指在左侧（镜像后的左手）
 
             // 检测手部关键点，传入左右手信息
             std::vector<cv::Point2f> landmarks;
-            float                    presence = landmark_detector.detect(roi_image, trans_mat_inv, landmarks, is_left_hand);
+            float presence = landmark_detector.detect(roi_image, trans_mat_inv, landmarks, is_left_hand);
 
             bool landmarks_valid = (landmarks.size() >= 21 && presence > 0.1f);
 
@@ -493,5 +494,3 @@ HAND_API void SetTrackerDebugMode(bool enabled) {
 HAND_API bool GetTrackerDebugMode() {
     return g_debug_mode;
 }
-
-
