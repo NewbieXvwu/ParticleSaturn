@@ -1,15 +1,15 @@
 #define _USE_MATH_DEFINES
 #include "PalmDetector.h"
 
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
-
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
 #include <numeric>
+
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
 
 PalmDetector::PalmDetector() {}
 

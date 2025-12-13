@@ -2,13 +2,13 @@
 #ifndef HAND_LANDMARK_H
 #define HAND_LANDMARK_H
 
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model.h"
-
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
+
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/model.h"
 
 // Hand landmark detector - based on MediaPipe Hand Landmark model
 class HandLandmark {

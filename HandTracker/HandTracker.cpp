@@ -1,8 +1,5 @@
 #include "HandTracker.h"
 
-#include "HandLandmark.h"
-#include "PalmDetector.h"
-
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -11,6 +8,9 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <thread>
+
+#include "HandLandmark.h"
+#include "PalmDetector.h"
 
 // One Euro Filter - 低通滤波器，用于平滑手势追踪数据
 // 核心特性：静止时强平滑，快速移动时弱平滑以保持响应性
