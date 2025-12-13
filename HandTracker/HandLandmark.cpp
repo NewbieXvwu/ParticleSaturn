@@ -1,12 +1,12 @@
 #include "HandLandmark.h"
 
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
-
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
 
 HandLandmark::HandLandmark() {}
 
