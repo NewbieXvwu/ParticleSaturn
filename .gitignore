@@ -43,4 +43,7 @@ Release/
 # vcpkg
 vcpkg_installed/
 
+# TFLite build artifacts
+HandTracker/libs/tensorflow/tflite_build/
+
 

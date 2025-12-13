@@ -35,6 +35,7 @@
 | [Visual Studio 2026](https://visualstudio.microsoft.com/) | C++ 开发环境 |
 | [vcpkg](https://github.com/microsoft/vcpkg) | C++ 包管理器 |
 | [MediaPipe](https://github.com/google-ai-edge/mediapipe) | 手势追踪模型 |
+| [TensorFlow Lite](https://www.tensorflow.org/lite) | 轻量级推理引擎 |
 | [OpenCV](https://opencv.org/) | 计算机视觉库 |
 | [Dear ImGui](https://github.com/ocornut/imgui) | 即时模式 GUI |
 | [GLFW](https://www.glfw.org/) | 窗口管理 |
@@ -56,7 +57,11 @@ cd ParticleSaturn
 # 3. 构建 OpenCV（自动配置、编译、安装，约 10-20 分钟）
 scripts\build_opencv.cmd
 
-# 4. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
+# 4. 应用 TFLite 剪枝补丁并构建（自动配置、编译、安装，约 20-40 分钟）
+git -C HandTracker/libs/tensorflow apply ../../scripts/tflite-prune.patch
+scripts\build_tflite.cmd
+
+# 5. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
 msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64
 ```
 

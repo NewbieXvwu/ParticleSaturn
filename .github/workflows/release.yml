@@ -36,6 +36,25 @@ jobs:
         run: scripts\build_opencv.cmd
         shell: cmd
 
+      - name: Cache TFLite build
+        id: cache-tflite
+        uses: actions/cache@v4
+        with:
+          path: |
+            HandTracker/libs/tensorflow/tflite_build/install
+            HandTracker/libs/tensorflow/tflite_build/MinSizeRel
+            HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build
+          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}
+
+      - name: Apply TFLite patch
+        if: steps.cache-tflite.outputs.cache-hit != 'true'
+        run: git -C HandTracker/libs/tensorflow apply ../../scripts/tflite-prune.patch
+
+      - name: Build TFLite
+        if: steps.cache-tflite.outputs.cache-hit != 'true'
+        run: scripts\build_tflite.cmd
+        shell: cmd
+
       - name: Build Release
         run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /m
 
@@ -61,9 +80,9 @@ jobs:
           Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
           Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
           
-          # Copy and rename model files
-          Copy-Item "HandTracker/models/palm_detection_nchw_fp16.onnx" "$releaseDir/palm_detection_nchw.onnx"
-          Copy-Item "HandTracker/models/hand_landmark_nchw_fp16.onnx" "$releaseDir/hand_landmark_nchw.onnx"
+          # Copy model files
+          Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
+          Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
 
       - name: Create 7z archive (ultra compression)
         run: 7z a -t7z -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.7z ./release_artifacts/*

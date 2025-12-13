@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="HandTrackerONNX.cpp">
+    <ClCompile Include="HandTracker.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="PalmDetector.cpp">
