@@ -24,18 +24,6 @@ jobs:
       - name: Setup vcpkg
         run: vcpkg integrate install
 
-      - name: Cache OpenCV build
-        id: cache-opencv
-        uses: actions/cache@v4
-        with:
-          path: HandTracker/libs/opencv/build/install
-          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
-
-      - name: Build OpenCV
-        if: steps.cache-opencv.outputs.cache-hit != 'true'
-        run: scripts\build_opencv.cmd
-        shell: cmd
-
       - name: Cache TFLite build
         id: cache-tflite
         uses: actions/cache@v4
@@ -53,6 +41,18 @@ jobs:
       - name: Build TFLite
         if: steps.cache-tflite.outputs.cache-hit != 'true'
         run: scripts\build_tflite.cmd
+        shell: cmd
+
+      - name: Cache OpenCV build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: HandTracker/libs/opencv/build/install
+          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
+
+      - name: Build OpenCV
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: scripts\build_opencv.cmd
         shell: cmd
 
       - name: Build Release
