@@ -48,7 +48,7 @@ jobs:
 
       - name: Apply TFLite patch
         if: steps.cache-tflite.outputs.cache-hit != 'true'
-        run: git -C HandTracker/libs/tensorflow apply ../../scripts/tflite-prune.patch
+        run: git apply scripts/tflite-prune.patch --directory=HandTracker/libs/tensorflow
 
       - name: Build TFLite
         if: steps.cache-tflite.outputs.cache-hit != 'true'
