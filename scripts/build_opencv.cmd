@@ -1,6 +1,6 @@
 @echo off
-REM OpenCV 精简构建脚本 - 用于 ParticleSaturn 项目
-REM 仅保留 DNN + VideoCapture + HighGUI 所需功能
+REM OpenCV Minimal Build Script - For ParticleSaturn Project
+REM Only keep VideoCapture + HighGUI + Basic Image Processing (DNN removed)
 
 cd /d "%~dp0.."
 
@@ -19,7 +19,7 @@ cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DBUILD_opencv_imgcodecs=ON ^
     -DBUILD_opencv_videoio=ON ^
     -DBUILD_opencv_highgui=ON ^
-    -DBUILD_opencv_dnn=ON ^
+    -DBUILD_opencv_dnn=OFF ^
     -DBUILD_opencv_gapi=OFF ^
     -DBUILD_opencv_apps=OFF ^
     -DBUILD_opencv_calib3d=OFF ^
@@ -45,7 +45,7 @@ cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DBUILD_JPEG=ON ^
     -DBUILD_PNG=ON ^
     -DBUILD_ZLIB=ON ^
-    -DBUILD_PROTOBUF=ON ^
+    -DBUILD_PROTOBUF=OFF ^
     -DBUILD_JASPER=OFF ^
     -DBUILD_OPENJPEG=OFF ^
     -DBUILD_TIFF=OFF ^
@@ -53,7 +53,7 @@ cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DBUILD_OPENEXR=OFF ^
     -DBUILD_IPP_IW=OFF ^
     -DBUILD_ITT=OFF ^
-    -DWITH_PROTOBUF=ON ^
+    -DWITH_PROTOBUF=OFF ^
     -DWITH_DSHOW=ON ^
     -DWITH_MSMF=ON ^
     -DWITH_MSMF_DXVA=ON ^
@@ -89,11 +89,11 @@ cmake -S "%OPENCV_SRC%" -B "%BUILD_DIR%" ^
     -DOPENCV_DNN_TFLITE=OFF
 
 echo.
-echo CMake 配置完成，开始编译...
+echo CMake configuration done, building...
 cmake --build "%BUILD_DIR%" --config Release
 
 echo.
-echo 编译完成，开始安装...
+echo Build done, installing...
 cmake --install "%BUILD_DIR%" --config Release --prefix "%BUILD_DIR%\install"
 
 if "%CI%"=="" pause

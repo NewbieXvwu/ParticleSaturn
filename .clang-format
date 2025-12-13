@@ -57,6 +57,28 @@ SeparateDefinitionBlocks: Always
 # Include 排序
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
+IncludeCategories:
+  # glad 必须最先包含 (优先级最高)
+  - Regex:           '<glad/.*>'
+    Priority:        -1
+  # GLFW 紧随其后
+  - Regex:           '<GLFW/.*>'
+    Priority:        1
+  # Windows 头文件
+  - Regex:           '<Windows\.h>'
+    Priority:        2
+  # GLM 数学库
+  - Regex:           '<glm/.*>'
+    Priority:        3
+  # ImGui
+  - Regex:           '<imgui.*>'
+    Priority:        4
+  # 其他第三方库
+  - Regex:           '<.*>'
+    Priority:        5
+  # 项目内头文件
+  - Regex:           '".*"'
+    Priority:        6
 
 # 类相关
 EmptyLineBeforeAccessModifier: LogicalBlock

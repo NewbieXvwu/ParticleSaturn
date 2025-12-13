@@ -7,8 +7,9 @@
 #include <Windows.h>
 #endif
 
-// OpenGL 相关
+// OpenGL 相关 (glad 必须在 glfw3 之前)
 #include <glad/glad.h>
+
 #include <GLFW/glfw3.h>
 
 // GLM 数学库

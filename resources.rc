@@ -1,7 +1,7 @@
-// Resource file for embedding ONNX models
+// Resource file for embedding TFLite models
 // Used only in Release_Static configuration
 
 #include "resource.h"
 
-IDR_PALM_MODEL RCDATA "HandTracker\\models\\palm_detection_nchw_fp16.onnx"
-IDR_HAND_MODEL RCDATA "HandTracker\\models\\hand_landmark_nchw_fp16.onnx"
+IDR_PALM_MODEL RCDATA "HandTracker\\models\\palm_detection_full.tflite"
+IDR_HAND_MODEL RCDATA "HandTracker\\models\\hand_landmark_full.tflite"

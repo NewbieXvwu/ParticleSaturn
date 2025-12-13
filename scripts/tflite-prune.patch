@@ -1,0 +1,147 @@
+diff --git a/tensorflow/lite/CMakeLists.txt b/tensorflow/lite/CMakeLists.txt
+index cf06e2a7c8d..80503bce594 100644
+--- a/tensorflow/lite/CMakeLists.txt
++++ b/tensorflow/lite/CMakeLists.txt
+@@ -582,6 +582,7 @@ if (TFLITE_ENABLE_RESOURCE)
+   populate_tflite_source_vars("experimental/resource"
+     TFLITE_EXPERIMENTAL_RESOURCE_SRCS
+   )
++  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_ENABLE_RESOURCE=1")
+ endif()
+ populate_tflite_source_vars("experimental/ruy"
+   TFLITE_EXPERIMENTAL_RUY_SRCS
+@@ -601,6 +602,11 @@ populate_tflite_source_vars("kernels"
+   TFLITE_KERNEL_SRCS
+   FILTER "([^/]*_test_util_internal|test_[^/]*|[^/]*_ops_wrapper)\\.(cc|h)$"
+ )
++# When TFLITE_ENABLE_RESOURCE is OFF, exclude kernels that depend on resource module
++# Note: hashtable_lookup.cc does NOT depend on resource, so we exclude it from the filter
++if(NOT TFLITE_ENABLE_RESOURCE)
++  list(FILTER TFLITE_KERNEL_SRCS EXCLUDE REGEX ".*/(hashtable|hashtable_find|hashtable_import|hashtable_size|call_once|assign_variable|read_variable|var_handle)\\.cc$")
++endif()
+ populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
+ populate_tflite_source_vars("kernels/internal/optimized"
+   TFLITE_KERNEL_INTERNAL_OPT_SRCS
+diff --git a/tensorflow/lite/core/kernels/builtin_op_kernels.h b/tensorflow/lite/core/kernels/builtin_op_kernels.h
+index a6756a8fd91..67effa8df91 100644
+--- a/tensorflow/lite/core/kernels/builtin_op_kernels.h
++++ b/tensorflow/lite/core/kernels/builtin_op_kernels.h
+@@ -44,7 +44,9 @@ TfLiteRegistration* Register_ADD();
+ TfLiteRegistration* Register_ADD_N();
+ TfLiteRegistration* Register_ARG_MAX();
+ TfLiteRegistration* Register_ARG_MIN();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_ASSIGN_VARIABLE();
++#endif
+ TfLiteRegistration* Register_ATAN2();
+ TfLiteRegistration* Register_AVERAGE_POOL_2D();
+ TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
+@@ -54,7 +56,9 @@ TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_RNN();
+ TfLiteRegistration* Register_BROADCAST_ARGS();
+ TfLiteRegistration* Register_BROADCAST_TO();
+ TfLiteRegistration* Register_BUCKETIZE();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_CALL_ONCE();
++#endif
+ TfLiteRegistration* Register_CAST();
+ TfLiteRegistration* Register_CEIL();
+ TfLiteRegistration* Register_COMPLEX_ABS();
+@@ -88,11 +92,13 @@ TfLiteRegistration* Register_GELU();
+ TfLiteRegistration* Register_GREATER();
+ TfLiteRegistration* Register_GREATER_EQUAL();
+ TfLiteRegistration* Register_HARD_SWISH();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_HASHTABLE();
+ TfLiteRegistration* Register_HASHTABLE_FIND();
+-TfLiteRegistration* Register_HASHTABLE_LOOKUP();
+ TfLiteRegistration* Register_HASHTABLE_IMPORT();
+ TfLiteRegistration* Register_HASHTABLE_SIZE();
++#endif
++TfLiteRegistration* Register_HASHTABLE_LOOKUP();
+ TfLiteRegistration* Register_IF();
+ TfLiteRegistration* Register_IMAG();
+ TfLiteRegistration* Register_L2_NORMALIZATION();
+@@ -133,7 +139,9 @@ TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
+ TfLiteRegistration* Register_RANDOM_UNIFORM();
+ TfLiteRegistration* Register_RANGE();
+ TfLiteRegistration* Register_RANK();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_READ_VARIABLE();
++#endif
+ TfLiteRegistration* Register_REAL();
+ TfLiteRegistration* Register_REDUCE_ALL();
+ TfLiteRegistration* Register_REDUCE_ANY();
+@@ -189,7 +197,9 @@ TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX();
+ TfLiteRegistration* Register_UNSORTED_SEGMENT_MIN();
+ TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
+ TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_VAR_HANDLE();
++#endif
+ TfLiteRegistration* Register_WHERE();
+ TfLiteRegistration* Register_WHILE();
+ TfLiteRegistration* Register_ZEROS_LIKE();
+diff --git a/tensorflow/lite/core/kernels/register.cc b/tensorflow/lite/core/kernels/register.cc
+index 96efe28fcb7..84bd51fc962 100644
+--- a/tensorflow/lite/core/kernels/register.cc
++++ b/tensorflow/lite/core/kernels/register.cc
+@@ -327,22 +327,28 @@ BuiltinOpResolver::BuiltinOpResolver() {
+   AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
+              /* min_version = */ 2,
+              /* max_version = */ 3);
++#if TFLITE_ENABLE_RESOURCE
+   AddBuiltin(BuiltinOperator_CALL_ONCE,
+              tflite::ops::builtin::Register_CALL_ONCE());
++#endif
+   AddBuiltin(BuiltinOperator_RFFT2D, Register_RFFT2D());
+   AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D());
+   AddBuiltin(BuiltinOperator_IMAG, Register_IMAG());
+   AddBuiltin(BuiltinOperator_REAL, Register_REAL());
+   AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
+   AddBuiltin(BuiltinOperator_BROADCAST_ARGS, Register_BROADCAST_ARGS());
++#if TFLITE_ENABLE_RESOURCE
+   AddBuiltin(BuiltinOperator_HASHTABLE, Register_HASHTABLE());
+   AddBuiltin(BuiltinOperator_HASHTABLE_FIND, Register_HASHTABLE_FIND());
+   AddBuiltin(BuiltinOperator_HASHTABLE_IMPORT, Register_HASHTABLE_IMPORT());
+   AddBuiltin(BuiltinOperator_HASHTABLE_SIZE, Register_HASHTABLE_SIZE());
++#endif
+   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE, Register_CONV_3D_TRANSPOSE());
++#if TFLITE_ENABLE_RESOURCE
+   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
+   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
+   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
++#endif
+   AddBuiltin(BuiltinOperator_MULTINOMIAL, Register_MULTINOMIAL());
+   AddBuiltin(BuiltinOperator_RANDOM_STANDARD_NORMAL,
+              Register_RANDOM_STANDARD_NORMAL());
+diff --git a/tensorflow/lite/kernels/register_ref.cc b/tensorflow/lite/kernels/register_ref.cc
+index 479f3d5c996..b681ad43542 100644
+--- a/tensorflow/lite/kernels/register_ref.cc
++++ b/tensorflow/lite/kernels/register_ref.cc
+@@ -177,10 +177,12 @@ TfLiteRegistration* Register_UNSORTED_SEGMENT_MIN();
+ TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
+ TfLiteRegistration* Register_ATAN2();
+ TfLiteRegistration* Register_SIGN();
++#if TFLITE_ENABLE_RESOURCE
+ TfLiteRegistration* Register_CALL_ONCE();
+ TfLiteRegistration* Register_VAR_HANDLE();
+ TfLiteRegistration* Register_READ_VARIABLE();
+ TfLiteRegistration* Register_ASSIGN_VARIABLE();
++#endif
+ TfLiteRegistration* Register_BITCAST();
+ TfLiteRegistration* Register_BITWISE_XOR();
+ TfLiteRegistration* Register_RIGHT_SHIFT();
+@@ -540,11 +542,13 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
+              Register_UNSORTED_SEGMENT_SUM());
+   AddBuiltin(BuiltinOperator_ATAN2, Register_ATAN2());
+   AddBuiltin(BuiltinOperator_SIGN, Register_SIGN());
++#if TFLITE_ENABLE_RESOURCE
+   AddBuiltin(BuiltinOperator_CALL_ONCE,
+              tflite::ops::builtin::Register_CALL_ONCE());
+   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
+   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
+   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
++#endif
+   AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
+   AddBuiltin(BuiltinOperator_BITWISE_XOR, Register_BITWISE_XOR());
+   AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());

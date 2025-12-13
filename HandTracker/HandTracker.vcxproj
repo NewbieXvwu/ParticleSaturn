@@ -23,7 +23,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="HandTrackerONNX.cpp" />
+    <ClCompile Include="HandTracker.cpp" />
     <ClCompile Include="PalmDetector.cpp" />
     <ClCompile Include="HandLandmark.cpp" />
   </ItemGroup>
@@ -142,20 +142,21 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;HANDTRACKER_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;HANDTRACKER_EXPORTS;_WINDOWS;_USRDLL;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\include;$(SolutionDir)HandTracker\libs\tensorflow;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>opencv_world4130.lib;libprotobuf.lib;libjpeg-turbo.lib;libpng.lib;zlib.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_world4130.lib;libjpeg-turbo.lib;libpng.lib;zlib.lib;tensorflow-lite.lib;xnnpack-delegate.lib;XNNPACK.lib;cpuinfo.lib;pthreadpool.lib;farmhash.lib;fft2d_fftsg.lib;fft2d_fftsg2d.lib;flatbuffers.lib;eight_bit_int_gemm.lib;ruy_frontend.lib;ruy_trmul.lib;ruy_prepare_packed_matrices.lib;ruy_ctx.lib;ruy_context.lib;ruy_context_get_ctx.lib;ruy_allocator.lib;ruy_system_aligned_alloc.lib;ruy_apply_multiplier.lib;ruy_block_map.lib;ruy_blocking_counter.lib;ruy_cpuinfo.lib;ruy_denormal.lib;ruy_have_built_path_for_avx.lib;ruy_have_built_path_for_avx2_fma.lib;ruy_have_built_path_for_avx512.lib;ruy_kernel_arm.lib;ruy_kernel_avx.lib;ruy_kernel_avx2_fma.lib;ruy_kernel_avx512.lib;ruy_pack_arm.lib;ruy_pack_avx.lib;ruy_pack_avx2_fma.lib;ruy_pack_avx512.lib;ruy_prepacked_cache.lib;ruy_profiler_instrumentation.lib;ruy_thread_pool.lib;ruy_tune.lib;ruy_wait.lib;microkernels-prod.lib;absl_strings.lib;absl_strings_internal.lib;absl_string_view.lib;absl_base.lib;absl_throw_delegate.lib;absl_raw_logging_internal.lib;absl_log_severity.lib;absl_spinlock_wait.lib;absl_int128.lib;absl_hashtablez_sampler.lib;absl_raw_hash_set.lib;absl_synchronization.lib;absl_graphcycles_internal.lib;absl_kernel_timeout_internal.lib;absl_time.lib;absl_time_zone.lib;absl_civil_time.lib;absl_malloc_internal.lib;absl_stacktrace.lib;absl_symbolize.lib;absl_debugging_internal.lib;absl_demangle_internal.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\lib;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\strings\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\base\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\numeric\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\container\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\synchronization\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\time\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\debugging\MinSizeRel;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -170,15 +171,15 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\include;$(SolutionDir)HandTracker\libs\tensorflow;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>opencv_world4130.lib;libprotobuf.lib;libjpeg-turbo.lib;libpng.lib;zlib.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_world4130.lib;libjpeg-turbo.lib;libpng.lib;zlib.lib;tensorflow-lite.lib;xnnpack-delegate.lib;XNNPACK.lib;cpuinfo.lib;pthreadpool.lib;farmhash.lib;fft2d_fftsg.lib;fft2d_fftsg2d.lib;flatbuffers.lib;eight_bit_int_gemm.lib;ruy_frontend.lib;ruy_trmul.lib;ruy_prepare_packed_matrices.lib;ruy_ctx.lib;ruy_context.lib;ruy_context_get_ctx.lib;ruy_allocator.lib;ruy_system_aligned_alloc.lib;ruy_apply_multiplier.lib;ruy_block_map.lib;ruy_blocking_counter.lib;ruy_cpuinfo.lib;ruy_denormal.lib;ruy_have_built_path_for_avx.lib;ruy_have_built_path_for_avx2_fma.lib;ruy_have_built_path_for_avx512.lib;ruy_kernel_arm.lib;ruy_kernel_avx.lib;ruy_kernel_avx2_fma.lib;ruy_kernel_avx512.lib;ruy_pack_arm.lib;ruy_pack_avx.lib;ruy_pack_avx2_fma.lib;ruy_pack_avx512.lib;ruy_prepacked_cache.lib;ruy_profiler_instrumentation.lib;ruy_thread_pool.lib;ruy_tune.lib;ruy_wait.lib;microkernels-prod.lib;absl_strings.lib;absl_strings_internal.lib;absl_string_view.lib;absl_base.lib;absl_throw_delegate.lib;absl_raw_logging_internal.lib;absl_log_severity.lib;absl_spinlock_wait.lib;absl_int128.lib;absl_hashtablez_sampler.lib;absl_raw_hash_set.lib;absl_synchronization.lib;absl_graphcycles_internal.lib;absl_kernel_timeout_internal.lib;absl_time.lib;absl_time_zone.lib;absl_civil_time.lib;absl_malloc_internal.lib;absl_stacktrace.lib;absl_symbolize.lib;absl_debugging_internal.lib;absl_demangle_internal.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;mf.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\lib;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\strings\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\base\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\numeric\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\container\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\synchronization\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\time\MinSizeRel;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\_deps\abseil-cpp-build\absl\debugging\MinSizeRel;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">
@@ -193,11 +194,12 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)HandTracker\libs\opencv\build\install\include;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\include;$(SolutionDir)HandTracker\libs\tensorflow;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
     <Lib>
-      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)HandTracker\libs\opencv\build\install\x64\$(OpenCVRuntime)\staticlib;$(SolutionDir)HandTracker\libs\tensorflow\tflite_build\install\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>tensorflow-lite.lib;XNNPACK.lib;cpuinfo.lib;pthreadpool.lib;farmhash.lib;fft2d_fftsg.lib;fft2d_fftsg2d.lib;flatbuffers.lib;eight_bit_int_gemm.lib;ruy_frontend.lib;ruy_trmul.lib;ruy_prepare_packed_matrices.lib;ruy_ctx.lib;ruy_context.lib;ruy_context_get_ctx.lib;ruy_allocator.lib;ruy_system_aligned_alloc.lib;ruy_apply_multiplier.lib;ruy_block_map.lib;ruy_blocking_counter.lib;ruy_cpuinfo.lib;ruy_denormal.lib;ruy_have_built_path_for_avx.lib;ruy_have_built_path_for_avx2_fma.lib;ruy_have_built_path_for_avx512.lib;ruy_kernel_arm.lib;ruy_kernel_avx.lib;ruy_kernel_avx2_fma.lib;ruy_kernel_avx512.lib;ruy_pack_arm.lib;ruy_pack_avx.lib;ruy_pack_avx2_fma.lib;ruy_pack_avx512.lib;ruy_prepacked_cache.lib;ruy_profiler_instrumentation.lib;ruy_thread_pool.lib;ruy_tune.lib;ruy_wait.lib;microkernels-prod.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

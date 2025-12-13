@@ -3,42 +3,69 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
+#include <numeric>
+
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
 
 PalmDetector::PalmDetector() {}
 
 PalmDetector::~PalmDetector() {}
 
-bool PalmDetector::load(const std::string& model_path) {
-    try {
-        net = cv::dnn::readNetFromONNX(model_path);
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-        generateAnchors();
-        std::cout << "[PalmDetector] Model loaded: " << model_path << std::endl;
-        return true;
-    } catch (const cv::Exception& e) {
-        std::cerr << "[PalmDetector] Failed to load model: " << e.what() << std::endl;
+bool PalmDetector::buildInterpreter() {
+    tflite::ops::builtin::BuiltinOpResolver resolver;
+    tflite::InterpreterBuilder              builder(*model, resolver);
+
+    if (builder(&interpreter) != kTfLiteOk) {
+        std::cerr << "[PalmDetector] Failed to build interpreter" << std::endl;
         return false;
     }
+
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+        std::cerr << "[PalmDetector] Failed to allocate tensors" << std::endl;
+        return false;
+    }
+
+    generateAnchors();
+    return true;
+}
+
+bool PalmDetector::load(const std::string& model_path) {
+    model = tflite::FlatBufferModel::BuildFromFile(model_path.c_str());
+    if (!model) {
+        std::cerr << "[PalmDetector] Failed to load model: " << model_path << std::endl;
+        return false;
+    }
+
+    if (!buildInterpreter()) {
+        return false;
+    }
+
+    std::cout << "[PalmDetector] Model loaded: " << model_path << std::endl;
+    return true;
 }
 
 bool PalmDetector::loadFromMemory(const void* data, size_t size) {
-    try {
-        std::vector<uchar> buffer((const uchar*)data, (const uchar*)data + size);
-        net = cv::dnn::readNetFromONNX(buffer);
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-        generateAnchors();
-        std::cout << "[PalmDetector] Model loaded from memory (" << size << " bytes)" << std::endl;
-        return true;
-    } catch (const cv::Exception& e) {
-        std::cerr << "[PalmDetector] Failed to load model from memory: " << e.what() << std::endl;
+    model_buffer.assign((const char*)data, (const char*)data + size);
+    model = tflite::FlatBufferModel::BuildFromBuffer(model_buffer.data(), model_buffer.size());
+
+    if (!model) {
+        std::cerr << "[PalmDetector] Failed to load model from memory" << std::endl;
         return false;
     }
+
+    if (!buildInterpreter()) {
+        return false;
+    }
+
+    std::cout << "[PalmDetector] Model loaded from memory (" << size << " bytes)" << std::endl;
+    return true;
 }
 
-// 生成 SSD 风格的 anchor boxes
+// Generate SSD-style anchor boxes
 void PalmDetector::generateAnchors() {
     anchors.clear();
     std::vector<int> strides  = {8, 16, 16, 16};
@@ -72,19 +99,59 @@ static inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-// 解码检测结果（从 anchor 偏移量到实际坐标）
-void PalmDetector::decodeDetections(const cv::Mat& scores, const cv::Mat& boxes, std::vector<PalmDetection>& detections,
-                                    float threshold) {
-    const float* score_data = (const float*)scores.data;
-    const float* box_data   = (const float*)boxes.data;
+// 计算两个矩形的 IoU (Intersection over Union)
+static float computeIoU(const cv::Rect& a, const cv::Rect& b) {
+    int x1 = std::max(a.x, b.x);
+    int y1 = std::max(a.y, b.y);
+    int x2 = std::min(a.x + a.width, b.x + b.width);
+    int y2 = std::min(a.y + a.height, b.y + b.height);
 
-    for (size_t i = 0; i < anchors.size(); i++) {
-        float score = sigmoid(score_data[i]);
+    int interArea = std::max(0, x2 - x1) * std::max(0, y2 - y1);
+    int unionArea = a.width * a.height + b.width * b.height - interArea;
+
+    return unionArea > 0 ? (float)interArea / unionArea : 0.0f;
+}
+
+// 非极大值抑制 (NMS)
+static void NMSBoxes(const std::vector<cv::Rect>& boxes, const std::vector<float>& scores, float scoreThreshold,
+                     float nmsThreshold, std::vector<int>& indices) {
+    indices.clear();
+
+    // 按置信度降序排列的索引
+    std::vector<int> order(scores.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&scores](int i, int j) { return scores[i] > scores[j]; });
+
+    std::vector<bool> suppressed(boxes.size(), false);
+
+    for (int i : order) {
+        if (suppressed[i] || scores[i] < scoreThreshold) {
+            continue;
+        }
+
+        indices.push_back(i);
+
+        for (int j : order) {
+            if (suppressed[j] || i == j) {
+                continue;
+            }
+            if (computeIoU(boxes[i], boxes[j]) > nmsThreshold) {
+                suppressed[j] = true;
+            }
+        }
+    }
+}
+
+// Decode detections (from anchor offsets to actual coordinates)
+void PalmDetector::decodeDetections(const float* scores, const float* boxes, int num_anchors,
+                                    std::vector<PalmDetection>& detections, float threshold) {
+    for (int i = 0; i < num_anchors && i < (int)anchors.size(); i++) {
+        float score = sigmoid(scores[i]);
         if (score < threshold) {
             continue;
         }
 
-        const float*  p      = box_data + i * 18;
+        const float*  p      = boxes + i * 18;
         const Anchor& anchor = anchors[i];
 
         float cx = p[0] / input_size + anchor.x_center;
@@ -106,7 +173,7 @@ void PalmDetector::decodeDetections(const cv::Mat& scores, const cv::Mat& boxes,
     }
 }
 
-// 计算手掌旋转角度（基于关键点 0 和 2）
+// Compute palm rotation angle (based on keypoints 0 and 2)
 void PalmDetector::computeRotation(PalmDetection& det) {
     float x0 = det.landmarks[0].x;
     float y0 = det.landmarks[0].y;
@@ -126,7 +193,7 @@ void PalmDetector::computeRotation(PalmDetection& det) {
     det.rotation = rotation;
 }
 
-// 将手掌检测框扩展为手部 ROI（用于后续关键点检测）
+// Expand palm detection box to hand ROI (for subsequent landmark detection)
 void PalmDetector::convertToHandROI(PalmDetection& det) {
     float w  = det.rect.width;
     float h  = det.rect.height;
@@ -134,7 +201,7 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
     float cy = det.rect.y + h * 0.5f;
 
     float rotation = det.rotation;
-    float shift_y  = -0.5f; // 向手腕方向偏移
+    float shift_y  = -0.5f; // shift towards wrist
 
     float dx = -(h * shift_y) * std::sin(rotation);
     float dy = (h * shift_y) * std::cos(rotation);
@@ -143,7 +210,7 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
     det.hand_cy = cy + dy;
 
     float long_side = std::max(w, h);
-    det.hand_w      = long_side * 2.6f; // 扩大 2.6 倍以包含整个手部
+    det.hand_w      = long_side * 2.6f; // expand 2.6x to include entire hand
     det.hand_h      = long_side * 2.6f;
 
     float half_w = det.hand_w * 0.5f;
@@ -152,7 +219,7 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
     cv::Point2f corners[4] = {cv::Point2f(-half_w, -half_h), cv::Point2f(half_w, -half_h), cv::Point2f(half_w, half_h),
                               cv::Point2f(-half_w, half_h)};
 
-    // 旋转四个角点
+    // Rotate four corners
     float cos_r = std::cos(rotation);
     float sin_r = std::sin(rotation);
 
@@ -166,43 +233,65 @@ void PalmDetector::convertToHandROI(PalmDetection& det) {
 std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob_threshold, float nms_threshold) {
     std::vector<PalmDetection> results;
 
-    if (image.empty()) {
+    if (image.empty() || !interpreter) {
         return results;
     }
 
+    // Resize input
     cv::Mat resized;
     cv::resize(image, resized, cv::Size(input_size, input_size));
-    cv::Mat blob = cv::dnn::blobFromImage(resized, 1.0 / 255.0, cv::Size(), cv::Scalar(0, 0, 0), false, false);
 
-    net.setInput(blob);
+    // Get input tensor
+    int    input_idx    = interpreter->inputs()[0];
+    float* input_tensor = interpreter->typed_tensor<float>(input_idx);
 
-    std::vector<cv::String> outNames = net.getUnconnectedOutLayersNames();
-    std::vector<cv::Mat>    outputs;
-    net.forward(outputs, outNames);
+    // Copy image data to input tensor (normalize to 0~1, NHWC format)
+    cv::Mat float_img;
+    resized.convertTo(float_img, CV_32FC3, 1.0 / 255.0);
+    memcpy(input_tensor, float_img.data, input_size * input_size * 3 * sizeof(float));
 
-    // 解析输出层（scores 和 boxes）
-    cv::Mat scores, boxes;
-    for (auto& out : outputs) {
-        if (out.size[2] == 1 || out.total() == anchors.size()) {
-            scores = out.reshape(1, {1, (int)anchors.size(), 1});
-        } else {
-            boxes = out.reshape(1, {1, (int)anchors.size(), 18});
+    // Run inference
+    if (interpreter->Invoke() != kTfLiteOk) {
+        std::cerr << "[PalmDetector] Inference failed" << std::endl;
+        return results;
+    }
+
+    // Parse outputs (scores and boxes)
+    const float* scores     = nullptr;
+    const float* boxes      = nullptr;
+    int          num_scores = 0;
+
+    for (int i = 0; i < interpreter->outputs().size(); i++) {
+        int           idx    = interpreter->outputs()[i];
+        TfLiteTensor* tensor = interpreter->tensor(idx);
+        int           total  = 1;
+        for (int d = 0; d < tensor->dims->size; d++) {
+            total *= tensor->dims->data[d];
+        }
+
+        const float* data = interpreter->typed_output_tensor<float>(i);
+
+        if (total == (int)anchors.size()) {
+            scores     = data;
+            num_scores = total;
+        } else if (total == (int)anchors.size() * 18) {
+            boxes = data;
         }
     }
 
-    if (scores.empty() || boxes.empty()) {
+    if (!scores || !boxes) {
         std::cerr << "[PalmDetector] Failed to parse outputs" << std::endl;
         return results;
     }
 
     std::vector<PalmDetection> candidates;
-    decodeDetections(scores, boxes, candidates, prob_threshold);
+    decodeDetections(scores, boxes, num_scores, candidates, prob_threshold);
 
     if (candidates.empty()) {
         return results;
     }
 
-    // NMS（非极大值抑制）
+    // NMS (Non-Maximum Suppression)
     std::vector<cv::Rect> rects;
     std::vector<float>    confidences;
     for (auto& det : candidates) {
@@ -212,9 +301,9 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
     }
 
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(rects, confidences, prob_threshold, nms_threshold, indices);
+    NMSBoxes(rects, confidences, prob_threshold, nms_threshold, indices);
 
-    // 处理 NMS 后的结果
+    // Process NMS results
     for (int idx : indices) {
         PalmDetection& det = candidates[idx];
         computeRotation(det);

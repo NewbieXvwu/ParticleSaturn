@@ -2,6 +2,10 @@
 	path = HandTracker/libs/opencv
 	url = https://github.com/opencv/opencv.git
 	ignore = dirty
+[submodule "HandTracker/libs/tensorflow"]
+	path = HandTracker/libs/tensorflow
+	url = https://github.com/tensorflow/tensorflow.git
+	ignore = dirty
 [submodule "libs/imgui"]
 	path = libs/imgui
 	url = https://github.com/ocornut/imgui.git
