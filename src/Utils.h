@@ -31,6 +31,16 @@ struct HandState {
     float rotY    = 0.5f;
 };
 
+// 行星属性 (预定义以减少每帧计算)
+struct PlanetData {
+    glm::vec3 pos;      // 位置
+    float     radius;   // 半径
+    glm::vec3 color1;   // 颜色1
+    glm::vec3 color2;   // 颜色2
+    float     noiseScale;  // 噪声缩放
+    float     atmosphere;  // 大气层强度
+};
+
 // 工具函数
 inline float Lerp(float a, float b, float f) {
     return a + f * (b - a);

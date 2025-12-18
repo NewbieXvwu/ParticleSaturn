@@ -180,6 +180,14 @@ int main() {
     unsigned int vaoPlanet, idxPlanet;
     Renderer::CreateSphere(vaoPlanet, idxPlanet, 1.0f);
 
+    // 预定义行星数据 (避免每帧重复构造)
+    const PlanetData planets[] = {
+        {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},   // 火星样行星
+        {{380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5.0f, 0.6f},   // 海王星样行星
+        {{-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15.0f, 0.1f},  // 岩石行星
+    };
+    const int planetCount = sizeof(planets) / sizeof(planets[0]);
+
     // UI 渲染 VAO
     unsigned int vaoUI, vboUI;
     glGenVertexArrays(1, &vaoUI);
@@ -331,7 +339,7 @@ int main() {
         glBindVertexArray(particleBuffers.GetRenderVAO());
         glDrawArrays(GL_POINTS, 0, g_activeParticleCount);
 
-        // 渲染行星
+        // 渲染行星 (使用预定义数据)
         glDepthMask(GL_TRUE);
         glEnable(GL_DEPTH_TEST);
         glUseProgram(pPlanet);
@@ -340,21 +348,23 @@ int main() {
         glUniform3f(uc.pl_ld, 1, .5, 1);
         glBindVertexArray(vaoPlanet);
 
-        auto drawPlanet = [&](glm::vec3 pos, float r, glm::vec3 c1, glm::vec3 c2, float ns, float at) {
-            glm::mat4 m = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
-            m           = glm::translate(m, pos);
-            m           = glm::rotate(m, t * 0.1f, glm::vec3(0, 1, 0));
-            m           = glm::scale(m, glm::vec3(r));
+        // 预计算公转旋转矩阵 (所有行星共享)
+        glm::mat4 orbitRot = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
+        float     selfRot  = t * 0.1f;
+
+        for (int i = 0; i < planetCount; i++) {
+            const PlanetData& p = planets[i];
+            glm::mat4         m = orbitRot;
+            m                   = glm::translate(m, p.pos);
+            m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
+            m                   = glm::scale(m, glm::vec3(p.radius));
             glUniformMatrix4fv(uc.pl_m, 1, 0, &m[0][0]);
-            glUniform3f(uc.pl_c1, c1.x, c1.y, c1.z);
-            glUniform3f(uc.pl_c2, c2.x, c2.y, c2.z);
-            glUniform1f(uc.pl_ns, ns);
-            glUniform1f(uc.pl_at, at);
+            glUniform3fv(uc.pl_c1, 1, &p.color1[0]);
+            glUniform3fv(uc.pl_c2, 1, &p.color2[0]);
+            glUniform1f(uc.pl_ns, p.noiseScale);
+            glUniform1f(uc.pl_at, p.atmosphere);
             glDrawElements(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0);
-        };
-        drawPlanet({-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8, .3f);
-        drawPlanet({380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5, .6f);
-        drawPlanet({-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15, .1f);
+        }
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
