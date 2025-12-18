@@ -36,6 +36,9 @@ struct UniformCache {
     GLint star_proj, star_view, star_model, star_uTime;
     GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at;
     GLint ui_proj, ui_uColor;
+    // 模糊和全屏四边形着色器
+    GLint blur_dir, blur_uTexture;
+    GLint quad_uTexture, quad_uTransparent;
 };
 
 namespace Renderer {
@@ -59,7 +62,7 @@ inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc
 
 // 初始化 Uniform 缓存
 inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, unsigned int pStar,
-                             unsigned int pPlanet, unsigned int pUI) {
+                             unsigned int pPlanet, unsigned int pUI, unsigned int pBlur, unsigned int pQuad) {
     uc.comp_uDt            = glGetUniformLocation(pComp, "uDt");
     uc.comp_uHandScale     = glGetUniformLocation(pComp, "uHandScale");
     uc.comp_uHandHas       = glGetUniformLocation(pComp, "uHandHas");
@@ -91,6 +94,14 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
 
     uc.ui_proj   = glGetUniformLocation(pUI, "projection");
     uc.ui_uColor = glGetUniformLocation(pUI, "uColor");
+
+    // 模糊着色器
+    uc.blur_dir      = glGetUniformLocation(pBlur, "dir");
+    uc.blur_uTexture = glGetUniformLocation(pBlur, "uTexture");
+
+    // 全屏四边形着色器
+    uc.quad_uTexture     = glGetUniformLocation(pQuad, "uTexture");
+    uc.quad_uTransparent = glGetUniformLocation(pQuad, "uTransparent");
 }
 
 // 七段数码管数字定义（用于 FPS 显示）

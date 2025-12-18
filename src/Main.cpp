@@ -196,7 +196,7 @@ int main() {
 
     // 初始化 Uniform 缓存
     UniformCache uc;
-    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI);
+    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI, pBlur, pQuad);
 
     // 投影和视图矩阵
     glm::mat4 proj   = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
@@ -383,32 +383,30 @@ int main() {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
             glUseProgram(pBlur);
-            GLint locDir = glGetUniformLocation(pBlur, "dir");
-            GLint locTex = glGetUniformLocation(pBlur, "uTexture");
-            glUniform1i(locTex, 0);
+            glUniform1i(uc.blur_uTexture, 0);
             glActiveTexture(GL_TEXTURE0);
 
             glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
             glBindTexture(GL_TEXTURE_2D, fboTex);
-            glUniform2f(locDir, 1.0f / fboBlur1.w, 0.0f);
+            glUniform2f(uc.blur_dir, 1.0f / fboBlur1.w, 0.0f);
             glBindVertexArray(vaoQuad);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
             glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
             glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
-            glUniform2f(locDir, 0.0f, 1.0f / fboBlur1.h);
+            glUniform2f(uc.blur_dir, 0.0f, 1.0f / fboBlur1.h);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
             int iterations = (int)g_blurStrength;
             for (int i = 0; i < iterations; i++) {
                 glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
                 glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
-                glUniform2f(locDir, 1.0f / fboBlur1.w, 0.0f);
+                glUniform2f(uc.blur_dir, 1.0f / fboBlur1.w, 0.0f);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
                 glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
                 glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
-                glUniform2f(locDir, 0.0f, 1.0f / fboBlur1.h);
+                glUniform2f(uc.blur_dir, 0.0f, 1.0f / fboBlur1.h);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
             glViewport(0, 0, g_scrWidth, g_scrHeight);
@@ -428,8 +426,8 @@ int main() {
         glUseProgram(pQuad);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fboTex);
-        glUniform1i(glGetUniformLocation(pQuad, "uTexture"), 0);
-        glUniform1i(glGetUniformLocation(pQuad, "uTransparent"), g_useTransparent ? 1 : 0);
+        glUniform1i(uc.quad_uTexture, 0);
+        glUniform1i(uc.quad_uTransparent, g_useTransparent ? 1 : 0);
         glBindVertexArray(vaoQuad);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
