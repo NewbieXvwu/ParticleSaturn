@@ -239,25 +239,27 @@ int main() {
         // 获取手部追踪数据
         GetHandData(&handState.scale, &handState.rotX, &handState.rotY, &handState.hasHand);
 
-        // 动态 LOD 调整
+        // 动态 LOD 调整 (带滞后区间防止频繁切换)
+        // 滞后区间: 40-55 FPS 保持不变，避免 LOD 抖动
         frameCount++;
         if (t - lastFpsTime >= 0.5f) {
             currentFps  = frameCount / (t - lastFpsTime);
             frameCount  = 0;
             lastFpsTime = t;
-            if (currentFps < 45.0f) {
+            if (currentFps < 40.0f) {  // 低于 40 FPS 才降低质量
                 if (g_activeParticleCount > MIN_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.9f);
                 } else if (g_currentPixelRatio > 0.7f) {
                     g_currentPixelRatio -= 0.05f;
                 }
-            } else if (currentFps > 58.0f) {
+            } else if (currentFps > 55.0f) {  // 高于 55 FPS 才提高质量
                 if (g_currentPixelRatio < 1.0f) {
                     g_currentPixelRatio += 0.05f;
                 } else if (g_activeParticleCount < MAX_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.1f);
                 }
             }
+            // 40-55 FPS 之间保持当前设置，提供稳定性
         }
 
         // 动画逻辑
