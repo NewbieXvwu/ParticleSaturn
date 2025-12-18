@@ -8,7 +8,7 @@ namespace Shaders {
 const char* const ComputeInitSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
-struct ParticleData { vec4 pos; vec4 col; vec4 vel; float isRing; float pad[3]; };
+struct ParticleData { vec4 pos; vec4 col; float speed; float isRing; float pad[2]; };
 layout(std430, binding = 0) buffer ParticleBuffer { ParticleData particles[]; };
 
 uniform uint uSeed;
@@ -38,8 +38,8 @@ void main() {
     float typeRnd = random(rngState);
 
     float R = 18.0;
-    vec4 pPos, pCol, pVel;
-    float pIsRing;
+    vec4 pPos, pCol;
+    float pSpeed, pIsRing;
 
     if (typeRnd < 0.25) {
         // --- 土星本体粒子 ---
@@ -55,26 +55,26 @@ void main() {
         int idxInt = int(lat * 4.0 + cos(lat * 40.0) * 0.8 + cos(lat * 15.0) * 0.4);
         int ci = idxInt - (idxInt / 4) * 4; // 模拟 C++ 的 % 运算
         if (ci < 0) ci = 0; // 与CPU代码一致的负数处理
-        
+
         vec3 cols[4];
         cols[0] = hexToRGB(0xE3DAC5);
         cols[1] = hexToRGB(0xC9A070);
         cols[2] = hexToRGB(0xE3DAC5);
         cols[3] = hexToRGB(0xB08D55);
-        
+
         pCol.rgb = cols[ci];
-        pPos.w = 1.0 + random(rngState) * 0.8; // scale (using pos.w for scale per CPU struct mapping)
+        pPos.w = 1.0 + random(rngState) * 0.8; // scale
         pCol.a = 0.8;                          // opacity
-        pVel.w = 0.0;                          // velocity
+        pSpeed = 0.0;                          // 本体不旋转
         pIsRing = 0.0;
-        
+
     } else {
         // --- 土星环粒子 ---
         float z = random(rngState);
         float rad;
         vec3 c;
         float s, o;
-        
+
         if (z < 0.15) {
             rad = R * (1.235 + random(rngState) * 0.29);
             c = hexToRGB(0x2A2520);
@@ -104,25 +104,24 @@ void main() {
             s = 1.0;
             o = 0.7;
         }
-        
+
         float th = random(rngState) * 6.28318;
         pPos.x = rad * cos(th);
         pPos.z = rad * sin(th);
-        // p.y = (rnd - 0.5) * ((rad > R * 2.3) ? 0.4 : 0.15)
         float heightRange = (rad > R * 2.3) ? 0.4 : 0.15;
         pPos.y = (random(rngState) - 0.5) * heightRange;
-        
+
         pCol.rgb = c;
         pPos.w = s;
         pCol.a = o;
-        pVel.w = 8.0 / sqrt(rad);
+        pSpeed = 8.0 / sqrt(rad);
         pIsRing = 1.0;
     }
-    
+
     // Fill the struct
     particles[id].pos = pPos;
     particles[id].col = pCol;
-    particles[id].vel = pVel; // vel.xyz is 0, vel.w is speed
+    particles[id].speed = pSpeed;
     particles[id].isRing = pIsRing;
 }
 )";
@@ -131,7 +130,7 @@ void main() {
 const char* const ComputeSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
-struct ParticleData { vec4 pos; vec4 col; vec4 vel; float isRing; float pad[3]; };
+struct ParticleData { vec4 pos; vec4 col; float speed; float isRing; float pad[2]; };
 layout(std430, binding = 0) readonly buffer ParticleBufferIn { ParticleData particlesIn[]; };
 layout(std430, binding = 1) writeonly buffer ParticleBufferOut { ParticleData particlesOut[]; };
 uniform float uDt;
@@ -144,7 +143,7 @@ void main() {
     if (id >= uParticleCount) return;
 
     vec4 pos = particlesIn[id].pos;
-    float speed = particlesIn[id].vel.w;
+    float speed = particlesIn[id].speed;
     float isRing = particlesIn[id].isRing;
 
     float timeFactor = mix(1.0, uHandScale, uHandHas);
@@ -159,7 +158,7 @@ void main() {
     particlesOut[id].pos.z = pos.x * s + pos.z * c;
     particlesOut[id].pos.w = pos.w;
     particlesOut[id].col = particlesIn[id].col;
-    particlesOut[id].vel = particlesIn[id].vel;
+    particlesOut[id].speed = speed;
     particlesOut[id].isRing = isRing;
 }
 )";
@@ -169,7 +168,7 @@ const char* const VertexSaturn = R"(
 #version 430 core
 layout (location = 0) in vec4 aPos;
 layout (location = 1) in vec4 aCol;
-layout (location = 2) in vec4 aVel;
+layout (location = 2) in float aSpeed;
 layout (location = 3) in float aIsRing;
 uniform mat4 view; uniform mat4 projection; uniform mat4 model;
 uniform float uTime; uniform float uScale; uniform float uPixelRatio; uniform float uScreenHeight;

@@ -8,13 +8,13 @@
 const unsigned int MAX_PARTICLES = 1200000;
 const unsigned int MIN_PARTICLES = 200000;
 
-// GPU 粒子数据结构
+// GPU 粒子数据结构 (优化: 48字节，从64字节减少25%)
 struct GPUParticle {
-    glm::vec4 pos;
-    glm::vec4 col;
-    glm::vec4 vel;
-    float     isRing;
-    float     pad[3];
+    glm::vec4 pos;     // x, y, z, scale
+    glm::vec4 col;     // r, g, b, opacity
+    float     speed;   // 轨道速度 (原 vel.w)
+    float     isRing;  // 0=本体, 1=环
+    float     pad[2];  // 对齐到 16 字节边界
 };
 
 // 双缓冲粒子系统结构
@@ -97,15 +97,24 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
     glDeleteShader(cs);
     glDeleteProgram(pInit);
 
-    // 5. 为两个 SSBO 设置 VAO
+    // 5. 为两个 SSBO 设置 VAO (匹配优化后的数据结构)
+    // 结构: vec4 pos(0), vec4 col(16), float speed(32), float isRing(36), pad[2](40)
     glGenVertexArrays(2, db.vao);
     for (int i = 0; i < 2; i++) {
         glBindVertexArray(db.vao[i]);
         glBindBuffer(GL_ARRAY_BUFFER, db.ssbo[i]);
-        for (int j = 0; j < 4; j++) {
-            glEnableVertexAttribArray(j);
-            glVertexAttribPointer(j, (j == 3 ? 1 : 4), GL_FLOAT, 0, sizeof(GPUParticle), (void*)(intptr_t)(j * 16));
-        }
+        // location 0: pos (vec4, offset 0)
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(GPUParticle), (void*)0);
+        // location 1: col (vec4, offset 16)
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(GPUParticle), (void*)16);
+        // location 2: speed (float, offset 32)
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(GPUParticle), (void*)32);
+        // location 3: isRing (float, offset 36)
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(GPUParticle), (void*)36);
     }
     glBindVertexArray(0);
 
