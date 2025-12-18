@@ -34,7 +34,7 @@ struct UniformCache {
     GLint sat_proj, sat_view, sat_model, sat_uTime, sat_uScale, sat_uPixelRatio, sat_uDensityComp, sat_uScreenHeight,
         sat_uNoiseTexture;
     GLint star_proj, star_view, star_model, star_uTime;
-    GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at;
+    GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at, pl_uFBMTex;
     GLint ui_proj, ui_uColor;
     // 模糊着色器 (Kawase Blur)
     GLint blur_uTexture, blur_uTexelSize, blur_uOffset;
@@ -84,14 +84,15 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.star_model = glGetUniformLocation(pStar, "model");
     uc.star_uTime = glGetUniformLocation(pStar, "uTime");
 
-    uc.pl_p  = glGetUniformLocation(pPlanet, "p");
-    uc.pl_v  = glGetUniformLocation(pPlanet, "v");
-    uc.pl_m  = glGetUniformLocation(pPlanet, "m");
-    uc.pl_ld = glGetUniformLocation(pPlanet, "ld");
-    uc.pl_c1 = glGetUniformLocation(pPlanet, "c1");
-    uc.pl_c2 = glGetUniformLocation(pPlanet, "c2");
-    uc.pl_ns = glGetUniformLocation(pPlanet, "ns");
-    uc.pl_at = glGetUniformLocation(pPlanet, "at");
+    uc.pl_p       = glGetUniformLocation(pPlanet, "p");
+    uc.pl_v       = glGetUniformLocation(pPlanet, "v");
+    uc.pl_m       = glGetUniformLocation(pPlanet, "m");
+    uc.pl_ld      = glGetUniformLocation(pPlanet, "ld");
+    uc.pl_c1      = glGetUniformLocation(pPlanet, "c1");
+    uc.pl_c2      = glGetUniformLocation(pPlanet, "c2");
+    uc.pl_ns      = glGetUniformLocation(pPlanet, "ns");
+    uc.pl_at      = glGetUniformLocation(pPlanet, "at");
+    uc.pl_uFBMTex = glGetUniformLocation(pPlanet, "uFBMTex");
 
     uc.ui_proj   = glGetUniformLocation(pUI, "projection");
     uc.ui_uColor = glGetUniformLocation(pUI, "uColor");
@@ -193,11 +194,11 @@ inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
     std::vector<unsigned char> data(width * height * 3);
     std::default_random_engine gen;
     std::uniform_int_distribution<int> rnd(0, 255);
-    
+
     for (int i = 0; i < width * height * 3; i++) {
         data[i] = (unsigned char)rnd(gen);
     }
-    
+
     unsigned int tex;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -206,6 +207,65 @@ inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    return tex;
+}
+
+// 生成 FBM 噪声纹理 (用于行星表面)
+inline unsigned int GenerateFBMTexture(int width = 512, int height = 512) {
+    // 辅助函数: 2D 哈希噪声
+    auto hash = [](float x, float y) -> float {
+        return fmodf(sinf(x * 12.9898f + y * 78.233f) * 43758.5453f, 1.0f);
+    };
+
+    // 辅助函数: 平滑插值噪声
+    auto noise = [&](float x, float y) -> float {
+        int   ix = (int)floorf(x);
+        int   iy = (int)floorf(y);
+        float fx = x - ix;
+        float fy = y - iy;
+        float ux = fx * fx * (3.0f - 2.0f * fx);
+        float uy = fy * fy * (3.0f - 2.0f * fy);
+
+        float a = hash((float)ix, (float)iy);
+        float b = hash((float)(ix + 1), (float)iy);
+        float c = hash((float)ix, (float)(iy + 1));
+        float d = hash((float)(ix + 1), (float)(iy + 1));
+
+        return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+    };
+
+    // FBM: 5 层噪声叠加
+    auto fbm = [&](float x, float y) -> float {
+        float value = 0.0f;
+        float amp   = 0.5f;
+        for (int i = 0; i < 5; i++) {
+            value += amp * noise(x, y);
+            x *= 2.0f;
+            y *= 2.0f;
+            amp *= 0.5f;
+        }
+        return value;
+    };
+
+    std::vector<unsigned char> data(width * height);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            float u     = (float)x / width * 16.0f;
+            float v     = (float)y / height * 16.0f;
+            float value = fbm(u, v);
+            data[y * width + x] = (unsigned char)(value * 255.0f);
+        }
+    }
+
+    unsigned int tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glGenerateMipmap(GL_TEXTURE_2D);
     return tex;
 }
 

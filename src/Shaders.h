@@ -336,14 +336,13 @@ void main(){
 const char* const FragmentPlanet = R"(
 #version 430 core
 out vec4 F; in vec2 U; in vec3 N,V; uniform vec3 c1,c2,ld; uniform float ns,at;
-float h(vec2 s){return fract(sin(dot(s,vec2(12.9,78.2)))*43758.5);}
-float n(vec2 s){vec2 i=floor(s),f=fract(s),u=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),u.x),mix(h(i+vec2(0,1)),h(i+1.),u.x),u.y);}
-float fbm(vec2 s){float v=0.,a=.5;for(int i=0;i<5;i++,s*=2.,a*=.5)v+=a*n(s);return v;}
-void main(){ 
-    float x=fbm(U*ns); 
+uniform sampler2D uFBMTex;  // 预计算的 FBM 噪声纹理
+void main(){
+    // 使用纹理采样代替程序化 FBM 计算
+    float x=texture(uFBMTex, U*ns).r;
     vec3 c=mix(c1,c2,x)*max(dot(normalize(N),normalize(ld)),.05);
-    c+=at*vec3(.5,.6,1.)*pow(1.-dot(normalize(V),normalize(N)),3.); 
-    F=vec4(c,1.); 
+    c+=at*vec3(.5,.6,1.)*pow(1.-dot(normalize(V),normalize(N)),3.);
+    F=vec4(c,1.);
 }
 )";
 

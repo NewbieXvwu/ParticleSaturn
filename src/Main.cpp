@@ -180,6 +180,9 @@ int main() {
     unsigned int vaoPlanet, idxPlanet;
     Renderer::CreateSphere(vaoPlanet, idxPlanet, 1.0f);
 
+    // 生成 FBM 噪声纹理 (预计算替代程序化噪声)
+    unsigned int fbmTexture = Renderer::GenerateFBMTexture();
+
     // 预定义行星数据 (避免每帧重复构造)
     const PlanetData planets[] = {
         {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},   // 火星样行星
@@ -339,13 +342,17 @@ int main() {
         glBindVertexArray(particleBuffers.GetRenderVAO());
         glDrawArrays(GL_POINTS, 0, g_activeParticleCount);
 
-        // 渲染行星 (使用预定义数据)
+        // 渲染行星 (使用预定义数据和 FBM 纹理)
         glDepthMask(GL_TRUE);
         glEnable(GL_DEPTH_TEST);
         glUseProgram(pPlanet);
         glUniformMatrix4fv(uc.pl_p, 1, 0, &proj[0][0]);
         glUniformMatrix4fv(uc.pl_v, 1, 0, &view[0][0]);
         glUniform3f(uc.pl_ld, 1, .5, 1);
+        // 绑定预计算的 FBM 噪声纹理
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, fbmTexture);
+        glUniform1i(uc.pl_uFBMTex, 0);
         glBindVertexArray(vaoPlanet);
 
         // 预计算公转旋转矩阵 (所有行星共享)
