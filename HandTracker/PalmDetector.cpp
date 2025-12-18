@@ -245,10 +245,17 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
     int    input_idx    = interpreter->inputs()[0];
     float* input_tensor = interpreter->typed_tensor<float>(input_idx);
 
-    // Copy image data to input tensor (normalize to 0~1, NHWC format)
-    cv::Mat float_img;
-    resized.convertTo(float_img, CV_32FC3, 1.0 / 255.0);
-    memcpy(input_tensor, float_img.data, input_size * input_size * 3 * sizeof(float));
+    // Optimize: Direct copy and normalize from resized uint8 image to float tensor
+    // This avoids allocating a large float Mat and an extra memcpy
+    const uint8_t* src_ptr     = resized.data;
+    float*         dst_ptr     = input_tensor;
+    int            pixel_count = input_size * input_size;
+
+    for (int i = 0; i < pixel_count; ++i) {
+        dst_ptr[i * 3 + 0] = src_ptr[i * 3 + 0] * (1.0f / 255.0f);
+        dst_ptr[i * 3 + 1] = src_ptr[i * 3 + 1] * (1.0f / 255.0f);
+        dst_ptr[i * 3 + 2] = src_ptr[i * 3 + 2] * (1.0f / 255.0f);
+    }
 
     // Run inference
     if (interpreter->Invoke() != kTfLiteOk) {

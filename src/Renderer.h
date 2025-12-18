@@ -31,7 +31,8 @@ struct BlurFramebuffer {
 // Uniform 位置缓存（避免重复查询）
 struct UniformCache {
     GLint comp_uDt, comp_uHandScale, comp_uHandHas, comp_uParticleCount;
-    GLint sat_proj, sat_view, sat_model, sat_uTime, sat_uScale, sat_uPixelRatio, sat_uDensityComp, sat_uScreenHeight;
+    GLint sat_proj, sat_view, sat_model, sat_uTime, sat_uScale, sat_uPixelRatio, sat_uDensityComp, sat_uScreenHeight,
+        sat_uNoiseTexture;
     GLint star_proj, star_view, star_model, star_uTime;
     GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at;
     GLint ui_proj, ui_uColor;
@@ -72,6 +73,7 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.sat_uPixelRatio   = glGetUniformLocation(pSaturn, "uPixelRatio");
     uc.sat_uDensityComp  = glGetUniformLocation(pSaturn, "uDensityComp");
     uc.sat_uScreenHeight = glGetUniformLocation(pSaturn, "uScreenHeight");
+    uc.sat_uNoiseTexture = glGetUniformLocation(pSaturn, "uNoiseTexture");
 
     uc.star_proj  = glGetUniformLocation(pStar, "projection");
     uc.star_view  = glGetUniformLocation(pStar, "view");
@@ -171,6 +173,27 @@ inline void CreateSphere(unsigned int& vao, unsigned int& indexCount, float radi
     glVertexAttribPointer(1, 3, GL_FLOAT, 0, 32, (void*)12);
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, 0, 32, (void*)24);
+}
+
+// 生成噪声纹理
+inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
+    std::vector<unsigned char> data(width * height * 3);
+    std::default_random_engine gen;
+    std::uniform_int_distribution<int> rnd(0, 255);
+    
+    for (int i = 0; i < width * height * 3; i++) {
+        data[i] = (unsigned char)rnd(gen);
+    }
+    
+    unsigned int tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    return tex;
 }
 
 } // namespace Renderer

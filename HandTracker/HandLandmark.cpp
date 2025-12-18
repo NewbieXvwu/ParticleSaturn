@@ -67,26 +67,38 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
         return 0.0f;
     }
 
-    // 如果是左手，需要翻转图像（模型是针对右手训练的）
-    cv::Mat input_image = roi_image;
-    if (is_left_hand) {
-        cv::flip(roi_image, input_image, 1); // 水平翻转
-    }
-
-    // Resize input
+    // Resize input (always from original roi_image)
     cv::Mat resized;
-    cv::resize(input_image, resized, cv::Size(input_size, input_size));
+    cv::resize(roi_image, resized, cv::Size(input_size, input_size));
 
     // Get input tensor
     int    input_idx    = interpreter->inputs()[0];
     float* input_tensor = interpreter->typed_tensor<float>(input_idx);
 
-    // Copy image data to input tensor (normalize to 0~1, NHWC format)
-    cv::Mat float_img;
-    resized.convertTo(float_img, CV_32FC3, 1.0 / 255.0);
+    // Optimize: Direct copy, normalize (and optionally flip) to float tensor
+    // This avoids cv::flip (allocation), convertTo (allocation), and memcpy
+    for (int y = 0; y < input_size; ++y) {
+        const uint8_t* row_ptr     = resized.ptr<uint8_t>(y);
+        float*         dst_row_ptr = input_tensor + y * input_size * 3;
 
-    // TFLite expects NHWC format
-    memcpy(input_tensor, float_img.data, input_size * input_size * 3 * sizeof(float));
+        if (is_left_hand) {
+            // Horizontal flip on-the-fly
+            for (int x = 0; x < input_size; ++x) {
+                int src_idx            = (input_size - 1 - x) * 3;
+                dst_row_ptr[x * 3 + 0] = row_ptr[src_idx + 0] * (1.0f / 255.0f);
+                dst_row_ptr[x * 3 + 1] = row_ptr[src_idx + 1] * (1.0f / 255.0f);
+                dst_row_ptr[x * 3 + 2] = row_ptr[src_idx + 2] * (1.0f / 255.0f);
+            }
+        } else {
+            // Direct copy
+            for (int x = 0; x < input_size; ++x) {
+                int src_idx            = x * 3;
+                dst_row_ptr[x * 3 + 0] = row_ptr[src_idx + 0] * (1.0f / 255.0f);
+                dst_row_ptr[x * 3 + 1] = row_ptr[src_idx + 1] * (1.0f / 255.0f);
+                dst_row_ptr[x * 3 + 2] = row_ptr[src_idx + 2] * (1.0f / 255.0f);
+            }
+        }
+    }
 
     // Run inference
     if (interpreter->Invoke() != kTfLiteOk) {
