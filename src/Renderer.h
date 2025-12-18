@@ -36,8 +36,9 @@ struct UniformCache {
     GLint star_proj, star_view, star_model, star_uTime;
     GLint pl_p, pl_v, pl_m, pl_ld, pl_c1, pl_c2, pl_ns, pl_at;
     GLint ui_proj, ui_uColor;
-    // 模糊和全屏四边形着色器
-    GLint blur_dir, blur_uTexture;
+    // 模糊着色器 (Kawase Blur)
+    GLint blur_uTexture, blur_uTexelSize, blur_uOffset;
+    // 全屏四边形着色器
     GLint quad_uTexture, quad_uTransparent;
 };
 
@@ -95,9 +96,10 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.ui_proj   = glGetUniformLocation(pUI, "projection");
     uc.ui_uColor = glGetUniformLocation(pUI, "uColor");
 
-    // 模糊着色器
-    uc.blur_dir      = glGetUniformLocation(pBlur, "dir");
-    uc.blur_uTexture = glGetUniformLocation(pBlur, "uTexture");
+    // 模糊着色器 (Kawase Blur)
+    uc.blur_uTexture   = glGetUniformLocation(pBlur, "uTexture");
+    uc.blur_uTexelSize = glGetUniformLocation(pBlur, "uTexelSize");
+    uc.blur_uOffset    = glGetUniformLocation(pBlur, "uOffset");
 
     // 全屏四边形着色器
     uc.quad_uTexture     = glGetUniformLocation(pQuad, "uTexture");

@@ -278,19 +278,18 @@ void main(){
 }
 )";
 
-// 高斯模糊着色器
+// Kawase Blur 着色器 (比高斯模糊更高效)
+// 每次迭代采样4个对角线方向的像素，通过多次迭代实现模糊
 const char* const FragmentBlur = R"(
 #version 430 core
-out vec4 F; in vec2 vUV; uniform sampler2D uTexture; uniform vec2 dir; 
-void main(){ 
-    vec4 sum = texture(uTexture, vUV) * 0.227027;
-    vec2 off1 = dir * 1.3846153846;
-    vec2 off2 = dir * 3.2307692308;
-    sum += texture(uTexture, vUV + off1) * 0.316216;
-    sum += texture(uTexture, vUV - off1) * 0.316216;
-    sum += texture(uTexture, vUV + off2) * 0.070270;
-    sum += texture(uTexture, vUV - off2) * 0.070270;
-    F = sum;
+out vec4 F; in vec2 vUV; uniform sampler2D uTexture; uniform vec2 uTexelSize; uniform float uOffset;
+void main(){
+    vec2 off = uTexelSize * (uOffset + 0.5);
+    vec4 sum = texture(uTexture, vUV + vec2(-off.x, off.y));  // 左上
+    sum += texture(uTexture, vUV + vec2(off.x, off.y));       // 右上
+    sum += texture(uTexture, vUV + vec2(off.x, -off.y));      // 右下
+    sum += texture(uTexture, vUV + vec2(-off.x, -off.y));     // 左下
+    F = sum * 0.25;
 }
 )";
 

@@ -382,37 +382,49 @@ int main() {
         glLineWidth(2.0f);
         glDrawArrays(GL_LINES, 0, (GLsizei)(uiVerts.size() / 2));
 
-        // 模糊处理
+        // 模糊处理 (Kawase Blur - 更高效的模糊算法)
         if (g_enableImGuiBlur) {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
             glUseProgram(pBlur);
             glUniform1i(uc.blur_uTexture, 0);
+            glUniform2f(uc.blur_uTexelSize, 1.0f / fboBlur1.w, 1.0f / fboBlur1.h);
             glActiveTexture(GL_TEXTURE0);
+            glBindVertexArray(vaoQuad);
 
+            // Kawase Blur: 每次迭代增加采样偏移
+            int   iterations    = 3 + (int)g_blurStrength;
+            float offsets[]     = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+            int   maxIterations = sizeof(offsets) / sizeof(offsets[0]);
+            iterations          = (iterations > maxIterations) ? maxIterations : iterations;
+
+            // 第一次: fboTex -> fboBlur1
             glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
             glBindTexture(GL_TEXTURE_2D, fboTex);
-            glUniform2f(uc.blur_dir, 1.0f / fboBlur1.w, 0.0f);
-            glBindVertexArray(vaoQuad);
+            glUniform1f(uc.blur_uOffset, offsets[0]);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
-            glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
-            glUniform2f(uc.blur_dir, 0.0f, 1.0f / fboBlur1.h);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-            int iterations = (int)g_blurStrength;
-            for (int i = 0; i < iterations; i++) {
-                glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
-                glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
-                glUniform2f(uc.blur_dir, 1.0f / fboBlur1.w, 0.0f);
-                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-                glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
-                glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
-                glUniform2f(uc.blur_dir, 0.0f, 1.0f / fboBlur1.h);
+            // 后续迭代: ping-pong between fboBlur1 and fboBlur2
+            for (int i = 1; i < iterations; i++) {
+                if (i % 2 == 1) {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
+                    glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
+                } else {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
+                    glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
+                }
+                glUniform1f(uc.blur_uOffset, offsets[i]);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
+
+            // 确保最终结果在 fboBlur2 中 (ImGui 面板使用它)
+            if (iterations % 2 == 1) {
+                glBindFramebuffer(GL_FRAMEBUFFER, fboBlur2.fbo);
+                glBindTexture(GL_TEXTURE_2D, fboBlur1.tex);
+                glUniform1f(uc.blur_uOffset, 0.0f);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+
             glViewport(0, 0, g_scrWidth, g_scrHeight);
         }
 
