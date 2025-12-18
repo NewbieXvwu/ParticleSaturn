@@ -165,10 +165,12 @@ int main() {
     glBindVertexArray(0);
 
     // 初始化粒子系统
-    std::vector<GPUParticle> particles;
-    ParticleSystem::InitParticles(particles);
     unsigned int ssbo, vaoParticles;
-    ParticleSystem::CreateBuffers(ssbo, vaoParticles, particles);
+    if (!ParticleSystem::InitParticlesGPU(ssbo, vaoParticles)) {
+        std::cerr << "Failed to initialize particle system" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
 
     // 创建星空背景
     unsigned int vaoStars, vboStars;

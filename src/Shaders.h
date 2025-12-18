@@ -4,6 +4,129 @@
 
 namespace Shaders {
 
+// 计算着色器 - 粒子初始化
+const char* const ComputeInitSaturn = R"(
+#version 430 core
+layout (local_size_x = 256) in;
+struct ParticleData { vec4 pos; vec4 col; vec4 vel; float isRing; float pad[3]; };
+layout(std430, binding = 0) buffer ParticleBuffer { ParticleData particles[]; };
+
+uniform uint uSeed;
+uniform uint uMaxParticles;
+
+// 伪随机数生成器
+float random(inout uint state) {
+    state = state * 747796405u + 2891336453u;
+    uint result = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    result = (result >> 22u) ^ result;
+    return float(result) / 4294967295.0;
+}
+
+vec3 hexToRGB(uint hex) {
+    return vec3((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF) / 255.0;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uMaxParticles) return;
+
+    uint rngState = id * 1973u + uSeed * 9277u + 26699u;
+
+    // 随机决定是本体还是环粒子 (25% 本体, 75% 环)
+    // CPU代码是前25%固定为本体，后75%为环，然后shuffle。
+    // 这里我们直接随机生成类型，达到shuffle的效果。
+    float typeRnd = random(rngState);
+
+    float R = 18.0;
+    vec4 pPos, pCol, pVel;
+    float pIsRing;
+
+    if (typeRnd < 0.25) {
+        // --- 土星本体粒子 ---
+        float th = 6.28318 * random(rngState);
+        float ph = acos(2.0 * random(rngState) - 1.0);
+
+        pPos.x = R * sin(ph) * cos(th);
+        pPos.y = R * cos(ph) * 0.9;
+        pPos.z = R * sin(ph) * sin(th);
+
+        // 纬度颜色计算 - 与CPU代码保持一致
+        float lat = (pPos.y / 0.9 / R + 1.0) * 0.5;
+        int idxInt = int(lat * 4.0 + cos(lat * 40.0) * 0.8 + cos(lat * 15.0) * 0.4);
+        int ci = idxInt - (idxInt / 4) * 4; // 模拟 C++ 的 % 运算
+        if (ci < 0) ci = 0; // 与CPU代码一致的负数处理
+        
+        vec3 cols[4];
+        cols[0] = hexToRGB(0xE3DAC5);
+        cols[1] = hexToRGB(0xC9A070);
+        cols[2] = hexToRGB(0xE3DAC5);
+        cols[3] = hexToRGB(0xB08D55);
+        
+        pCol.rgb = cols[ci];
+        pPos.w = 1.0 + random(rngState) * 0.8; // scale (using pos.w for scale per CPU struct mapping)
+        pCol.a = 0.8;                          // opacity
+        pVel.w = 0.0;                          // velocity
+        pIsRing = 0.0;
+        
+    } else {
+        // --- 土星环粒子 ---
+        float z = random(rngState);
+        float rad;
+        vec3 c;
+        float s, o;
+        
+        if (z < 0.15) {
+            rad = R * (1.235 + random(rngState) * 0.29);
+            c = hexToRGB(0x2A2520);
+            s = 0.5;
+            o = 0.3;
+        } else if (z < 0.65) {
+            float t = random(rngState);
+            rad = R * (1.525 + t * 0.425);
+            c = mix(hexToRGB(0xCDBFA0), hexToRGB(0xDCCBBA), t);
+            s = 0.8 + random(rngState) * 0.6;
+            o = 0.85;
+            if (sin(rad * 2.0) > 0.8) o *= 1.2;
+        } else if (z < 0.69) {
+            rad = R * (1.95 + random(rngState) * 0.075);
+            c = hexToRGB(0x050505);
+            s = 0.3;
+            o = 0.1;
+        } else if (z < 0.99) {
+            rad = R * (2.025 + random(rngState) * 0.245);
+            c = hexToRGB(0x989085);
+            s = 0.7;
+            o = 0.6;
+            if (rad > R * 2.2 && rad < R * 2.21) o = 0.1;
+        } else {
+            rad = R * (2.32 + random(rngState) * 0.02);
+            c = hexToRGB(0xAFAFA0);
+            s = 1.0;
+            o = 0.7;
+        }
+        
+        float th = random(rngState) * 6.28318;
+        pPos.x = rad * cos(th);
+        pPos.z = rad * sin(th);
+        // p.y = (rnd - 0.5) * ((rad > R * 2.3) ? 0.4 : 0.15)
+        float heightRange = (rad > R * 2.3) ? 0.4 : 0.15;
+        pPos.y = (random(rngState) - 0.5) * heightRange;
+        
+        pCol.rgb = c;
+        pPos.w = s;
+        pCol.a = o;
+        pVel.w = 8.0 / sqrt(rad);
+        pIsRing = 1.0;
+    }
+    
+    // Fill the struct
+    particles[id].pos = pPos;
+    particles[id].col = pCol;
+    particles[id].vel = pVel; // vel.xyz is 0, vel.w is speed
+    particles[id].isRing = pIsRing;
+}
+)";
+
 // 计算着色器 - 粒子物理模拟
 const char* const ComputeSaturn = R"(
 #version 430 core
