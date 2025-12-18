@@ -7,6 +7,7 @@
 
 const unsigned int MAX_PARTICLES = 1200000;
 const unsigned int MIN_PARTICLES = 200000;
+const unsigned int STAR_COUNT    = 50000;
 
 // GPU 粒子数据结构 (优化: 48字节，从64字节减少25%)
 struct GPUParticle {
@@ -131,7 +132,7 @@ inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
 }
 
 // 创建星空背景
-inline void CreateStars(unsigned int& vao, unsigned int& vbo, int count = 50000) {
+inline void CreateStars(unsigned int& vao, unsigned int& vbo, int count = STAR_COUNT) {
     std::default_random_engine            gen;
     std::uniform_real_distribution<float> rnd(0, 1);
     std::vector<glm::vec3> cols = {HexToRGB(0xE3DAC5), HexToRGB(0xC9A070), HexToRGB(0xE3DAC5), HexToRGB(0xB08D55)};

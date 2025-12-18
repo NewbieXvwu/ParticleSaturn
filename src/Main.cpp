@@ -314,7 +314,7 @@ int main() {
         glUniformMatrix4fv(uc.star_model, 1, 0, &mStar[0][0]);
         glUniform1f(uc.star_uTime, t);
         glBindVertexArray(vaoStars);
-        glDrawArrays(GL_POINTS, 0, 50000);
+        glDrawArrays(GL_POINTS, 0, STAR_COUNT);
 
         // 渲染土星粒子
         glUseProgram(pSaturn);
