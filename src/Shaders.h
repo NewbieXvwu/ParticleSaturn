@@ -179,21 +179,22 @@ void main() {
     vec4 mvPosition = view * worldPos;
     float dist = -mvPosition.z;
     vDist = dist;
-    
+
+    // 混沌效果 - 使用 mix() 代替 if 分支避免着色器发散
     float chaosThreshold = 25.0;
     float chaosIntensity = smoothstep(chaosThreshold, 0.1, dist);
     chaosIntensity = chaosIntensity * chaosIntensity * chaosIntensity;
-    
-    if (chaosIntensity > 0.001) {
-        float highFreqTime = uTime * 40.0;
-        vec3 posScaled = aPos.xyz * 10.0;
-        vec3 noiseVec = vec3(
-            sin(highFreqTime + posScaled.x) * fract(sin(aPos.y * 43758.5) * 0.5),
-            cos(highFreqTime + posScaled.y) * fract(sin(aPos.x * 43758.5) * 0.5),
-            sin(highFreqTime * 0.5) * fract(sin(aPos.z * 43758.5) * 0.5)
-        ) * chaosIntensity * 3.0;
-        mvPosition.xyz += noiseVec;
-    }
+
+    float highFreqTime = uTime * 40.0;
+    vec3 posScaled = aPos.xyz * 10.0;
+    vec3 noiseVec = vec3(
+        sin(highFreqTime + posScaled.x) * fract(sin(aPos.y * 43758.5) * 0.5),
+        cos(highFreqTime + posScaled.y) * fract(sin(aPos.x * 43758.5) * 0.5),
+        sin(highFreqTime * 0.5) * fract(sin(aPos.z * 43758.5) * 0.5)
+    ) * 3.0;
+    // 用 mix 替代 if，当 chaosIntensity 接近 0 时自然衰减
+    mvPosition.xyz = mix(mvPosition.xyz, mvPosition.xyz + noiseVec, chaosIntensity);
+
     gl_Position = projection * mvPosition;
     
     float invDist = 1.0 / max(dist, 0.1);
