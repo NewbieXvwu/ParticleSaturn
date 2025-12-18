@@ -17,18 +17,39 @@ struct GPUParticle {
     float     pad[3];
 };
 
+// 双缓冲粒子系统结构
+struct DoubleBufferSSBO {
+    unsigned int ssbo[2];  // 两个 SSBO
+    unsigned int vao[2];   // 对应的两个 VAO
+    int          current;  // 当前用于渲染的缓冲索引
+
+    // 获取当前用于渲染的 VAO
+    unsigned int GetRenderVAO() const { return vao[current]; }
+
+    // 获取当前用于读取的 SSBO (计算着色器输入)
+    unsigned int GetReadSSBO() const { return ssbo[current]; }
+
+    // 获取当前用于写入的 SSBO (计算着色器输出)
+    unsigned int GetWriteSSBO() const { return ssbo[1 - current]; }
+
+    // 交换缓冲
+    void Swap() { current = 1 - current; }
+};
+
 namespace ParticleSystem {
 
-// GPU 粒子初始化，返回是否成功
-inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
-    ssbo = 0;
-    vao  = 0;
+// GPU 粒子初始化 (双缓冲)，返回是否成功
+inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
+    db.ssbo[0] = db.ssbo[1] = 0;
+    db.vao[0] = db.vao[1] = 0;
+    db.current = 0;
 
-    // 1. 创建并分配 SSBO 内存 (仅分配，不上传数据)
-    glGenBuffers(1, &ssbo);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, MAX_PARTICLES * sizeof(GPUParticle), nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo);
+    // 1. 创建两个 SSBO
+    glGenBuffers(2, db.ssbo);
+    for (int i = 0; i < 2; i++) {
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, db.ssbo[i]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, MAX_PARTICLES * sizeof(GPUParticle), nullptr, GL_DYNAMIC_DRAW);
+    }
 
     // 2. 编译初始化 Compute Shader
     unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
@@ -43,8 +64,8 @@ inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
         glGetShaderInfoLog(cs, 512, NULL, infoLog);
         std::cerr << "Init Shader Compilation Failed:\n" << infoLog << std::endl;
         glDeleteShader(cs);
-        glDeleteBuffers(1, &ssbo);
-        ssbo = 0;
+        glDeleteBuffers(2, db.ssbo);
+        db.ssbo[0] = db.ssbo[1] = 0;
         return false;
     }
 
@@ -59,12 +80,13 @@ inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
         std::cerr << "Init Program Linking Failed:\n" << infoLog << std::endl;
         glDeleteShader(cs);
         glDeleteProgram(pInit);
-        glDeleteBuffers(1, &ssbo);
-        ssbo = 0;
+        glDeleteBuffers(2, db.ssbo);
+        db.ssbo[0] = db.ssbo[1] = 0;
         return false;
     }
 
-    // 3. 执行初始化 Shader
+    // 3. 对第一个 SSBO 执行初始化
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, db.ssbo[0]);
     glUseProgram(pInit);
     glUniform1ui(glGetUniformLocation(pInit, "uSeed"), (unsigned int)time(0));
     glUniform1ui(glGetUniformLocation(pInit, "uMaxParticles"), MAX_PARTICLES);
@@ -75,16 +97,27 @@ inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
     glDeleteShader(cs);
     glDeleteProgram(pInit);
 
-    // 5. 设置 VAO
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, ssbo);
-    for (int i = 0; i < 4; i++) {
-        glEnableVertexAttribArray(i);
-        glVertexAttribPointer(i, (i == 3 ? 1 : 4), GL_FLOAT, 0, sizeof(GPUParticle), (void*)(i * 16));
+    // 5. 为两个 SSBO 设置 VAO
+    glGenVertexArrays(2, db.vao);
+    for (int i = 0; i < 2; i++) {
+        glBindVertexArray(db.vao[i]);
+        glBindBuffer(GL_ARRAY_BUFFER, db.ssbo[i]);
+        for (int j = 0; j < 4; j++) {
+            glEnableVertexAttribArray(j);
+            glVertexAttribPointer(j, (j == 3 ? 1 : 4), GL_FLOAT, 0, sizeof(GPUParticle), (void*)(intptr_t)(j * 16));
+        }
     }
     glBindVertexArray(0);
 
+    return true;
+}
+
+// 兼容旧接口 (内部使用静态双缓冲)
+inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
+    static DoubleBufferSSBO db;
+    if (!InitParticlesGPU(db)) return false;
+    ssbo = db.ssbo[0];
+    vao = db.vao[0];
     return true;
 }
 

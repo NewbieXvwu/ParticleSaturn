@@ -127,12 +127,13 @@ void main() {
 }
 )";
 
-// 计算着色器 - 粒子物理模拟
+// 计算着色器 - 粒子物理模拟 (双缓冲)
 const char* const ComputeSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
 struct ParticleData { vec4 pos; vec4 col; vec4 vel; float isRing; float pad[3]; };
-layout(std430, binding = 0) buffer ParticleBuffer { ParticleData particles[]; };
+layout(std430, binding = 0) readonly buffer ParticleBufferIn { ParticleData particlesIn[]; };
+layout(std430, binding = 1) writeonly buffer ParticleBufferOut { ParticleData particlesOut[]; };
 uniform float uDt;
 uniform float uHandScale;
 uniform float uHandHas;
@@ -141,19 +142,25 @@ uniform uint uParticleCount;
 void main() {
     uint id = gl_GlobalInvocationID.x;
     if (id >= uParticleCount) return;
-    
-    vec4 pos = particles[id].pos;
-    float speed = particles[id].vel.w;
-    float isRing = particles[id].isRing;
-    
+
+    vec4 pos = particlesIn[id].pos;
+    float speed = particlesIn[id].vel.w;
+    float isRing = particlesIn[id].isRing;
+
     float timeFactor = mix(1.0, uHandScale, uHandHas);
     float rotSpeed = mix(0.03, speed * 0.2, isRing);
     float angle = rotSpeed * uDt * timeFactor;
-    
+
     float c = cos(angle), s = sin(angle);
-    
-    particles[id].pos.x = pos.x * c - pos.z * s;
-    particles[id].pos.z = pos.x * s + pos.z * c;
+
+    // 写入输出缓冲
+    particlesOut[id].pos.x = pos.x * c - pos.z * s;
+    particlesOut[id].pos.y = pos.y;
+    particlesOut[id].pos.z = pos.x * s + pos.z * c;
+    particlesOut[id].pos.w = pos.w;
+    particlesOut[id].col = particlesIn[id].col;
+    particlesOut[id].vel = particlesIn[id].vel;
+    particlesOut[id].isRing = isRing;
 }
 )";
 

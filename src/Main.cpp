@@ -164,9 +164,9 @@ int main() {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), 0);
     glBindVertexArray(0);
 
-    // 初始化粒子系统
-    unsigned int ssbo, vaoParticles;
-    if (!ParticleSystem::InitParticlesGPU(ssbo, vaoParticles)) {
+    // 初始化粒子系统 (双缓冲)
+    DoubleBufferSSBO particleBuffers;
+    if (!ParticleSystem::InitParticlesGPU(particleBuffers)) {
         std::cerr << "Failed to initialize particle system" << std::endl;
         glfwTerminate();
         return -1;
@@ -280,13 +280,17 @@ int main() {
             currentAnim.rotY  = targetRotY;
         }
 
-        // 计算粒子物理
+        // 计算粒子物理 (双缓冲: 从当前缓冲读取，写入另一个缓冲)
         glUseProgram(pComp);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particleBuffers.GetReadSSBO());
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, particleBuffers.GetWriteSSBO());
         glUniform1f(uc.comp_uDt, dt);
         glUniform1f(uc.comp_uHandScale, currentAnim.scale);
         glUniform1f(uc.comp_uHandHas, handState.hasHand ? 1.0f : 0.0f);
         glUniform1ui(uc.comp_uParticleCount, g_activeParticleCount);
         glDispatchCompute((g_activeParticleCount + 255) / 256, 1, 1);
+        // 交换缓冲，下一帧渲染刚写入的数据
+        particleBuffers.Swap();
         glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 
         // 渲染到 FBO
@@ -322,7 +326,7 @@ int main() {
         float densityComp = 0.6f / pow(ratio, 0.7f) / pow(g_currentPixelRatio, 0.5f);
         glUniform1f(uc.sat_uDensityComp, densityComp);
         glUniform1f(uc.sat_uScreenHeight, (float)g_scrHeight);
-        glBindVertexArray(vaoParticles);
+        glBindVertexArray(particleBuffers.GetRenderVAO());
         glDrawArrays(GL_POINTS, 0, g_activeParticleCount);
 
         // 渲染行星
