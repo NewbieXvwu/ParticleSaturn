@@ -54,7 +54,7 @@ int main() {
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);  // 升级到 4.4 以支持 glBufferStorage
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
@@ -378,25 +378,23 @@ int main() {
         glBindTexture(GL_TEXTURE_2D, fbmTexture);
         glUniform1i(uc.pl_uFBMTex, 0);
 
-        // 更新行星 UBO 数据
+        // 更新行星 UBO 数据 (直接写入 persistent mapped buffer，无需 glBufferSubData)
         glm::mat4 orbitRot = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
         float     selfRot  = t * 0.1f;
 
-        PlanetInstance planetInstances[8];
+        // 直接写入 persistent mapped buffer (无 CPU-GPU 同步开销)
         for (int i = 0; i < planetCount; i++) {
             const PlanetData& p = planets[i];
             glm::mat4         m = orbitRot;
             m                   = glm::translate(m, p.pos);
             m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
             m                   = glm::scale(m, glm::vec3(p.radius));
-            planetInstances[i].modelMatrix = m;
-            planetInstances[i].color1 = glm::vec4(p.color1, p.noiseScale);
-            planetInstances[i].color2 = glm::vec4(p.color2, p.atmosphere);
+            uc.pl_ubo_mapped[i].modelMatrix = m;
+            uc.pl_ubo_mapped[i].color1 = glm::vec4(p.color1, p.noiseScale);
+            uc.pl_ubo_mapped[i].color2 = glm::vec4(p.color2, p.atmosphere);
         }
 
-        // 上传 UBO 数据并渲染所有行星
-        glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, planetCount * sizeof(PlanetInstance), planetInstances);
+        // 渲染所有行星 (GL_MAP_COHERENT_BIT 保证自动同步)
         glBindVertexArray(vaoPlanet);
         glDrawElementsInstanced(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0, planetCount);
 
