@@ -80,6 +80,7 @@ int main() {
 #endif
 
     // 初始化手部追踪
+    bool handTrackerInitialized = false;
 #ifdef EMBED_MODELS
     std::cout << "[Main] Loading embedded models..." << std::endl;
     HRSRC hPalmRes = FindResource(NULL, MAKEINTRESOURCE(IDR_PALM_MODEL), RT_RCDATA);
@@ -100,6 +101,7 @@ int main() {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker" << std::endl;
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
+        handTrackerInitialized = true;
     }
 #else
     std::cout << "[Main] Initializing HandTracker..." << std::endl;
@@ -107,6 +109,7 @@ int main() {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker DLL." << std::endl;
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
+        handTrackerInitialized = true;
     }
 #endif
 
@@ -217,7 +220,9 @@ int main() {
 
     // 异步手部追踪器 (优化: 消除主线程阻塞)
     AsyncHandTracker asyncTracker;
-    asyncTracker.Start();
+    if (handTrackerInitialized) {
+        asyncTracker.Start();
+    }
 
     // 主循环变量
     float lastFrame   = 0;

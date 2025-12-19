@@ -5,6 +5,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 
 // 动画辅助类
 struct AnimFloat {
