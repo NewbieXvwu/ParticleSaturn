@@ -309,14 +309,23 @@ out vec2 vUV;
 void main(){ vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }
 )";
 
+// 优化: 添加简单 tone mapping 以配合 R11F_G11F_B10F HDR 格式
 const char* const FragmentQuad = R"(
 #version 430 core
 out vec4 FragColor;
 in vec2 vUV;
 uniform sampler2D uTexture;
 uniform int uTransparent;
+
+// 简化的 Reinhard tone mapping
+vec3 toneMap(vec3 hdr) {
+    return hdr / (hdr + vec3(1.0));
+}
+
 void main(){
     vec3 col = texture(uTexture, vUV).rgb;
+    // 轻度 tone mapping: 只压缩超过 1.0 的高光部分
+    col = mix(col, toneMap(col), step(1.0, max(max(col.r, col.g), col.b)) * 0.5);
     if (uTransparent == 1) {
         float alpha = max(max(col.r, col.g), col.b);
         FragColor = vec4(col, alpha);

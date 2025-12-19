@@ -133,9 +133,11 @@ int main() {
     glGenTextures(1, &fboTex);
     glGenRenderbuffers(1, &rbo);
 
+    // 优化: 使用 R11F_G11F_B10F 格式 (4字节/像素) 替代 RGBA16F (8字节/像素)
+    // R11F_G11F_B10F 是紧凑的 HDR 格式，足够存储加法混合的高光值
     auto resizeFBO = [&](int width, int height) {
         glBindTexture(GL_TEXTURE_2D, fboTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R11F_G11F_B10F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glBindRenderbuffer(GL_RENDERBUFFER, rbo);
