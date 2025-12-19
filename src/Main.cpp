@@ -211,8 +211,11 @@ int main() {
 
     // 动画状态
     SmoothState currentAnim;
-    HandState   handState;
     float       autoTime = 0;
+
+    // 异步手部追踪器 (优化: 消除主线程阻塞)
+    AsyncHandTracker asyncTracker;
+    asyncTracker.Start();
 
     // 主循环变量
     float lastFrame   = 0;
@@ -236,8 +239,8 @@ int main() {
             fboBlur2.Init(g_scrWidth / 6, g_scrHeight / 6);
         }
 
-        // 获取手部追踪数据
-        GetHandData(&handState.scale, &handState.rotX, &handState.rotY, &handState.hasHand);
+        // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
+        HandState handState = asyncTracker.GetLatestState();
 
         // 动态 LOD 调整 (带滞后区间防止频繁切换)
         // 滞后区间: 40-55 FPS 保持不变，避免 LOD 抖动
@@ -618,6 +621,7 @@ int main() {
 
     // Cleanup
     std::cout << "[Main] Shutting down..." << std::endl;
+    asyncTracker.Stop();  // 停止异步追踪线程
     UIManager::Shutdown();
     ReleaseTracker();
     glfwTerminate();

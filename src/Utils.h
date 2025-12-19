@@ -2,6 +2,9 @@
 // 工具函数 - 通用辅助函数和数据结构
 
 #include <cmath>
+#include <thread>
+#include <atomic>
+#include <mutex>
 
 // 动画辅助类
 struct AnimFloat {
@@ -57,3 +60,49 @@ inline float Lerp(float a, float b, float f) {
 inline glm::vec3 HexToRGB(int hex) {
     return glm::vec3(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f);
 }
+
+// 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
+// 后台线程持续更新手部数据，主循环只需读取最新状态
+class AsyncHandTracker {
+public:
+    void Start() {
+        if (running.load()) return;
+        running.store(true);
+        trackerThread = std::thread(&AsyncHandTracker::TrackingLoop, this);
+    }
+
+    void Stop() {
+        running.store(false);
+        if (trackerThread.joinable()) {
+            trackerThread.join();
+        }
+    }
+
+    HandState GetLatestState() {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        return latestState;
+    }
+
+    ~AsyncHandTracker() {
+        Stop();
+    }
+
+private:
+    void TrackingLoop() {
+        while (running.load()) {
+            HandState temp;
+            GetHandData(&temp.scale, &temp.rotX, &temp.rotY, &temp.hasHand);
+            {
+                std::lock_guard<std::mutex> lock(stateMutex);
+                latestState = temp;
+            }
+            // 约60 FPS的追踪频率，足够流畅且不过度占用CPU
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+    }
+
+    std::thread trackerThread;
+    std::atomic<bool> running{false};
+    std::mutex stateMutex;
+    HandState latestState;
+};
