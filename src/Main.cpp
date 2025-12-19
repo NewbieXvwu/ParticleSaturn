@@ -329,7 +329,7 @@ int main() {
         mSat           = glm::rotate(mSat, currentAnim.rotY, glm::vec3(0, 1, 0));
         mSat           = glm::rotate(mSat, 0.466f, glm::vec3(0, 0, 1));
 
-        // 渲染星空
+        // 渲染星空 (优化: 根据像素比例动态调整星星数量)
         glUseProgram(pStar);
         glUniformMatrix4fv(uc.star_proj, 1, 0, &proj[0][0]);
         glUniformMatrix4fv(uc.star_view, 1, 0, &view[0][0]);
@@ -337,7 +337,11 @@ int main() {
         glUniformMatrix4fv(uc.star_model, 1, 0, &mStar[0][0]);
         glUniform1f(uc.star_uTime, t);
         glBindVertexArray(vaoStars);
-        glDrawArrays(GL_POINTS, 0, STAR_COUNT);
+        // 星空 LOD: 低分辨率时减少星星数量 (对视觉影响极小)
+        unsigned int starLODCount = (g_currentPixelRatio < 0.85f)
+            ? (unsigned int)(STAR_COUNT * 0.6f)   // 60% 星星在低分辨率模式
+            : STAR_COUNT;
+        glDrawArrays(GL_POINTS, 0, starLODCount);
 
         // 渲染土星粒子 (使用 Indirect Drawing 消除 CPU 开销)
         glUseProgram(pSaturn);
