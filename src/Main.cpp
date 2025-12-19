@@ -222,6 +222,7 @@ int main() {
     int   frameCount  = 0;
     float lastFpsTime = 0;
     float currentFps  = 60.0f;
+    float smoothedFps = 60.0f;  // 用于 LOD 决策的平滑 FPS
 
     // 主渲染循环
     while (!glfwWindowShouldClose(window)) {
@@ -242,30 +243,38 @@ int main() {
         // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
         HandState handState = asyncTracker.GetLatestState();
 
-        // 动态 LOD 调整 (带滞后区间防止频繁切换)
-        // 滞后区间: 40-55 FPS 保持不变，避免 LOD 抖动
+        // 动态 LOD 调整 (优化: 使用指数加权平均 + 扩展滞后区间)
+        // 优化点: 1) 平滑 FPS 减少噪声 2) 更保守的调整步长 3) 更宽的滞后区间
         frameCount++;
         if (t - lastFpsTime >= 0.5f) {
             currentFps  = frameCount / (t - lastFpsTime);
             frameCount  = 0;
             lastFpsTime = t;
+
+            // 指数加权平均平滑 FPS (alpha=0.3 提供良好的响应性和稳定性平衡)
+            const float SMOOTH_ALPHA = 0.3f;
+            smoothedFps = smoothedFps * (1.0f - SMOOTH_ALPHA) + currentFps * SMOOTH_ALPHA;
+
             bool particleCountChanged = false;
-            if (currentFps < 40.0f) {  // 低于 40 FPS 才降低质量
+            // 扩展滞后区间: 38-57 FPS (原 40-55) 进一步减少边界震荡
+            if (smoothedFps < 38.0f) {
+                // 更保守的降质策略: 0.95 替代 0.9
                 if (g_activeParticleCount > MIN_PARTICLES) {
-                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.9f);
+                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.95f);
                     particleCountChanged = true;
                 } else if (g_currentPixelRatio > 0.7f) {
-                    g_currentPixelRatio -= 0.05f;
+                    g_currentPixelRatio -= 0.03f;  // 更小的步长
                 }
-            } else if (currentFps > 55.0f) {  // 高于 55 FPS 才提高质量
+            } else if (smoothedFps > 57.0f) {
+                // 更保守的提质策略: 1.05 替代 1.1
                 if (g_currentPixelRatio < 1.0f) {
-                    g_currentPixelRatio += 0.05f;
+                    g_currentPixelRatio += 0.03f;  // 更小的步长
                 } else if (g_activeParticleCount < MAX_PARTICLES) {
-                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.1f);
+                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.05f);
                     particleCountChanged = true;
                 }
             }
-            // 40-55 FPS 之间保持当前设置，提供稳定性
+            // 38-57 FPS 之间保持当前设置，提供更大的稳定区间
 
             // 更新 Indirect Draw Buffer 中的粒子数量
             if (particleCountChanged) {
