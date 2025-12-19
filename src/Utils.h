@@ -41,6 +41,14 @@ struct PlanetData {
     float     atmosphere;  // 大气层强度
 };
 
+// 行星实例数据 (用于 UBO 实例化渲染, 符合 std140 布局)
+struct PlanetInstance {
+    glm::mat4 modelMatrix;  // 64 字节
+    glm::vec4 color1;       // 16 字节 (xyz = color, w = noiseScale)
+    glm::vec4 color2;       // 16 字节 (xyz = color, w = atmosphere)
+    // 总计 96 字节每实例
+};
+
 // 工具函数
 inline float Lerp(float a, float b, float f) {
     return a + f * (b - a);

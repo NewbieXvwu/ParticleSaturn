@@ -8,7 +8,8 @@ namespace Shaders {
 const char* const ComputeInitSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
-struct ParticleData { vec4 pos; vec4 col; float speed; float isRing; float pad[2]; };
+// 优化后的数据结构: 32字节 (从48字节减少33%)
+struct ParticleData { vec4 pos; uint color; float speed; float isRing; float pad; };
 layout(std430, binding = 0) buffer ParticleBuffer { ParticleData particles[]; };
 
 uniform uint uSeed;
@@ -22,6 +23,12 @@ float random(inout uint state) {
     return float(result) / 4294967295.0;
 }
 
+// RGBA8 打包: 将 vec4 颜色打包为 uint
+uint packRGBA8(vec4 c) {
+    uvec4 u = uvec4(clamp(c, 0.0, 1.0) * 255.0);
+    return u.r | (u.g << 8u) | (u.b << 16u) | (u.a << 24u);
+}
+
 vec3 hexToRGB(uint hex) {
     return vec3((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF) / 255.0;
 }
@@ -33,13 +40,12 @@ void main() {
     uint rngState = id * 1973u + uSeed * 9277u + 26699u;
 
     // 随机决定是本体还是环粒子 (25% 本体, 75% 环)
-    // CPU代码是前25%固定为本体，后75%为环，然后shuffle。
-    // 这里我们直接随机生成类型，达到shuffle的效果。
     float typeRnd = random(rngState);
 
     float R = 18.0;
-    vec4 pPos, pCol;
-    float pSpeed, pIsRing;
+    vec4 pPos;
+    vec3 pColRGB;
+    float pAlpha, pSpeed, pIsRing;
 
     if (typeRnd < 0.25) {
         // --- 土星本体粒子 ---
@@ -50,11 +56,11 @@ void main() {
         pPos.y = R * cos(ph) * 0.9;
         pPos.z = R * sin(ph) * sin(th);
 
-        // 纬度颜色计算 - 与CPU代码保持一致
+        // 纬度颜色计算
         float lat = (pPos.y / 0.9 / R + 1.0) * 0.5;
         int idxInt = int(lat * 4.0 + cos(lat * 40.0) * 0.8 + cos(lat * 15.0) * 0.4);
-        int ci = idxInt - (idxInt / 4) * 4; // 模拟 C++ 的 % 运算
-        if (ci < 0) ci = 0; // 与CPU代码一致的负数处理
+        int ci = idxInt - (idxInt / 4) * 4;
+        if (ci < 0) ci = 0;
 
         vec3 cols[4];
         cols[0] = hexToRGB(0xE3DAC5);
@@ -62,10 +68,10 @@ void main() {
         cols[2] = hexToRGB(0xE3DAC5);
         cols[3] = hexToRGB(0xB08D55);
 
-        pCol.rgb = cols[ci];
-        pPos.w = 1.0 + random(rngState) * 0.8; // scale
-        pCol.a = 0.8;                          // opacity
-        pSpeed = 0.0;                          // 本体不旋转
+        pColRGB = cols[ci];
+        pPos.w = 1.0 + random(rngState) * 0.8;
+        pAlpha = 0.8;
+        pSpeed = 0.0;
         pIsRing = 0.0;
 
     } else {
@@ -111,26 +117,28 @@ void main() {
         float heightRange = (rad > R * 2.3) ? 0.4 : 0.15;
         pPos.y = (random(rngState) - 0.5) * heightRange;
 
-        pCol.rgb = c;
+        pColRGB = c;
         pPos.w = s;
-        pCol.a = o;
+        pAlpha = o;
         pSpeed = 8.0 / sqrt(rad);
         pIsRing = 1.0;
     }
 
-    // Fill the struct
+    // Fill the struct - 使用 RGBA8 打包颜色
     particles[id].pos = pPos;
-    particles[id].col = pCol;
+    particles[id].color = packRGBA8(vec4(pColRGB, pAlpha));
     particles[id].speed = pSpeed;
     particles[id].isRing = pIsRing;
 }
 )";
 
 // 计算着色器 - 粒子物理模拟 (双缓冲)
+// 优化: 使用 shared memory 缓存本体粒子的公共 sin/cos 值
 const char* const ComputeSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
-struct ParticleData { vec4 pos; vec4 col; float speed; float isRing; float pad[2]; };
+// 优化后的数据结构: 32字节
+struct ParticleData { vec4 pos; uint color; float speed; float isRing; float pad; };
 layout(std430, binding = 0) readonly buffer ParticleBufferIn { ParticleData particlesIn[]; };
 layout(std430, binding = 1) writeonly buffer ParticleBufferOut { ParticleData particlesOut[]; };
 uniform float uDt;
@@ -138,26 +146,48 @@ uniform float uHandScale;
 uniform float uHandHas;
 uniform uint uParticleCount;
 
+// Shared memory: 缓存本体粒子的公共旋转值 (所有本体粒子 rotSpeed = 0.03)
+shared float s_bodyAngleCos;
+shared float s_bodyAngleSin;
+
 void main() {
     uint id = gl_GlobalInvocationID.x;
+
+    // 第一个线程计算本体粒子的公共 sin/cos
+    if (gl_LocalInvocationID.x == 0u) {
+        float timeFactor = mix(1.0, uHandScale, uHandHas);
+        float bodyAngle = 0.03 * uDt * timeFactor;
+        s_bodyAngleCos = cos(bodyAngle);
+        s_bodyAngleSin = sin(bodyAngle);
+    }
+    barrier();
+
     if (id >= uParticleCount) return;
 
     vec4 pos = particlesIn[id].pos;
     float speed = particlesIn[id].speed;
     float isRing = particlesIn[id].isRing;
 
-    float timeFactor = mix(1.0, uHandScale, uHandHas);
-    float rotSpeed = mix(0.03, speed * 0.2, isRing);
-    float angle = rotSpeed * uDt * timeFactor;
-
-    float c = cos(angle), s = sin(angle);
+    // 根据粒子类型选择 sin/cos 值
+    float c, s;
+    if (isRing < 0.5) {
+        // 本体粒子: 使用缓存的公共值
+        c = s_bodyAngleCos;
+        s = s_bodyAngleSin;
+    } else {
+        // 环粒子: 各自计算
+        float timeFactor = mix(1.0, uHandScale, uHandHas);
+        float angle = speed * 0.2 * uDt * timeFactor;
+        c = cos(angle);
+        s = sin(angle);
+    }
 
     // 写入输出缓冲
     particlesOut[id].pos.x = pos.x * c - pos.z * s;
     particlesOut[id].pos.y = pos.y;
     particlesOut[id].pos.z = pos.x * s + pos.z * c;
     particlesOut[id].pos.w = pos.w;
-    particlesOut[id].col = particlesIn[id].col;
+    particlesOut[id].color = particlesIn[id].color;
     particlesOut[id].speed = speed;
     particlesOut[id].isRing = isRing;
 }
@@ -167,14 +197,27 @@ void main() {
 const char* const VertexSaturn = R"(
 #version 430 core
 layout (location = 0) in vec4 aPos;
-layout (location = 1) in vec4 aCol;
+layout (location = 1) in uint aColor;  // RGBA8 打包颜色
 layout (location = 2) in float aSpeed;
 layout (location = 3) in float aIsRing;
 uniform mat4 view; uniform mat4 projection; uniform mat4 model;
 uniform float uTime; uniform float uScale; uniform float uPixelRatio; uniform float uScreenHeight;
 out vec3 vColor; out float vDist; out float vOpacity; out float vScaleFactor; out float vIsRing;
 
+// RGBA8 解包: 将 uint 解包为 vec4 颜色
+vec4 unpackRGBA8(uint c) {
+    return vec4(
+        float(c & 0xFFu) / 255.0,
+        float((c >> 8u) & 0xFFu) / 255.0,
+        float((c >> 16u) & 0xFFu) / 255.0,
+        float((c >> 24u) & 0xFFu) / 255.0
+    );
+}
+
 void main() {
+    // 解包颜色
+    vec4 col = unpackRGBA8(aColor);
+
     vec4 worldPos = model * vec4(aPos.xyz * uScale, 1.0);
     vec4 mvPosition = view * worldPos;
     float dist = -mvPosition.z;
@@ -196,7 +239,7 @@ void main() {
     mvPosition.xyz = mix(mvPosition.xyz, mvPosition.xyz + noiseVec, chaosIntensity);
 
     gl_Position = projection * mvPosition;
-    
+
     float invDist = 1.0 / max(dist, 0.1);
     float basePointSize = aPos.w * 350.0 * invDist * 0.55;
     float screenScale = uScreenHeight / 1080.0;
@@ -205,7 +248,7 @@ void main() {
     pointSize *= ringFactor * pow(uPixelRatio, 0.8);
     gl_PointSize = clamp(pointSize, 0.0, 300.0 * screenScale);
 
-    vColor = aCol.rgb; vOpacity = aCol.a; vScaleFactor = uScale; vIsRing = aIsRing;
+    vColor = col.rgb; vOpacity = col.a; vScaleFactor = uScale; vIsRing = aIsRing;
 }
 )";
 
@@ -239,12 +282,16 @@ void main() {
 }
 )";
 
-// UI 着色器
+// UI 着色器 (支持预生成数字的变换)
 const char* const VertexUI = R"(
 #version 430 core
 layout (location = 0) in vec2 aPos;
 uniform mat4 projection;
-void main() { gl_Position = projection * vec4(aPos, 0.0, 1.0); }
+uniform vec4 uTransform;  // xy = 位置偏移, zw = 缩放
+void main() {
+    vec2 pos = aPos * uTransform.zw + uTransform.xy;
+    gl_Position = projection * vec4(pos, 0.0, 1.0);
+}
 )";
 
 const char* const FragmentUI = R"(
@@ -319,30 +366,70 @@ void main(){
 }
 )";
 
-// 行星着色器
+// 行星着色器 (实例化渲染优化)
+// 使用 UBO 存储行星数据，单次 draw call 渲染所有行星
 const char* const VertexPlanet = R"(
 #version 430 core
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNorm; layout(location=2) in vec2 aTex;
-uniform mat4 m,v,p; out vec2 U; out vec3 N,V;
-void main(){ 
-    U=aTex; 
-    N=normalize(mat3(transpose(inverse(m)))*aNorm); 
-    vec4 P=v*m*vec4(aPos,1.0); 
-    V=-P.xyz; 
-    gl_Position=p*P; 
+
+// 行星实例数据 (UBO)
+struct PlanetInstance {
+    mat4 modelMatrix;     // 模型矩阵
+    vec4 color1;          // 颜色1 (xyz) + noiseScale (w)
+    vec4 color2;          // 颜色2 (xyz) + atmosphere (w)
+};
+layout(std140, binding = 0) uniform PlanetUBO {
+    PlanetInstance planets[8];  // 最多支持 8 个行星
+};
+
+uniform mat4 v, p;
+uniform int uPlanetCount;
+
+out vec2 U;
+out vec3 N, V;
+flat out int instanceID;
+
+void main(){
+    instanceID = gl_InstanceID;
+    mat4 m = planets[gl_InstanceID].modelMatrix;
+    U = aTex;
+    N = normalize(mat3(transpose(inverse(m))) * aNorm);
+    vec4 P = v * m * vec4(aPos, 1.0);
+    V = -P.xyz;
+    gl_Position = p * P;
 }
 )";
 
 const char* const FragmentPlanet = R"(
 #version 430 core
-out vec4 F; in vec2 U; in vec3 N,V; uniform vec3 c1,c2,ld; uniform float ns,at;
-uniform sampler2D uFBMTex;  // 预计算的 FBM 噪声纹理
+out vec4 F;
+in vec2 U;
+in vec3 N, V;
+flat in int instanceID;
+
+// 行星实例数据 (UBO)
+struct PlanetInstance {
+    mat4 modelMatrix;
+    vec4 color1;  // xyz = color, w = noiseScale
+    vec4 color2;  // xyz = color, w = atmosphere
+};
+layout(std140, binding = 0) uniform PlanetUBO {
+    PlanetInstance planets[8];
+};
+
+uniform vec3 ld;
+uniform sampler2D uFBMTex;
+
 void main(){
-    // 使用纹理采样代替程序化 FBM 计算
-    float x=texture(uFBMTex, U*ns).r;
-    vec3 c=mix(c1,c2,x)*max(dot(normalize(N),normalize(ld)),.05);
-    c+=at*vec3(.5,.6,1.)*pow(1.-dot(normalize(V),normalize(N)),3.);
-    F=vec4(c,1.);
+    vec3 c1 = planets[instanceID].color1.xyz;
+    vec3 c2 = planets[instanceID].color2.xyz;
+    float ns = planets[instanceID].color1.w;
+    float at = planets[instanceID].color2.w;
+
+    float x = texture(uFBMTex, U * ns).r;
+    vec3 c = mix(c1, c2, x) * max(dot(normalize(N), normalize(ld)), 0.05);
+    c += at * vec3(0.5, 0.6, 1.0) * pow(1.0 - dot(normalize(V), normalize(N)), 3.0);
+    F = vec4(c, 1.0);
 }
 )";
 

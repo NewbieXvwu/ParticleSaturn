@@ -191,15 +191,9 @@ int main() {
     };
     const int planetCount = sizeof(planets) / sizeof(planets[0]);
 
-    // UI 渲染 VAO
-    unsigned int vaoUI, vboUI;
-    glGenVertexArrays(1, &vaoUI);
-    glGenBuffers(1, &vboUI);
-    glBindVertexArray(vaoUI);
-    glBindBuffer(GL_ARRAY_BUFFER, vboUI);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), 0);
-    glBindVertexArray(0);
+    // 预生成数字几何 (FPS 显示优化)
+    Renderer::PrebuiltDigits prebuiltDigits;
+    prebuiltDigits.Init();
 
     glEnable(GL_BLEND);
     glEnable(GL_PROGRAM_POINT_SIZE);
@@ -214,9 +208,6 @@ int main() {
     glm::mat4 view   = glm::lookAt(glm::vec3(0, 0, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     glm::mat4 projUI = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
 
-    // UI 顶点缓冲
-    std::vector<float> uiVerts;
-    uiVerts.reserve(256);
 
     // 动画状态
     SmoothState currentAnim;
@@ -224,11 +215,10 @@ int main() {
     float       autoTime = 0;
 
     // 主循环变量
-    float lastFrame        = 0;
-    int   frameCount       = 0;
-    float lastFpsTime      = 0;
-    float currentFps       = 60.0f;
-    int   lastDisplayedFps = 60;
+    float lastFrame   = 0;
+    int   frameCount  = 0;
+    float lastFpsTime = 0;
+    float currentFps  = 60.0f;
 
     // 主渲染循环
     while (!glfwWindowShouldClose(window)) {
@@ -238,10 +228,9 @@ int main() {
 
         // 处理窗口大小变化
         if (g_windowResized) {
-            g_windowResized  = false;
-            proj             = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
-            projUI           = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
-            lastDisplayedFps = -1;
+            g_windowResized = false;
+            proj            = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
+            projUI          = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
             resizeFBO(g_scrWidth, g_scrHeight);
             fboBlur1.Init(g_scrWidth / 6, g_scrHeight / 6);
             fboBlur2.Init(g_scrWidth / 6, g_scrHeight / 6);
@@ -257,9 +246,11 @@ int main() {
             currentFps  = frameCount / (t - lastFpsTime);
             frameCount  = 0;
             lastFpsTime = t;
+            bool particleCountChanged = false;
             if (currentFps < 40.0f) {  // 低于 40 FPS 才降低质量
                 if (g_activeParticleCount > MIN_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.9f);
+                    particleCountChanged = true;
                 } else if (g_currentPixelRatio > 0.7f) {
                     g_currentPixelRatio -= 0.05f;
                 }
@@ -268,9 +259,16 @@ int main() {
                     g_currentPixelRatio += 0.05f;
                 } else if (g_activeParticleCount < MAX_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.1f);
+                    particleCountChanged = true;
                 }
             }
             // 40-55 FPS 之间保持当前设置，提供稳定性
+
+            // 更新 Indirect Draw Buffer 中的粒子数量
+            if (particleCountChanged) {
+                glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
+                glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &g_activeParticleCount);
+            }
         }
 
         // 动画逻辑
@@ -327,7 +325,7 @@ int main() {
         glBindVertexArray(vaoStars);
         glDrawArrays(GL_POINTS, 0, STAR_COUNT);
 
-        // 渲染土星粒子
+        // 渲染土星粒子 (使用 Indirect Drawing 消除 CPU 开销)
         glUseProgram(pSaturn);
         glUniformMatrix4fv(uc.sat_proj, 1, 0, &proj[0][0]);
         glUniformMatrix4fv(uc.sat_view, 1, 0, &view[0][0]);
@@ -340,66 +338,66 @@ int main() {
         glUniform1f(uc.sat_uDensityComp, densityComp);
         glUniform1f(uc.sat_uScreenHeight, (float)g_scrHeight);
         glBindVertexArray(particleBuffers.GetRenderVAO());
-        glDrawArrays(GL_POINTS, 0, g_activeParticleCount);
+        // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
+        glDrawArraysIndirect(GL_POINTS, nullptr);
 
-        // 渲染行星 (使用预定义数据和 FBM 纹理)
+        // 渲染行星 (实例化渲染优化 - 单次 draw call)
         glDepthMask(GL_TRUE);
         glEnable(GL_DEPTH_TEST);
         glUseProgram(pPlanet);
         glUniformMatrix4fv(uc.pl_p, 1, 0, &proj[0][0]);
         glUniformMatrix4fv(uc.pl_v, 1, 0, &view[0][0]);
         glUniform3f(uc.pl_ld, 1, .5, 1);
+        glUniform1i(uc.pl_uPlanetCount, planetCount);
         // 绑定预计算的 FBM 噪声纹理
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fbmTexture);
         glUniform1i(uc.pl_uFBMTex, 0);
-        glBindVertexArray(vaoPlanet);
 
-        // 预计算公转旋转矩阵 (所有行星共享)
+        // 更新行星 UBO 数据
         glm::mat4 orbitRot = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
         float     selfRot  = t * 0.1f;
 
+        PlanetInstance planetInstances[8];
         for (int i = 0; i < planetCount; i++) {
             const PlanetData& p = planets[i];
             glm::mat4         m = orbitRot;
             m                   = glm::translate(m, p.pos);
             m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
             m                   = glm::scale(m, glm::vec3(p.radius));
-            glUniformMatrix4fv(uc.pl_m, 1, 0, &m[0][0]);
-            glUniform3fv(uc.pl_c1, 1, &p.color1[0]);
-            glUniform3fv(uc.pl_c2, 1, &p.color2[0]);
-            glUniform1f(uc.pl_ns, p.noiseScale);
-            glUniform1f(uc.pl_at, p.atmosphere);
-            glDrawElements(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0);
+            planetInstances[i].modelMatrix = m;
+            planetInstances[i].color1 = glm::vec4(p.color1, p.noiseScale);
+            planetInstances[i].color2 = glm::vec4(p.color2, p.atmosphere);
         }
+
+        // 上传 UBO 数据并渲染所有行星
+        glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, planetCount * sizeof(PlanetInstance), planetInstances);
+        glBindVertexArray(vaoPlanet);
+        glDrawElementsInstanced(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0, planetCount);
+
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
-        // 渲染 FPS 显示
-        int displayFps = (int)currentFps;
-        if (displayFps != lastDisplayedFps) {
-            lastDisplayedFps = displayFps;
-            uiVerts.clear();
-            std::string fpsStr  = std::to_string(displayFps);
-            float       xCursor = (float)g_scrWidth - 60.0f;
-            float       numSize = 20.0f;
-            for (int i = (int)fpsStr.length() - 1; i >= 0; i--) {
-                Renderer::AddDigitGeometry(uiVerts, xCursor, (float)g_scrHeight - 40, numSize, numSize * 1.8f,
-                                           fpsStr[i] - '0');
-                xCursor -= (numSize + 10.0f);
-            }
-            glBindBuffer(GL_ARRAY_BUFFER, vboUI);
-            glBufferData(GL_ARRAY_BUFFER, uiVerts.size() * sizeof(float), uiVerts.data(), GL_DYNAMIC_DRAW);
-        }
+        // 渲染 FPS 显示 (使用预生成数字几何，无需每帧重建)
         glUseProgram(pUI);
         glUniformMatrix4fv(uc.ui_proj, 1, 0, &projUI[0][0]);
         glm::vec3 fpsCol = (currentFps > 50)
                              ? glm::vec3(0.3, 1.0, 0.3)
                              : ((currentFps > 30) ? glm::vec3(1.0, 0.6, 0.0) : glm::vec3(1.0, 0.2, 0.2));
         glUniform3fv(uc.ui_uColor, 1, &fpsCol[0]);
-        glBindVertexArray(vaoUI);
         glLineWidth(2.0f);
-        glDrawArrays(GL_LINES, 0, (GLsizei)(uiVerts.size() / 2));
+
+        // 使用预生成数字渲染 FPS
+        int displayFps = (int)currentFps;
+        std::string fpsStr = std::to_string(displayFps);
+        float xCursor = (float)g_scrWidth - 60.0f;
+        float numSize = 20.0f;
+        for (int i = (int)fpsStr.length() - 1; i >= 0; i--) {
+            prebuiltDigits.DrawDigit(fpsStr[i] - '0', xCursor, (float)g_scrHeight - 40, numSize, uc.ui_uTransform);
+            xCursor -= (numSize + 10.0f);
+        }
 
         // 模糊处理 (Kawase Blur - 更高效的模糊算法)
         if (g_enableImGuiBlur) {
