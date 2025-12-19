@@ -39,7 +39,8 @@ struct UniformCache {
     GLint star_proj, star_view, star_model, star_uTime;
     // 行星着色器 (实例化渲染)
     GLint pl_p, pl_v, pl_ld, pl_uFBMTex, pl_uPlanetCount;
-    GLuint pl_ubo;  // 行星 UBO
+    GLuint pl_ubo;                       // 行星 UBO
+    PlanetInstance* pl_ubo_mapped;       // 优化: Persistent mapped buffer 指针
     GLint ui_proj, ui_uColor, ui_uTransform;
     // 模糊着色器 (Kawase Blur)
     GLint blur_uTexture, blur_uTexelSize, blur_uOffset;
@@ -96,10 +97,16 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.pl_uFBMTex      = glGetUniformLocation(pPlanet, "uFBMTex");
     uc.pl_uPlanetCount = glGetUniformLocation(pPlanet, "uPlanetCount");
 
-    // 创建行星 UBO
+    // 创建行星 UBO (优化: 使用 Persistent Mapped Buffer 消除 CPU-GPU 同步)
     glGenBuffers(1, &uc.pl_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
-    glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, GL_DYNAMIC_DRAW);
+    // 使用 glBufferStorage 创建不可变存储，支持持久映射
+    GLbitfield storageFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    glBufferStorage(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, storageFlags);
+    // 持久映射: 指针在程序生命周期内有效，无需 unmap
+    uc.pl_ubo_mapped = (PlanetInstance*)glMapBufferRange(
+        GL_UNIFORM_BUFFER, 0, 8 * sizeof(PlanetInstance),
+        GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
     // 绑定到 binding point 0
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uc.pl_ubo);
 
