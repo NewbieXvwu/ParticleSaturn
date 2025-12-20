@@ -185,7 +185,12 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     int                      hand_lost_counter     = 0;
     bool                     smooth_has_hand       = false;
 
+    // 自适应帧率控制：目标 30 FPS (约 33ms 每帧)
+    const auto TARGET_FRAME_TIME = std::chrono::milliseconds(33);
+
     while (g_running) {
+        auto frame_start = std::chrono::steady_clock::now();
+
         if (!cap.read(frame)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -406,7 +411,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             g_debug_window_created = false;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        // 自适应等待：根据实际处理时间调整，保持目标帧率
+        auto frame_end = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(frame_end - frame_start);
+        if (elapsed < TARGET_FRAME_TIME) {
+            std::this_thread::sleep_for(TARGET_FRAME_TIME - elapsed);
+        }
+        // 如果处理时间超过目标帧时间，不等待，直接处理下一帧
     }
 
     if (g_debug_window_created) {
