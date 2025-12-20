@@ -75,6 +75,20 @@ inline glm::vec3 HexToRGB(int hex) {
     return glm::vec3(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f);
 }
 
+// 预定义行星常量数据 (从 Main.cpp 移至此处，避免硬编码)
+namespace PlanetConstants {
+    // 定义行星的位置、大小、颜色等属性
+    // 火星样行星: 红色调，小型，中等噪声
+    // 海王星样行星: 蓝色调，中型，低噪声，高大气
+    // 岩石行星: 灰色调，小型，高噪声，低大气
+    inline const PlanetData kPlanets[] = {
+        {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},   // 火星样行星
+        {{380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5.0f, 0.6f},   // 海王星样行星
+        {{-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15.0f, 0.1f},  // 岩石行星
+    };
+    inline constexpr int kPlanetCount = sizeof(kPlanets) / sizeof(kPlanets[0]);
+}
+
 // 环形缓冲区 FPS 计算器 (优化: 提供更平滑的 FPS 统计)
 // 使用固定大小的环形缓冲区存储最近 N 帧的帧时间，计算滑动平均
 template<int N = 60>

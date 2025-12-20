@@ -206,13 +206,9 @@ int main() {
     // 生成 FBM 噪声纹理 (预计算替代程序化噪声)
     unsigned int fbmTexture = Renderer::GenerateFBMTexture();
 
-    // 预定义行星数据 (避免每帧重复构造)
-    const PlanetData planets[] = {
-        {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},   // 火星样行星
-        {{380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5.0f, 0.6f},   // 海王星样行星
-        {{-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15.0f, 0.1f},  // 岩石行星
-    };
-    const int planetCount = sizeof(planets) / sizeof(planets[0]);
+    // 使用预定义的行星常量数据
+    const auto& planets = PlanetConstants::kPlanets;
+    const int planetCount = PlanetConstants::kPlanetCount;
 
     // 预生成数字几何 (FPS 显示优化)
     Renderer::PrebuiltDigits prebuiltDigits;
