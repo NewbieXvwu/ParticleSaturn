@@ -44,7 +44,7 @@ class PalmDetector {
   private:
     std::unique_ptr<tflite::FlatBufferModel> model;
     std::unique_ptr<tflite::Interpreter>     interpreter;
-    TfLiteDelegate*                          xnnpack_delegate = nullptr;  // XNNPACK 委托
+    TfLiteDelegate*                          xnnpack_delegate = nullptr; // XNNPACK 委托
     std::vector<char>                        model_buffer;
     int                                      input_size = 192;
 
@@ -59,7 +59,7 @@ class PalmDetector {
     std::vector<cv::Rect>      m_rects;
     std::vector<float>         m_confidences;
     std::vector<int>           m_indices;
-    cv::Mat                    m_resized;  // 预分配的 resize 缓冲区
+    cv::Mat                    m_resized; // 预分配的 resize 缓冲区
 
     bool buildInterpreter();
     void generateAnchors();

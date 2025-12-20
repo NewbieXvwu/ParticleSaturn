@@ -37,10 +37,10 @@ class HandLandmark {
   private:
     std::unique_ptr<tflite::FlatBufferModel> model;
     std::unique_ptr<tflite::Interpreter>     interpreter;
-    TfLiteDelegate*                          xnnpack_delegate = nullptr;  // XNNPACK 委托
-    std::vector<char>                        model_buffer; // for loadFromMemory
+    TfLiteDelegate*                          xnnpack_delegate = nullptr; // XNNPACK 委托
+    std::vector<char>                        model_buffer;               // for loadFromMemory
     int                                      input_size = 224;
-    cv::Mat                                  m_resized;    // 预分配的 resize 缓冲区
+    cv::Mat                                  m_resized; // 预分配的 resize 缓冲区
 
     bool buildInterpreter();
 };

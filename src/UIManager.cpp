@@ -1,8 +1,9 @@
 // UIManager.cpp - UI 管理器实现
 // 将大型函数从头文件移到 cpp 文件，减少编译时间
 
-#include "pch.h"
 #include "UIManager.h"
+
+#include "pch.h"
 
 // 全局变量定义
 std::unordered_map<ImGuiID, UIAnimState> g_animStates;
@@ -158,7 +159,7 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
     SetCursorPosX(GetCursorPosX() + 10.0f);
     // 垂直居中对齐文本
     float textHeight = GetTextLineHeight();
-    float offsetY = (height - textHeight) * 0.5f;
+    float offsetY    = (height - textHeight) * 0.5f;
     SetCursorPosY(GetCursorPosY() + offsetY);
     Text("%s", label);
     return pressed;
@@ -166,7 +167,7 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
 
 // 初始化 ImGui
 void Init(GLFWwindow* window, AppState& state) {
-    s_appState = &state;  // 保存状态指针
+    s_appState = &state; // 保存状态指针
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -189,22 +190,15 @@ void Init(GLFWwindow* window, AppState& state) {
     float fontSize      = 16.0f * state.ui.dpiScale;
 
     // English fonts (primary) - fallback order
-    const char* englishFonts[] = {
-        "C:\\Windows\\Fonts\\CascadiaCode.ttf",
-        "C:\\Windows\\Fonts\\CascadiaMono.ttf",
-        "C:\\Windows\\Fonts\\consola.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf",
-        nullptr
-    };
+    const char* englishFonts[] = {"C:\\Windows\\Fonts\\CascadiaCode.ttf", "C:\\Windows\\Fonts\\CascadiaMono.ttf",
+                                  "C:\\Windows\\Fonts\\consola.ttf", "C:\\Windows\\Fonts\\arial.ttf", nullptr};
 
     // Chinese fonts (merged) - fallback order: DengXian → YaHei Light → YaHei → SimHei
-    const char* chineseFonts[] = {
-        "C:\\Windows\\Fonts\\Deng.ttf",     // DengXian (Win10+)
-        "C:\\Windows\\Fonts\\msyhl.ttc",    // Microsoft YaHei Light
-        "C:\\Windows\\Fonts\\msyh.ttc",     // Microsoft YaHei
-        "C:\\Windows\\Fonts\\simhei.ttf",   // SimHei
-        nullptr
-    };
+    const char* chineseFonts[] = {"C:\\Windows\\Fonts\\Deng.ttf",   // DengXian (Win10+)
+                                  "C:\\Windows\\Fonts\\msyhl.ttc",  // Microsoft YaHei Light
+                                  "C:\\Windows\\Fonts\\msyh.ttc",   // Microsoft YaHei
+                                  "C:\\Windows\\Fonts\\simhei.ttf", // SimHei
+                                  nullptr};
 
     // Load primary English font
     ImFont* font = nullptr;
@@ -222,11 +216,11 @@ void Init(GLFWwindow* window, AppState& state) {
     }
 
     // Merge Chinese font for CJK characters
-    fontCfg.MergeMode = true;
+    fontCfg.MergeMode  = true;
     bool chineseLoaded = false;
     for (int i = 0; chineseFonts[i] && !chineseLoaded; i++) {
-        ImFont* cjkFont = io.Fonts->AddFontFromFileTTF(
-            chineseFonts[i], fontSize, &fontCfg, io.Fonts->GetGlyphRangesChineseFull());
+        ImFont* cjkFont =
+            io.Fonts->AddFontFromFileTTF(chineseFonts[i], fontSize, &fontCfg, io.Fonts->GetGlyphRangesChineseFull());
         if (cjkFont) {
             std::cout << "[UI] Chinese font: " << chineseFonts[i] << std::endl;
             chineseLoaded = true;

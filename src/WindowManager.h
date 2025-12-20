@@ -32,6 +32,7 @@ enum {
 #endif
 
 #include <GLFW/glfw3.h>
+
 #include <iostream>
 
 namespace WindowManager {
@@ -117,7 +118,7 @@ inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
         DwmExtendFrameIntoClientArea(hwnd, &margins);
 
         int     backdropType = (mode == 1) ? 3 : 2;
-        HRESULT hr       = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         state.backdrop.useTransparent = true;
 
         const char* name = (mode == 1) ? "Acrylic" : "Mica";
@@ -140,8 +141,8 @@ inline void ToggleFullscreen(GLFWwindow* window, AppState& state) {
         state.window.isFullscreen = true;
         std::cout << "[Window] Fullscreen: " << mode->width << "x" << mode->height << std::endl;
     } else {
-        glfwSetWindowMonitor(window, nullptr, state.window.windowedX, state.window.windowedY,
-                             state.window.windowedW, state.window.windowedH, 0);
+        glfwSetWindowMonitor(window, nullptr, state.window.windowedX, state.window.windowedY, state.window.windowedW,
+                             state.window.windowedH, 0);
         state.window.isFullscreen = false;
         std::cout << "[Window] Windowed: " << state.window.windowedW << "x" << state.window.windowedH << std::endl;
     }
@@ -181,8 +182,8 @@ inline void FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
     if (width > 0 && height > 0) {
         AppState* state = GetAppState(window);
         if (state) {
-            state->window.width = width;
-            state->window.height = height;
+            state->window.width   = width;
+            state->window.height  = height;
             state->window.resized = true;
         }
         glViewport(0, 0, width, height);

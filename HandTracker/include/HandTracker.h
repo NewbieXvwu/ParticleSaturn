@@ -10,10 +10,10 @@
 
 // SIMD 模式枚举（与内部 SIMDMode 对应）
 enum HandTrackerSIMDMode {
-    SIMD_AUTO = 0,    // 自动检测最佳实现
-    SIMD_AVX2 = 1,    // 强制使用 AVX2
-    SIMD_SSE = 2,     // 强制使用 SSE
-    SIMD_SCALAR = 3   // 强制使用标量实现
+    SIMD_AUTO   = 0, // 自动检测最佳实现
+    SIMD_AVX2   = 1, // 强制使用 AVX2
+    SIMD_SSE    = 2, // 强制使用 SSE
+    SIMD_SCALAR = 3  // 强制使用标量实现
 };
 
 extern "C" {

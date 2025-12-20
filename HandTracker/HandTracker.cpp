@@ -71,9 +71,9 @@ class OneEuroFilter {
 
 // 共享数据结构
 struct SharedData {
-    float scale = 1.0f;
-    float rot_x = 0.5f;
-    float rot_y = 0.5f;
+    float scale    = 1.0f;
+    float rot_x    = 0.5f;
+    float rot_y    = 0.5f;
     bool  has_hand = false;
 };
 
@@ -98,10 +98,10 @@ struct TrackerContext {
     std::atomic<bool> debug_window_created{false};
 
     // 数据同步
-    std::mutex  data_mutex;
-    std::mutex  debug_mutex;
-    SharedData  latest_data;
-    DebugData   debug_data;
+    std::mutex data_mutex;
+    std::mutex debug_mutex;
+    SharedData latest_data;
+    DebugData  debug_data;
 
     // 平滑值
     float smooth_scale = 1.0f;
@@ -124,7 +124,7 @@ struct TrackerContext {
         smooth_scale = 1.0f;
         smooth_rot_x = 0.5f;
         smooth_rot_y = 0.5f;
-        latest_data = SharedData{};
+        latest_data  = SharedData{};
         filter_rot_x.reset();
         filter_rot_y.reset();
         filter_scale.reset();
@@ -178,7 +178,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     }
 
     // 创建摄像头捕获实例 (Windows: DirectShow 优先，fallback 到 OpenCV)
-    std::unique_ptr<ICameraCapture> camera = CreateCameraCapture();
+    std::unique_ptr<ICameraCapture> camera    = CreateCameraCapture();
     bool                            camera_ok = camera->open(cam_id, 640, 480);
 
     // 如果 DirectShow 失败，尝试 OpenCV fallback
@@ -261,7 +261,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             dstPts[2] = cv::Point2f(224, 224);
 
             cv::Mat trans_mat = cv::getAffineTransform(srcPts, dstPts);
-            cv::warpAffine(frame_rgb, roi_image, trans_mat, cv::Size(224, 224));  // 复用预分配的 roi_image
+            cv::warpAffine(frame_rgb, roi_image, trans_mat, cv::Size(224, 224)); // 复用预分配的 roi_image
 
             cv::Mat trans_mat_inv;
             cv::invertAffineTransform(trans_mat, trans_mat_inv);
@@ -332,7 +332,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         }
 
         // 使用 One Euro Filter 平滑数据
-        const float dt = 1.0f / 30.0f;
+        const float dt     = 1.0f / 30.0f;
         g_ctx.smooth_rot_x = g_ctx.filter_rot_x.filter(target_rot_x, dt);
         g_ctx.smooth_rot_y = g_ctx.filter_rot_y.filter(target_rot_y, dt);
         g_ctx.smooth_scale = g_ctx.filter_scale.filter(target_scale, dt);
@@ -367,8 +367,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             // frame 是原始未翻转的 BGR，frame_rgb 是翻转后的 RGB
             // 为了显示正确的镜像画面和对齐的关键点，我们需要显示翻转后的 BGR
             cv::cvtColor(frame_rgb, debug_frame, cv::COLOR_RGB2BGR);
-            int     img_w       = frame.cols;
-            int     img_h       = frame.rows;
+            int img_w = frame.cols;
+            int img_h = frame.rows;
 
             if (current_has_hand && !palms.empty()) {
                 const PalmDetection& palm = palms[0];
@@ -444,7 +444,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
         // 自适应等待：根据实际处理时间调整，保持目标帧率
         auto frame_end = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(frame_end - frame_start);
+        auto elapsed   = std::chrono::duration_cast<std::chrono::milliseconds>(frame_end - frame_start);
         if (elapsed < TARGET_FRAME_TIME) {
             std::this_thread::sleep_for(TARGET_FRAME_TIME - elapsed);
         }
@@ -514,9 +514,7 @@ HAND_API void ReleaseTracker() {
     if (g_ctx.worker_thread) {
         if (g_ctx.worker_thread->joinable()) {
             // 超时保护: 最多等待 3 秒，防止线程阻塞导致主程序挂起
-            auto future = std::async(std::launch::async, [&]() {
-                g_ctx.worker_thread->join();
-            });
+            auto future = std::async(std::launch::async, [&]() { g_ctx.worker_thread->join(); });
 
             if (future.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
                 std::cerr << "[HandTracker] Warning: Worker thread join timed out after 3 seconds" << std::endl;

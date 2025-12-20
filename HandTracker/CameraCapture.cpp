@@ -6,6 +6,7 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+
 #include <dshow.h>
 #include <strmif.h>
 
@@ -21,20 +22,20 @@ DEFINE_GUID(IID_ISampleGrabberCB, 0x0579154a, 0x2b53, 0x4994, 0xb0, 0xd0, 0xe7, 
 MIDL_INTERFACE("0579154A-2B53-4994-B0D0-E773148EFF85")
 ISampleGrabberCB : public IUnknown {
   public:
-    virtual HRESULT STDMETHODCALLTYPE SampleCB(double SampleTime, IMediaSample * pSample)        = 0;
-    virtual HRESULT STDMETHODCALLTYPE BufferCB(double SampleTime, BYTE * pBuffer, long BufferLen) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SampleCB(double SampleTime, IMediaSample* pSample)         = 0;
+    virtual HRESULT STDMETHODCALLTYPE BufferCB(double SampleTime, BYTE* pBuffer, long BufferLen) = 0;
 };
 
 // ISampleGrabber 接口定义
 MIDL_INTERFACE("6B652FFF-11FE-4FCE-92AD-0266B5D7C78F")
 ISampleGrabber : public IUnknown {
   public:
-    virtual HRESULT STDMETHODCALLTYPE SetOneShot(BOOL OneShot)                                    = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetMediaType(const AM_MEDIA_TYPE * pType)                   = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetConnectedMediaType(AM_MEDIA_TYPE * pType)                = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetBufferSamples(BOOL BufferThem)                           = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetCurrentBuffer(long* pBufferSize, long* pBuffer)          = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetCurrentSample(IMediaSample * *ppSample)                  = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetOneShot(BOOL OneShot)                                              = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetMediaType(const AM_MEDIA_TYPE* pType)                              = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetConnectedMediaType(AM_MEDIA_TYPE * pType)                          = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetBufferSamples(BOOL BufferThem)                                     = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCurrentBuffer(long* pBufferSize, long* pBuffer)                    = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCurrentSample(IMediaSample * *ppSample)                            = 0;
     virtual HRESULT STDMETHODCALLTYPE SetCallback(ISampleGrabberCB * pCallback, long WhichMethodToCallback) = 0;
 };
 
@@ -155,7 +156,7 @@ STDMETHODIMP DSGrabberCallback::BufferCB(double SampleTime, BYTE* pBuffer, long 
     // DirectShow 返回的图像是上下颠倒的，需要翻转
     // 优化: 使用 cv::flip 替代手动逐行 memcpy（内部有 SIMD 优化）
     cv::Mat temp(height, width, CV_8UC3, pBuffer);
-    cv::flip(temp, m_owner->m_frameBuffer, 0);  // 0 = 垂直翻转
+    cv::flip(temp, m_owner->m_frameBuffer, 0); // 0 = 垂直翻转
 
     m_owner->m_hasFrame = true;
     return S_OK;
@@ -163,7 +164,9 @@ STDMETHODIMP DSGrabberCallback::BufferCB(double SampleTime, BYTE* pBuffer, long 
 
 DirectShowCapture::DirectShowCapture() : m_impl(std::make_unique<Impl>()) {}
 
-DirectShowCapture::~DirectShowCapture() { close(); }
+DirectShowCapture::~DirectShowCapture() {
+    close();
+}
 
 bool DirectShowCapture::open(int cameraId, int width, int height) {
     close();
@@ -180,8 +183,7 @@ bool DirectShowCapture::open(int cameraId, int width, int height) {
     m_impl->comInitialized = true;
 
     // 创建 Filter Graph
-    hr = CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER, IID_IGraphBuilder,
-                          (void**)&m_impl->pGraph);
+    hr = CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&m_impl->pGraph);
     if (FAILED(hr)) {
         std::cerr << "[DirectShow] Failed to create FilterGraph" << std::endl;
         close();
@@ -201,8 +203,7 @@ bool DirectShowCapture::open(int cameraId, int width, int height) {
 
     // 枚举视频捕获设备
     ICreateDevEnum* pDevEnum = nullptr;
-    hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum,
-                          (void**)&pDevEnum);
+    hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**)&pDevEnum);
     if (FAILED(hr)) {
         std::cerr << "[DirectShow] Failed to create device enumerator" << std::endl;
         close();
@@ -255,7 +256,7 @@ bool DirectShowCapture::open(int cameraId, int width, int height) {
         AM_MEDIA_TYPE* pmt = nullptr;
         if (SUCCEEDED(pConfig->GetFormat(&pmt)) && pmt) {
             if (pmt->formattype == FORMAT_VideoInfo && pmt->cbFormat >= sizeof(VIDEOINFOHEADER)) {
-                VIDEOINFOHEADER* pVih  = (VIDEOINFOHEADER*)pmt->pbFormat;
+                VIDEOINFOHEADER* pVih    = (VIDEOINFOHEADER*)pmt->pbFormat;
                 pVih->bmiHeader.biWidth  = width;
                 pVih->bmiHeader.biHeight = height;
                 pConfig->SetFormat(pmt);
@@ -370,7 +371,9 @@ void DirectShowCapture::close() {
     m_impl->Release();
 }
 
-bool DirectShowCapture::isOpened() const { return m_opened; }
+bool DirectShowCapture::isOpened() const {
+    return m_opened;
+}
 
 bool DirectShowCapture::getLatestFrame(cv::Mat& frame) {
     if (!m_opened || !m_hasFrame) {
@@ -392,7 +395,9 @@ bool DirectShowCapture::getLatestFrame(cv::Mat& frame) {
 // OpenCV 实现
 OpenCVCapture::OpenCVCapture() {}
 
-OpenCVCapture::~OpenCVCapture() { close(); }
+OpenCVCapture::~OpenCVCapture() {
+    close();
+}
 
 bool OpenCVCapture::open(int cameraId, int width, int height) {
     close();
@@ -405,15 +410,13 @@ bool OpenCVCapture::open(int cameraId, int width, int height) {
         try {
             m_cap.open(cameraId, cv::CAP_DSHOW);
             opened = m_cap.isOpened();
-        } catch (...) {
-        }
+        } catch (...) {}
     }
     if (!opened) {
         try {
             m_cap.open(cameraId, cv::CAP_MSMF);
             opened = m_cap.isOpened();
-        } catch (...) {
-        }
+        } catch (...) {}
     }
 #endif
 
@@ -421,8 +424,7 @@ bool OpenCVCapture::open(int cameraId, int width, int height) {
         try {
             m_cap.open(cameraId, cv::CAP_ANY);
             opened = m_cap.isOpened();
-        } catch (...) {
-        }
+        } catch (...) {}
     }
 
     if (!opened) {
@@ -447,7 +449,9 @@ void OpenCVCapture::close() {
     m_height = 0;
 }
 
-bool OpenCVCapture::isOpened() const { return m_cap.isOpened(); }
+bool OpenCVCapture::isOpened() const {
+    return m_cap.isOpened();
+}
 
 bool OpenCVCapture::getLatestFrame(cv::Mat& frame) {
     if (!m_cap.isOpened()) {

@@ -1,11 +1,11 @@
 #pragma once
 // 工具函数 - 通用辅助函数和数据结构
 
-#include <cmath>
-#include <thread>
 #include <atomic>
-#include <mutex>
 #include <chrono>
+#include <cmath>
+#include <mutex>
+#include <thread>
 
 // 前向声明 HandTracker API (避免循环依赖)
 // 完整声明在 HandTracker.h 中
@@ -50,19 +50,19 @@ struct HandState {
 
 // 行星属性 (预定义以减少每帧计算)
 struct PlanetData {
-    glm::vec3 pos;      // 位置
-    float     radius;   // 半径
-    glm::vec3 color1;   // 颜色1
-    glm::vec3 color2;   // 颜色2
-    float     noiseScale;  // 噪声缩放
-    float     atmosphere;  // 大气层强度
+    glm::vec3 pos;        // 位置
+    float     radius;     // 半径
+    glm::vec3 color1;     // 颜色1
+    glm::vec3 color2;     // 颜色2
+    float     noiseScale; // 噪声缩放
+    float     atmosphere; // 大气层强度
 };
 
 // 行星实例数据 (用于 UBO 实例化渲染, 符合 std140 布局)
 struct PlanetInstance {
-    glm::mat4 modelMatrix;  // 64 字节
-    glm::vec4 color1;       // 16 字节 (xyz = color, w = noiseScale)
-    glm::vec4 color2;       // 16 字节 (xyz = color, w = atmosphere)
+    glm::mat4 modelMatrix; // 64 字节
+    glm::vec4 color1;      // 16 字节 (xyz = color, w = noiseScale)
+    glm::vec4 color2;      // 16 字节 (xyz = color, w = atmosphere)
     // 总计 96 字节每实例
 };
 
@@ -77,27 +77,28 @@ inline glm::vec3 HexToRGB(int hex) {
 
 // 预定义行星常量数据 (从 Main.cpp 移至此处，避免硬编码)
 namespace PlanetConstants {
-    // 定义行星的位置、大小、颜色等属性
-    // 火星样行星: 红色调，小型，中等噪声
-    // 海王星样行星: 蓝色调，中型，低噪声，高大气
-    // 岩石行星: 灰色调，小型，高噪声，低大气
-    inline const PlanetData kPlanets[] = {
-        {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},   // 火星样行星
-        {{380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5.0f, 0.6f},   // 海王星样行星
-        {{-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15.0f, 0.1f},  // 岩石行星
-    };
-    inline constexpr int kPlanetCount = sizeof(kPlanets) / sizeof(kPlanets[0]);
-}
+// 定义行星的位置、大小、颜色等属性
+// 火星样行星: 红色调，小型，中等噪声
+// 海王星样行星: 蓝色调，中型，低噪声，高大气
+// 岩石行星: 灰色调，小型，高噪声，低大气
+inline const PlanetData kPlanets[] = {
+    {{-300, 120, -450}, 10, HexToRGB(0xb33a00), HexToRGB(0xd16830), 8.0f, 0.3f},  // 火星样行星
+    {{380, -100, -600}, 14, HexToRGB(0x001e4d), HexToRGB(0xffffff), 5.0f, 0.6f},  // 海王星样行星
+    {{-180, -220, -350}, 6, HexToRGB(0x666666), HexToRGB(0xaaaaaa), 15.0f, 0.1f}, // 岩石行星
+};
+inline constexpr int kPlanetCount = sizeof(kPlanets) / sizeof(kPlanets[0]);
+} // namespace PlanetConstants
 
 // 环形缓冲区 FPS 计算器 (优化: 提供更平滑的 FPS 统计)
 // 使用固定大小的环形缓冲区存储最近 N 帧的帧时间，计算滑动平均
-template<int N = 60>
-class RingBufferFPS {
-public:
+template <int N = 60> class RingBufferFPS {
+  public:
     RingBufferFPS() {
         // 预填充假设 60 FPS 的帧时间，避免启动时 FPS 从 0 涨上去
-        for (int i = 0; i < N; i++) frameTimes[i] = 1.0f / 60.0f;
-        count = N;  // 标记为已填满，与 sum 的初始值匹配
+        for (int i = 0; i < N; i++) {
+            frameTimes[i] = 1.0f / 60.0f;
+        }
+        count = N; // 标记为已填满，与 sum 的初始值匹配
     }
 
     // 添加新的帧时间
@@ -111,29 +112,35 @@ public:
 
     // 获取平均 FPS
     float GetAverageFPS() const {
-        if (sum <= 0.0f) return 60.0f;
-        return (float)N / sum;  // 始终使用 N 作为分子
+        if (sum <= 0.0f) {
+            return 60.0f;
+        }
+        return (float)N / sum; // 始终使用 N 作为分子
     }
 
     // 获取平均帧时间
     float GetAverageFrameTime() const {
-        if (sum <= 0.0f) return 1.0f / 60.0f;
-        return sum / (float)N;  // 始终使用 N 作为分母
+        if (sum <= 0.0f) {
+            return 1.0f / 60.0f;
+        }
+        return sum / (float)N; // 始终使用 N 作为分母
     }
 
-private:
+  private:
     float frameTimes[N];
-    float sum = N * (1.0f / 60.0f);  // 初始假设 60 FPS
+    float sum   = N * (1.0f / 60.0f); // 初始假设 60 FPS
     int   index = 0;
-    int   count = N;  // 初始化为 N，与预填充的数据匹配
+    int   count = N; // 初始化为 N，与预填充的数据匹配
 };
 
 // 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
 // 后台线程持续更新手部数据，主循环只需读取最新状态
 class AsyncHandTracker {
-public:
+  public:
     void Start() {
-        if (running.load()) return;
+        if (running.load()) {
+            return;
+        }
         running.store(true);
         trackerThread = std::thread(&AsyncHandTracker::TrackingLoop, this);
     }
@@ -150,11 +157,9 @@ public:
         return latestState;
     }
 
-    ~AsyncHandTracker() {
-        Stop();
-    }
+    ~AsyncHandTracker() { Stop(); }
 
-private:
+  private:
     void TrackingLoop() {
         while (running.load()) {
             HandState temp;
@@ -168,8 +173,8 @@ private:
         }
     }
 
-    std::thread trackerThread;
+    std::thread       trackerThread;
     std::atomic<bool> running{false};
-    std::mutex stateMutex;
-    HandState latestState;
+    std::mutex        stateMutex;
+    HandState         latestState;
 };
