@@ -153,9 +153,9 @@ STDMETHODIMP DSGrabberCallback::BufferCB(double SampleTime, BYTE* pBuffer, long 
     }
 
     // DirectShow 返回的图像是上下颠倒的，需要翻转
-    for (int y = 0; y < height; y++) {
-        memcpy(m_owner->m_frameBuffer.ptr(height - 1 - y), pBuffer + y * width * 3, width * 3);
-    }
+    // 优化: 使用 cv::flip 替代手动逐行 memcpy（内部有 SIMD 优化）
+    cv::Mat temp(height, width, CV_8UC3, pBuffer);
+    cv::flip(temp, m_owner->m_frameBuffer, 0);  // 0 = 垂直翻转
 
     m_owner->m_hasFrame = true;
     return S_OK;
