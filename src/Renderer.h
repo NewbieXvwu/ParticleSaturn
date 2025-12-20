@@ -258,6 +258,85 @@ inline void CreateSphere(unsigned int& vao, unsigned int& indexCount, float radi
     glVertexAttribPointer(2, 2, GL_FLOAT, 0, 32, (void*)24);
 }
 
+// 优化: 缓存的球体网格 (避免重复创建)
+// 使用单位球体，通过 model matrix 缩放到所需大小
+struct CachedSphere {
+    GLuint       vao = 0;
+    GLuint       vbo = 0;
+    GLuint       ebo = 0;
+    unsigned int indexCount = 0;
+    bool         initialized = false;
+
+    void Init(int segments = 64) {
+        if (initialized) return;
+
+        std::vector<float>        data;
+        std::vector<unsigned int> indices;
+        const float PI = 3.14159265f;
+
+        // 生成单位球体顶点
+        for (int y = 0; y <= segments; y++) {
+            for (int x = 0; x <= segments; x++) {
+                float xS = (float)x / segments;
+                float yS = (float)y / segments;
+                float xP = cos(xS * 2 * PI) * sin(yS * PI);
+                float yP = cos(yS * PI);
+                float zP = sin(xS * 2 * PI) * sin(yS * PI);
+                // pos(3) + normal(3) + uv(2) = 8 floats
+                data.insert(data.end(), {xP, yP, zP, xP, yP, zP, xS, yS});
+            }
+        }
+
+        // 生成索引
+        for (int y = 0; y < segments; y++) {
+            for (int x = 0; x < segments; x++) {
+                unsigned int tl = y * (segments + 1) + x;
+                unsigned int tr = tl + 1;
+                unsigned int bl = (y + 1) * (segments + 1) + x;
+                unsigned int br = bl + 1;
+                indices.insert(indices.end(), {bl, tl, tr, bl, tr, br});
+            }
+        }
+
+        indexCount = (unsigned int)indices.size();
+
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ebo);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+        // pos
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);
+        // normal
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 32, (void*)12);
+        // uv
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, (void*)24);
+
+        glBindVertexArray(0);
+        initialized = true;
+    }
+
+    void Draw() const {
+        if (!initialized) return;
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+    }
+
+    void DrawInstanced(int count) const {
+        if (!initialized) return;
+        glBindVertexArray(vao);
+        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, count);
+    }
+};
+
 // 生成噪声纹理
 inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
     std::vector<unsigned char> data(width * height * 3);
