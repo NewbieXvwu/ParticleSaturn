@@ -2,10 +2,12 @@
 
 // 渲染器 - OpenGL 渲染工具、FBO 管理、着色器编译
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "Utils.h"  // 需要 PlanetInstance 定义
+
+// M_PI 可能未定义 (MSVC 需要 _USE_MATH_DEFINES 在 <cmath> 之前)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 // 模糊效果帧缓冲
 // 优化: 使用 R11F_G11F_B10F 格式 (4字节/像素) 代替 RGB16F (6字节/像素)

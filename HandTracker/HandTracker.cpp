@@ -10,8 +10,10 @@
 #include <string>
 #include <thread>
 
-#define _USE_MATH_DEFINES
-#include <cmath>
+// M_PI 可能未定义 (MSVC 需要 _USE_MATH_DEFINES 在 <cmath> 之前)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #include "CameraCapture.h"
 #include "HandLandmark.h"

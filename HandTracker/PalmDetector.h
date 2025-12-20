@@ -10,6 +10,9 @@
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 
+// Forward declaration for XNNPACK delegate
+struct TfLiteDelegate;
+
 // Palm detection result
 struct PalmDetection {
     float       score;        // confidence
@@ -41,6 +44,7 @@ class PalmDetector {
   private:
     std::unique_ptr<tflite::FlatBufferModel> model;
     std::unique_ptr<tflite::Interpreter>     interpreter;
+    TfLiteDelegate*                          xnnpack_delegate = nullptr;  // XNNPACK 委托
     std::vector<char>                        model_buffer;
     int                                      input_size = 192;
 

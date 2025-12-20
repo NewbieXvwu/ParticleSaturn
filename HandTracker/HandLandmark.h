@@ -10,6 +10,9 @@
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 
+// Forward declaration for XNNPACK delegate
+struct TfLiteDelegate;
+
 // Hand landmark detector - based on MediaPipe Hand Landmark model
 class HandLandmark {
   public:
@@ -34,6 +37,7 @@ class HandLandmark {
   private:
     std::unique_ptr<tflite::FlatBufferModel> model;
     std::unique_ptr<tflite::Interpreter>     interpreter;
+    TfLiteDelegate*                          xnnpack_delegate = nullptr;  // XNNPACK 委托
     std::vector<char>                        model_buffer; // for loadFromMemory
     int                                      input_size = 224;
     cv::Mat                                  m_resized;    // 预分配的 resize 缓冲区

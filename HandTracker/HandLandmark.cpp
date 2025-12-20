@@ -8,17 +8,39 @@
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 HandLandmark::HandLandmark() {}
 
-HandLandmark::~HandLandmark() {}
+HandLandmark::~HandLandmark() {
+    // 清理 XNNPACK 委托
+    if (xnnpack_delegate) {
+        TfLiteXNNPackDelegateDelete(xnnpack_delegate);
+        xnnpack_delegate = nullptr;
+    }
+}
 
 bool HandLandmark::buildInterpreter() {
     tflite::ops::builtin::BuiltinOpResolver resolver;
     tflite::InterpreterBuilder              builder(*model, resolver);
 
+    // 设置线程数 (0 = 自动检测)
+    builder.SetNumThreads(0);
+
     if (builder(&interpreter) != kTfLiteOk) {
         return false;
+    }
+
+    // 创建并应用 XNNPACK 委托
+    TfLiteXNNPackDelegateOptions xnnpack_options = TfLiteXNNPackDelegateOptionsDefault();
+    xnnpack_options.num_threads = 0;  // 0 = 自动检测最佳线程数
+    xnnpack_delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+    if (xnnpack_delegate) {
+        if (interpreter->ModifyGraphWithDelegate(xnnpack_delegate) != kTfLiteOk) {
+            std::cerr << "[HandLandmark] Warning: Failed to apply XNNPACK delegate" << std::endl;
+            TfLiteXNNPackDelegateDelete(xnnpack_delegate);
+            xnnpack_delegate = nullptr;
+        }
     }
 
     if (interpreter->AllocateTensors() != kTfLiteOk) {
