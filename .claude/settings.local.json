@@ -5,7 +5,9 @@
       "Bash(git commit:*)",
       "Bash(wc:*)",
       "Bash(dir:*)",
-      "Bash(dumpbin:*)"
+      "Bash(dumpbin:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)"
     ]
   }
 }
