@@ -515,7 +515,7 @@ int main() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fboTex);
         glUniform1i(uc.quad_uTexture, 0);
-        glUniform1i(uc.quad_uTransparent, appState.backdrop.useTransparent ? 1 : 0);
+        glUniform1f(uc.quad_uTransparent, appState.backdrop.useTransparent ? 1.0f : 0.0f);
         glBindVertexArray(vaoQuad);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
