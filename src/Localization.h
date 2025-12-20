@@ -126,6 +126,15 @@ struct Strings {
     const char* transparent;
     const char* clearLog;
     const char* copyAllLog;
+
+    // Advanced section
+    const char* sectionAdvanced;
+    const char* simdMode;
+    const char* simdAuto;
+    const char* simdAVX2;
+    const char* simdSSE;
+    const char* simdScalar;
+    const char* simdCurrent;
 };
 
 // Chinese strings
@@ -243,6 +252,15 @@ inline const Strings& GetChinese() {
         .transparent = "透明",
         .clearLog = "清空",
         .copyAllLog = "复制全部",
+
+        // Advanced section
+        .sectionAdvanced = "高级",
+        .simdMode = "SIMD 模式",
+        .simdAuto = "自动",
+        .simdAVX2 = "AVX2",
+        .simdSSE = "SSE",
+        .simdScalar = "标量",
+        .simdCurrent = "当前实现",
     };
     return zh;
 }
@@ -362,6 +380,15 @@ inline const Strings& GetEnglish() {
         .transparent = "Transparent",
         .clearLog = "Clear",
         .copyAllLog = "Copy All",
+
+        // Advanced section
+        .sectionAdvanced = "Advanced",
+        .simdMode = "SIMD Mode",
+        .simdAuto = "Auto",
+        .simdAVX2 = "AVX2",
+        .simdSSE = "SSE",
+        .simdScalar = "Scalar",
+        .simdCurrent = "Current Impl",
     };
     return en;
 }

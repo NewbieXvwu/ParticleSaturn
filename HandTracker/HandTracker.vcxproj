@@ -27,11 +27,13 @@
     <ClCompile Include="HandTracker.cpp" />
     <ClCompile Include="PalmDetector.cpp" />
     <ClCompile Include="HandLandmark.cpp" />
+    <ClCompile Include="SIMDNormalize.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraCapture.h" />
     <ClInclude Include="PalmDetector.h" />
     <ClInclude Include="HandLandmark.h" />
+    <ClInclude Include="SIMDNormalize.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
