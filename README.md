@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/OpenGL-4.3-5586A4?style=for-the-badge&logo=opengl&logoColor=white" alt="OpenGL 4.3"/>
+  <img src="https://img.shields.io/badge/OpenGL-4.4-5586A4?style=for-the-badge&logo=opengl&logoColor=white" alt="OpenGL 4.4"/>
   <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows"/>
   <img src="https://img.shields.io/badge/C++-00599C?style=for-the-badge&logo=cplusplus&logoColor=white" alt="C++"/>
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"/>

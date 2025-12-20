@@ -24,6 +24,17 @@ jobs:
       - name: Setup vcpkg
         run: vcpkg integrate install
 
+      - name: Set version name
+        id: version
+        run: |
+          if ("${{ github.event_name }}" -eq "release") {
+            echo "name=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
+          } else {
+            # Use short hash (7 chars) for manual builds
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            echo "name=$shortSha" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Cache TFLite build
         id: cache-tflite
         uses: actions/cache@v4
@@ -56,30 +67,21 @@ jobs:
         shell: cmd
 
       - name: Build Release
-        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /m
+        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
 
       - name: Build ReleaseStatic
-        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /m
-
-      - name: Set version name
-        id: version
-        run: |
-          if ("${{ github.event_name }}" -eq "release") {
-            echo "name=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "name=${{ github.sha }}" >> $env:GITHUB_OUTPUT
-          }
+        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
 
       - name: Prepare Release artifacts
         run: |
           $releaseDir = "release_artifacts"
           New-Item -ItemType Directory -Force -Path $releaseDir
-          
+
           # Copy Release build files
           Copy-Item "bin/x64/Release/ParticleSaturn.exe" $releaseDir/
           Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
           Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
-          
+
           # Copy model files
           Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
           Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
@@ -102,6 +104,15 @@ jobs:
           name: ParticleSaturn-Static-${{ steps.version.outputs.name }}
           path: bin/x64/Release_Static/ParticleSaturn.exe
 
+      - name: Upload PDB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDB-${{ steps.version.outputs.name }}
+          path: |
+            bin/x64/Release/ParticleSaturn.pdb
+            bin/x64/Release/HandTracker.pdb
+            bin/x64/Release_Static/ParticleSaturn.pdb
+
       - name: Upload Release assets
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
@@ -110,3 +121,10 @@ jobs:
             ParticleSaturn-${{ steps.version.outputs.name }}.7z
             ParticleSaturn-${{ steps.version.outputs.name }}.zip
             bin/x64/Release_Static/ParticleSaturn.exe
+
+      - name: Upload PDB to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/x64/Release_Static/ParticleSaturn.pdb

@@ -47,3 +47,4 @@ vcpkg_installed/
 HandTracker/libs/tensorflow/tflite_build/
 
 
+.claude/settings.local.json
