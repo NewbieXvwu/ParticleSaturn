@@ -55,6 +55,8 @@ namespace Renderer {
 // 声明 (实现在 Renderer.cpp)
 unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc);
 unsigned int GenerateFBMTextureImpl(int width, int height);
+bool CheckShaderCompileStatus(unsigned int shader, const char* type);
+bool CheckProgramLinkStatus(unsigned int program);
 
 // 创建着色器程序 (转发到实现)
 inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc) {

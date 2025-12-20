@@ -5,18 +5,60 @@
 
 namespace Renderer {
 
+// 检查 shader 编译状态
+static bool CheckShaderCompile(unsigned int shader, const char* type) {
+    int success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
+        std::cerr << "[Renderer] " << type << " shader compile error: " << infoLog << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// 检查 program 链接状态
+static bool CheckProgramLink(unsigned int program) {
+    int success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(program, sizeof(infoLog), nullptr, infoLog);
+        std::cerr << "[Renderer] Program link error: " << infoLog << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// 公开的 shader 编译检查函数 (供外部使用，如 Compute Shader)
+bool CheckShaderCompileStatus(unsigned int shader, const char* type) {
+    return CheckShaderCompile(shader, type);
+}
+
+// 公开的 program 链接检查函数
+bool CheckProgramLinkStatus(unsigned int program) {
+    return CheckProgramLink(program);
+}
+
 // 创建着色器程序
 unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc) {
     unsigned int program = glCreateProgram();
     unsigned int vs      = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vertexSrc, 0);
     glCompileShader(vs);
+    CheckShaderCompile(vs, "Vertex");
+
     unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &fragmentSrc, 0);
     glCompileShader(fs);
+    CheckShaderCompile(fs, "Fragment");
+
     glAttachShader(program, vs);
     glAttachShader(program, fs);
     glLinkProgram(program);
+    CheckProgramLink(program);
+
     glDeleteShader(vs);
     glDeleteShader(fs);
     return program;

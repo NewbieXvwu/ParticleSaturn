@@ -159,9 +159,11 @@ int main() {
     unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(cs, 1, &Shaders::ComputeSaturn, 0);
     glCompileShader(cs);
+    Renderer::CheckShaderCompileStatus(cs, "Compute");
     unsigned int pComp = glCreateProgram();
     glAttachShader(pComp, cs);
     glLinkProgram(pComp);
+    Renderer::CheckProgramLinkStatus(pComp);
 
     // 离屏渲染 FBO
     unsigned int fbo, fboTex, rbo;
