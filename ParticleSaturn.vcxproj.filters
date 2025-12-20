@@ -24,6 +24,9 @@
     <ClCompile Include="src\Main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\Renderer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="libs\imgui\imgui.cpp">
       <Filter>libs\imgui</Filter>
     </ClCompile>
