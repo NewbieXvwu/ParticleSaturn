@@ -231,9 +231,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         frame_count++;
         debug_landmarks_valid = false;
 
-        cv::flip(frame, frame, 1);
-
-        cv::cvtColor(frame, frame_rgb, cv::COLOR_BGR2RGB);  // 复用预分配的 frame_rgb
+        // SIMD 优化: 合并翻转和颜色转换 (BGR -> Flipped RGB)
+        SIMDNormalize::FlipHorizontalAndBGR2RGB(frame.data, frame_rgb.data, frame.cols, frame.rows);
 
         std::vector<PalmDetection> palms = palm_detector.detect(frame_rgb, 0.4f, 0.3f);
 
@@ -365,7 +364,9 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             }
 
             cv::Mat debug_frame;
-            frame.copyTo(debug_frame);  // 只在调试模式下复制
+            // frame 是原始未翻转的 BGR，frame_rgb 是翻转后的 RGB
+            // 为了显示正确的镜像画面和对齐的关键点，我们需要显示翻转后的 BGR
+            cv::cvtColor(frame_rgb, debug_frame, cv::COLOR_RGB2BGR);
             int     img_w       = frame.cols;
             int     img_h       = frame.rows;
 

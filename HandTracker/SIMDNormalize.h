@@ -50,6 +50,13 @@ void NormalizeRGBRow(const uint8_t* src, float* dst, size_t pixel_count);
 // height: 图像高度（像素）
 void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int height);
 
+// 水平翻转 BGR 图像并转换为 RGB
+// src: 源图像数据 (uint8, BGR 交错)
+// dst: 目标图像数据 (uint8, RGB 交错)
+// width: 图像宽度
+// height: 图像高度
+void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int height);
+
 } // namespace SIMDNormalize
 
 #endif // SIMD_NORMALIZE_H
