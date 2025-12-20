@@ -455,12 +455,14 @@ int main() {
         glLineWidth(2.0f);
 
         // 使用预生成数字渲染 FPS
+        // 优化: 使用栈上 char 数组避免每帧 std::string 堆分配
         int displayFps = (int)currentFps;
-        std::string fpsStr = std::to_string(displayFps);
+        char fpsBuffer[8];
+        int fpsLen = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
         float xCursor = (float)g_scrWidth - 60.0f;
         float numSize = 20.0f;
-        for (int i = (int)fpsStr.length() - 1; i >= 0; i--) {
-            prebuiltDigits.DrawDigit(fpsStr[i] - '0', xCursor, (float)g_scrHeight - 40, numSize, uc.ui_uTransform);
+        for (int i = fpsLen - 1; i >= 0; i--) {
+            prebuiltDigits.DrawDigit(fpsBuffer[i] - '0', xCursor, (float)g_scrHeight - 40, numSize, uc.ui_uTransform);
             xCursor -= (numSize + 10.0f);
         }
 
