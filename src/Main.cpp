@@ -8,6 +8,9 @@
 #endif
 
 #include "DebugLog.h"
+#include "ErrorHandler.h"
+#include "CrashAnalyzer.h"
+#include "Localization.h"
 #include "HandTracker.h"
 #include "ParticleSystem.h"
 #include "Renderer.h"
@@ -45,13 +48,29 @@ float        g_currentPixelRatio   = 1.0f;
 
 std::map<ImGuiID, UIAnimState> g_animStates;
 
+// Global OpenGL info for crash reports
+std::string g_glVersion;
+std::string g_glRenderer;
+
+// File drop callback for crash analyzer
+void DropCallback(GLFWwindow* window, int count, const char** paths) {
+    for (int i = 0; i < count; i++) {
+        CrashAnalyzer::HandleFileDrop(paths[i]);
+    }
+}
+
 int main() {
+    // Initialize error handler first
+    ErrorHandler::Init();
+    ErrorHandler::SetStage(ErrorHandler::AppStage::STARTUP);
+
     // 重定向 cout 到调试日志
     static DebugStreamBuf debugBuf(std::cout.rdbuf());
     std::cout.rdbuf(&debugBuf);
 
-    std::cout << "[Main] Particle Saturn starting..." << std::endl;
+    std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
 
+    ErrorHandler::SetStage(ErrorHandler::AppStage::WINDOW_INIT);
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);  // 升级到 4.4 以支持 glBufferStorage
@@ -63,6 +82,14 @@ int main() {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     glfwSetFramebufferSizeCallback(window, WindowManager::FramebufferSizeCallback);
+    glfwSetDropCallback(window, DropCallback);
+
+    // Store OpenGL info for crash reports
+    ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
+    g_glVersion = (const char*)glGetString(GL_VERSION);
+    g_glRenderer = (const char*)glGetString(GL_RENDERER);
+    ErrorHandler::SetGPUInfo(g_glRenderer, g_glVersion);
+    std::cout << "[Main] OpenGL: " << g_glVersion << std::endl;
 
 #ifdef _WIN32
     ImmAssociateContext(glfwGetWin32Window(window), NULL);
@@ -80,6 +107,7 @@ int main() {
 #endif
 
     // 初始化手部追踪
+    ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
     bool handTrackerInitialized = false;
 #ifdef EMBED_MODELS
     std::cout << "[Main] Loading embedded models..." << std::endl;
@@ -99,23 +127,29 @@ int main() {
     }
     if (!InitTracker(0, nullptr)) {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker" << std::endl;
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false (embedded models)");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;
+        ErrorHandler::SetCameraInfo(0, 640, 480, true);
     }
 #else
     std::cout << "[Main] Initializing HandTracker..." << std::endl;
     if (!InitTracker(0, ".")) {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker DLL." << std::endl;
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;
+        ErrorHandler::SetCameraInfo(0, 640, 480, true);
     }
 #endif
 
+    ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
     UIManager::Init(window);
 
     // 创建着色器程序
+    ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
     unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
     unsigned int pStar   = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
     unsigned int pPlanet = Renderer::CreateProgram(Shaders::VertexPlanet, Shaders::FragmentPlanet);
@@ -170,9 +204,11 @@ int main() {
     glBindVertexArray(0);
 
     // 初始化粒子系统 (双缓冲)
+    ErrorHandler::SetStage(ErrorHandler::AppStage::PARTICLE_INIT);
     DoubleBufferSSBO particleBuffers;
     if (!ParticleSystem::InitParticlesGPU(particleBuffers)) {
         std::cerr << "Failed to initialize particle system" << std::endl;
+        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "ParticleSystem::InitParticlesGPU() returned false");
         glfwTerminate();
         return -1;
     }
@@ -232,6 +268,8 @@ int main() {
     float smoothedFps = 60.0f;  // 用于 LOD 决策的平滑 FPS
 
     // 主渲染循环
+    ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
+    int totalFrameCount = 0;
     while (!glfwWindowShouldClose(window)) {
         float t   = (float)glfwGetTime();
         float dt  = t - lastFrame;
@@ -321,7 +359,10 @@ int main() {
         glDispatchCompute((g_activeParticleCount + 255) / 256, 1, 1);
         // 交换缓冲，下一帧渲染刚写入的数据
         particleBuffers.Swap();
-        glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+        // 优化: 使用更精确的内存屏障组合
+        // GL_SHADER_STORAGE_BARRIER_BIT: 确保 SSBO 写入完成
+        // GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT: 确保顶点属性读取可见
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 
         // 渲染到 FBO
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -485,12 +526,23 @@ int main() {
         glBindVertexArray(vaoQuad);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
+        // Update error handler state
+        totalFrameCount++;
+        ErrorHandler::UpdateState(totalFrameCount, g_activeParticleCount, g_currentPixelRatio, handState.hasHand);
+
         // 渲染 ImGui
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        // Render error dialogs
+        ErrorHandler::RenderErrorDialog(dt);
+
+        // Render crash analyzer window
+        CrashAnalyzer::Render(g_enableImGuiBlur, fboBlur2.tex, g_scrWidth, g_scrHeight, g_isDarkMode);
+
         if (g_showDebugWindow) {
+            const auto& str = i18n::Get();
             ImGui::SetNextWindowSize(ImVec2(450 * g_dpiScale, 600 * g_dpiScale), ImGuiCond_FirstUseEver);
             ImGuiStyle& style            = ImGui::GetStyle();
             ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
@@ -499,7 +551,7 @@ int main() {
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin("Debug Panel", &g_showDebugWindow, ImGuiWindowFlags_NoCollapse);
+            ImGui::Begin(str.debugPanelTitle, &g_showDebugWindow, ImGuiWindowFlags_NoCollapse);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
@@ -523,63 +575,73 @@ int main() {
             }
             ImGui::PopStyleColor(4);
 
-            if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Text("FPS: %.1f", currentFps);
-                ImGui::Text("Particles: %u / %u", g_activeParticleCount, MAX_PARTICLES);
-                ImGui::Text("Pixel Ratio: %.2f", g_currentPixelRatio);
-                ImGui::Text("Resolution: %u x %u", g_scrWidth, g_scrHeight);
+            if (ImGui::CollapsingHeader(str.sectionPerformance, ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("%s: %.1f", str.fps, currentFps);
+                ImGui::Text("%s: %u / %u", str.particles, g_activeParticleCount, MAX_PARTICLES);
+                ImGui::Text("%s: %.2f", str.pixelRatio, g_currentPixelRatio);
+                ImGui::Text("%s: %u x %u", str.resolution, g_scrWidth, g_scrHeight);
             }
 
-            if (ImGui::CollapsingHeader("Hand Tracking", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Text("Hand Detected: %s", handState.hasHand ? "Yes" : "No");
-                ImGui::Text("Scale: %.3f", handState.scale);
+            if (ImGui::CollapsingHeader(str.sectionHandTracking, ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Text("%s: %s", str.handDetected, handState.hasHand ? str.yes : str.no);
+                ImGui::Text("%s: %.3f", str.scale, handState.scale);
                 ImGui::Text("Rot X: %.3f", handState.rotX);
                 ImGui::Text("Rot Y: %.3f", handState.rotY);
                 ImGui::Separator();
-                ImGui::Text("Animation Scale: %.3f", currentAnim.scale);
-                ImGui::Text("Animation RotX: %.3f", currentAnim.rotX);
-                ImGui::Text("Animation RotY: %.3f", currentAnim.rotY);
+                ImGui::Text("%s: %.3f", str.animationScale, currentAnim.scale);
+                ImGui::Text("%s: %.3f", str.animationRotX, currentAnim.rotX);
+                ImGui::Text("%s: %.3f", str.animationRotY, currentAnim.rotY);
                 ImGui::Separator();
                 bool cameraDebug = GetTrackerDebugMode();
-                if (UIManager::ToggleMD3("Show Camera Debug Window", &cameraDebug, dt)) {
+                if (UIManager::ToggleMD3(str.showCameraDebug, &cameraDebug, dt)) {
                     SetTrackerDebugMode(cameraDebug);
                     g_showCameraDebug = cameraDebug;
                 }
             }
 
-            if (ImGui::CollapsingHeader("Visuals")) {
-                if (UIManager::ToggleMD3("Dark Mode", &g_isDarkMode, dt)) {
+            if (ImGui::CollapsingHeader(str.sectionVisuals)) {
+                if (UIManager::ToggleMD3(str.darkMode, &g_isDarkMode, dt)) {
                     UIManager::ApplyMaterialYouTheme(g_isDarkMode);
                 }
                 ImGui::Dummy(ImVec2(0, 5));
-                UIManager::ToggleMD3("Glass Blur", &g_enableImGuiBlur, dt);
+                UIManager::ToggleMD3(str.glassBlur, &g_enableImGuiBlur, dt);
                 if (g_enableImGuiBlur) {
                     ImGui::Indent(10);
                     ImGui::SetNextItemWidth(-1);
-                    ImGui::SliderFloat("##BlurStr", &g_blurStrength, 0.0f, 5.0f, "Blur Strength: %.0f");
+                    char blurLabel[64];
+                    snprintf(blurLabel, sizeof(blurLabel), "%s: %%.0f", str.blurStrength);
+                    ImGui::SliderFloat("##BlurStr", &g_blurStrength, 0.0f, 5.0f, blurLabel);
                     ImGui::Unindent(10);
                 }
             }
 
-            if (ImGui::CollapsingHeader("Window")) {
+            if (ImGui::CollapsingHeader(str.sectionWindow)) {
                 const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
                 if (g_backdropIndex < (int)g_availableBackdrops.size()) {
-                    ImGui::Text("Backdrop: %s", backdropNames[g_availableBackdrops[g_backdropIndex]]);
+                    ImGui::Text("%s: %s", str.backdrop, backdropNames[g_availableBackdrops[g_backdropIndex]]);
                 }
-                ImGui::Text("Fullscreen: %s", g_isFullscreen ? "Yes" : "No");
-                ImGui::Text("Transparent: %s", g_useTransparent ? "Yes" : "No");
+                ImGui::Text("%s: %s", str.fullscreen, g_isFullscreen ? str.yes : str.no);
+                ImGui::Text("%s: %s", str.transparent, g_useTransparent ? str.yes : str.no);
             }
 
-            if (ImGui::CollapsingHeader("Log", ImGuiTreeNodeFlags_DefaultOpen)) {
-                if (ImGui::Button("Clear")) {
+            if (ImGui::CollapsingHeader(str.sectionLog, ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (ImGui::Button(str.clearLog)) {
                     DebugLog::Instance().Clear();
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Copy All")) {
+                if (ImGui::Button(str.copyAllLog)) {
                     std::string allText = DebugLog::Instance().GetAllText();
                     ImGui::SetClipboardText(allText.c_str());
                 }
                 DebugLog::Instance().Draw();
+            }
+
+            // Crash Analyzer button
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (ImGui::Button(str.crashAnalyzerButton, ImVec2(-1, 36 * g_dpiScale))) {
+                CrashAnalyzer::Open();
             }
 
             ImGui::End();
@@ -638,8 +700,10 @@ int main() {
     }
 
     // Cleanup
+    // ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
     std::cout << "[Main] Shutting down..." << std::endl;
     asyncTracker.Stop();  // 停止异步追踪线程
+    CrashAnalyzer::Shutdown();
     UIManager::Shutdown();
     ReleaseTracker();
     glfwTerminate();
