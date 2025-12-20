@@ -9,6 +9,9 @@
 #include <string>
 #include <thread>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include "CameraCapture.h"
 #include "HandLandmark.h"
 #include "PalmDetector.h"
@@ -56,23 +59,22 @@ class OneEuroFilter {
     float prevDx;
 
     float computeAlpha(float cutoff, float dt) {
-        float tau = 1.0f / (2.0f * 3.14159265f * cutoff);
+        float tau = 1.0f / (2.0f * (float)M_PI * cutoff);
         return 1.0f / (1.0f + tau / dt);
     }
 
     float lowPass(float x, float prev, float a) { return a * x + (1.0f - a) * prev; }
 };
 
-static std::atomic<bool> g_debug_mode           = false;
-static std::atomic<bool> g_debug_window_created = false;
-
+// 共享数据结构
 struct SharedData {
-    float scale;
-    float rot_x;
-    float rot_y;
-    bool  has_hand;
+    float scale = 1.0f;
+    float rot_x = 0.5f;
+    float rot_y = 0.5f;
+    bool  has_hand = false;
 };
 
+// 调试数据结构
 struct DebugData {
     cv::Mat                  frame;
     std::vector<cv::Point2f> landmarks;
@@ -82,28 +84,55 @@ struct DebugData {
     float                    rot_y         = 0.5f;
 };
 
-static std::thread*      g_worker_thread = nullptr;
-static std::atomic<bool> g_running       = false;
-static std::mutex        g_data_mutex;
-static std::mutex        g_debug_mutex;
-static SharedData        g_latest_data = {1.0f, 0.5f, 0.5f, false};
-static DebugData         g_debug_data;
+// TrackerContext - 封装所有全局状态，支持多实例（未来扩展）
+struct TrackerContext {
+    // 线程控制
+    std::thread*      worker_thread = nullptr;
+    std::atomic<bool> running{false};
 
-static float g_smooth_scale = 1.0f;
-static float g_smooth_rot_x = 0.5f;
-static float g_smooth_rot_y = 0.5f;
+    // 调试模式
+    std::atomic<bool> debug_mode{false};
+    std::atomic<bool> debug_window_created{false};
 
-// One Euro Filter 实例（位置用 0.5/0.5，缩放用 0.2/0.05 以获得更平滑的效果）
-static OneEuroFilter g_filter_rot_x(0.5f, 0.5f, 1.0f);
-static OneEuroFilter g_filter_rot_y(0.5f, 0.5f, 1.0f);
-static OneEuroFilter g_filter_scale(0.2f, 0.05f, 1.0f);
+    // 数据同步
+    std::mutex  data_mutex;
+    std::mutex  debug_mutex;
+    SharedData  latest_data;
+    DebugData   debug_data;
 
-const int HAND_LOST_FRAMES = 10;
+    // 平滑值
+    float smooth_scale = 1.0f;
+    float smooth_rot_x = 0.5f;
+    float smooth_rot_y = 0.5f;
 
-static const void* g_palm_model_data = nullptr;
-static size_t      g_palm_model_size = 0;
-static const void* g_hand_model_data = nullptr;
-static size_t      g_hand_model_size = 0;
+    // One Euro Filter 实例
+    OneEuroFilter filter_rot_x{0.5f, 0.5f, 1.0f};
+    OneEuroFilter filter_rot_y{0.5f, 0.5f, 1.0f};
+    OneEuroFilter filter_scale{0.2f, 0.05f, 1.0f};
+
+    // 模型数据 (嵌入式模型)
+    const void* palm_model_data = nullptr;
+    size_t      palm_model_size = 0;
+    const void* hand_model_data = nullptr;
+    size_t      hand_model_size = 0;
+
+    // 重置状态
+    void Reset() {
+        smooth_scale = 1.0f;
+        smooth_rot_x = 0.5f;
+        smooth_rot_y = 0.5f;
+        latest_data = SharedData{};
+        filter_rot_x.reset();
+        filter_rot_y.reset();
+        filter_scale.reset();
+    }
+};
+
+// 全局上下文单例
+static TrackerContext g_ctx;
+
+// 常量
+static constexpr int HAND_LOST_FRAMES = 10;
 
 static std::string JoinPath(const std::string& folder, const std::string& filename) {
     if (folder.empty()) {
@@ -123,9 +152,9 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     bool palm_loaded     = false;
     bool landmark_loaded = false;
 
-    if (g_palm_model_data && g_palm_model_size > 0) {
-        palm_loaded     = palm_detector.loadFromMemory(g_palm_model_data, g_palm_model_size);
-        landmark_loaded = landmark_detector.loadFromMemory(g_hand_model_data, g_hand_model_size);
+    if (g_ctx.palm_model_data && g_ctx.palm_model_size > 0) {
+        palm_loaded     = palm_detector.loadFromMemory(g_ctx.palm_model_data, g_ctx.palm_model_size);
+        landmark_loaded = landmark_detector.loadFromMemory(g_ctx.hand_model_data, g_ctx.hand_model_size);
     } else {
         std::string palm_path     = JoinPath(model_dir, "palm_detection_full.tflite");
         std::string landmark_path = JoinPath(model_dir, "hand_landmark_full.tflite");
@@ -135,13 +164,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     if (!palm_loaded) {
         std::cerr << "[HandTracker] Error: Failed to load palm detection model" << std::endl;
-        g_running = false;
+        g_ctx.running = false;
         return;
     }
 
     if (!landmark_loaded) {
         std::cerr << "[HandTracker] Error: Failed to load hand landmark model" << std::endl;
-        g_running = false;
+        g_ctx.running = false;
         return;
     }
 
@@ -160,7 +189,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     if (!camera_ok) {
         std::cerr << "[HandTracker] Error: Failed to open camera " << cam_id << std::endl;
-        g_running = false;
+        g_ctx.running = false;
         return;
     }
 
@@ -188,7 +217,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     // 自适应帧率控制：目标 30 FPS (约 33ms 每帧)
     const auto TARGET_FRAME_TIME = std::chrono::milliseconds(33);
 
-    while (g_running) {
+    while (g_ctx.running) {
         auto frame_start = std::chrono::steady_clock::now();
 
         if (!camera->getLatestFrame(frame)) {
@@ -302,9 +331,9 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
         // 使用 One Euro Filter 平滑数据
         const float dt = 1.0f / 30.0f;
-        g_smooth_rot_x = g_filter_rot_x.filter(target_rot_x, dt);
-        g_smooth_rot_y = g_filter_rot_y.filter(target_rot_y, dt);
-        g_smooth_scale = g_filter_scale.filter(target_scale, dt);
+        g_ctx.smooth_rot_x = g_ctx.filter_rot_x.filter(target_rot_x, dt);
+        g_ctx.smooth_rot_y = g_ctx.filter_rot_y.filter(target_rot_y, dt);
+        g_ctx.smooth_scale = g_ctx.filter_scale.filter(target_scale, dt);
 
         // 手部丢失延迟处理（避免闪烁）
         if (current_has_hand) {
@@ -318,18 +347,18 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         }
 
         {
-            std::lock_guard<std::mutex> lock(g_data_mutex);
-            g_latest_data.has_hand = smooth_has_hand;
-            g_latest_data.scale    = g_smooth_scale;
-            g_latest_data.rot_x    = g_smooth_rot_x;
-            g_latest_data.rot_y    = g_smooth_rot_y;
+            std::lock_guard<std::mutex> lock(g_ctx.data_mutex);
+            g_ctx.latest_data.has_hand = smooth_has_hand;
+            g_ctx.latest_data.scale    = g_ctx.smooth_scale;
+            g_ctx.latest_data.rot_x    = g_ctx.smooth_rot_x;
+            g_ctx.latest_data.rot_y    = g_ctx.smooth_rot_y;
         }
 
         // 调试窗口显示 (优化: 只在调试模式下才 clone frame)
-        if (g_debug_mode) {
-            if (!g_debug_window_created) {
+        if (g_ctx.debug_mode) {
+            if (!g_ctx.debug_window_created) {
                 cv::namedWindow("HandTracker Debug", cv::WINDOW_AUTOSIZE);
-                g_debug_window_created = true;
+                g_ctx.debug_window_created = true;
             }
 
             cv::Mat debug_frame;
@@ -392,8 +421,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             }
 
             char info[256];
-            snprintf(info, sizeof(info), "Scale: %.2f  RotX: %.2f  RotY: %.2f", g_smooth_scale, g_smooth_rot_x,
-                     g_smooth_rot_y);
+            snprintf(info, sizeof(info), "Scale: %.2f  RotX: %.2f  RotY: %.2f", g_ctx.smooth_scale, g_ctx.smooth_rot_x,
+                     g_ctx.smooth_rot_y);
             cv::putText(debug_frame, info, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
             char hand_info[128];
@@ -404,9 +433,9 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
             cv::imshow("HandTracker Debug", debug_frame);
             cv::waitKey(1);
-        } else if (g_debug_window_created) {
+        } else if (g_ctx.debug_window_created) {
             cv::destroyWindow("HandTracker Debug");
-            g_debug_window_created = false;
+            g_ctx.debug_window_created = false;
         }
 
         // 自适应等待：根据实际处理时间调整，保持目标帧率
@@ -418,39 +447,39 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         // 如果处理时间超过目标帧时间，不等待，直接处理下一帧
     }
 
-    if (g_debug_window_created) {
+    if (g_ctx.debug_window_created) {
         cv::destroyWindow("HandTracker Debug");
-        g_debug_window_created = false;
+        g_ctx.debug_window_created = false;
     }
     camera->close();
     std::cout << "[HandTracker] Worker thread stopped" << std::endl;
 }
 
 HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const void* hand_data, size_t hand_size) {
-    g_palm_model_data = palm_data;
-    g_palm_model_size = palm_size;
-    g_hand_model_data = hand_data;
-    g_hand_model_size = hand_size;
+    g_ctx.palm_model_data = palm_data;
+    g_ctx.palm_model_size = palm_size;
+    g_ctx.hand_model_data = hand_data;
+    g_ctx.hand_model_size = hand_size;
 }
 
 HAND_API bool InitTracker(int camera_id, const char* model_dir) {
-    if (g_running) {
+    if (g_ctx.running) {
         return true;
     }
 
-    if (model_dir == nullptr && g_palm_model_data == nullptr) {
+    if (model_dir == nullptr && g_ctx.palm_model_data == nullptr) {
         return false;
     }
 
-    g_running = true;
+    g_ctx.running = true;
     try {
-        g_worker_thread =
+        g_ctx.worker_thread =
             new std::thread(WorkerThreadFunc, camera_id, model_dir ? std::string(model_dir) : std::string());
     } catch (...) {
-        g_running = false;
-        if (g_worker_thread) {
-            delete g_worker_thread;
-            g_worker_thread = nullptr;
+        g_ctx.running = false;
+        if (g_ctx.worker_thread) {
+            delete g_ctx.worker_thread;
+            g_ctx.worker_thread = nullptr;
         }
         return false;
     }
@@ -458,51 +487,44 @@ HAND_API bool InitTracker(int camera_id, const char* model_dir) {
 }
 
 HAND_API bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand) {
-    std::lock_guard<std::mutex> lock(g_data_mutex);
+    std::lock_guard<std::mutex> lock(g_ctx.data_mutex);
 
     if (out_scale) {
-        *out_scale = g_latest_data.scale;
+        *out_scale = g_ctx.latest_data.scale;
     }
     if (out_rot_x) {
-        *out_rot_x = g_latest_data.rot_x;
+        *out_rot_x = g_ctx.latest_data.rot_x;
     }
     if (out_rot_y) {
-        *out_rot_y = g_latest_data.rot_y;
+        *out_rot_y = g_ctx.latest_data.rot_y;
     }
     if (out_has_hand) {
-        *out_has_hand = g_latest_data.has_hand;
+        *out_has_hand = g_ctx.latest_data.has_hand;
     }
 
-    return g_latest_data.has_hand;
+    return g_ctx.latest_data.has_hand;
 }
 
 HAND_API void ReleaseTracker() {
-    g_running = false;
-    if (g_worker_thread) {
-        if (g_worker_thread->joinable()) {
-            g_worker_thread->join();
+    g_ctx.running = false;
+    if (g_ctx.worker_thread) {
+        if (g_ctx.worker_thread->joinable()) {
+            g_ctx.worker_thread->join();
         }
-        delete g_worker_thread;
-        g_worker_thread = nullptr;
+        delete g_ctx.worker_thread;
+        g_ctx.worker_thread = nullptr;
     }
 
-    g_smooth_scale = 1.0f;
-    g_smooth_rot_x = 0.5f;
-    g_smooth_rot_y = 0.5f;
-    g_latest_data  = {1.0f, 0.5f, 0.5f, false};
-
-    // 重置滤波器
-    g_filter_rot_x.reset();
-    g_filter_rot_y.reset();
-    g_filter_scale.reset();
+    // 使用 Reset() 方法重置状态
+    g_ctx.Reset();
 }
 
 HAND_API void SetTrackerDebugMode(bool enabled) {
-    g_debug_mode = enabled;
+    g_ctx.debug_mode = enabled;
 }
 
 HAND_API bool GetTrackerDebugMode() {
-    return g_debug_mode;
+    return g_ctx.debug_mode;
 }
 
 HAND_API void SetTrackerSIMDMode(int mode) {
