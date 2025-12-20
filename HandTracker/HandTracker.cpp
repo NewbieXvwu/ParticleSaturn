@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include "CameraCapture.h"
 #include "HandLandmark.h"
 #include "PalmDetector.h"
 
@@ -143,29 +144,18 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         return;
     }
 
-    cv::VideoCapture cap;
-    bool             camera_ok = false;
+    // 创建摄像头捕获实例 (Windows: DirectShow 优先，fallback 到 OpenCV)
+    std::unique_ptr<ICameraCapture> camera = CreateCameraCapture();
+    bool                            camera_ok = camera->open(cam_id, 640, 480);
 
-    try {
-        cap.open(cam_id, cv::CAP_DSHOW);
-    } catch (...) {}
-    if (cap.isOpened()) {
-        camera_ok = true;
-    } else {
-        try {
-            cap.open(cam_id, cv::CAP_MSMF);
-        } catch (...) {}
-        if (cap.isOpened()) {
-            camera_ok = true;
-        } else {
-            try {
-                cap.open(cam_id, cv::CAP_ANY);
-            } catch (...) {}
-            if (cap.isOpened()) {
-                camera_ok = true;
-            }
-        }
+    // 如果 DirectShow 失败，尝试 OpenCV fallback
+#ifdef _WIN32
+    if (!camera_ok) {
+        std::cout << "[HandTracker] DirectShow failed, trying OpenCV fallback..." << std::endl;
+        camera    = std::make_unique<OpenCVCapture>();
+        camera_ok = camera->open(cam_id, 640, 480);
     }
+#endif
 
     if (!camera_ok) {
         std::cerr << "[HandTracker] Error: Failed to open camera " << cam_id << std::endl;
@@ -173,14 +163,14 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         return;
     }
 
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    int frameWidth  = camera->getWidth();
+    int frameHeight = camera->getHeight();
 
     std::cout << "[HandTracker] Camera opened, starting detection loop..." << std::endl;
 
     // 预分配 cv::Mat 缓冲区，避免每帧重新分配内存
-    cv::Mat frame(480, 640, CV_8UC3);
-    cv::Mat frame_rgb(480, 640, CV_8UC3);
+    cv::Mat frame(frameHeight, frameWidth, CV_8UC3);
+    cv::Mat frame_rgb(frameHeight, frameWidth, CV_8UC3);
     cv::Mat roi_image(224, 224, CV_8UC3);
 
     // 预分配 vector 缓冲区
@@ -200,7 +190,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     while (g_running) {
         auto frame_start = std::chrono::steady_clock::now();
 
-        if (!cap.read(frame)) {
+        if (!camera->getLatestFrame(frame)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
@@ -431,7 +421,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         cv::destroyWindow("HandTracker Debug");
         g_debug_window_created = false;
     }
-    cap.release();
+    camera->close();
     std::cout << "[HandTracker] Worker thread stopped" << std::endl;
 }
 
