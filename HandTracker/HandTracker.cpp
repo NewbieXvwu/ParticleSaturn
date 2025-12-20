@@ -12,6 +12,7 @@
 #include "CameraCapture.h"
 #include "HandLandmark.h"
 #include "PalmDetector.h"
+#include "SIMDNormalize.h"
 
 // One Euro Filter - 低通滤波器，用于平滑手势追踪数据
 // 核心特性：静止时强平滑，快速移动时弱平滑以保持响应性
@@ -502,4 +503,16 @@ HAND_API void SetTrackerDebugMode(bool enabled) {
 
 HAND_API bool GetTrackerDebugMode() {
     return g_debug_mode;
+}
+
+HAND_API void SetTrackerSIMDMode(int mode) {
+    SIMDNormalize::SetMode(static_cast<SIMDMode>(mode));
+}
+
+HAND_API int GetTrackerSIMDMode() {
+    return static_cast<int>(SIMDNormalize::GetMode());
+}
+
+HAND_API const char* GetTrackerSIMDImplementation() {
+    return SIMDNormalize::GetCurrentImplementation();
 }

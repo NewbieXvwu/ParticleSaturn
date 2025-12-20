@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "SIMDNormalize.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -75,28 +76,22 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
     float* input_tensor = interpreter->typed_tensor<float>(input_idx);
 
     // Optimize: Direct copy, normalize (and optionally flip) to float tensor
-    // This avoids cv::flip (allocation), convertTo (allocation), and memcpy
-    for (int y = 0; y < input_size; ++y) {
-        const uint8_t* row_ptr     = m_resized.ptr<uint8_t>(y);
-        float*         dst_row_ptr = input_tensor + y * input_size * 3;
-
-        if (is_left_hand) {
-            // Horizontal flip on-the-fly
+    // 使用 SIMD 加速的归一化（非翻转情况）
+    if (is_left_hand) {
+        // Horizontal flip on-the-fly - 需要标量实现保持翻转逻辑
+        for (int y = 0; y < input_size; ++y) {
+            const uint8_t* row_ptr     = m_resized.ptr<uint8_t>(y);
+            float*         dst_row_ptr = input_tensor + y * input_size * 3;
             for (int x = 0; x < input_size; ++x) {
                 int src_idx            = (input_size - 1 - x) * 3;
                 dst_row_ptr[x * 3 + 0] = row_ptr[src_idx + 0] * (1.0f / 255.0f);
                 dst_row_ptr[x * 3 + 1] = row_ptr[src_idx + 1] * (1.0f / 255.0f);
                 dst_row_ptr[x * 3 + 2] = row_ptr[src_idx + 2] * (1.0f / 255.0f);
             }
-        } else {
-            // Direct copy
-            for (int x = 0; x < input_size; ++x) {
-                int src_idx            = x * 3;
-                dst_row_ptr[x * 3 + 0] = row_ptr[src_idx + 0] * (1.0f / 255.0f);
-                dst_row_ptr[x * 3 + 1] = row_ptr[src_idx + 1] * (1.0f / 255.0f);
-                dst_row_ptr[x * 3 + 2] = row_ptr[src_idx + 2] * (1.0f / 255.0f);
-            }
         }
+    } else {
+        // 使用 SIMD 加速的归一化
+        SIMDNormalize::NormalizeRGB(m_resized.data, input_tensor, input_size * input_size);
     }
 
     // Run inference

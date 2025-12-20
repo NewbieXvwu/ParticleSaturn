@@ -8,6 +8,14 @@
 #define HAND_API __declspec(dllimport)
 #endif
 
+// SIMD 模式枚举（与内部 SIMDMode 对应）
+enum HandTrackerSIMDMode {
+    SIMD_AUTO = 0,    // 自动检测最佳实现
+    SIMD_AVX2 = 1,    // 强制使用 AVX2
+    SIMD_SSE = 2,     // 强制使用 SSE
+    SIMD_SCALAR = 3   // 强制使用标量实现
+};
+
 extern "C" {
 // 设置嵌入式模型数据（静态链接时在 InitTracker 前调用）
 HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const void* hand_data, size_t hand_size);
@@ -32,4 +40,13 @@ HAND_API void SetTrackerDebugMode(bool enabled);
 
 // 获取当前调试模式状态
 HAND_API bool GetTrackerDebugMode();
+
+// 设置 SIMD 模式 (用于图像归一化)
+HAND_API void SetTrackerSIMDMode(int mode);
+
+// 获取当前 SIMD 模式
+HAND_API int GetTrackerSIMDMode();
+
+// 获取当前 SIMD 实现名称
+HAND_API const char* GetTrackerSIMDImplementation();
 }

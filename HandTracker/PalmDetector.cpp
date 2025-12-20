@@ -7,6 +7,7 @@
 #include <iostream>
 #include <numeric>
 
+#include "SIMDNormalize.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -244,17 +245,9 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
     int    input_idx    = interpreter->inputs()[0];
     float* input_tensor = interpreter->typed_tensor<float>(input_idx);
 
-    // Optimize: Direct copy and normalize from resized uint8 image to float tensor
-    // This avoids allocating a large float Mat and an extra memcpy
-    const uint8_t* src_ptr     = m_resized.data;
-    float*         dst_ptr     = input_tensor;
-    int            pixel_count = input_size * input_size;
-
-    for (int i = 0; i < pixel_count; ++i) {
-        dst_ptr[i * 3 + 0] = src_ptr[i * 3 + 0] * (1.0f / 255.0f);
-        dst_ptr[i * 3 + 1] = src_ptr[i * 3 + 1] * (1.0f / 255.0f);
-        dst_ptr[i * 3 + 2] = src_ptr[i * 3 + 2] * (1.0f / 255.0f);
-    }
+    // 优化: 使用 SIMD 加速的归一化 (AVX2/SSE 自动检测)
+    int pixel_count = input_size * input_size;
+    SIMDNormalize::NormalizeRGB(m_resized.data, input_tensor, pixel_count);
 
     // Run inference
     if (interpreter->Invoke() != kTfLiteOk) {
