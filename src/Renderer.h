@@ -2,6 +2,9 @@
 
 // 渲染器 - OpenGL 渲染工具、FBO 管理、着色器编译
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include "Utils.h"  // 需要 PlanetInstance 定义
 
 // 模糊效果帧缓冲
@@ -216,7 +219,7 @@ inline void CreateSphere(unsigned int& vao, unsigned int& indexCount, float radi
     std::vector<float>        data;
     std::vector<unsigned int> indices;
     int                       X = 64, Y = 64;
-    float                     PI = 3.14159f;
+    const float               PI = (float)M_PI;
 
     for (int y = 0; y <= Y; y++) {
         for (int x = 0; x <= X; x++) {
@@ -268,7 +271,7 @@ struct CachedSphere {
 
         std::vector<float>        data;
         std::vector<unsigned int> indices;
-        const float PI = 3.14159265f;
+        const float PI = (float)M_PI;
 
         // 生成单位球体顶点
         for (int y = 0; y <= segments; y++) {
