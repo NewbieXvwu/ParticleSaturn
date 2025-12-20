@@ -47,8 +47,6 @@ unsigned int g_activeParticleCount = MAX_PARTICLES;
 float        g_currentPixelRatio   = 1.0f;
 float        g_cachedDensityComp   = 0.6f;  // 缓存的密度补偿值，只在 LOD 变化时更新
 
-std::unordered_map<ImGuiID, UIAnimState> g_animStates;
-
 // Global OpenGL info for crash reports
 std::string g_glVersion;
 std::string g_glRenderer;
