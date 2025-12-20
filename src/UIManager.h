@@ -1,13 +1,8 @@
 #pragma once
 // UI 管理器 - ImGui 初始化、Material You 主题、自定义控件
 
+#include "AppState.h"
 #include "Utils.h"
-
-extern float g_dpiScale;
-extern bool  g_isDarkMode;
-extern bool  g_enableImGuiBlur;
-extern float g_blurStrength;
-extern bool  g_showDebugWindow;
 
 // UI 控件动画状态
 struct UIAnimState {
@@ -26,7 +21,7 @@ void ApplyMaterialYouTheme(bool dark);
 bool ToggleMD3(const char* label, bool* v, float dt);
 
 // 初始化 ImGui
-void Init(GLFWwindow* window);
+void Init(GLFWwindow* window, AppState& state);
 
 // 关闭 ImGui
 void Shutdown();

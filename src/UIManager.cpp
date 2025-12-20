@@ -7,6 +7,9 @@
 // 全局变量定义
 std::unordered_map<ImGuiID, UIAnimState> g_animStates;
 
+// 静态 AppState 指针，用于需要访问状态的内部函数
+static AppState* s_appState = nullptr;
+
 namespace UIManager {
 
 // 应用 Material You 主题
@@ -112,8 +115,8 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
     s.knobPos.Update(dt, 14.0f);
     s.knobSize.Update(dt, 20.0f);
 
-    float       height = 28.0f * g_dpiScale;
-    float       width  = 52.0f * g_dpiScale;
+    float       height = 28.0f * (s_appState ? s_appState->ui.dpiScale : 1.0f);
+    float       width  = 52.0f * (s_appState ? s_appState->ui.dpiScale : 1.0f);
     ImVec2      p      = GetCursorScreenPos();
     ImDrawList* dl     = GetWindowDrawList();
 
@@ -158,7 +161,9 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
 }
 
 // 初始化 ImGui
-void Init(GLFWwindow* window) {
+void Init(GLFWwindow* window, AppState& state) {
+    s_appState = &state;  // 保存状态指针
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -168,16 +173,16 @@ void Init(GLFWwindow* window) {
     // 高 DPI 缩放
     float xscale, yscale;
     glfwGetWindowContentScale(window, &xscale, &yscale);
-    g_dpiScale = (xscale > yscale) ? xscale : yscale;
-    if (g_dpiScale < 1.0f) {
-        g_dpiScale = 1.0f;
+    state.ui.dpiScale = (xscale > yscale) ? xscale : yscale;
+    if (state.ui.dpiScale < 1.0f) {
+        state.ui.dpiScale = 1.0f;
     }
 
     // 加载系统字体
     ImFontConfig fontCfg;
     fontCfg.OversampleH = 2;
     fontCfg.OversampleV = 2;
-    float fontSize      = 16.0f * g_dpiScale;
+    float fontSize      = 16.0f * state.ui.dpiScale;
 
     // English fonts (primary) - fallback order
     const char* englishFonts[] = {
@@ -227,12 +232,12 @@ void Init(GLFWwindow* window) {
         std::cout << "[UI] Warning: No Chinese font loaded" << std::endl;
     }
 
-    ApplyMaterialYouTheme(g_isDarkMode);
+    ApplyMaterialYouTheme(state.ui.isDarkMode);
 
     ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(g_dpiScale);
-    std::cout << "[Main] DPI scale: " << g_dpiScale << std::endl;
-    std::cout << "[Main] Theme: " << (g_isDarkMode ? "Dark" : "Light") << std::endl;
+    style.ScaleAllSizes(state.ui.dpiScale);
+    std::cout << "[Main] DPI scale: " << state.ui.dpiScale << std::endl;
+    std::cout << "[Main] Theme: " << (state.ui.isDarkMode ? "Dark" : "Light") << std::endl;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
@@ -241,6 +246,7 @@ void Init(GLFWwindow* window) {
 
 // 关闭 ImGui
 void Shutdown() {
+    s_appState = nullptr;
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

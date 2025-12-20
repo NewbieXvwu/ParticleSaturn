@@ -1,6 +1,8 @@
 #pragma once
 // 窗口管理器 - Windows DWM 效果、全屏、主题管理
 
+#include "AppState.h"
+
 #ifdef _WIN32
 #include <dwmapi.h>
 #include <imm.h>
@@ -29,18 +31,8 @@ enum {
 #include <GLFW/glfw3native.h>
 #endif
 
-// 全局窗口状态
-extern unsigned int     g_scrWidth;
-extern unsigned int     g_scrHeight;
-extern bool             g_windowResized;
-extern std::vector<int> g_availableBackdrops;
-extern int              g_backdropIndex;
-extern bool             g_useTransparent;
-extern bool             g_isFullscreen;
-extern int              g_windowedX, g_windowedY;
-extern int              g_windowedW, g_windowedH;
-extern bool             g_isDarkMode;
-extern float            g_dpiScale;
+#include <GLFW/glfw3.h>
+#include <iostream>
 
 namespace WindowManager {
 
@@ -69,9 +61,9 @@ inline void SetTitleBarDarkMode(HWND hwnd, bool dark) {
 }
 
 // 检测可用的背景效果
-inline void DetectAvailableBackdrops(HWND hwnd) {
-    g_availableBackdrops.clear();
-    g_availableBackdrops.push_back(0); // Solid black always available
+inline void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
+    state.backdrop.availableBackdrops.clear();
+    state.backdrop.availableBackdrops.push_back(0); // Solid black always available
 
     MARGINS margins = {-1, -1, -1, -1};
     DwmExtendFrameIntoClientArea(hwnd, &margins);
@@ -80,7 +72,7 @@ inline void DetectAvailableBackdrops(HWND hwnd) {
     int     backdropType = 3;
     HRESULT hr           = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
     if (SUCCEEDED(hr)) {
-        g_availableBackdrops.push_back(1);
+        state.backdrop.availableBackdrops.push_back(1);
         std::cout << "[DWM] Acrylic: Supported" << std::endl;
     } else {
         std::cout << "[DWM] Acrylic: Not supported (0x" << std::hex << hr << std::dec << ")" << std::endl;
@@ -90,7 +82,7 @@ inline void DetectAvailableBackdrops(HWND hwnd) {
     backdropType = 2;
     hr           = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
     if (SUCCEEDED(hr)) {
-        g_availableBackdrops.push_back(2);
+        state.backdrop.availableBackdrops.push_back(2);
         std::cout << "[DWM] Mica: Supported" << std::endl;
     } else {
         std::cout << "[DWM] Mica: Not supported (0x" << std::hex << hr << std::dec << ")" << std::endl;
@@ -103,7 +95,7 @@ inline void DetectAvailableBackdrops(HWND hwnd) {
     DwmExtendFrameIntoClientArea(hwnd, &margins);
 
     std::cout << "[DWM] Available backdrops: ";
-    for (int m : g_availableBackdrops) {
+    for (int m : state.backdrop.availableBackdrops) {
         const char* names[] = {"Black", "Acrylic", "Mica"};
         std::cout << names[m] << " ";
     }
@@ -111,14 +103,14 @@ inline void DetectAvailableBackdrops(HWND hwnd) {
 }
 
 // 设置背景模式：0=纯黑, 1=Acrylic, 2=Mica
-inline void SetBackdropMode(HWND hwnd, int mode) {
+inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
     int resetType = 1;
     DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
 
     if (mode == 0) {
         MARGINS margins = {0, 0, 0, 0};
         DwmExtendFrameIntoClientArea(hwnd, &margins);
-        g_useTransparent = false;
+        state.backdrop.useTransparent = false;
         std::cout << "[DWM] Backdrop: Solid Black" << std::endl;
     } else {
         MARGINS margins = {-1, -1, -1, -1};
@@ -126,7 +118,7 @@ inline void SetBackdropMode(HWND hwnd, int mode) {
 
         int     backdropType = (mode == 1) ? 3 : 2;
         HRESULT hr       = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
-        g_useTransparent = true;
+        state.backdrop.useTransparent = true;
 
         const char* name = (mode == 1) ? "Acrylic" : "Mica";
         std::cout << "[DWM] Backdrop: " << name << " (type=" << backdropType << ") "
@@ -137,20 +129,21 @@ inline void SetBackdropMode(HWND hwnd, int mode) {
 }
 
 // 切换全屏模式
-inline void ToggleFullscreen(GLFWwindow* window) {
-    if (!g_isFullscreen) {
-        glfwGetWindowPos(window, &g_windowedX, &g_windowedY);
-        glfwGetWindowSize(window, &g_windowedW, &g_windowedH);
+inline void ToggleFullscreen(GLFWwindow* window, AppState& state) {
+    if (!state.window.isFullscreen) {
+        glfwGetWindowPos(window, &state.window.windowedX, &state.window.windowedY);
+        glfwGetWindowSize(window, &state.window.windowedW, &state.window.windowedH);
 
         GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-        g_isFullscreen = true;
+        state.window.isFullscreen = true;
         std::cout << "[Window] Fullscreen: " << mode->width << "x" << mode->height << std::endl;
     } else {
-        glfwSetWindowMonitor(window, nullptr, g_windowedX, g_windowedY, g_windowedW, g_windowedH, 0);
-        g_isFullscreen = false;
-        std::cout << "[Window] Windowed: " << g_windowedW << "x" << g_windowedH << std::endl;
+        glfwSetWindowMonitor(window, nullptr, state.window.windowedX, state.window.windowedY,
+                             state.window.windowedW, state.window.windowedH, 0);
+        state.window.isFullscreen = false;
+        std::cout << "[Window] Windowed: " << state.window.windowedW << "x" << state.window.windowedH << std::endl;
     }
 }
 
@@ -164,11 +157,11 @@ inline LRESULT CALLBACK ThemeAwareWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     if (msg == WM_SETTINGCHANGE) {
         if (lParam && wcscmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0) {
             bool newDarkMode = IsSystemDarkMode();
-            if (newDarkMode != g_isDarkMode) {
-                g_isDarkMode = newDarkMode;
-                OnThemeChanged(g_isDarkMode);
-                std::cout << "[Main] ImGui theme changed: " << (g_isDarkMode ? "Dark" : "Light") << std::endl;
-            }
+            // 通过 GLFW 窗口获取 AppState
+            GLFWwindow* glfwWindow = nullptr;
+            // 注意：这里我们需要一个机制来获取 GLFWwindow，但 WndProc 中无法直接获取
+            // 暂时保持使用回调机制
+            OnThemeChanged(newDarkMode);
         }
     }
     return CallWindowProcW(g_originalWndProc, hwnd, msg, wParam, lParam);
@@ -186,9 +179,12 @@ inline void InstallThemeChangeHook(HWND hwnd) {
 // 帧缓冲大小变更回调
 inline void FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
     if (width > 0 && height > 0) {
-        g_scrWidth      = width;
-        g_scrHeight     = height;
-        g_windowResized = true;
+        AppState* state = GetAppState(window);
+        if (state) {
+            state->window.width = width;
+            state->window.height = height;
+            state->window.resized = true;
+        }
         glViewport(0, 0, width, height);
     }
 }

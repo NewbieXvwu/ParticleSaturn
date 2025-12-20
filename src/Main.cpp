@@ -7,6 +7,7 @@
 #include "Resource.h"
 #endif
 
+#include "AppState.h"
 #include "DebugLog.h"
 #include "ErrorHandler.h"
 #include "CrashAnalyzer.h"
@@ -19,37 +20,9 @@
 #include "Utils.h"
 #include "WindowManager.h"
 
-// 全局状态
+// 初始窗口尺寸常量
 const unsigned int INIT_WIDTH  = 1920;
 const unsigned int INIT_HEIGHT = 1080;
-
-unsigned int g_scrWidth      = INIT_WIDTH;
-unsigned int g_scrHeight     = INIT_HEIGHT;
-bool         g_windowResized = true;
-
-std::vector<int> g_availableBackdrops = {0};
-int              g_backdropIndex      = 0;
-bool             g_useTransparent     = false;
-
-bool g_isFullscreen = false;
-int  g_windowedX = 100, g_windowedY = 100;
-int  g_windowedW = INIT_WIDTH, g_windowedH = INIT_HEIGHT;
-
-bool  g_showDebugWindow = false;
-bool  g_showCameraDebug = false;
-float g_dpiScale        = 1.0f;
-bool  g_isDarkMode      = true;
-
-bool  g_enableImGuiBlur = true;
-float g_blurStrength    = 2.0f;
-
-unsigned int g_activeParticleCount = MAX_PARTICLES;
-float        g_currentPixelRatio   = 1.0f;
-float        g_cachedDensityComp   = 0.6f;  // 缓存的密度补偿值，只在 LOD 变化时更新
-
-// Global OpenGL info for crash reports
-std::string g_glVersion;
-std::string g_glRenderer;
 
 // File drop callback for crash analyzer
 void DropCallback(GLFWwindow* window, int count, const char** paths) {
@@ -59,6 +32,10 @@ void DropCallback(GLFWwindow* window, int count, const char** paths) {
 }
 
 int main() {
+    // 创建应用程序状态
+    AppState appState;
+    appState.InitDefaults(MAX_PARTICLES);
+
     // Initialize error handler first
     ErrorHandler::Init();
     ErrorHandler::SetStage(ErrorHandler::AppStage::STARTUP);
@@ -80,15 +57,19 @@ int main() {
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+
+    // 设置 AppState 到窗口，供回调函数使用
+    SetAppState(window, &appState);
+
     glfwSetFramebufferSizeCallback(window, WindowManager::FramebufferSizeCallback);
     glfwSetDropCallback(window, DropCallback);
 
     // Store OpenGL info for crash reports
     ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
-    g_glVersion = (const char*)glGetString(GL_VERSION);
-    g_glRenderer = (const char*)glGetString(GL_RENDERER);
-    ErrorHandler::SetGPUInfo(g_glRenderer, g_glVersion);
-    std::cout << "[Main] OpenGL: " << g_glVersion << std::endl;
+    appState.gl.version = (const char*)glGetString(GL_VERSION);
+    appState.gl.renderer = (const char*)glGetString(GL_RENDERER);
+    ErrorHandler::SetGPUInfo(appState.gl.renderer, appState.gl.version);
+    std::cout << "[Main] OpenGL: " << appState.gl.version << std::endl;
 
 #ifdef _WIN32
     ImmAssociateContext(glfwGetWin32Window(window), NULL);
@@ -96,12 +77,12 @@ int main() {
     HWND hwnd = glfwGetWin32Window(window);
     if (hwnd) {
         WindowManager::SetTitleBarDarkMode(hwnd, true);
-        g_isDarkMode = WindowManager::IsSystemDarkMode();
-        std::cout << "[DWM] System theme: " << (g_isDarkMode ? "Dark" : "Light") << std::endl;
+        appState.ui.isDarkMode = WindowManager::IsSystemDarkMode();
+        std::cout << "[DWM] System theme: " << (appState.ui.isDarkMode ? "Dark" : "Light") << std::endl;
         WindowManager::InstallThemeChangeHook(hwnd);
-        WindowManager::DetectAvailableBackdrops(hwnd);
-        g_backdropIndex = (int)g_availableBackdrops.size() - 1;
-        WindowManager::SetBackdropMode(hwnd, g_availableBackdrops[g_backdropIndex]);
+        WindowManager::DetectAvailableBackdrops(hwnd, appState);
+        appState.backdrop.backdropIndex = (int)appState.backdrop.availableBackdrops.size() - 1;
+        WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
     }
 #endif
 
@@ -145,7 +126,7 @@ int main() {
 #endif
 
     ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
-    UIManager::Init(window);
+    UIManager::Init(window, appState);
 
     // 创建着色器程序
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
@@ -185,12 +166,12 @@ int main() {
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     };
-    resizeFBO(g_scrWidth, g_scrHeight);
+    resizeFBO(appState.window.width, appState.window.height);
 
     // 模糊效果 FBO
     BlurFramebuffer fboBlur1, fboBlur2;
-    fboBlur1.Init(g_scrWidth / 6, g_scrHeight / 6);
-    fboBlur2.Init(g_scrWidth / 6, g_scrHeight / 6);
+    fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
+    fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
 
     // 全屏四边形 VAO
     unsigned int vaoQuad, vboQuad;
@@ -246,9 +227,9 @@ int main() {
     Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI, pBlur, pQuad);
 
     // 投影和视图矩阵
-    glm::mat4 proj   = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
+    glm::mat4 proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
     glm::mat4 view   = glm::lookAt(glm::vec3(0, 0, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    glm::mat4 projUI = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
+    glm::mat4 projUI = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
 
 
     // 动画状态
@@ -276,13 +257,13 @@ int main() {
         lastFrame = t;
 
         // 处理窗口大小变化
-        if (g_windowResized) {
-            g_windowResized = false;
-            proj            = glm::perspective(1.047f, (float)g_scrWidth / g_scrHeight, 1.f, 10000.f);
-            projUI          = glm::ortho(0.0f, (float)g_scrWidth, 0.0f, (float)g_scrHeight);
-            resizeFBO(g_scrWidth, g_scrHeight);
-            fboBlur1.Init(g_scrWidth / 6, g_scrHeight / 6);
-            fboBlur2.Init(g_scrWidth / 6, g_scrHeight / 6);
+        if (appState.window.resized) {
+            appState.window.resized = false;
+            proj            = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
+            projUI          = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
+            resizeFBO(appState.window.width, appState.window.height);
+            fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
+            fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
         }
 
         // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
@@ -304,20 +285,20 @@ int main() {
             // 扩展滞后区间: 38-57 FPS 进一步减少边界震荡
             if (smoothedFps < 38.0f) {
                 // 更保守的降质策略: 0.95 替代 0.9
-                if (g_activeParticleCount > MIN_PARTICLES) {
-                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.95f);
+                if (appState.render.activeParticleCount > MIN_PARTICLES) {
+                    appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 0.95f);
                     particleCountChanged = true;
-                } else if (g_currentPixelRatio > 0.7f) {
-                    g_currentPixelRatio -= 0.03f;
+                } else if (appState.render.pixelRatio > 0.7f) {
+                    appState.render.pixelRatio -= 0.03f;
                     pixelRatioChanged = true;
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
-                if (g_currentPixelRatio < 1.0f) {
-                    g_currentPixelRatio += 0.03f;
+                if (appState.render.pixelRatio < 1.0f) {
+                    appState.render.pixelRatio += 0.03f;
                     pixelRatioChanged = true;
-                } else if (g_activeParticleCount < MAX_PARTICLES) {
-                    g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.05f);
+                } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
+                    appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
                     particleCountChanged = true;
                 }
             }
@@ -325,13 +306,13 @@ int main() {
             // 更新 Indirect Draw Buffer 中的粒子数量
             if (particleCountChanged) {
                 glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
-                glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &g_activeParticleCount);
+                glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.activeParticleCount);
             }
 
             // 优化: 只在粒子数或像素比例变化时重新计算密度补偿
             if (particleCountChanged || pixelRatioChanged) {
-                float ratio = (float)g_activeParticleCount / MAX_PARTICLES;
-                g_cachedDensityComp = 0.6f / pow(ratio, 0.7f) / pow(g_currentPixelRatio, 0.5f);
+                float ratio = (float)appState.render.activeParticleCount / MAX_PARTICLES;
+                appState.render.densityComp = 0.6f / pow(ratio, 0.7f) / pow(appState.render.pixelRatio, 0.5f);
             }
         }
 
@@ -362,8 +343,8 @@ int main() {
         glUniform1f(uc.comp_uDt, dt);
         glUniform1f(uc.comp_uHandScale, currentAnim.scale);
         glUniform1f(uc.comp_uHandHas, handState.hasHand ? 1.0f : 0.0f);
-        glUniform1ui(uc.comp_uParticleCount, g_activeParticleCount);
-        glDispatchCompute((g_activeParticleCount + 255) / 256, 1, 1);
+        glUniform1ui(uc.comp_uParticleCount, appState.render.activeParticleCount);
+        glDispatchCompute((appState.render.activeParticleCount + 255) / 256, 1, 1);
         // 交换缓冲，下一帧渲染刚写入的数据
         particleBuffers.Swap();
         // 优化: 使用更精确的内存屏障组合
@@ -391,7 +372,7 @@ int main() {
         glUniform1f(uc.star_uTime, t);
         glBindVertexArray(vaoStars);
         // 星空 LOD: 低分辨率时减少星星数量 (对视觉影响极小)
-        unsigned int starLODCount = (g_currentPixelRatio < 0.85f)
+        unsigned int starLODCount = (appState.render.pixelRatio < 0.85f)
             ? (unsigned int)(STAR_COUNT * 0.6f)   // 60% 星星在低分辨率模式
             : STAR_COUNT;
         glDrawArrays(GL_POINTS, 0, starLODCount);
@@ -403,9 +384,9 @@ int main() {
         glUniformMatrix4fv(uc.sat_model, 1, 0, &mSat[0][0]);
         glUniform1f(uc.sat_uTime, t);
         glUniform1f(uc.sat_uScale, currentAnim.scale);
-        glUniform1f(uc.sat_uPixelRatio, g_currentPixelRatio);
-        glUniform1f(uc.sat_uDensityComp, g_cachedDensityComp);  // 使用缓存值，避免每帧计算
-        glUniform1f(uc.sat_uScreenHeight, (float)g_scrHeight);
+        glUniform1f(uc.sat_uPixelRatio, appState.render.pixelRatio);
+        glUniform1f(uc.sat_uDensityComp, appState.render.densityComp);  // 使用缓存值，避免每帧计算
+        glUniform1f(uc.sat_uScreenHeight, (float)appState.window.height);
         glBindVertexArray(particleBuffers.GetRenderVAO());
         // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
@@ -461,17 +442,17 @@ int main() {
         int displayFps = (int)currentFps;
         char fpsBuffer[8];
         int fpsLen = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
-        float xCursor = (float)g_scrWidth - 60.0f;
+        float xCursor = (float)appState.window.width - 60.0f;
         float numSize = 20.0f;
         for (int i = fpsLen - 1; i >= 0; i--) {
-            prebuiltDigits.DrawDigit(fpsBuffer[i] - '0', xCursor, (float)g_scrHeight - 40, numSize, uc.ui_uTransform);
+            prebuiltDigits.DrawDigit(fpsBuffer[i] - '0', xCursor, (float)appState.window.height - 40, numSize, uc.ui_uTransform);
             xCursor -= (numSize + 10.0f);
         }
 
         // 模糊处理 (Kawase Blur - 更高效的模糊算法)
         // 优化: 预先计算迭代次数，确保最终结果在 fboBlur2 中，避免额外的复制 pass
         GLuint finalBlurTex = fboBlur2.tex;  // 最终模糊结果纹理
-        if (g_enableImGuiBlur) {
+        if (appState.ui.enableBlur) {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
             glUseProgram(pBlur);
@@ -481,7 +462,7 @@ int main() {
             glBindVertexArray(vaoQuad);
 
             // Kawase Blur: 每次迭代增加采样偏移
-            int   iterations    = 3 + (int)g_blurStrength;
+            int   iterations    = 3 + (int)appState.ui.blurStrength;
             float offsets[]     = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
             int   maxIterations = sizeof(offsets) / sizeof(offsets[0]);
             iterations          = (iterations > maxIterations) ? maxIterations : iterations;
@@ -516,12 +497,12 @@ int main() {
 
             // 最终结果现在保证在 fboBlur2 中
             finalBlurTex = fboBlur2.tex;
-            glViewport(0, 0, g_scrWidth, g_scrHeight);
+            glViewport(0, 0, appState.window.width, appState.window.height);
         }
 
         // 合成到屏幕
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (g_useTransparent) {
+        if (appState.backdrop.useTransparent) {
             glClearColor(0, 0, 0, 0);
             glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         } else {
@@ -534,13 +515,13 @@ int main() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fboTex);
         glUniform1i(uc.quad_uTexture, 0);
-        glUniform1i(uc.quad_uTransparent, g_useTransparent ? 1 : 0);
+        glUniform1i(uc.quad_uTransparent, appState.backdrop.useTransparent ? 1 : 0);
         glBindVertexArray(vaoQuad);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         // Update error handler state
         totalFrameCount++;
-        ErrorHandler::UpdateState(totalFrameCount, g_activeParticleCount, g_currentPixelRatio, handState.hasHand);
+        ErrorHandler::UpdateState(totalFrameCount, appState.render.activeParticleCount, appState.render.pixelRatio, handState.hasHand);
 
         // 渲染 ImGui
         ImGui_ImplOpenGL3_NewFrame();
@@ -551,11 +532,11 @@ int main() {
         ErrorHandler::RenderErrorDialog(dt);
 
         // Render crash analyzer window
-        CrashAnalyzer::Render(g_enableImGuiBlur, fboBlur2.tex, g_scrWidth, g_scrHeight, g_isDarkMode);
+        CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height, appState.ui.isDarkMode);
 
-        if (g_showDebugWindow) {
+        if (appState.ui.showDebugWindow) {
             const auto& str = i18n::Get();
-            ImGui::SetNextWindowSize(ImVec2(450 * g_dpiScale, 600 * g_dpiScale), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale), ImGuiCond_FirstUseEver);
             ImGuiStyle& style            = ImGui::GetStyle();
             ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
 
@@ -563,20 +544,20 @@ int main() {
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, &g_showDebugWindow, ImGuiWindowFlags_NoCollapse);
+            ImGui::Begin(str.debugPanelTitle, &appState.ui.showDebugWindow, ImGuiWindowFlags_NoCollapse);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
             ImDrawList* dl   = ImGui::GetWindowDrawList();
 
-            if (g_enableImGuiBlur) {
-                ImVec2 uv0 = ImVec2(pos.x / g_scrWidth, 1.0f - pos.y / g_scrHeight);
-                ImVec2 uv1 = ImVec2((pos.x + size.x) / g_scrWidth, 1.0f - (pos.y + size.y) / g_scrHeight);
+            if (appState.ui.enableBlur) {
+                ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
+                ImVec2 uv1 = ImVec2((pos.x + size.x) / appState.window.width, 1.0f - (pos.y + size.y) / appState.window.height);
                 dl->AddImage((ImTextureID)(intptr_t)fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
                              uv1);
-                ImU32 tintColor = g_isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
+                ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
                 dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
-                ImU32 highlight = g_isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                ImU32 highlight = appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                 dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
             } else {
                 // Use the saved original background color instead of the overridden transparent one
@@ -589,9 +570,9 @@ int main() {
 
             if (ImGui::CollapsingHeader(str.sectionPerformance, ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::Text("%s: %.1f", str.fps, currentFps);
-                ImGui::Text("%s: %u / %u", str.particles, g_activeParticleCount, MAX_PARTICLES);
-                ImGui::Text("%s: %.2f", str.pixelRatio, g_currentPixelRatio);
-                ImGui::Text("%s: %u x %u", str.resolution, g_scrWidth, g_scrHeight);
+                ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
+                ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
+                ImGui::Text("%s: %u x %u", str.resolution, appState.window.width, appState.window.height);
             }
 
             if (ImGui::CollapsingHeader(str.sectionHandTracking, ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -607,33 +588,46 @@ int main() {
                 bool cameraDebug = GetTrackerDebugMode();
                 if (UIManager::ToggleMD3(str.showCameraDebug, &cameraDebug, dt)) {
                     SetTrackerDebugMode(cameraDebug);
-                    g_showCameraDebug = cameraDebug;
+                    appState.ui.showCameraDebug = cameraDebug;
                 }
             }
 
             if (ImGui::CollapsingHeader(str.sectionVisuals)) {
-                if (UIManager::ToggleMD3(str.darkMode, &g_isDarkMode, dt)) {
-                    UIManager::ApplyMaterialYouTheme(g_isDarkMode);
+                if (UIManager::ToggleMD3(str.darkMode, &appState.ui.isDarkMode, dt)) {
+                    UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
                 }
                 ImGui::Dummy(ImVec2(0, 5));
-                UIManager::ToggleMD3(str.glassBlur, &g_enableImGuiBlur, dt);
-                if (g_enableImGuiBlur) {
+                UIManager::ToggleMD3(str.glassBlur, &appState.ui.enableBlur, dt);
+                if (appState.ui.enableBlur) {
                     ImGui::Indent(10);
                     ImGui::SetNextItemWidth(-1);
                     char blurLabel[64];
                     snprintf(blurLabel, sizeof(blurLabel), "%s: %%.0f", str.blurStrength);
-                    ImGui::SliderFloat("##BlurStr", &g_blurStrength, 0.0f, 5.0f, blurLabel);
+                    ImGui::SliderFloat("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, blurLabel);
                     ImGui::Unindent(10);
                 }
             }
 
             if (ImGui::CollapsingHeader(str.sectionWindow)) {
                 const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
-                if (g_backdropIndex < (int)g_availableBackdrops.size()) {
-                    ImGui::Text("%s: %s", str.backdrop, backdropNames[g_availableBackdrops[g_backdropIndex]]);
+                if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
+                    ImGui::Text("%s: %s", str.backdrop, backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
                 }
-                ImGui::Text("%s: %s", str.fullscreen, g_isFullscreen ? str.yes : str.no);
-                ImGui::Text("%s: %s", str.transparent, g_useTransparent ? str.yes : str.no);
+                ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
+                ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
+            }
+
+            if (ImGui::CollapsingHeader(str.sectionAdvanced)) {
+                // SIMD Mode selection
+                ImGui::Text("%s:", str.simdMode);
+                int currentSIMD = GetTrackerSIMDMode();
+                const char* simdModes[] = { str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar };
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
+                    SetTrackerSIMDMode(currentSIMD);
+                    std::cout << "[Main] SIMD mode changed to: " << GetTrackerSIMDImplementation() << std::endl;
+                }
+                ImGui::Text("%s: %s", str.simdCurrent, GetTrackerSIMDImplementation());
             }
 
             if (ImGui::CollapsingHeader(str.sectionLog, ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -652,7 +646,7 @@ int main() {
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
-            if (ImGui::Button(str.crashAnalyzerButton, ImVec2(-1, 36 * g_dpiScale))) {
+            if (ImGui::Button(str.crashAnalyzerButton, ImVec2(-1, 36 * appState.ui.dpiScale))) {
                 CrashAnalyzer::Open();
             }
 
@@ -672,8 +666,8 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
             if (!keyF3_pressed) {
                 keyF3_pressed     = true;
-                g_showDebugWindow = !g_showDebugWindow;
-                std::cout << "[Main] Debug window: " << (g_showDebugWindow ? "shown" : "hidden") << std::endl;
+                appState.ui.showDebugWindow = !appState.ui.showDebugWindow;
+                std::cout << "[Main] Debug window: " << (appState.ui.showDebugWindow ? "shown" : "hidden") << std::endl;
             }
         } else {
             keyF3_pressed = false;
@@ -684,9 +678,9 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
             if (!keyB_pressed) {
                 keyB_pressed = true;
-                if (!g_availableBackdrops.empty()) {
-                    g_backdropIndex = (g_backdropIndex + 1) % (int)g_availableBackdrops.size();
-                    WindowManager::SetBackdropMode(hwnd, g_availableBackdrops[g_backdropIndex]);
+                if (!appState.backdrop.availableBackdrops.empty()) {
+                    appState.backdrop.backdropIndex = (appState.backdrop.backdropIndex + 1) % (int)appState.backdrop.availableBackdrops.size();
+                    WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
@@ -696,9 +690,9 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS) {
             if (!keyF11_pressed) {
                 keyF11_pressed = true;
-                WindowManager::ToggleFullscreen(window);
-                if (!g_isFullscreen && g_availableBackdrops[g_backdropIndex] > 0) {
-                    WindowManager::SetBackdropMode(hwnd, g_availableBackdrops[g_backdropIndex]);
+                WindowManager::ToggleFullscreen(window, appState);
+                if (!appState.window.isFullscreen && appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex] > 0) {
+                    WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
