@@ -50,6 +50,12 @@ class PalmDetector {
 
     std::vector<Anchor> anchors;
 
+    // 预分配的工作缓冲区 (避免每帧分配)
+    std::vector<PalmDetection> m_candidates;
+    std::vector<cv::Rect>      m_rects;
+    std::vector<float>         m_confidences;
+    std::vector<int>           m_indices;
+
     bool buildInterpreter();
     void generateAnchors();
     void decodeDetections(const float* scores, const float* boxes, int num_anchors,

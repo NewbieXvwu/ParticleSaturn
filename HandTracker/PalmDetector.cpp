@@ -291,28 +291,31 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
         return results;
     }
 
-    std::vector<PalmDetection> candidates;
-    decodeDetections(scores, boxes, num_scores, candidates, prob_threshold);
+    // 复用预分配的缓冲区
+    m_candidates.clear();
+    decodeDetections(scores, boxes, num_scores, m_candidates, prob_threshold);
 
-    if (candidates.empty()) {
+    if (m_candidates.empty()) {
         return results;
     }
 
-    // NMS (Non-Maximum Suppression)
-    std::vector<cv::Rect> rects;
-    std::vector<float>    confidences;
-    for (auto& det : candidates) {
-        rects.push_back(cv::Rect((int)(det.rect.x * 1000), (int)(det.rect.y * 1000), (int)(det.rect.width * 1000),
+    // NMS (Non-Maximum Suppression) - 复用预分配的缓冲区
+    m_rects.clear();
+    m_confidences.clear();
+    m_rects.reserve(m_candidates.size());
+    m_confidences.reserve(m_candidates.size());
+    for (auto& det : m_candidates) {
+        m_rects.push_back(cv::Rect((int)(det.rect.x * 1000), (int)(det.rect.y * 1000), (int)(det.rect.width * 1000),
                                  (int)(det.rect.height * 1000)));
-        confidences.push_back(det.score);
+        m_confidences.push_back(det.score);
     }
 
-    std::vector<int> indices;
-    NMSBoxes(rects, confidences, prob_threshold, nms_threshold, indices);
+    m_indices.clear();
+    NMSBoxes(m_rects, m_confidences, prob_threshold, nms_threshold, m_indices);
 
     // Process NMS results
-    for (int idx : indices) {
-        PalmDetection& det = candidates[idx];
+    for (int idx : m_indices) {
+        PalmDetection& det = m_candidates[idx];
         computeRotation(det);
         convertToHandROI(det);
         results.push_back(det);
