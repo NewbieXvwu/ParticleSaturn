@@ -237,9 +237,8 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
         return results;
     }
 
-    // Resize input
-    cv::Mat resized;
-    cv::resize(image, resized, cv::Size(input_size, input_size));
+    // Resize input (复用预分配的缓冲区)
+    cv::resize(image, m_resized, cv::Size(input_size, input_size));
 
     // Get input tensor
     int    input_idx    = interpreter->inputs()[0];
@@ -247,7 +246,7 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
 
     // Optimize: Direct copy and normalize from resized uint8 image to float tensor
     // This avoids allocating a large float Mat and an extra memcpy
-    const uint8_t* src_ptr     = resized.data;
+    const uint8_t* src_ptr     = m_resized.data;
     float*         dst_ptr     = input_tensor;
     int            pixel_count = input_size * input_size;
 

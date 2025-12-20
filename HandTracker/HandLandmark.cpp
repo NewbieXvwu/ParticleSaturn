@@ -67,9 +67,8 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
         return 0.0f;
     }
 
-    // Resize input (always from original roi_image)
-    cv::Mat resized;
-    cv::resize(roi_image, resized, cv::Size(input_size, input_size));
+    // Resize input (复用预分配的缓冲区)
+    cv::resize(roi_image, m_resized, cv::Size(input_size, input_size));
 
     // Get input tensor
     int    input_idx    = interpreter->inputs()[0];
@@ -78,7 +77,7 @@ float HandLandmark::detect(const cv::Mat& roi_image, const cv::Mat& trans_mat_in
     // Optimize: Direct copy, normalize (and optionally flip) to float tensor
     // This avoids cv::flip (allocation), convertTo (allocation), and memcpy
     for (int y = 0; y < input_size; ++y) {
-        const uint8_t* row_ptr     = resized.ptr<uint8_t>(y);
+        const uint8_t* row_ptr     = m_resized.ptr<uint8_t>(y);
         float*         dst_row_ptr = input_tensor + y * input_size * 3;
 
         if (is_left_hand) {

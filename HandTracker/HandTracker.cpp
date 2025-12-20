@@ -178,12 +178,21 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     std::cout << "[HandTracker] Camera opened, starting detection loop..." << std::endl;
 
-    cv::Mat                  frame;
-    int                      frame_count = 0;
+    // 预分配 cv::Mat 缓冲区，避免每帧重新分配内存
+    cv::Mat frame(480, 640, CV_8UC3);
+    cv::Mat frame_rgb(480, 640, CV_8UC3);
+    cv::Mat roi_image(224, 224, CV_8UC3);
+
+    // 预分配 vector 缓冲区
+    std::vector<cv::Point2f> landmarks;
+    landmarks.reserve(21);
     std::vector<cv::Point2f> debug_landmarks;
-    bool                     debug_landmarks_valid = false;
-    int                      hand_lost_counter     = 0;
-    bool                     smooth_has_hand       = false;
+    debug_landmarks.reserve(21);
+
+    int  frame_count           = 0;
+    bool debug_landmarks_valid = false;
+    int  hand_lost_counter     = 0;
+    bool smooth_has_hand       = false;
 
     // 自适应帧率控制：目标 30 FPS (约 33ms 每帧)
     const auto TARGET_FRAME_TIME = std::chrono::milliseconds(33);
@@ -201,8 +210,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
         cv::flip(frame, frame, 1);
 
-        cv::Mat frame_rgb;
-        cv::cvtColor(frame, frame_rgb, cv::COLOR_BGR2RGB);
+        cv::cvtColor(frame, frame_rgb, cv::COLOR_BGR2RGB);  // 复用预分配的 frame_rgb
 
         std::vector<PalmDetection> palms = palm_detector.detect(frame_rgb, 0.4f, 0.3f);
 
@@ -231,8 +239,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             dstPts[2] = cv::Point2f(224, 224);
 
             cv::Mat trans_mat = cv::getAffineTransform(srcPts, dstPts);
-            cv::Mat roi_image;
-            cv::warpAffine(frame_rgb, roi_image, trans_mat, cv::Size(224, 224));
+            cv::warpAffine(frame_rgb, roi_image, trans_mat, cv::Size(224, 224));  // 复用预分配的 roi_image
 
             cv::Mat trans_mat_inv;
             cv::invertAffineTransform(trans_mat, trans_mat_inv);
@@ -263,8 +270,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             float cross  = palm_dir_x * (palm.landmarks[1].y - wrist_y) - palm_dir_y * (thumb_side_x - wrist_x);
             is_left_hand = (cross > 0); // 叉积为正表示拇指在左侧（镜像后的左手）
 
-            // 检测手部关键点，传入左右手信息
-            std::vector<cv::Point2f> landmarks;
+            // 检测手部关键点，传入左右手信息 (复用预分配的 landmarks)
+            landmarks.clear();
             float presence = landmark_detector.detect(roi_image, trans_mat_inv, landmarks, is_left_hand);
 
             bool landmarks_valid = (landmarks.size() >= 21 && presence > 0.1f);

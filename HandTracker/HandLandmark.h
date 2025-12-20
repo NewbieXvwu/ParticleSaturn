@@ -36,6 +36,7 @@ class HandLandmark {
     std::unique_ptr<tflite::Interpreter>     interpreter;
     std::vector<char>                        model_buffer; // for loadFromMemory
     int                                      input_size = 224;
+    cv::Mat                                  m_resized;    // 预分配的 resize 缓冲区
 
     bool buildInterpreter();
 };

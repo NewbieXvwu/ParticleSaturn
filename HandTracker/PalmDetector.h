@@ -55,6 +55,7 @@ class PalmDetector {
     std::vector<cv::Rect>      m_rects;
     std::vector<float>         m_confidences;
     std::vector<int>           m_indices;
+    cv::Mat                    m_resized;  // 预分配的 resize 缓冲区
 
     bool buildInterpreter();
     void generateAnchors();
