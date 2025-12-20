@@ -322,14 +322,15 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             g_latest_data.rot_y    = g_smooth_rot_y;
         }
 
-        // 调试窗口显示
+        // 调试窗口显示 (优化: 只在调试模式下才 clone frame)
         if (g_debug_mode) {
             if (!g_debug_window_created) {
                 cv::namedWindow("HandTracker Debug", cv::WINDOW_AUTOSIZE);
                 g_debug_window_created = true;
             }
 
-            cv::Mat debug_frame = frame.clone();
+            cv::Mat debug_frame;
+            frame.copyTo(debug_frame);  // 只在调试模式下复制
             int     img_w       = frame.cols;
             int     img_h       = frame.rows;
 
