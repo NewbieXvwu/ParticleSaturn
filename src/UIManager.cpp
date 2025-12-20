@@ -156,6 +156,10 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
 
     SameLine();
     SetCursorPosX(GetCursorPosX() + 10.0f);
+    // 垂直居中对齐文本
+    float textHeight = GetTextLineHeight();
+    float offsetY = (height - textHeight) * 0.5f;
+    SetCursorPosY(GetCursorPosY() + offsetY);
     Text("%s", label);
     return pressed;
 }
