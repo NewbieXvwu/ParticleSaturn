@@ -135,6 +135,12 @@ struct Strings {
     const char* simdSSE;
     const char* simdScalar;
     const char* simdCurrent;
+
+    // VSync
+    const char* vsync;
+    const char* vsyncOff;
+    const char* vsyncOn;
+    const char* vsyncAdaptive;
 };
 
 // Chinese strings
@@ -261,6 +267,12 @@ inline const Strings& GetChinese() {
         .simdSSE = "SSE",
         .simdScalar = "标量",
         .simdCurrent = "当前实现",
+
+        // VSync
+        .vsync = "垂直同步",
+        .vsyncOff = "关闭",
+        .vsyncOn = "开启",
+        .vsyncAdaptive = "自适应",
     };
     return zh;
 }
@@ -389,6 +401,12 @@ inline const Strings& GetEnglish() {
         .simdSSE = "SSE",
         .simdScalar = "Scalar",
         .simdCurrent = "Current Impl",
+
+        // VSync
+        .vsync = "VSync",
+        .vsyncOff = "Off",
+        .vsyncOn = "On",
+        .vsyncAdaptive = "Adaptive",
     };
     return en;
 }

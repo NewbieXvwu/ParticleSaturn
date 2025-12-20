@@ -58,6 +58,18 @@ int main() {
     glfwMakeContextCurrent(window);
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 
+    // 初始化 VSync: 优先使用 Adaptive VSync，不支持时回退到传统 VSync
+    appState.render.adaptiveVSyncSupported = glfwExtensionSupported("WGL_EXT_swap_control_tear");
+    if (appState.render.adaptiveVSyncSupported) {
+        appState.render.vsyncMode = -1;  // Adaptive
+        glfwSwapInterval(-1);
+        std::cout << "[Main] VSync: Adaptive (WGL_EXT_swap_control_tear supported)" << std::endl;
+    } else {
+        appState.render.vsyncMode = 1;   // On
+        glfwSwapInterval(1);
+        std::cout << "[Main] VSync: On (Adaptive not supported)" << std::endl;
+    }
+
     // 设置 AppState 到窗口，供回调函数使用
     SetAppState(window, &appState);
 
@@ -327,9 +339,11 @@ int main() {
             targetScale       = handState.scale;
             targetRotX        = -0.6f + handState.rotY * 1.6f;
             targetRotY        = (handState.rotX - 0.5f) * 2.0f;
-            currentAnim.scale = targetScale;
-            currentAnim.rotX  = targetRotX;
-            currentAnim.rotY  = targetRotY;
+            // 使用插值平滑过渡，避免 30fps 摄像头数据在 90fps 渲染时的跳变
+            float lerpFactor  = 0.25f;
+            currentAnim.scale = Lerp(currentAnim.scale, targetScale, lerpFactor);
+            currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
+            currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
         }
 
         // 计算粒子物理 (双缓冲: 从当前缓冲读取，写入另一个缓冲)
@@ -569,6 +583,33 @@ int main() {
                 ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
                 ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
                 ImGui::Text("%s: %u x %u", str.resolution, appState.window.width, appState.window.height);
+
+                ImGui::Dummy(ImVec2(0, 5));
+
+                // VSync Mode selection
+                ImGui::Text("%s:", str.vsync);
+                int vsyncIndex;
+                if (appState.render.vsyncMode == 0) vsyncIndex = 0;
+                else if (appState.render.vsyncMode == 1) vsyncIndex = 1;
+                else vsyncIndex = 2;  // -1 (Adaptive)
+
+                ImGui::SetNextItemWidth(-1);
+                if (appState.render.adaptiveVSyncSupported) {
+                    const char* vsyncModes[] = { str.vsyncOff, str.vsyncOn, str.vsyncAdaptive };
+                    if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
+                        int newMode = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
+                        appState.render.vsyncMode = newMode;
+                        glfwSwapInterval(newMode);
+                        std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
+                    }
+                } else {
+                    const char* vsyncModes[] = { str.vsyncOff, str.vsyncOn };
+                    if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
+                        appState.render.vsyncMode = vsyncIndex;
+                        glfwSwapInterval(vsyncIndex);
+                        std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
+                    }
+                }
             }
 
             if (ImGui::CollapsingHeader(str.sectionHandTracking, ImGuiTreeNodeFlags_DefaultOpen)) {

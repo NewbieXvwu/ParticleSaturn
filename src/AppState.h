@@ -28,6 +28,8 @@ struct AppState {
         unsigned int activeParticleCount = 0;  // 将在初始化时设置为 MAX_PARTICLES
         float pixelRatio = 1.0f;
         float densityComp = 0.6f;  // 缓存的密度补偿值
+        int vsyncMode = -1;        // -1: Adaptive, 0: Off, 1: On
+        bool adaptiveVSyncSupported = false;
     } render;
 
     // UI 状态
