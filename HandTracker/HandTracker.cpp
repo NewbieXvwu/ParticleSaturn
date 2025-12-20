@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <mutex>
 #include <opencv2/opencv.hpp>
@@ -509,7 +510,16 @@ HAND_API void ReleaseTracker() {
     g_ctx.running = false;
     if (g_ctx.worker_thread) {
         if (g_ctx.worker_thread->joinable()) {
-            g_ctx.worker_thread->join();
+            // 超时保护: 最多等待 3 秒，防止线程阻塞导致主程序挂起
+            auto future = std::async(std::launch::async, [&]() {
+                g_ctx.worker_thread->join();
+            });
+
+            if (future.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
+                std::cerr << "[HandTracker] Warning: Worker thread join timed out after 3 seconds" << std::endl;
+                // 线程超时，无法安全 join，只能 detach（线程会在进程退出时被强制终止）
+                g_ctx.worker_thread->detach();
+            }
         }
         delete g_ctx.worker_thread;
         g_ctx.worker_thread = nullptr;
