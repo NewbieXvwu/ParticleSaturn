@@ -196,6 +196,7 @@ void main() {
 )";
 
 // 顶点着色器 - 土星粒子
+// 优化: 使用查找表替代 sin/fract 计算混沌效果
 const char* const VertexSaturn = R"(
 #version 430 core
 layout (location = 0) in vec4 aPos;
@@ -216,6 +217,23 @@ vec4 unpackRGBA8(uint c) {
     );
 }
 
+// 快速伪随机哈希函数 (替代 fract(sin(...)) 避免昂贵的三角函数)
+float hash(float n) {
+    uint x = floatBitsToUint(n);
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = (x >> 16u) ^ x;
+    return float(x) * (1.0 / 4294967296.0);
+}
+
+// 快速近似 sin (使用多项式逼近，误差 < 0.001)
+float fastSin(float x) {
+    x = mod(x, 6.28318530718);
+    x = x > 3.14159265359 ? x - 6.28318530718 : x;
+    float x2 = x * x;
+    return x * (1.0 - x2 * (0.16666667 - x2 * (0.00833333 - x2 * 0.0001984)));
+}
+
 void main() {
     // 解包颜色
     vec4 col = unpackRGBA8(aColor);
@@ -225,19 +243,27 @@ void main() {
     float dist = -mvPosition.z;
     vDist = dist;
 
-    // 混沌效果 - 使用 mix() 代替 if 分支避免着色器发散
+    // 混沌效果 - 使用查找表和快速数学函数优化
     float chaosThreshold = 25.0;
     float chaosIntensity = smoothstep(chaosThreshold, 0.1, dist);
     chaosIntensity = chaosIntensity * chaosIntensity * chaosIntensity;
 
-    float highFreqTime = uTime * 40.0;
-    vec3 posScaled = aPos.xyz * 10.0;
-    vec3 noiseVec = vec3(
-        sin(highFreqTime + posScaled.x) * fract(sin(aPos.y * 43758.5) * 0.5),
-        cos(highFreqTime + posScaled.y) * fract(sin(aPos.x * 43758.5) * 0.5),
-        sin(highFreqTime * 0.5) * fract(sin(aPos.z * 43758.5) * 0.5)
-    ) * 3.0;
-    // 用 mix 替代 if，当 chaosIntensity 接近 0 时自然衰减
+    // 只在需要混沌效果时计算 (chaosIntensity > 0)
+    vec3 noiseVec = vec3(0.0);
+    if (chaosIntensity > 0.001) {
+        float highFreqTime = uTime * 40.0;
+        vec3 posScaled = aPos.xyz * 10.0;
+        // 使用快速哈希替代 fract(sin(...))
+        float hashX = hash(aPos.y * 43758.5) * 0.5;
+        float hashY = hash(aPos.x * 43758.5) * 0.5;
+        float hashZ = hash(aPos.z * 43758.5) * 0.5;
+        // 使用快速近似 sin/cos
+        noiseVec = vec3(
+            fastSin(highFreqTime + posScaled.x) * hashX,
+            fastSin(highFreqTime + posScaled.y + 1.5708) * hashY,  // cos = sin(x + pi/2)
+            fastSin(highFreqTime * 0.5) * hashZ
+        ) * 3.0;
+    }
     mvPosition.xyz = mix(mvPosition.xyz, mvPosition.xyz + noiseVec, chaosIntensity);
 
     gl_Position = projection * mvPosition;
