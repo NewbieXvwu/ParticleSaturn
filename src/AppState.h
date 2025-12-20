@@ -40,6 +40,13 @@ struct AppState {
         float blurStrength = 2.0f;
     } ui;
 
+    // 输入状态 (按键防抖)
+    struct {
+        bool keyB_pressed = false;
+        bool keyF3_pressed = false;
+        bool keyF11_pressed = false;
+    } input;
+
     // 背景效果状态 (Windows DWM)
     struct {
         std::vector<int> availableBackdrops = {0};

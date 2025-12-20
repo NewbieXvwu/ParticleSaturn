@@ -656,43 +656,41 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
 
-        // Key handling
-        static bool keyB_pressed = false, keyF11_pressed = false, keyF3_pressed = false;
-
+        // Key handling (使用 AppState 中的输入状态)
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
-            if (!keyF3_pressed) {
-                keyF3_pressed     = true;
+            if (!appState.input.keyF3_pressed) {
+                appState.input.keyF3_pressed = true;
                 appState.ui.showDebugWindow = !appState.ui.showDebugWindow;
                 std::cout << "[Main] Debug window: " << (appState.ui.showDebugWindow ? "shown" : "hidden") << std::endl;
             }
         } else {
-            keyF3_pressed = false;
+            appState.input.keyF3_pressed = false;
         }
 
 #ifdef _WIN32
         HWND hwnd = glfwGetWin32Window(window);
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
-            if (!keyB_pressed) {
-                keyB_pressed = true;
+            if (!appState.input.keyB_pressed) {
+                appState.input.keyB_pressed = true;
                 if (!appState.backdrop.availableBackdrops.empty()) {
                     appState.backdrop.backdropIndex = (appState.backdrop.backdropIndex + 1) % (int)appState.backdrop.availableBackdrops.size();
                     WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
-            keyB_pressed = false;
+            appState.input.keyB_pressed = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS) {
-            if (!keyF11_pressed) {
-                keyF11_pressed = true;
+            if (!appState.input.keyF11_pressed) {
+                appState.input.keyF11_pressed = true;
                 WindowManager::ToggleFullscreen(window, appState);
                 if (!appState.window.isFullscreen && appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex] > 0) {
                     WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
-            keyF11_pressed = false;
+            appState.input.keyF11_pressed = false;
         }
 #endif
 
