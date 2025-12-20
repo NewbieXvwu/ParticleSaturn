@@ -133,7 +133,7 @@ void main() {
 )";
 
 // 计算着色器 - 粒子物理模拟 (双缓冲)
-// 优化: 使用 shared memory 缓存本体粒子的公共 sin/cos 值
+// 优化: 使用 shared memory 缓存公共计算值
 const char* const ComputeSaturn = R"(
 #version 430 core
 layout (local_size_x = 256) in;
@@ -146,19 +146,22 @@ uniform float uHandScale;
 uniform float uHandHas;
 uniform uint uParticleCount;
 
-// Shared memory: 缓存本体粒子的公共旋转值 (所有本体粒子 rotSpeed = 0.03)
-shared float s_bodyAngleCos;
-shared float s_bodyAngleSin;
+// Shared memory: 缓存公共计算值
+shared float s_timeFactor;      // 时间因子 (所有粒子共用)
+shared float s_bodyAngleCos;    // 本体粒子旋转 cos
+shared float s_bodyAngleSin;    // 本体粒子旋转 sin
+shared float s_dtScaled;        // 预乘的 dt * 0.2 * timeFactor (环粒子用)
 
 void main() {
     uint id = gl_GlobalInvocationID.x;
 
-    // 第一个线程计算本体粒子的公共 sin/cos
+    // 第一个线程计算所有公共值
     if (gl_LocalInvocationID.x == 0u) {
-        float timeFactor = mix(1.0, uHandScale, uHandHas);
-        float bodyAngle = 0.03 * uDt * timeFactor;
+        s_timeFactor = mix(1.0, uHandScale, uHandHas);
+        float bodyAngle = 0.03 * uDt * s_timeFactor;
         s_bodyAngleCos = cos(bodyAngle);
         s_bodyAngleSin = sin(bodyAngle);
+        s_dtScaled = 0.2 * uDt * s_timeFactor;  // 预计算环粒子的公共乘数
     }
     barrier();
 
@@ -175,9 +178,8 @@ void main() {
         c = s_bodyAngleCos;
         s = s_bodyAngleSin;
     } else {
-        // 环粒子: 各自计算
-        float timeFactor = mix(1.0, uHandScale, uHandHas);
-        float angle = speed * 0.2 * uDt * timeFactor;
+        // 环粒子: 使用预计算的 dtScaled
+        float angle = speed * s_dtScaled;
         c = cos(angle);
         s = sin(angle);
     }
