@@ -62,6 +62,43 @@ inline glm::vec3 HexToRGB(int hex) {
     return glm::vec3(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f);
 }
 
+// 环形缓冲区 FPS 计算器 (优化: 提供更平滑的 FPS 统计)
+// 使用固定大小的环形缓冲区存储最近 N 帧的帧时间，计算滑动平均
+template<int N = 60>
+class RingBufferFPS {
+public:
+    RingBufferFPS() {
+        for (int i = 0; i < N; i++) frameTimes[i] = 1.0f / 60.0f;
+    }
+
+    // 添加新的帧时间
+    void AddFrameTime(float dt) {
+        sum -= frameTimes[index];
+        frameTimes[index] = dt;
+        sum += dt;
+        index = (index + 1) % N;
+        if (count < N) count++;
+    }
+
+    // 获取平均 FPS
+    float GetAverageFPS() const {
+        if (count == 0 || sum <= 0.0f) return 60.0f;
+        return (float)count / sum;
+    }
+
+    // 获取平均帧时间
+    float GetAverageFrameTime() const {
+        if (count == 0) return 1.0f / 60.0f;
+        return sum / (float)count;
+    }
+
+private:
+    float frameTimes[N];
+    float sum = N * (1.0f / 60.0f);  // 初始假设 60 FPS
+    int   index = 0;
+    int   count = 0;
+};
+
 // 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
 // 后台线程持续更新手部数据，主循环只需读取最新状态
 class AsyncHandTracker {

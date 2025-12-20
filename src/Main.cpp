@@ -262,10 +262,9 @@ int main() {
 
     // 主循环变量
     float lastFrame   = 0;
-    int   frameCount  = 0;
-    float lastFpsTime = 0;
     float currentFps  = 60.0f;
-    float smoothedFps = 60.0f;  // 用于 LOD 决策的平滑 FPS
+    RingBufferFPS<60> fpsCalculator;  // 优化: 使用环形缓冲区计算平滑 FPS
+    float lodUpdateTimer = 0.0f;      // LOD 更新计时器
 
     // 主渲染循环
     ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
@@ -288,38 +287,36 @@ int main() {
         // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
         HandState handState = asyncTracker.GetLatestState();
 
-        // 动态 LOD 调整 (优化: 使用指数加权平均 + 扩展滞后区间)
-        // 优化点: 1) 平滑 FPS 减少噪声 2) 更保守的调整步长 3) 更宽的滞后区间
-        frameCount++;
-        if (t - lastFpsTime >= 0.5f) {
-            currentFps  = frameCount / (t - lastFpsTime);
-            frameCount  = 0;
-            lastFpsTime = t;
+        // 优化: 使用环形缓冲区计算平滑 FPS
+        fpsCalculator.AddFrameTime(dt);
+        currentFps = fpsCalculator.GetAverageFPS();
 
-            // 指数加权平均平滑 FPS (alpha=0.3 提供良好的响应性和稳定性平衡)
-            const float SMOOTH_ALPHA = 0.3f;
-            smoothedFps = smoothedFps * (1.0f - SMOOTH_ALPHA) + currentFps * SMOOTH_ALPHA;
+        // 动态 LOD 调整 (每 0.5 秒检查一次)
+        lodUpdateTimer += dt;
+        if (lodUpdateTimer >= 0.5f) {
+            lodUpdateTimer = 0.0f;
 
+            float smoothedFps = currentFps;  // 环形缓冲区已经提供平滑值
             bool particleCountChanged = false;
-            // 扩展滞后区间: 38-57 FPS (原 40-55) 进一步减少边界震荡
+
+            // 扩展滞后区间: 38-57 FPS 进一步减少边界震荡
             if (smoothedFps < 38.0f) {
                 // 更保守的降质策略: 0.95 替代 0.9
                 if (g_activeParticleCount > MIN_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 0.95f);
                     particleCountChanged = true;
                 } else if (g_currentPixelRatio > 0.7f) {
-                    g_currentPixelRatio -= 0.03f;  // 更小的步长
+                    g_currentPixelRatio -= 0.03f;
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
                 if (g_currentPixelRatio < 1.0f) {
-                    g_currentPixelRatio += 0.03f;  // 更小的步长
+                    g_currentPixelRatio += 0.03f;
                 } else if (g_activeParticleCount < MAX_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.05f);
                     particleCountChanged = true;
                 }
             }
-            // 38-57 FPS 之间保持当前设置，提供更大的稳定区间
 
             // 更新 Indirect Draw Buffer 中的粒子数量
             if (particleCountChanged) {
