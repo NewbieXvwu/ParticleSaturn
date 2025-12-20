@@ -46,7 +46,7 @@ float g_blurStrength    = 2.0f;
 unsigned int g_activeParticleCount = MAX_PARTICLES;
 float        g_currentPixelRatio   = 1.0f;
 
-std::map<ImGuiID, UIAnimState> g_animStates;
+std::unordered_map<ImGuiID, UIAnimState> g_animStates;
 
 // Global OpenGL info for crash reports
 std::string g_glVersion;

@@ -15,7 +15,7 @@ struct UIAnimState {
     bool      active = false;
 };
 
-extern std::map<ImGuiID, UIAnimState> g_animStates;
+extern std::unordered_map<ImGuiID, UIAnimState> g_animStates;
 
 namespace UIManager {
 
@@ -189,20 +189,52 @@ inline void Init(GLFWwindow* window) {
     fontCfg.OversampleV = 2;
     float fontSize      = 16.0f * g_dpiScale;
 
-    const char* fontPaths[] = {"C:\\Windows\\Fonts\\CascadiaCode.ttf", "C:\\Windows\\Fonts\\CascadiaMono.ttf",
-                               "C:\\Windows\\Fonts\\consola.ttf",      "C:\\Windows\\Fonts\\msyh.ttc",
-                               "C:\\Windows\\Fonts\\arial.ttf",        nullptr};
-    ImFont*     font        = nullptr;
-    for (int i = 0; fontPaths[i] && !font; i++) {
-        font = io.Fonts->AddFontFromFileTTF(fontPaths[i], fontSize, &fontCfg);
+    // English fonts (primary) - fallback order
+    const char* englishFonts[] = {
+        "C:\\Windows\\Fonts\\CascadiaCode.ttf",
+        "C:\\Windows\\Fonts\\CascadiaMono.ttf",
+        "C:\\Windows\\Fonts\\consola.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf",
+        nullptr
+    };
+
+    // Chinese fonts (merged) - fallback order: DengXian → YaHei Light → YaHei → SimHei
+    const char* chineseFonts[] = {
+        "C:\\Windows\\Fonts\\Deng.ttf",     // DengXian (Win10+)
+        "C:\\Windows\\Fonts\\msyhl.ttc",    // Microsoft YaHei Light
+        "C:\\Windows\\Fonts\\msyh.ttc",     // Microsoft YaHei
+        "C:\\Windows\\Fonts\\simhei.ttf",   // SimHei
+        nullptr
+    };
+
+    // Load primary English font
+    ImFont* font = nullptr;
+    for (int i = 0; englishFonts[i] && !font; i++) {
+        font = io.Fonts->AddFontFromFileTTF(englishFonts[i], fontSize, &fontCfg);
         if (font) {
-            std::cout << "[Main] Font loaded: " << fontPaths[i] << std::endl;
+            std::cout << "[UI] Primary font: " << englishFonts[i] << std::endl;
         }
     }
+
     if (!font) {
         fontCfg.SizePixels = fontSize;
         io.Fonts->AddFontDefault(&fontCfg);
-        std::cout << "[Main] Using default font" << std::endl;
+        std::cout << "[UI] Using default font" << std::endl;
+    }
+
+    // Merge Chinese font for CJK characters
+    fontCfg.MergeMode = true;
+    bool chineseLoaded = false;
+    for (int i = 0; chineseFonts[i] && !chineseLoaded; i++) {
+        ImFont* cjkFont = io.Fonts->AddFontFromFileTTF(
+            chineseFonts[i], fontSize, &fontCfg, io.Fonts->GetGlyphRangesChineseFull());
+        if (cjkFont) {
+            std::cout << "[UI] Chinese font: " << chineseFonts[i] << std::endl;
+            chineseLoaded = true;
+        }
+    }
+    if (!chineseLoaded) {
+        std::cout << "[UI] Warning: No Chinese font loaded" << std::endl;
     }
 
     ApplyMaterialYouTheme(g_isDarkMode);
