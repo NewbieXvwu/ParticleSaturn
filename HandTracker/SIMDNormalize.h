@@ -43,6 +43,13 @@ void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count);
 // 用于需要逐行处理的情况（如翻转）
 void NormalizeRGBRow(const uint8_t* src, float* dst, size_t pixel_count);
 
+// 水平翻转 RGB 图像并归一化为 float [0, 1]
+// src: 源图像数据 (uint8, RGB 交错, width * height * 3 字节)
+// dst: 目标数据 (float, RGB 交错, width * height * 3 floats)
+// width: 图像宽度（像素）
+// height: 图像高度（像素）
+void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int height);
+
 } // namespace SIMDNormalize
 
 #endif // SIMD_NORMALIZE_H

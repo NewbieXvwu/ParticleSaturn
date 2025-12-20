@@ -296,4 +296,207 @@ void NormalizeRGBRow(const uint8_t* src, float* dst, size_t pixel_count) {
     NormalizeRGB(src, dst, pixel_count);
 }
 
+// ============================================================================
+// 水平翻转并归一化 - 标量实现
+// ============================================================================
+static void FlipHorizontalAndNormalize_Scalar(const uint8_t* src, float* dst, int width, int height) {
+    const float scale = 1.0f / 255.0f;
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* src_row = src + y * width * 3;
+        float* dst_row = dst + y * width * 3;
+        for (int x = 0; x < width; ++x) {
+            int src_x = (width - 1 - x) * 3;
+            int dst_x = x * 3;
+            dst_row[dst_x + 0] = src_row[src_x + 0] * scale;
+            dst_row[dst_x + 1] = src_row[src_x + 1] * scale;
+            dst_row[dst_x + 2] = src_row[src_x + 2] * scale;
+        }
+    }
+}
+
+// ============================================================================
+// 水平翻转并归一化 - SSE 实现
+// ============================================================================
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+static void FlipHorizontalAndNormalize_SSE(const uint8_t* src, float* dst, int width, int height) {
+    const __m128 scale = _mm_set1_ps(1.0f / 255.0f);
+    const __m128i zero = _mm_setzero_si128();
+    const float scalar_scale = 1.0f / 255.0f;
+
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* src_row = src + y * width * 3;
+        float* dst_row = dst + y * width * 3;
+
+        int x = 0;
+        // SSE: 每次处理 4 个像素
+        int simd_end = width - 4;
+
+        for (; x <= simd_end; x += 4) {
+            // 从源图像右侧读取 4 个像素 (翻转后的位置)
+            // 源像素位置: (width-1-x), (width-2-x), (width-3-x), (width-4-x)
+            int src_x = (width - 1 - x) * 3;
+
+            // 加载 4 个像素 (12 字节)，但需要反向排列
+            // 像素顺序: P3, P2, P1, P0 -> 需要变成 P0, P1, P2, P3
+            uint8_t pixels[16];
+            // 手动反向加载像素
+            for (int i = 0; i < 4; ++i) {
+                int src_px = src_x - i * 3;
+                pixels[i * 3 + 0] = src_row[src_px + 0];
+                pixels[i * 3 + 1] = src_row[src_px + 1];
+                pixels[i * 3 + 2] = src_row[src_px + 2];
+            }
+
+            __m128i px = _mm_loadu_si128((const __m128i*)pixels);
+
+            // 解包 uint8 -> int16 -> int32 -> float
+            __m128i lo16 = _mm_unpacklo_epi8(px, zero);
+            __m128i lo32_0 = _mm_unpacklo_epi16(lo16, zero);
+            __m128i lo32_1 = _mm_unpackhi_epi16(lo16, zero);
+            __m128i hi16 = _mm_unpackhi_epi8(px, zero);
+            __m128i lo32_2 = _mm_unpacklo_epi16(hi16, zero);
+
+            __m128 f0 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_0), scale);
+            __m128 f1 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_1), scale);
+            __m128 f2 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_2), scale);
+
+            // 存储 12 个 float
+            _mm_storeu_ps(dst_row + x * 3 + 0, f0);
+            _mm_storeu_ps(dst_row + x * 3 + 4, f1);
+            _mm_storeu_ps(dst_row + x * 3 + 8, f2);
+        }
+
+        // 处理剩余像素
+        for (; x < width; ++x) {
+            int src_x = (width - 1 - x) * 3;
+            int dst_x = x * 3;
+            dst_row[dst_x + 0] = src_row[src_x + 0] * scalar_scale;
+            dst_row[dst_x + 1] = src_row[src_x + 1] * scalar_scale;
+            dst_row[dst_x + 2] = src_row[src_x + 2] * scalar_scale;
+        }
+    }
+}
+#endif
+
+// ============================================================================
+// 水平翻转并归一化 - AVX2 实现
+// ============================================================================
+#ifdef HAS_AVX2_IMPL
+__declspec(noinline) static void FlipHorizontalAndNormalize_AVX2(const uint8_t* src, float* dst, int width, int height) {
+    const __m256 scale = _mm256_set1_ps(1.0f / 255.0f);
+    const float scalar_scale = 1.0f / 255.0f;
+
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* src_row = src + y * width * 3;
+        float* dst_row = dst + y * width * 3;
+
+        int x = 0;
+        // AVX2: 每次处理 8 个像素
+        int simd_end = width - 8;
+
+        for (; x <= simd_end; x += 8) {
+            // 从源图像右侧读取 8 个像素 (翻转后的位置)
+            int src_x = (width - 1 - x) * 3;
+
+            // 手动反向加载 8 个像素 (24 字节)
+            alignas(32) uint8_t pixels[32];
+            for (int i = 0; i < 8; ++i) {
+                int src_px = src_x - i * 3;
+                pixels[i * 3 + 0] = src_row[src_px + 0];
+                pixels[i * 3 + 1] = src_row[src_px + 1];
+                pixels[i * 3 + 2] = src_row[src_px + 2];
+            }
+
+            // 加载并转换
+            __m128i pixels_lo = _mm_loadu_si128((const __m128i*)pixels);
+            __m128i pixels_hi = _mm_loadl_epi64((const __m128i*)(pixels + 16));
+
+            // 使用 AVX2 的 _mm256_cvtepu8_epi32 转换
+            __m256i i32_0 = _mm256_cvtepu8_epi32(pixels_lo);
+            __m128i mid8 = _mm_srli_si128(pixels_lo, 8);
+            __m256i i32_1 = _mm256_cvtepu8_epi32(mid8);
+            __m256i i32_2 = _mm256_cvtepu8_epi32(pixels_hi);
+
+            // int32 -> float 并乘以 scale
+            __m256 f0 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_0), scale);
+            __m256 f1 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_1), scale);
+            __m256 f2 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_2), scale);
+
+            // 存储 24 个 float
+            _mm256_storeu_ps(dst_row + x * 3 + 0, f0);
+            _mm256_storeu_ps(dst_row + x * 3 + 8, f1);
+            _mm256_storeu_ps(dst_row + x * 3 + 16, f2);
+        }
+
+        // 处理剩余像素
+        for (; x < width; ++x) {
+            int src_x = (width - 1 - x) * 3;
+            int dst_x = x * 3;
+            dst_row[dst_x + 0] = src_row[src_x + 0] * scalar_scale;
+            dst_row[dst_x + 1] = src_row[src_x + 1] * scalar_scale;
+            dst_row[dst_x + 2] = src_row[src_x + 2] * scalar_scale;
+        }
+    }
+}
+#endif
+
+// ============================================================================
+// 水平翻转并归一化 - 统一接口
+// ============================================================================
+void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int height) {
+    if (!g_initialized) Init();
+
+    SIMDMode effectiveMode = g_currentMode;
+
+    if (effectiveMode == SIMDMode::Auto) {
+#ifdef HAS_AVX2_IMPL
+        if (g_hasAVX2) {
+            FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
+            return;
+        }
+#endif
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+        if (g_hasSSE2) {
+            FlipHorizontalAndNormalize_SSE(src, dst, width, height);
+            return;
+        }
+#endif
+        FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+        return;
+    }
+
+    switch (effectiveMode) {
+        case SIMDMode::AVX2:
+#ifdef HAS_AVX2_IMPL
+            if (g_hasAVX2) {
+                FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
+                return;
+            }
+#endif
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+            if (g_hasSSE2) {
+                FlipHorizontalAndNormalize_SSE(src, dst, width, height);
+                return;
+            }
+#endif
+            FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+            break;
+
+        case SIMDMode::SSE:
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+            if (g_hasSSE2) {
+                FlipHorizontalAndNormalize_SSE(src, dst, width, height);
+                return;
+            }
+#endif
+            FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+            break;
+
+        case SIMDMode::Scalar:
+        default:
+            FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+            break;
+    }
+}
+
 } // namespace SIMDNormalize
