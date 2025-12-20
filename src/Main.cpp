@@ -45,6 +45,7 @@ float g_blurStrength    = 2.0f;
 
 unsigned int g_activeParticleCount = MAX_PARTICLES;
 float        g_currentPixelRatio   = 1.0f;
+float        g_cachedDensityComp   = 0.6f;  // 缓存的密度补偿值，只在 LOD 变化时更新
 
 std::unordered_map<ImGuiID, UIAnimState> g_animStates;
 
@@ -298,6 +299,7 @@ int main() {
 
             float smoothedFps = currentFps;  // 环形缓冲区已经提供平滑值
             bool particleCountChanged = false;
+            bool pixelRatioChanged = false;
 
             // 扩展滞后区间: 38-57 FPS 进一步减少边界震荡
             if (smoothedFps < 38.0f) {
@@ -307,11 +309,13 @@ int main() {
                     particleCountChanged = true;
                 } else if (g_currentPixelRatio > 0.7f) {
                     g_currentPixelRatio -= 0.03f;
+                    pixelRatioChanged = true;
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
                 if (g_currentPixelRatio < 1.0f) {
                     g_currentPixelRatio += 0.03f;
+                    pixelRatioChanged = true;
                 } else if (g_activeParticleCount < MAX_PARTICLES) {
                     g_activeParticleCount = (unsigned int)(g_activeParticleCount * 1.05f);
                     particleCountChanged = true;
@@ -322,6 +326,12 @@ int main() {
             if (particleCountChanged) {
                 glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
                 glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &g_activeParticleCount);
+            }
+
+            // 优化: 只在粒子数或像素比例变化时重新计算密度补偿
+            if (particleCountChanged || pixelRatioChanged) {
+                float ratio = (float)g_activeParticleCount / MAX_PARTICLES;
+                g_cachedDensityComp = 0.6f / pow(ratio, 0.7f) / pow(g_currentPixelRatio, 0.5f);
             }
         }
 
@@ -394,9 +404,7 @@ int main() {
         glUniform1f(uc.sat_uTime, t);
         glUniform1f(uc.sat_uScale, currentAnim.scale);
         glUniform1f(uc.sat_uPixelRatio, g_currentPixelRatio);
-        float ratio       = (float)g_activeParticleCount / MAX_PARTICLES;
-        float densityComp = 0.6f / pow(ratio, 0.7f) / pow(g_currentPixelRatio, 0.5f);
-        glUniform1f(uc.sat_uDensityComp, densityComp);
+        glUniform1f(uc.sat_uDensityComp, g_cachedDensityComp);  // 使用缓存值，避免每帧计算
         glUniform1f(uc.sat_uScreenHeight, (float)g_scrHeight);
         glBindVertexArray(particleBuffers.GetRenderVAO());
         // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
