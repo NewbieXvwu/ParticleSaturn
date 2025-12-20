@@ -2,8 +2,6 @@
 // 将大型函数从头文件移到 cpp 文件，减少编译时间
 
 #include "pch.h"
-#include "Renderer.h"
-#include "Utils.h"
 
 namespace Renderer {
 

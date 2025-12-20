@@ -7,6 +7,19 @@
 #include <mutex>
 #include <chrono>
 
+// 前向声明 HandTracker API (避免循环依赖)
+// 完整声明在 HandTracker.h 中
+extern "C" {
+#ifdef HANDTRACKER_STATIC
+#define HAND_API_FWD
+#elif defined(HANDTRACKER_EXPORTS)
+#define HAND_API_FWD __declspec(dllexport)
+#else
+#define HAND_API_FWD __declspec(dllimport)
+#endif
+HAND_API_FWD bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand);
+}
+
 // 动画辅助类
 struct AnimFloat {
     float val    = 0.0f;
