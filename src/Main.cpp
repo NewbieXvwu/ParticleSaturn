@@ -8,11 +8,11 @@
 #endif
 
 #include "AppState.h"
+#include "CrashAnalyzer.h"
 #include "DebugLog.h"
 #include "ErrorHandler.h"
-#include "CrashAnalyzer.h"
-#include "Localization.h"
 #include "HandTracker.h"
+#include "Localization.h"
 #include "ParticleSystem.h"
 #include "Renderer.h"
 #include "Shaders.h"
@@ -49,7 +49,7 @@ int main() {
     ErrorHandler::SetStage(ErrorHandler::AppStage::WINDOW_INIT);
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);  // 升级到 4.4 以支持 glBufferStorage
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4); // 升级到 4.4 以支持 glBufferStorage
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
@@ -61,11 +61,11 @@ int main() {
     // 初始化 VSync: 优先使用 Adaptive VSync，不支持时回退到传统 VSync
     appState.render.adaptiveVSyncSupported = glfwExtensionSupported("WGL_EXT_swap_control_tear");
     if (appState.render.adaptiveVSyncSupported) {
-        appState.render.vsyncMode = -1;  // Adaptive
+        appState.render.vsyncMode = -1; // Adaptive
         glfwSwapInterval(-1);
         std::cout << "[Main] VSync: Adaptive (WGL_EXT_swap_control_tear supported)" << std::endl;
     } else {
-        appState.render.vsyncMode = 1;   // On
+        appState.render.vsyncMode = 1; // On
         glfwSwapInterval(1);
         std::cout << "[Main] VSync: On (Adaptive not supported)" << std::endl;
     }
@@ -78,7 +78,7 @@ int main() {
 
     // Store OpenGL info for crash reports
     ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
-    appState.gl.version = (const char*)glGetString(GL_VERSION);
+    appState.gl.version  = (const char*)glGetString(GL_VERSION);
     appState.gl.renderer = (const char*)glGetString(GL_RENDERER);
     ErrorHandler::SetGPUInfo(appState.gl.renderer, appState.gl.version);
     std::cout << "[Main] OpenGL: " << appState.gl.version << std::endl;
@@ -94,7 +94,8 @@ int main() {
         WindowManager::InstallThemeChangeHook(hwnd);
         WindowManager::DetectAvailableBackdrops(hwnd, appState);
         appState.backdrop.backdropIndex = (int)appState.backdrop.availableBackdrops.size() - 1;
-        WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
+        WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex],
+                                       appState);
     }
 #endif
 
@@ -219,8 +220,8 @@ int main() {
     unsigned int fbmTexture = Renderer::GenerateFBMTexture();
 
     // 使用预定义的行星常量数据
-    const auto& planets = PlanetConstants::kPlanets;
-    const int planetCount = PlanetConstants::kPlanetCount;
+    const auto& planets     = PlanetConstants::kPlanets;
+    const int   planetCount = PlanetConstants::kPlanetCount;
 
     // 预生成数字几何 (FPS 显示优化)
     Renderer::PrebuiltDigits prebuiltDigits;
@@ -239,7 +240,6 @@ int main() {
     glm::mat4 view   = glm::lookAt(glm::vec3(0, 0, 100), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     glm::mat4 projUI = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
 
-
     // 动画状态
     SmoothState currentAnim;
     float       autoTime = 0;
@@ -251,10 +251,10 @@ int main() {
     }
 
     // 主循环变量
-    float lastFrame   = 0;
-    float currentFps  = 60.0f;
-    RingBufferFPS<60> fpsCalculator;  // 优化: 使用环形缓冲区计算平滑 FPS
-    float lodUpdateTimer = 0.0f;      // LOD 更新计时器
+    float             lastFrame  = 0;
+    float             currentFps = 60.0f;
+    RingBufferFPS<60> fpsCalculator;         // 优化: 使用环形缓冲区计算平滑 FPS
+    float             lodUpdateTimer = 0.0f; // LOD 更新计时器
 
     // 主渲染循环
     ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
@@ -267,8 +267,8 @@ int main() {
         // 处理窗口大小变化
         if (appState.window.resized) {
             appState.window.resized = false;
-            proj            = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
-            projUI          = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
+            proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
+            projUI = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
             resizeFBO(appState.window.width, appState.window.height);
             fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
             fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
@@ -286,16 +286,16 @@ int main() {
         if (lodUpdateTimer >= 0.5f) {
             lodUpdateTimer = 0.0f;
 
-            float smoothedFps = currentFps;  // 环形缓冲区已经提供平滑值
-            bool particleCountChanged = false;
-            bool pixelRatioChanged = false;
+            float smoothedFps          = currentFps; // 环形缓冲区已经提供平滑值
+            bool  particleCountChanged = false;
+            bool  pixelRatioChanged    = false;
 
             // 扩展滞后区间: 38-57 FPS 进一步减少边界震荡
             if (smoothedFps < 38.0f) {
                 // 更保守的降质策略: 0.95 替代 0.9
                 if (appState.render.activeParticleCount > MIN_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 0.95f);
-                    particleCountChanged = true;
+                    particleCountChanged                = true;
                 } else if (appState.render.pixelRatio > 0.7f) {
                     appState.render.pixelRatio -= 0.03f;
                     pixelRatioChanged = true;
@@ -307,7 +307,7 @@ int main() {
                     pixelRatioChanged = true;
                 } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
-                    particleCountChanged = true;
+                    particleCountChanged                = true;
                 }
             }
 
@@ -319,7 +319,7 @@ int main() {
 
             // 优化: 只在粒子数或像素比例变化时重新计算密度补偿
             if (particleCountChanged || pixelRatioChanged) {
-                float ratio = (float)appState.render.activeParticleCount / MAX_PARTICLES;
+                float ratio                 = (float)appState.render.activeParticleCount / MAX_PARTICLES;
                 appState.render.densityComp = 0.6f / pow(ratio, 0.7f) / pow(appState.render.pixelRatio, 0.5f);
             }
         }
@@ -336,9 +336,9 @@ int main() {
             currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
             currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
         } else {
-            targetScale       = handState.scale;
-            targetRotX        = -0.6f + handState.rotY * 1.6f;
-            targetRotY        = (handState.rotX - 0.5f) * 2.0f;
+            targetScale = handState.scale;
+            targetRotX  = -0.6f + handState.rotY * 1.6f;
+            targetRotY  = (handState.rotX - 0.5f) * 2.0f;
             // 使用插值平滑过渡，避免 30fps 摄像头数据在 90fps 渲染时的跳变
             float lerpFactor  = 0.25f;
             currentAnim.scale = Lerp(currentAnim.scale, targetScale, lerpFactor);
@@ -383,8 +383,8 @@ int main() {
         glBindVertexArray(vaoStars);
         // 星空 LOD: 低分辨率时减少星星数量 (对视觉影响极小)
         unsigned int starLODCount = (appState.render.pixelRatio < 0.85f)
-            ? (unsigned int)(STAR_COUNT * 0.6f)   // 60% 星星在低分辨率模式
-            : STAR_COUNT;
+                                      ? (unsigned int)(STAR_COUNT * 0.6f) // 60% 星星在低分辨率模式
+                                      : STAR_COUNT;
         glDrawArrays(GL_POINTS, 0, starLODCount);
 
         // 渲染土星粒子 (使用 Indirect Drawing 消除 CPU 开销)
@@ -395,7 +395,7 @@ int main() {
         glUniform1f(uc.sat_uTime, t);
         glUniform1f(uc.sat_uScale, currentAnim.scale);
         glUniform1f(uc.sat_uPixelRatio, appState.render.pixelRatio);
-        glUniform1f(uc.sat_uDensityComp, appState.render.densityComp);  // 使用缓存值，避免每帧计算
+        glUniform1f(uc.sat_uDensityComp, appState.render.densityComp); // 使用缓存值，避免每帧计算
         glUniform1f(uc.sat_uScreenHeight, (float)appState.window.height);
         glBindVertexArray(particleBuffers.GetRenderVAO());
         // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
@@ -421,14 +421,14 @@ int main() {
 
         // 直接写入 persistent mapped buffer (无 CPU-GPU 同步开销)
         for (int i = 0; i < planetCount; i++) {
-            const PlanetData& p = planets[i];
-            glm::mat4         m = orbitRot;
-            m                   = glm::translate(m, p.pos);
-            m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
-            m                   = glm::scale(m, glm::vec3(p.radius));
+            const PlanetData& p             = planets[i];
+            glm::mat4         m             = orbitRot;
+            m                               = glm::translate(m, p.pos);
+            m                               = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
+            m                               = glm::scale(m, glm::vec3(p.radius));
             uc.pl_ubo_mapped[i].modelMatrix = m;
-            uc.pl_ubo_mapped[i].color1 = glm::vec4(p.color1, p.noiseScale);
-            uc.pl_ubo_mapped[i].color2 = glm::vec4(p.color2, p.atmosphere);
+            uc.pl_ubo_mapped[i].color1      = glm::vec4(p.color1, p.noiseScale);
+            uc.pl_ubo_mapped[i].color2      = glm::vec4(p.color2, p.atmosphere);
         }
 
         // 渲染所有行星 (GL_MAP_COHERENT_BIT 保证自动同步)
@@ -449,19 +449,20 @@ int main() {
 
         // 使用预生成数字渲染 FPS
         // 优化: 使用栈上 char 数组避免每帧 std::string 堆分配
-        int displayFps = (int)currentFps;
-        char fpsBuffer[8];
-        int fpsLen = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
+        int   displayFps = (int)currentFps;
+        char  fpsBuffer[8];
+        int   fpsLen  = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
         float xCursor = (float)appState.window.width - 60.0f;
         float numSize = 20.0f;
         for (int i = fpsLen - 1; i >= 0; i--) {
-            prebuiltDigits.DrawDigit(fpsBuffer[i] - '0', xCursor, (float)appState.window.height - 40, numSize, uc.ui_uTransform);
+            prebuiltDigits.DrawDigit(fpsBuffer[i] - '0', xCursor, (float)appState.window.height - 40, numSize,
+                                     uc.ui_uTransform);
             xCursor -= (numSize + 10.0f);
         }
 
         // 模糊处理 (Kawase Blur - 更高效的模糊算法)
         // 优化: 预先计算迭代次数，确保最终结果在 fboBlur2 中，避免额外的复制 pass
-        GLuint finalBlurTex = fboBlur2.tex;  // 最终模糊结果纹理
+        GLuint finalBlurTex = fboBlur2.tex; // 最终模糊结果纹理
         if (appState.ui.enableBlur) {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
@@ -480,8 +481,10 @@ int main() {
             // 优化: 调整迭代次数为偶数，确保最终结果自然落在 fboBlur2 中
             // 这样避免了原来的额外复制 pass
             if (iterations % 2 == 1) {
-                iterations++;  // 增加一次迭代比复制更有意义（额外模糊效果）
-                if (iterations > maxIterations) iterations = maxIterations;
+                iterations++; // 增加一次迭代比复制更有意义（额外模糊效果）
+                if (iterations > maxIterations) {
+                    iterations = maxIterations;
+                }
             }
 
             // 第一次: fboTex -> fboBlur1
@@ -531,7 +534,8 @@ int main() {
 
         // Update error handler state
         totalFrameCount++;
-        ErrorHandler::UpdateState(totalFrameCount, appState.render.activeParticleCount, appState.render.pixelRatio, handState.hasHand);
+        ErrorHandler::UpdateState(totalFrameCount, appState.render.activeParticleCount, appState.render.pixelRatio,
+                                  handState.hasHand);
 
         // 渲染 ImGui
         ImGui_ImplOpenGL3_NewFrame();
@@ -542,11 +546,13 @@ int main() {
         ErrorHandler::RenderErrorDialog(dt);
 
         // Render crash analyzer window
-        CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height, appState.ui.isDarkMode);
+        CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height,
+                              appState.ui.isDarkMode);
 
         if (appState.ui.showDebugWindow) {
             const auto& str = i18n::Get();
-            ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
+                                     ImGuiCond_FirstUseEver);
             ImGuiStyle& style            = ImGui::GetStyle();
             ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
 
@@ -562,7 +568,8 @@ int main() {
 
             if (appState.ui.enableBlur) {
                 ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
-                ImVec2 uv1 = ImVec2((pos.x + size.x) / appState.window.width, 1.0f - (pos.y + size.y) / appState.window.height);
+                ImVec2 uv1 =
+                    ImVec2((pos.x + size.x) / appState.window.width, 1.0f - (pos.y + size.y) / appState.window.height);
                 dl->AddImage((ImTextureID)(intptr_t)fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
                              uv1);
                 ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
@@ -589,21 +596,25 @@ int main() {
                 // VSync Mode selection
                 ImGui::Text("%s:", str.vsync);
                 int vsyncIndex;
-                if (appState.render.vsyncMode == 0) vsyncIndex = 0;
-                else if (appState.render.vsyncMode == 1) vsyncIndex = 1;
-                else vsyncIndex = 2;  // -1 (Adaptive)
+                if (appState.render.vsyncMode == 0) {
+                    vsyncIndex = 0;
+                } else if (appState.render.vsyncMode == 1) {
+                    vsyncIndex = 1;
+                } else {
+                    vsyncIndex = 2; // -1 (Adaptive)
+                }
 
                 ImGui::SetNextItemWidth(-1);
                 if (appState.render.adaptiveVSyncSupported) {
-                    const char* vsyncModes[] = { str.vsyncOff, str.vsyncOn, str.vsyncAdaptive };
+                    const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn, str.vsyncAdaptive};
                     if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
-                        int newMode = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
+                        int newMode               = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
                         appState.render.vsyncMode = newMode;
                         glfwSwapInterval(newMode);
                         std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
                     }
                 } else {
-                    const char* vsyncModes[] = { str.vsyncOff, str.vsyncOn };
+                    const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn};
                     if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
                         appState.render.vsyncMode = vsyncIndex;
                         glfwSwapInterval(vsyncIndex);
@@ -648,7 +659,8 @@ int main() {
             if (ImGui::CollapsingHeader(str.sectionWindow)) {
                 const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
                 if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
-                    ImGui::Text("%s: %s", str.backdrop, backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
+                    ImGui::Text("%s: %s", str.backdrop,
+                                backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
                 }
                 ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
                 ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
@@ -657,8 +669,8 @@ int main() {
             if (ImGui::CollapsingHeader(str.sectionAdvanced)) {
                 // SIMD Mode selection
                 ImGui::Text("%s:", str.simdMode);
-                int currentSIMD = GetTrackerSIMDMode();
-                const char* simdModes[] = { str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar };
+                int         currentSIMD = GetTrackerSIMDMode();
+                const char* simdModes[] = {str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar};
                 ImGui::SetNextItemWidth(-1);
                 if (ImGui::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
                     SetTrackerSIMDMode(currentSIMD);
@@ -701,7 +713,7 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
             if (!appState.input.keyF3_pressed) {
                 appState.input.keyF3_pressed = true;
-                appState.ui.showDebugWindow = !appState.ui.showDebugWindow;
+                appState.ui.showDebugWindow  = !appState.ui.showDebugWindow;
                 std::cout << "[Main] Debug window: " << (appState.ui.showDebugWindow ? "shown" : "hidden") << std::endl;
             }
         } else {
@@ -714,8 +726,10 @@ int main() {
             if (!appState.input.keyB_pressed) {
                 appState.input.keyB_pressed = true;
                 if (!appState.backdrop.availableBackdrops.empty()) {
-                    appState.backdrop.backdropIndex = (appState.backdrop.backdropIndex + 1) % (int)appState.backdrop.availableBackdrops.size();
-                    WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
+                    appState.backdrop.backdropIndex =
+                        (appState.backdrop.backdropIndex + 1) % (int)appState.backdrop.availableBackdrops.size();
+                    WindowManager::SetBackdropMode(
+                        hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
@@ -726,8 +740,10 @@ int main() {
             if (!appState.input.keyF11_pressed) {
                 appState.input.keyF11_pressed = true;
                 WindowManager::ToggleFullscreen(window, appState);
-                if (!appState.window.isFullscreen && appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex] > 0) {
-                    WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
+                if (!appState.window.isFullscreen &&
+                    appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex] > 0) {
+                    WindowManager::SetBackdropMode(
+                        hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
@@ -743,7 +759,7 @@ int main() {
     // Cleanup
     // ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
     std::cout << "[Main] Shutting down..." << std::endl;
-    asyncTracker.Stop();  // 停止异步追踪线程
+    asyncTracker.Stop(); // 停止异步追踪线程
     CrashAnalyzer::Shutdown();
     UIManager::Shutdown();
     ReleaseTracker();

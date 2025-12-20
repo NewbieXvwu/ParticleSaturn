@@ -1,9 +1,10 @@
 #pragma once
 // 粒子系统 - 粒子初始化和管理
 
-#include "Utils.h"
-#include "Shaders.h"
 #include <ctime>
+
+#include "Shaders.h"
+#include "Utils.h"
 
 const unsigned int MAX_PARTICLES = 1200000;
 const unsigned int MIN_PARTICLES = 200000;
@@ -11,11 +12,11 @@ const unsigned int STAR_COUNT    = 50000;
 
 // GPU 粒子数据结构 (优化: 32字节，从48字节减少33%)
 struct GPUParticle {
-    glm::vec4 pos;      // x, y, z, scale (16 字节)
-    uint32_t  color;    // RGBA8 打包颜色 (4 字节)
-    float     speed;    // 轨道速度 (4 字节)
-    float     isRing;   // 0=本体, 1=环 (4 字节)
-    float     pad;      // 对齐到 32 字节 (4 字节)
+    glm::vec4 pos;    // x, y, z, scale (16 字节)
+    uint32_t  color;  // RGBA8 打包颜色 (4 字节)
+    float     speed;  // 轨道速度 (4 字节)
+    float     isRing; // 0=本体, 1=环 (4 字节)
+    float     pad;    // 对齐到 32 字节 (4 字节)
 };
 
 // Indirect Draw 命令结构 (符合 glDrawArraysIndirect 规范)
@@ -53,9 +54,9 @@ struct DoubleBufferSSBO {
     void Swap() {
         // 轮转: render <- read <- write <- render
         int oldRender = renderIdx;
-        renderIdx = readIdx;   // 上一帧计算完成的数据变为渲染数据
-        readIdx = writeIdx;    // 上一帧写入的变为下一帧读取
-        writeIdx = oldRender;  // 渲染完的缓冲变为下一帧写入目标
+        renderIdx     = readIdx;   // 上一帧计算完成的数据变为渲染数据
+        readIdx       = writeIdx;  // 上一帧写入的变为下一帧读取
+        writeIdx      = oldRender; // 渲染完的缓冲变为下一帧写入目标
     }
 };
 
@@ -65,10 +66,10 @@ namespace ParticleSystem {
 inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
     db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
     db.vao[0] = db.vao[1] = db.vao[2] = 0;
-    db.indirectBuffer = 0;
-    db.renderIdx = 0;
-    db.readIdx = 0;
-    db.writeIdx = 1;
+    db.indirectBuffer                 = 0;
+    db.renderIdx                      = 0;
+    db.readIdx                        = 0;
+    db.writeIdx                       = 1;
 
     // 1. 创建三个 SSBO (三缓冲)
     glGenBuffers(3, db.ssbo);
@@ -156,9 +157,11 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
 // 兼容旧接口 (内部使用静态双缓冲)
 inline bool InitParticlesGPU(unsigned int& ssbo, unsigned int& vao) {
     static DoubleBufferSSBO db;
-    if (!InitParticlesGPU(db)) return false;
+    if (!InitParticlesGPU(db)) {
+        return false;
+    }
     ssbo = db.ssbo[0];
-    vao = db.vao[0];
+    vao  = db.vao[0];
     return true;
 }
 

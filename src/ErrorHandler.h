@@ -1,16 +1,17 @@
 #pragma once
 // Error Handler - crash capture, system info collection, error dialogs
 
-#include "Localization.h"
-#include "DebugLog.h"
-
 #include <Windows.h>
+
 #include <CommCtrl.h>
-#include <sstream>
-#include <iomanip>
 #include <chrono>
-#include <vector>
 #include <functional>
+#include <iomanip>
+#include <sstream>
+#include <vector>
+
+#include "DebugLog.h"
+#include "Localization.h"
 
 // Note: comctl32.lib is NOT linked statically to avoid ordinal 345 error
 // TaskDialogIndirect and InitCommonControlsEx are loaded dynamically at runtime
@@ -32,74 +33,106 @@ enum class AppStage {
 };
 
 // Global state
-inline AppStage g_currentStage = AppStage::STARTUP;
+inline AppStage                              g_currentStage = AppStage::STARTUP;
 inline std::chrono::steady_clock::time_point g_startTime;
-inline int g_frameCount = 0;
-inline int g_particleCount = 0;
-inline float g_currentLOD = 1.0f;
-inline bool g_handTrackingActive = false;
-inline std::string g_cameraDevice = "";
-inline int g_cameraIndex = -1;
-inline int g_cameraWidth = 0;
-inline int g_cameraHeight = 0;
-inline bool g_cameraActive = false;
+inline int                                   g_frameCount         = 0;
+inline int                                   g_particleCount      = 0;
+inline float                                 g_currentLOD         = 1.0f;
+inline bool                                  g_handTrackingActive = false;
+inline std::string                           g_cameraDevice       = "";
+inline int                                   g_cameraIndex        = -1;
+inline int                                   g_cameraWidth        = 0;
+inline int                                   g_cameraHeight       = 0;
+inline bool                                  g_cameraActive       = false;
 
 // Pending error for ImGui display
 struct PendingError {
-    bool active = false;
-    bool isWarning = true;
+    bool        active    = false;
+    bool        isWarning = true;
     std::string title;
     std::string message;
     std::string details;
-    bool detailsExpanded = false;
+    bool        detailsExpanded = false;
 };
+
 inline PendingError g_pendingError;
 
 // Stage name conversion
 inline const char* GetStageName(AppStage stage) {
     switch (stage) {
-        case AppStage::STARTUP: return "STARTUP";
-        case AppStage::WINDOW_INIT: return "WINDOW_INIT";
-        case AppStage::OPENGL_INIT: return "OPENGL_INIT";
-        case AppStage::SHADER_COMPILE: return "SHADER_COMPILE";
-        case AppStage::CAMERA_INIT: return "CAMERA_INIT";
-        case AppStage::HAND_TRACKER_INIT: return "HAND_TRACKER_INIT";
-        case AppStage::PARTICLE_INIT: return "PARTICLE_INIT";
-        case AppStage::IMGUI_INIT: return "IMGUI_INIT";
-        case AppStage::RENDER_LOOP: return "RENDER_LOOP";
-        case AppStage::SHUTDOWN: return "SHUTDOWN";
-        default: return "UNKNOWN";
+    case AppStage::STARTUP:
+        return "STARTUP";
+    case AppStage::WINDOW_INIT:
+        return "WINDOW_INIT";
+    case AppStage::OPENGL_INIT:
+        return "OPENGL_INIT";
+    case AppStage::SHADER_COMPILE:
+        return "SHADER_COMPILE";
+    case AppStage::CAMERA_INIT:
+        return "CAMERA_INIT";
+    case AppStage::HAND_TRACKER_INIT:
+        return "HAND_TRACKER_INIT";
+    case AppStage::PARTICLE_INIT:
+        return "PARTICLE_INIT";
+    case AppStage::IMGUI_INIT:
+        return "IMGUI_INIT";
+    case AppStage::RENDER_LOOP:
+        return "RENDER_LOOP";
+    case AppStage::SHUTDOWN:
+        return "SHUTDOWN";
+    default:
+        return "UNKNOWN";
     }
 }
 
 // Exception code to string
 inline std::string GetExceptionName(DWORD code) {
     switch (code) {
-        case EXCEPTION_ACCESS_VIOLATION: return "Access Violation (0xC0000005)";
-        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: return "Array Bounds Exceeded (0xC000008C)";
-        case EXCEPTION_BREAKPOINT: return "Breakpoint (0x80000003)";
-        case EXCEPTION_DATATYPE_MISALIGNMENT: return "Datatype Misalignment (0x80000002)";
-        case EXCEPTION_FLT_DENORMAL_OPERAND: return "Float Denormal Operand (0xC000008D)";
-        case EXCEPTION_FLT_DIVIDE_BY_ZERO: return "Float Divide by Zero (0xC000008E)";
-        case EXCEPTION_FLT_INEXACT_RESULT: return "Float Inexact Result (0xC000008F)";
-        case EXCEPTION_FLT_INVALID_OPERATION: return "Float Invalid Operation (0xC0000090)";
-        case EXCEPTION_FLT_OVERFLOW: return "Float Overflow (0xC0000091)";
-        case EXCEPTION_FLT_STACK_CHECK: return "Float Stack Check (0xC0000092)";
-        case EXCEPTION_FLT_UNDERFLOW: return "Float Underflow (0xC0000093)";
-        case EXCEPTION_ILLEGAL_INSTRUCTION: return "Illegal Instruction (0xC000001D)";
-        case EXCEPTION_IN_PAGE_ERROR: return "In Page Error (0xC0000006)";
-        case EXCEPTION_INT_DIVIDE_BY_ZERO: return "Integer Divide by Zero (0xC0000094)";
-        case EXCEPTION_INT_OVERFLOW: return "Integer Overflow (0xC0000095)";
-        case EXCEPTION_INVALID_DISPOSITION: return "Invalid Disposition (0xC0000026)";
-        case EXCEPTION_NONCONTINUABLE_EXCEPTION: return "Noncontinuable Exception (0xC0000025)";
-        case EXCEPTION_PRIV_INSTRUCTION: return "Privileged Instruction (0xC0000096)";
-        case EXCEPTION_SINGLE_STEP: return "Single Step (0x80000004)";
-        case EXCEPTION_STACK_OVERFLOW: return "Stack Overflow (0xC00000FD)";
-        default: {
-            std::ostringstream oss;
-            oss << "Unknown Exception (0x" << std::hex << std::uppercase << code << ")";
-            return oss.str();
-        }
+    case EXCEPTION_ACCESS_VIOLATION:
+        return "Access Violation (0xC0000005)";
+    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+        return "Array Bounds Exceeded (0xC000008C)";
+    case EXCEPTION_BREAKPOINT:
+        return "Breakpoint (0x80000003)";
+    case EXCEPTION_DATATYPE_MISALIGNMENT:
+        return "Datatype Misalignment (0x80000002)";
+    case EXCEPTION_FLT_DENORMAL_OPERAND:
+        return "Float Denormal Operand (0xC000008D)";
+    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+        return "Float Divide by Zero (0xC000008E)";
+    case EXCEPTION_FLT_INEXACT_RESULT:
+        return "Float Inexact Result (0xC000008F)";
+    case EXCEPTION_FLT_INVALID_OPERATION:
+        return "Float Invalid Operation (0xC0000090)";
+    case EXCEPTION_FLT_OVERFLOW:
+        return "Float Overflow (0xC0000091)";
+    case EXCEPTION_FLT_STACK_CHECK:
+        return "Float Stack Check (0xC0000092)";
+    case EXCEPTION_FLT_UNDERFLOW:
+        return "Float Underflow (0xC0000093)";
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+        return "Illegal Instruction (0xC000001D)";
+    case EXCEPTION_IN_PAGE_ERROR:
+        return "In Page Error (0xC0000006)";
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        return "Integer Divide by Zero (0xC0000094)";
+    case EXCEPTION_INT_OVERFLOW:
+        return "Integer Overflow (0xC0000095)";
+    case EXCEPTION_INVALID_DISPOSITION:
+        return "Invalid Disposition (0xC0000026)";
+    case EXCEPTION_NONCONTINUABLE_EXCEPTION:
+        return "Noncontinuable Exception (0xC0000025)";
+    case EXCEPTION_PRIV_INSTRUCTION:
+        return "Privileged Instruction (0xC0000096)";
+    case EXCEPTION_SINGLE_STEP:
+        return "Single Step (0x80000004)";
+    case EXCEPTION_STACK_OVERFLOW:
+        return "Stack Overflow (0xC00000FD)";
+    default: {
+        std::ostringstream oss;
+        oss << "Unknown Exception (0x" << std::hex << std::uppercase << code << ")";
+        return oss.str();
+    }
     }
 }
 
@@ -107,32 +140,35 @@ inline std::string GetExceptionName(DWORD code) {
 inline const char* GetFriendlyMessage(DWORD code) {
     const auto& str = i18n::Get();
     switch (code) {
-        case EXCEPTION_ACCESS_VIOLATION: return str.accessViolation;
-        case EXCEPTION_INT_DIVIDE_BY_ZERO: return str.calculationError;
-        case EXCEPTION_STACK_OVERFLOW: return str.stackOverflow;
-        default: return str.unexpectedError;
+    case EXCEPTION_ACCESS_VIOLATION:
+        return str.accessViolation;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        return str.calculationError;
+    case EXCEPTION_STACK_OVERFLOW:
+        return str.stackOverflow;
+    default:
+        return str.unexpectedError;
     }
 }
 
 // Format uptime
 inline std::string FormatUptime() {
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - g_startTime).count();
-    int hours = static_cast<int>(elapsed / 3600);
-    int minutes = static_cast<int>((elapsed % 3600) / 60);
-    int seconds = static_cast<int>(elapsed % 60);
+    auto               now     = std::chrono::steady_clock::now();
+    auto               elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - g_startTime).count();
+    int                hours   = static_cast<int>(elapsed / 3600);
+    int                minutes = static_cast<int>((elapsed % 3600) / 60);
+    int                seconds = static_cast<int>(elapsed % 60);
     std::ostringstream oss;
-    oss << std::setfill('0') << std::setw(2) << hours << ":"
-        << std::setfill('0') << std::setw(2) << minutes << ":"
+    oss << std::setfill('0') << std::setw(2) << hours << ":" << std::setfill('0') << std::setw(2) << minutes << ":"
         << std::setfill('0') << std::setw(2) << seconds;
     return oss.str();
 }
 
 // Get Windows version string
 inline std::string GetWindowsVersion() {
-    OSVERSIONINFOEXW osvi = { sizeof(osvi) };
+    OSVERSIONINFOEXW osvi = {sizeof(osvi)};
     // RtlGetVersion returns NTSTATUS (which is LONG)
-    typedef LONG(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
+    typedef LONG(WINAPI * RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll) {
         RtlGetVersionFunc RtlGetVersion = (RtlGetVersionFunc)GetProcAddress(ntdll, "RtlGetVersion");
@@ -141,8 +177,7 @@ inline std::string GetWindowsVersion() {
         }
     }
     std::ostringstream oss;
-    oss << "Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
-        << " (Build " << osvi.dwBuildNumber << ")";
+    oss << "Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << " (Build " << osvi.dwBuildNumber << ")";
     return oss.str();
 }
 
@@ -159,10 +194,10 @@ inline std::string GetSystemLanguage() {
 
 // Get memory info
 inline std::string GetMemoryInfo() {
-    MEMORYSTATUSEX memInfo = { sizeof(memInfo) };
+    MEMORYSTATUSEX memInfo = {sizeof(memInfo)};
     GlobalMemoryStatusEx(&memInfo);
-    double usedGB = (memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0 * 1024.0);
-    double totalGB = memInfo.ullTotalPhys / (1024.0 * 1024.0 * 1024.0);
+    double             usedGB  = (memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0 * 1024.0);
+    double             totalGB = memInfo.ullTotalPhys / (1024.0 * 1024.0 * 1024.0);
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << usedGB << " GB / " << totalGB << " GB";
     return oss.str();
@@ -175,7 +210,7 @@ inline std::string g_gpuVersion;
 // Set GPU info (call after OpenGL init)
 inline void SetGPUInfo(const std::string& renderer, const std::string& version) {
     g_gpuRenderer = renderer;
-    g_gpuVersion = version;
+    g_gpuVersion  = version;
 }
 
 // Capture call stack using CaptureStackBackTrace (no DbgHelp dependency)
@@ -184,7 +219,7 @@ inline std::vector<std::string> CaptureCallStack(CONTEXT* context = nullptr, int
 
     // Use CaptureStackBackTrace for simple stack capture (works without DbgHelp)
     void* frames[64];
-    int frameCount = maxFrames > 64 ? 64 : maxFrames;
+    int   frameCount = maxFrames > 64 ? 64 : maxFrames;
 
     // If context is provided (from exception), we can only get limited info
     // CaptureStackBackTrace only works for current thread's stack
@@ -194,11 +229,10 @@ inline std::vector<std::string> CaptureCallStack(CONTEXT* context = nullptr, int
         std::ostringstream oss;
         oss << "#" << i << "  ";
 
-        HMODULE module = nullptr;
-        char moduleName[MAX_PATH] = "Unknown";
+        HMODULE module               = nullptr;
+        char    moduleName[MAX_PATH] = "Unknown";
 
-        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                                (LPCSTR)frames[i], &module)) {
             GetModuleFileNameA(module, moduleName, MAX_PATH);
             char* lastSlash = strrchr(moduleName, '\\');
@@ -220,9 +254,8 @@ inline std::vector<std::string> CaptureCallStack(CONTEXT* context = nullptr, int
 }
 
 // Build detailed crash report
-inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr,
-                                     CONTEXT* context = nullptr) {
-    const auto& str = i18n::Get();
+inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr, CONTEXT* context = nullptr) {
+    const auto&        str = i18n::Get();
     std::ostringstream report;
 
     // Exception info
@@ -232,10 +265,8 @@ inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr,
         report << str.fieldAddress << ": 0x" << std::hex << std::uppercase
                << (uintptr_t)exceptionRecord->ExceptionAddress << std::dec << "\n";
 
-        if (exceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
-            exceptionRecord->NumberParameters >= 2) {
-            const char* op = (exceptionRecord->ExceptionInformation[0] == 0)
-                           ? str.statusRead : str.statusWrite;
+        if (exceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && exceptionRecord->NumberParameters >= 2) {
+            const char* op = (exceptionRecord->ExceptionInformation[0] == 0) ? str.statusRead : str.statusWrite;
             report << str.fieldOperation << ": " << op << " 0x" << std::hex << std::uppercase
                    << exceptionRecord->ExceptionInformation[1] << std::dec << "\n";
         }
@@ -269,7 +300,8 @@ inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr,
     // Camera info
     report << "== " << str.sectionCamera << " ==\n";
     if (g_cameraIndex >= 0) {
-        report << str.fieldCameraDevice << ": " << (g_cameraDevice.empty() ? str.statusUnknown : g_cameraDevice) << "\n";
+        report << str.fieldCameraDevice << ": " << (g_cameraDevice.empty() ? str.statusUnknown : g_cameraDevice)
+               << "\n";
         report << str.fieldCameraIndex << ": " << g_cameraIndex << "\n";
         if (g_cameraWidth > 0 && g_cameraHeight > 0) {
             report << str.fieldCameraResolution << ": " << g_cameraWidth << "x" << g_cameraHeight << "\n";
@@ -294,8 +326,8 @@ inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr,
     std::string logs = DebugLog::Instance().GetAllText();
     // Get last 10 lines
     std::vector<std::string> lines;
-    std::istringstream iss(logs);
-    std::string line;
+    std::istringstream       iss(logs);
+    std::string              line;
     while (std::getline(iss, line)) {
         lines.push_back(line);
     }
@@ -327,11 +359,11 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
     const auto& str = i18n::Get();
 
     std::string friendlyMsg = GetFriendlyMessage(exceptionRecord->ExceptionCode);
-    std::string details = BuildCrashReport(exceptionRecord, context);
+    std::string details     = BuildCrashReport(exceptionRecord, context);
 
     // Try to use TaskDialogIndirect dynamically (requires comctl32 v6.0)
-    typedef HRESULT(WINAPI* TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
-    HMODULE hComctl = GetModuleHandleW(L"comctl32.dll");
+    typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
+    HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
     TaskDialogIndirectFunc pTaskDialogIndirect = nullptr;
     if (hComctl) {
         pTaskDialogIndirect = (TaskDialogIndirectFunc)GetProcAddress(hComctl, "TaskDialogIndirect");
@@ -339,13 +371,13 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
 
     if (pTaskDialogIndirect) {
         // Convert to wide strings
-        int titleLen = MultiByteToWideChar(CP_UTF8, 0, str.crashTitle, -1, nullptr, 0);
-        int msgLen = MultiByteToWideChar(CP_UTF8, 0, friendlyMsg.c_str(), -1, nullptr, 0);
-        int expandLen = MultiByteToWideChar(CP_UTF8, 0, str.expandDetails, -1, nullptr, 0);
+        int titleLen    = MultiByteToWideChar(CP_UTF8, 0, str.crashTitle, -1, nullptr, 0);
+        int msgLen      = MultiByteToWideChar(CP_UTF8, 0, friendlyMsg.c_str(), -1, nullptr, 0);
+        int expandLen   = MultiByteToWideChar(CP_UTF8, 0, str.expandDetails, -1, nullptr, 0);
         int collapseLen = MultiByteToWideChar(CP_UTF8, 0, str.collapseDetails, -1, nullptr, 0);
-        int copyLen = MultiByteToWideChar(CP_UTF8, 0, str.copyAll, -1, nullptr, 0);
-        int closeLen = MultiByteToWideChar(CP_UTF8, 0, str.closeProgram, -1, nullptr, 0);
-        int detailsLen = MultiByteToWideChar(CP_UTF8, 0, details.c_str(), -1, nullptr, 0);
+        int copyLen     = MultiByteToWideChar(CP_UTF8, 0, str.copyAll, -1, nullptr, 0);
+        int closeLen    = MultiByteToWideChar(CP_UTF8, 0, str.closeProgram, -1, nullptr, 0);
+        int detailsLen  = MultiByteToWideChar(CP_UTF8, 0, details.c_str(), -1, nullptr, 0);
 
         std::wstring wTitle(titleLen, 0);
         std::wstring wMsg(msgLen, 0);
@@ -367,24 +399,21 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
         static std::string s_details;
         s_details = details;
 
-        TASKDIALOGCONFIG config = { sizeof(config) };
-        config.dwFlags = TDF_ENABLE_HYPERLINKS | TDF_EXPAND_FOOTER_AREA | TDF_ALLOW_DIALOG_CANCELLATION;
-        config.dwCommonButtons = 0;
-        config.pszWindowTitle = L"Particle Saturn";
-        config.pszMainIcon = TD_ERROR_ICON;
-        config.pszMainInstruction = wTitle.c_str();
-        config.pszContent = wMsg.c_str();
-        config.pszExpandedInformation = wDetails.c_str();
-        config.pszExpandedControlText = wCollapse.c_str();
+        TASKDIALOGCONFIG config        = {sizeof(config)};
+        config.dwFlags                 = TDF_ENABLE_HYPERLINKS | TDF_EXPAND_FOOTER_AREA | TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwCommonButtons         = 0;
+        config.pszWindowTitle          = L"Particle Saturn";
+        config.pszMainIcon             = TD_ERROR_ICON;
+        config.pszMainInstruction      = wTitle.c_str();
+        config.pszContent              = wMsg.c_str();
+        config.pszExpandedInformation  = wDetails.c_str();
+        config.pszExpandedControlText  = wCollapse.c_str();
         config.pszCollapsedControlText = wExpand.c_str();
 
-        TASKDIALOG_BUTTON buttons[] = {
-            { 1001, wCopy.c_str() },
-            { 1002, wClose.c_str() }
-        };
-        config.pButtons = buttons;
-        config.cButtons = 2;
-        config.nDefaultButton = 1002;
+        TASKDIALOG_BUTTON buttons[] = {{1001, wCopy.c_str()}, {1002, wClose.c_str()}};
+        config.pButtons             = buttons;
+        config.cButtons             = 2;
+        config.nDefaultButton       = 1002;
 
         config.pfCallback = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LONG_PTR lpRefData) -> HRESULT {
             if (msg == TDN_BUTTON_CLICKED && wParam == 1001) {
@@ -404,11 +433,11 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
 
 // Show recoverable error (ImGui modal) - call from render loop
 inline void ShowRecoverableError(const char* title, const char* message, const char* details, bool isWarning = true) {
-    g_pendingError.active = true;
-    g_pendingError.isWarning = isWarning;
-    g_pendingError.title = title;
-    g_pendingError.message = message;
-    g_pendingError.details = details;
+    g_pendingError.active          = true;
+    g_pendingError.isWarning       = isWarning;
+    g_pendingError.title           = title;
+    g_pendingError.message         = message;
+    g_pendingError.details         = details;
     g_pendingError.detailsExpanded = false;
 }
 
@@ -425,7 +454,9 @@ inline void ShowWarning(const char* localizedMessage, const std::string& technic
 
 // Render error dialog (call from main loop after ImGui::NewFrame)
 inline void RenderErrorDialog(float dt) {
-    if (!g_pendingError.active) return;
+    if (!g_pendingError.active) {
+        return;
+    }
 
     const auto& str = i18n::Get();
 
@@ -435,14 +466,13 @@ inline void RenderErrorDialog(float dt) {
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(450, 0), ImGuiCond_Appearing);
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
-                             ImGuiWindowFlags_NoSavedSettings;
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
 
     if (ImGui::BeginPopupModal("##ErrorDialog", nullptr, flags)) {
         // Icon and title
-        ImVec4 iconColor = g_pendingError.isWarning
-            ? ImVec4(1.0f, 0.7f, 0.0f, 1.0f)  // Orange for warning
-            : ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // Red for error
+        ImVec4 iconColor = g_pendingError.isWarning ? ImVec4(1.0f, 0.7f, 0.0f, 1.0f)  // Orange for warning
+                                                    : ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // Red for error
 
         ImGui::PushStyleColor(ImGuiCol_Text, iconColor);
         ImGui::Text(g_pendingError.isWarning ? "!" : "X");
@@ -460,8 +490,7 @@ inline void RenderErrorDialog(float dt) {
 
         // Expandable details
         if (!g_pendingError.details.empty()) {
-            const char* expandText = g_pendingError.detailsExpanded
-                ? str.collapseDetails : str.expandDetails;
+            const char* expandText = g_pendingError.detailsExpanded ? str.collapseDetails : str.expandDetails;
 
             if (ImGui::Button(expandText)) {
                 g_pendingError.detailsExpanded = !g_pendingError.detailsExpanded;
@@ -512,11 +541,11 @@ inline void Init() {
     // Load dynamically to avoid ordinal import errors
     HMODULE hComctl = LoadLibraryW(L"comctl32.dll");
     if (hComctl) {
-        typedef BOOL(WINAPI* InitCommonControlsExFunc)(const INITCOMMONCONTROLSEX*);
+        typedef BOOL(WINAPI * InitCommonControlsExFunc)(const INITCOMMONCONTROLSEX*);
         InitCommonControlsExFunc pInitCommonControlsEx =
             (InitCommonControlsExFunc)GetProcAddress(hComctl, "InitCommonControlsEx");
         if (pInitCommonControlsEx) {
-            INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_STANDARD_CLASSES };
+            INITCOMMONCONTROLSEX icc = {sizeof(icc), ICC_STANDARD_CLASSES};
             pInitCommonControlsEx(&icc);
         }
         // Don't FreeLibrary - keep it loaded for TaskDialog
@@ -525,16 +554,16 @@ inline void Init() {
 
 // Update state (call each frame)
 inline void UpdateState(int frameCount, int particleCount, float lod, bool handTrackingActive) {
-    g_frameCount = frameCount;
-    g_particleCount = particleCount;
-    g_currentLOD = lod;
+    g_frameCount         = frameCount;
+    g_particleCount      = particleCount;
+    g_currentLOD         = lod;
     g_handTrackingActive = handTrackingActive;
 }
 
 // Set camera info
 inline void SetCameraInfo(int index, int width, int height, bool active, const std::string& device = "") {
-    g_cameraIndex = index;
-    g_cameraWidth = width;
+    g_cameraIndex  = index;
+    g_cameraWidth  = width;
     g_cameraHeight = height;
     g_cameraActive = active;
     g_cameraDevice = device;

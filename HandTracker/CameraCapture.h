@@ -43,8 +43,10 @@ class OpenCVCapture : public ICameraCapture {
     void close() override;
     bool isOpened() const override;
     bool getLatestFrame(cv::Mat& frame) override;
-    int  getWidth() const override { return m_width; }
-    int  getHeight() const override { return m_height; }
+
+    int getWidth() const override { return m_width; }
+
+    int getHeight() const override { return m_height; }
 
   private:
     cv::VideoCapture m_cap;
@@ -58,7 +60,7 @@ class DSGrabberCallback;
 
 // DirectShow 异步实现 (Windows 专用)
 class DirectShowCapture : public ICameraCapture {
-    friend class DSGrabberCallback;  // 允许回调类访问私有成员
+    friend class DSGrabberCallback; // 允许回调类访问私有成员
 
   public:
     DirectShowCapture();
@@ -68,8 +70,10 @@ class DirectShowCapture : public ICameraCapture {
     void close() override;
     bool isOpened() const override;
     bool getLatestFrame(cv::Mat& frame) override;
-    int  getWidth() const override { return m_width; }
-    int  getHeight() const override { return m_height; }
+
+    int getWidth() const override { return m_width; }
+
+    int getHeight() const override { return m_height; }
 
   private:
     struct Impl;

@@ -8,10 +8,10 @@
 #include <numeric>
 
 #include "SIMDNormalize.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 PalmDetector::PalmDetector() {}
 
@@ -37,8 +37,8 @@ bool PalmDetector::buildInterpreter() {
 
     // 创建并应用 XNNPACK 委托
     TfLiteXNNPackDelegateOptions xnnpack_options = TfLiteXNNPackDelegateOptionsDefault();
-    xnnpack_options.num_threads = 0;  // 0 = 自动检测最佳线程数
-    xnnpack_delegate = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+    xnnpack_options.num_threads                  = 0; // 0 = 自动检测最佳线程数
+    xnnpack_delegate                             = TfLiteXNNPackDelegateCreate(&xnnpack_options);
     if (xnnpack_delegate) {
         if (interpreter->ModifyGraphWithDelegate(xnnpack_delegate) != kTfLiteOk) {
             std::cerr << "[PalmDetector] Warning: Failed to apply XNNPACK delegate" << std::endl;
@@ -320,7 +320,7 @@ std::vector<PalmDetection> PalmDetector::detect(const cv::Mat& image, float prob
     m_confidences.reserve(m_candidates.size());
     for (auto& det : m_candidates) {
         m_rects.push_back(cv::Rect((int)(det.rect.x * 1000), (int)(det.rect.y * 1000), (int)(det.rect.width * 1000),
-                                 (int)(det.rect.height * 1000)));
+                                   (int)(det.rect.height * 1000)));
         m_confidences.push_back(det.score);
     }
 

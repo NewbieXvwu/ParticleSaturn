@@ -2,27 +2,28 @@
 // Crash Analyzer - PDB-based stack trace symbolizer
 // Uses dynamic loading for DbgHelp to ensure compatibility across Windows versions
 
-#include "Localization.h"
-
 #include <Windows.h>
+
 #include <commdlg.h>
-#include <string>
-#include <vector>
-#include <regex>
-#include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "Localization.h"
 
 #pragma comment(lib, "comdlg32.lib")
 
 namespace CrashAnalyzer {
 
 // DbgHelp types (defined manually to avoid header dependency)
-#define SYMOPT_UNDNAME          0x00000002
-#define SYMOPT_DEFERRED_LOADS   0x00000004
-#define SYMOPT_LOAD_LINES       0x00000010
-#define SYMOPT_DEBUG            0x80000000
-#define MAX_SYM_NAME            2000
+#define SYMOPT_UNDNAME 0x00000002
+#define SYMOPT_DEFERRED_LOADS 0x00000004
+#define SYMOPT_LOAD_LINES 0x00000010
+#define SYMOPT_DEBUG 0x80000000
+#define MAX_SYM_NAME 2000
 
 typedef struct _SYMBOL_INFO {
     ULONG   SizeOfStruct;
@@ -51,31 +52,33 @@ typedef struct _IMAGEHLP_LINE64 {
 } IMAGEHLP_LINE64, *PIMAGEHLP_LINE64;
 
 // DbgHelp function pointers
-typedef DWORD (WINAPI* PFN_SymSetOptions)(DWORD);
-typedef BOOL (WINAPI* PFN_SymInitialize)(HANDLE, PCSTR, BOOL);
-typedef BOOL (WINAPI* PFN_SymCleanup)(HANDLE);
-typedef DWORD64 (WINAPI* PFN_SymLoadModuleEx)(HANDLE, HANDLE, PCSTR, PCSTR, DWORD64, DWORD, PVOID, DWORD);
-typedef BOOL (WINAPI* PFN_SymUnloadModule64)(HANDLE, DWORD64);
-typedef BOOL (WINAPI* PFN_SymFromAddr)(HANDLE, DWORD64, PDWORD64, PSYMBOL_INFO);
-typedef BOOL (WINAPI* PFN_SymGetLineFromAddr64)(HANDLE, DWORD64, PDWORD, PIMAGEHLP_LINE64);
+typedef DWORD(WINAPI* PFN_SymSetOptions)(DWORD);
+typedef BOOL(WINAPI* PFN_SymInitialize)(HANDLE, PCSTR, BOOL);
+typedef BOOL(WINAPI* PFN_SymCleanup)(HANDLE);
+typedef DWORD64(WINAPI* PFN_SymLoadModuleEx)(HANDLE, HANDLE, PCSTR, PCSTR, DWORD64, DWORD, PVOID, DWORD);
+typedef BOOL(WINAPI* PFN_SymUnloadModule64)(HANDLE, DWORD64);
+typedef BOOL(WINAPI* PFN_SymFromAddr)(HANDLE, DWORD64, PDWORD64, PSYMBOL_INFO);
+typedef BOOL(WINAPI* PFN_SymGetLineFromAddr64)(HANDLE, DWORD64, PDWORD, PIMAGEHLP_LINE64);
 
 // DbgHelp dynamic loader
 struct DbgHelpLoader {
-    HMODULE hModule = nullptr;
-    bool initialized = false;
-    bool available = false;
+    HMODULE     hModule     = nullptr;
+    bool        initialized = false;
+    bool        available   = false;
     std::string errorMessage;
 
-    PFN_SymSetOptions pSymSetOptions = nullptr;
-    PFN_SymInitialize pSymInitialize = nullptr;
-    PFN_SymCleanup pSymCleanup = nullptr;
-    PFN_SymLoadModuleEx pSymLoadModuleEx = nullptr;
-    PFN_SymUnloadModule64 pSymUnloadModule64 = nullptr;
-    PFN_SymFromAddr pSymFromAddr = nullptr;
+    PFN_SymSetOptions        pSymSetOptions        = nullptr;
+    PFN_SymInitialize        pSymInitialize        = nullptr;
+    PFN_SymCleanup           pSymCleanup           = nullptr;
+    PFN_SymLoadModuleEx      pSymLoadModuleEx      = nullptr;
+    PFN_SymUnloadModule64    pSymUnloadModule64    = nullptr;
+    PFN_SymFromAddr          pSymFromAddr          = nullptr;
     PFN_SymGetLineFromAddr64 pSymGetLineFromAddr64 = nullptr;
 
     bool Init() {
-        if (initialized) return available;
+        if (initialized) {
+            return available;
+        }
         initialized = true;
 
         hModule = LoadLibraryA("dbghelp.dll");
@@ -84,16 +87,16 @@ struct DbgHelpLoader {
             return false;
         }
 
-        pSymSetOptions = (PFN_SymSetOptions)GetProcAddress(hModule, "SymSetOptions");
-        pSymInitialize = (PFN_SymInitialize)GetProcAddress(hModule, "SymInitialize");
-        pSymCleanup = (PFN_SymCleanup)GetProcAddress(hModule, "SymCleanup");
-        pSymLoadModuleEx = (PFN_SymLoadModuleEx)GetProcAddress(hModule, "SymLoadModuleEx");
-        pSymUnloadModule64 = (PFN_SymUnloadModule64)GetProcAddress(hModule, "SymUnloadModule64");
-        pSymFromAddr = (PFN_SymFromAddr)GetProcAddress(hModule, "SymFromAddr");
+        pSymSetOptions        = (PFN_SymSetOptions)GetProcAddress(hModule, "SymSetOptions");
+        pSymInitialize        = (PFN_SymInitialize)GetProcAddress(hModule, "SymInitialize");
+        pSymCleanup           = (PFN_SymCleanup)GetProcAddress(hModule, "SymCleanup");
+        pSymLoadModuleEx      = (PFN_SymLoadModuleEx)GetProcAddress(hModule, "SymLoadModuleEx");
+        pSymUnloadModule64    = (PFN_SymUnloadModule64)GetProcAddress(hModule, "SymUnloadModule64");
+        pSymFromAddr          = (PFN_SymFromAddr)GetProcAddress(hModule, "SymFromAddr");
         pSymGetLineFromAddr64 = (PFN_SymGetLineFromAddr64)GetProcAddress(hModule, "SymGetLineFromAddr64");
 
-        if (!pSymSetOptions || !pSymInitialize || !pSymCleanup ||
-            !pSymLoadModuleEx || !pSymUnloadModule64 || !pSymFromAddr) {
+        if (!pSymSetOptions || !pSymInitialize || !pSymCleanup || !pSymLoadModuleEx || !pSymUnloadModule64 ||
+            !pSymFromAddr) {
             errorMessage = "DbgHelp.dll version too old";
             FreeLibrary(hModule);
             hModule = nullptr;
@@ -109,7 +112,7 @@ struct DbgHelpLoader {
             FreeLibrary(hModule);
             hModule = nullptr;
         }
-        available = false;
+        available   = false;
         initialized = false;
     }
 };
@@ -118,14 +121,14 @@ inline DbgHelpLoader g_dbgHelp;
 
 // State
 struct State {
-    bool windowOpen = false;
-    bool pdbLoaded = false;
+    bool        windowOpen = false;
+    bool        pdbLoaded  = false;
     std::string pdbPath;
-    uint64_t pdbSize = 0;
-    DWORD64 pdbBase = 0;
-    char reportInput[16384] = {};
+    uint64_t    pdbSize            = 0;
+    DWORD64     pdbBase            = 0;
+    char        reportInput[16384] = {};
     std::string analysisResult;
-    bool hasResult = false;
+    bool        hasResult = false;
 };
 
 inline State g_state;
@@ -133,7 +136,9 @@ inline State g_state;
 // Get file size
 inline uint64_t GetFileSize(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) return 0;
+    if (!file) {
+        return 0;
+    }
     return file.tellg();
 }
 
@@ -157,20 +162,20 @@ inline std::string OpenPdbFileDialog() {
     wchar_t filename[MAX_PATH] = {};
 
     // Convert title to wide string
-    int titleLen = MultiByteToWideChar(CP_UTF8, 0, str.selectPdbFile, -1, nullptr, 0);
+    int          titleLen = MultiByteToWideChar(CP_UTF8, 0, str.selectPdbFile, -1, nullptr, 0);
     std::wstring wTitle(titleLen, 0);
     MultiByteToWideChar(CP_UTF8, 0, str.selectPdbFile, -1, wTitle.data(), titleLen);
 
-    OPENFILENAMEW ofn = { sizeof(ofn) };
-    ofn.lpstrFilter = L"PDB Files (*.pdb)\0*.pdb\0All Files (*.*)\0*.*\0";
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = wTitle.c_str();
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    OPENFILENAMEW ofn = {sizeof(ofn)};
+    ofn.lpstrFilter   = L"PDB Files (*.pdb)\0*.pdb\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFile     = filename;
+    ofn.nMaxFile      = MAX_PATH;
+    ofn.lpstrTitle    = wTitle.c_str();
+    ofn.Flags         = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
     if (GetOpenFileNameW(&ofn)) {
         // Convert wide string back to UTF-8
-        int len = WideCharToMultiByte(CP_UTF8, 0, filename, -1, nullptr, 0, nullptr, nullptr);
+        int         len = WideCharToMultiByte(CP_UTF8, 0, filename, -1, nullptr, 0, nullptr, nullptr);
         std::string result(len - 1, 0);
         WideCharToMultiByte(CP_UTF8, 0, filename, -1, result.data(), len, nullptr, nullptr);
         return result;
@@ -209,8 +214,8 @@ inline bool LoadPdb(const std::string& path) {
     }
 
     g_state.pdbLoaded = true;
-    g_state.pdbPath = path;
-    g_state.pdbSize = GetFileSize(path);
+    g_state.pdbPath   = path;
+    g_state.pdbSize   = GetFileSize(path);
 
     return true;
 }
@@ -226,11 +231,11 @@ inline std::vector<std::pair<std::string, uint64_t>> ExtractAddresses(const std:
     std::sregex_iterator end;
 
     while (it != end) {
-        std::smatch match = *it;
+        std::smatch match     = *it;
         std::string offsetHex = match[2].str();
 
         uint64_t offset = std::stoull(offsetHex, nullptr, 16);
-        addresses.push_back({ match[0].str(), offset });
+        addresses.push_back({match[0].str(), offset});
 
         ++it;
     }
@@ -240,18 +245,20 @@ inline std::vector<std::pair<std::string, uint64_t>> ExtractAddresses(const std:
 
 // Resolve address using loaded PDB
 inline std::string ResolveAddress(uint64_t offset) {
-    if (!g_state.pdbLoaded || !g_dbgHelp.available) return "";
+    if (!g_state.pdbLoaded || !g_dbgHelp.available) {
+        return "";
+    }
 
-    HANDLE process = GetCurrentProcess();
+    HANDLE  process = GetCurrentProcess();
     DWORD64 address = g_state.pdbBase + offset;
 
     std::ostringstream result;
 
     // Get symbol name
-    char symbolBuffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
-    PSYMBOL_INFO symbol = (PSYMBOL_INFO)symbolBuffer;
+    char         symbolBuffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+    PSYMBOL_INFO symbol  = (PSYMBOL_INFO)symbolBuffer;
     symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-    symbol->MaxNameLen = MAX_SYM_NAME;
+    symbol->MaxNameLen   = MAX_SYM_NAME;
 
     DWORD64 displacement = 0;
     if (g_dbgHelp.pSymFromAddr(process, address, &displacement, symbol)) {
@@ -263,13 +270,15 @@ inline std::string ResolveAddress(uint64_t offset) {
 
         // Get line info (optional, may not be available)
         if (g_dbgHelp.pSymGetLineFromAddr64) {
-            IMAGEHLP_LINE64 line = { sizeof(line) };
-            DWORD lineDisplacement = 0;
+            IMAGEHLP_LINE64 line             = {sizeof(line)};
+            DWORD           lineDisplacement = 0;
             if (g_dbgHelp.pSymGetLineFromAddr64(process, address, &lineDisplacement, &line)) {
                 // Extract just the filename, not full path
-                const char* filename = line.FileName;
+                const char* filename  = line.FileName;
                 const char* lastSlash = strrchr(filename, '\\');
-                if (lastSlash) filename = lastSlash + 1;
+                if (lastSlash) {
+                    filename = lastSlash + 1;
+                }
 
                 result << " [" << filename << ":" << line.LineNumber << "]";
             }
@@ -316,16 +325,22 @@ inline std::string Analyze(const std::string& report) {
 
 // File drop callback handler - call from GLFW drop callback
 inline void HandleFileDrop(const char* path) {
-    if (!g_state.windowOpen) return;
+    if (!g_state.windowOpen) {
+        return;
+    }
 
     std::string pathStr(path);
-    size_t dotPos = pathStr.find_last_of('.');
-    if (dotPos == std::string::npos) return;
+    size_t      dotPos = pathStr.find_last_of('.');
+    if (dotPos == std::string::npos) {
+        return;
+    }
 
     std::string ext = pathStr.substr(dotPos);
 
     // Convert to lowercase
-    for (char& c : ext) c = (char)tolower(c);
+    for (char& c : ext) {
+        c = (char)tolower(c);
+    }
 
     if (ext == ".pdb") {
         LoadPdb(pathStr);
@@ -342,9 +357,11 @@ inline void HandleFileDrop(const char* path) {
 }
 
 // Render crash analyzer window with optional blur background
-inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
-                   unsigned int scrWidth = 0, unsigned int scrHeight = 0, bool isDarkMode = true) {
-    if (!g_state.windowOpen) return;
+inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned int scrWidth = 0,
+                   unsigned int scrHeight = 0, bool isDarkMode = true) {
+    if (!g_state.windowOpen) {
+        return;
+    }
 
     const auto& str = i18n::Get();
 
@@ -352,8 +369,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
     ImGui::SetNextWindowPos(ImVec2(scrWidth > 600 ? (float)(scrWidth - 580) : 20.0f, 50.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(550, 750), ImGuiCond_FirstUseEver);
 
-    ImGuiStyle& style = ImGui::GetStyle();
-    ImVec4 originalWindowBg = style.Colors[ImGuiCol_WindowBg];
+    ImGuiStyle& style            = ImGui::GetStyle();
+    ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
@@ -361,9 +378,9 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
     ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
 
     if (ImGui::Begin(str.crashAnalyzerTitle, &g_state.windowOpen)) {
-        ImVec2 pos = ImGui::GetWindowPos();
-        ImVec2 size = ImGui::GetWindowSize();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2      pos  = ImGui::GetWindowPos();
+        ImVec2      size = ImGui::GetWindowSize();
+        ImDrawList* dl   = ImGui::GetWindowDrawList();
 
         if (enableBlur && blurTex != 0 && scrWidth > 0 && scrHeight > 0) {
             ImVec2 uv0 = ImVec2(pos.x / scrWidth, 1.0f - pos.y / scrHeight);
@@ -375,13 +392,15 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
             dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
         } else {
             ImVec4 bgCol = originalWindowBg;
-            bgCol.w = 0.95f;
-            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol), style.WindowRounding);
+            bgCol.w      = 0.95f;
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
+                              style.WindowRounding);
         }
         // Check DbgHelp availability
         if (!g_dbgHelp.Init()) {
             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: %s", g_dbgHelp.errorMessage.c_str());
-            ImGui::TextWrapped("Symbol resolution unavailable. You can still view addresses but cannot resolve them to function names.");
+            ImGui::TextWrapped("Symbol resolution unavailable. You can still view addresses but cannot resolve them to "
+                               "function names.");
             ImGui::Separator();
             ImGui::Spacing();
         }
@@ -395,8 +414,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
             ImGui::SameLine();
 
             // Show just filename
-            std::string filename = g_state.pdbPath;
-            size_t lastSlash = filename.find_last_of("\\/");
+            std::string filename  = g_state.pdbPath;
+            size_t      lastSlash = filename.find_last_of("\\/");
             if (lastSlash != std::string::npos) {
                 filename = filename.substr(lastSlash + 1);
             }
@@ -428,8 +447,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
         ImGui::Text("%s", str.crashReport);
         ImGui::Separator();
 
-        ImGui::InputTextMultiline("##ReportInput", g_state.reportInput, sizeof(g_state.reportInput),
-                                   ImVec2(-1, 200), ImGuiInputTextFlags_AllowTabInput);
+        ImGui::InputTextMultiline("##ReportInput", g_state.reportInput, sizeof(g_state.reportInput), ImVec2(-1, 200),
+                                  ImGuiInputTextFlags_AllowTabInput);
 
         // Right-click context menu for paste
         if (ImGui::BeginPopupContextItem("##ReportInputContext")) {
@@ -440,8 +459,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
                         char* pszText = static_cast<char*>(GlobalLock(hData));
                         if (pszText) {
                             size_t currentLen = strlen(g_state.reportInput);
-                            size_t pasteLen = strlen(pszText);
-                            size_t maxLen = sizeof(g_state.reportInput) - 1;
+                            size_t pasteLen   = strlen(pszText);
+                            size_t maxLen     = sizeof(g_state.reportInput) - 1;
                             if (currentLen + pasteLen < maxLen) {
                                 strcat_s(g_state.reportInput, pszText);
                             }
@@ -466,7 +485,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0,
         }
         if (ImGui::Button(str.analyze, ImVec2(120, 0))) {
             g_state.analysisResult = Analyze(g_state.reportInput);
-            g_state.hasResult = true;
+            g_state.hasResult      = true;
         }
         if (!canAnalyze) {
             ImGui::EndDisabled();

@@ -67,9 +67,7 @@ unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc) {
 // 生成 FBM 噪声纹理 (用于行星表面)
 unsigned int GenerateFBMTextureImpl(int width, int height) {
     // 辅助函数: 2D 哈希噪声
-    auto hash = [](float x, float y) -> float {
-        return fmodf(sinf(x * 12.9898f + y * 78.233f) * 43758.5453f, 1.0f);
-    };
+    auto hash = [](float x, float y) -> float { return fmodf(sinf(x * 12.9898f + y * 78.233f) * 43758.5453f, 1.0f); };
 
     // 辅助函数: 平滑插值噪声
     auto noise = [&](float x, float y) -> float {
@@ -104,9 +102,9 @@ unsigned int GenerateFBMTextureImpl(int width, int height) {
     std::vector<unsigned char> data(width * height);
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            float u     = (float)x / width * 16.0f;
-            float v     = (float)y / height * 16.0f;
-            float value = fbm(u, v);
+            float u             = (float)x / width * 16.0f;
+            float v             = (float)y / height * 16.0f;
+            float value         = fbm(u, v);
             data[y * width + x] = (unsigned char)(value * 255.0f);
         }
     }

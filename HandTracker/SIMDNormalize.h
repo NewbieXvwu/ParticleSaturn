@@ -2,15 +2,15 @@
 #ifndef SIMD_NORMALIZE_H
 #define SIMD_NORMALIZE_H
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 // SIMD 模式枚举
 enum class SIMDMode {
-    Auto,    // 自动检测最佳实现
-    AVX2,    // 强制使用 AVX2
-    SSE,     // 强制使用 SSE
-    Scalar   // 强制使用标量实现
+    Auto,  // 自动检测最佳实现
+    AVX2,  // 强制使用 AVX2
+    SSE,   // 强制使用 SSE
+    Scalar // 强制使用标量实现
 };
 
 namespace SIMDNormalize {
