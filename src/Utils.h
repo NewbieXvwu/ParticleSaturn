@@ -81,7 +81,9 @@ template<int N = 60>
 class RingBufferFPS {
 public:
     RingBufferFPS() {
+        // 预填充假设 60 FPS 的帧时间，避免启动时 FPS 从 0 涨上去
         for (int i = 0; i < N; i++) frameTimes[i] = 1.0f / 60.0f;
+        count = N;  // 标记为已填满，与 sum 的初始值匹配
     }
 
     // 添加新的帧时间
@@ -90,26 +92,26 @@ public:
         frameTimes[index] = dt;
         sum += dt;
         index = (index + 1) % N;
-        if (count < N) count++;
+        // count 已经在构造函数中设为 N，不再增长
     }
 
     // 获取平均 FPS
     float GetAverageFPS() const {
-        if (count == 0 || sum <= 0.0f) return 60.0f;
-        return (float)count / sum;
+        if (sum <= 0.0f) return 60.0f;
+        return (float)N / sum;  // 始终使用 N 作为分子
     }
 
     // 获取平均帧时间
     float GetAverageFrameTime() const {
-        if (count == 0) return 1.0f / 60.0f;
-        return sum / (float)count;
+        if (sum <= 0.0f) return 1.0f / 60.0f;
+        return sum / (float)N;  // 始终使用 N 作为分母
     }
 
 private:
     float frameTimes[N];
     float sum = N * (1.0f / 60.0f);  // 初始假设 60 FPS
     int   index = 0;
-    int   count = 0;
+    int   count = N;  // 初始化为 N，与预填充的数据匹配
 };
 
 // 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
