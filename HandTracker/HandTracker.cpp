@@ -94,8 +94,8 @@ struct TrackerContext {
     std::atomic<bool> running{false};
 
     // 初始化状态同步
-    std::atomic<bool>       init_complete{false};  // 初始化是否完成（无论成功或失败）
-    std::atomic<bool>       init_success{false};   // 初始化是否成功
+    std::atomic<bool>       init_complete{false}; // 初始化是否完成（无论成功或失败）
+    std::atomic<bool>       init_success{false};  // 初始化是否成功
     std::mutex              init_mutex;
     std::condition_variable init_cv;
 
@@ -566,10 +566,11 @@ HAND_API bool WaitForTrackerReady(int timeout_ms) {
     } else {
         // 带超时等待
         bool completed = g_ctx.init_cv.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-                                                 [] { return g_ctx.init_complete.load(); });
+                                                [] { return g_ctx.init_complete.load(); });
         if (!completed) {
             // 超时
-            g_ctx.SetError(HANDTRACKER_ERROR_UNKNOWN, "Initialization timed out after " + std::to_string(timeout_ms) + "ms");
+            g_ctx.SetError(HANDTRACKER_ERROR_UNKNOWN,
+                           "Initialization timed out after " + std::to_string(timeout_ms) + "ms");
             return false;
         }
     }

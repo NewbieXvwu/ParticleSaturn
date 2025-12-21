@@ -427,9 +427,9 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
         pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
     } else {
         // Fallback to MessageBoxW (MessageBoxA doesn't support UTF-8)
-        std::string fullMsg = friendlyMsg + "\n\n" + details;
-        int         titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, nullptr, 0);
-        int         msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+        std::string  fullMsg  = friendlyMsg + "\n\n" + details;
+        int          titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, nullptr, 0);
+        int          msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
         std::wstring wTitle(titleLen, 0);
         std::wstring wMsg(msgLen, 0);
         MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, wTitle.data(), titleLen);
@@ -457,7 +457,7 @@ inline void ShowError(const char* localizedMessage, const std::string& technical
 // Show warning using native Windows dialog (non-blocking, runs in separate thread)
 inline void ShowWarning(const char* localizedMessage, const std::string& technicalDetails = "") {
     // Copy strings for use in thread
-    std::string msgCopy = localizedMessage;
+    std::string msgCopy     = localizedMessage;
     std::string detailsCopy = technicalDetails;
 
     // Run dialog in separate thread to avoid blocking render loop
@@ -474,9 +474,9 @@ inline void ShowWarning(const char* localizedMessage, const std::string& technic
 
         if (pTaskDialogIndirect) {
             // Convert to wide strings
-            int titleLen   = MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, nullptr, 0);
-            int msgLen     = MultiByteToWideChar(CP_UTF8, 0, msgCopy.c_str(), -1, nullptr, 0);
-            int closeLen   = MultiByteToWideChar(CP_UTF8, 0, str.close, -1, nullptr, 0);
+            int titleLen = MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, nullptr, 0);
+            int msgLen   = MultiByteToWideChar(CP_UTF8, 0, msgCopy.c_str(), -1, nullptr, 0);
+            int closeLen = MultiByteToWideChar(CP_UTF8, 0, str.close, -1, nullptr, 0);
 
             std::wstring wTitle(titleLen, 0);
             std::wstring wMsg(msgLen, 0);
@@ -486,13 +486,13 @@ inline void ShowWarning(const char* localizedMessage, const std::string& technic
             MultiByteToWideChar(CP_UTF8, 0, msgCopy.c_str(), -1, wMsg.data(), msgLen);
             MultiByteToWideChar(CP_UTF8, 0, str.close, -1, wClose.data(), closeLen);
 
-            TASKDIALOGCONFIG config = {sizeof(config)};
-            config.dwFlags          = TDF_ALLOW_DIALOG_CANCELLATION;
-            config.dwCommonButtons  = 0;
-            config.pszWindowTitle   = L"Particle Saturn";
-            config.pszMainIcon      = TD_WARNING_ICON;
+            TASKDIALOGCONFIG config   = {sizeof(config)};
+            config.dwFlags            = TDF_ALLOW_DIALOG_CANCELLATION;
+            config.dwCommonButtons    = 0;
+            config.pszWindowTitle     = L"Particle Saturn";
+            config.pszMainIcon        = TD_WARNING_ICON;
             config.pszMainInstruction = wTitle.c_str();
-            config.pszContent       = wMsg.c_str();
+            config.pszContent         = wMsg.c_str();
 
             // Add expandable details if provided
             std::wstring wDetails;
@@ -504,9 +504,9 @@ inline void ShowWarning(const char* localizedMessage, const std::string& technic
             }
 
             TASKDIALOG_BUTTON buttons[] = {{IDOK, wClose.c_str()}};
-            config.pButtons       = buttons;
-            config.cButtons       = 1;
-            config.nDefaultButton = IDOK;
+            config.pButtons             = buttons;
+            config.cButtons             = 1;
+            config.nDefaultButton       = IDOK;
 
             pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
         } else {
@@ -653,8 +653,8 @@ inline void ShowEarlyFatalError(const char* message, const char* details = nullp
             fullMsg += "\n\n";
             fullMsg += details;
         }
-        int         titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn", -1, nullptr, 0);
-        int         msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+        int          titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn", -1, nullptr, 0);
+        int          msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
         std::wstring wTitle(titleLen, 0);
         std::wstring wMsg(msgLen, 0);
         MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn", -1, wTitle.data(), titleLen);

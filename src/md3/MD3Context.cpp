@@ -1,12 +1,14 @@
 // MD3Context.cpp - MD3 全局状态、初始化和帧管理
 
 #include <glad/glad.h>
+
 #include <imgui.h>
 #include <imgui_internal.h>
+
+#include <cmath>
 #include <iostream>
 #include <unordered_map>
 #include <vector>
-#include <cmath>
 
 #include "MD3.h"
 #include "MD3Shaders.h"
@@ -74,27 +76,19 @@ void Init(float dpiScale) {
         return;
     }
 
-    g_context.dpiScale = dpiScale;
+    g_context.dpiScale   = dpiScale;
     g_context.isDarkMode = true;
-    g_context.colors = GetDarkColorScheme();
+    g_context.colors     = GetDarkColorScheme();
 
     // 创建 Ripple 着色器程序
-    g_context.rippleProgram = CreateProgram(
-        MD3Shaders::VertexRipple,
-        MD3Shaders::FragmentRipple
-    );
+    g_context.rippleProgram = CreateProgram(MD3Shaders::VertexRipple, MD3Shaders::FragmentRipple);
 
     if (!g_context.rippleProgram) {
         std::cerr << "[MD3] Failed to create ripple shader program" << std::endl;
     }
 
     // 创建全屏四边形 VAO/VBO
-    float quadVerts[] = {
-        -1.0f, -1.0f,
-         1.0f, -1.0f,
-        -1.0f,  1.0f,
-         1.0f,  1.0f
-    };
+    float quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
 
     glGenVertexArrays(1, &g_context.rippleVAO);
     glGenBuffers(1, &g_context.rippleVBO);
@@ -145,10 +139,10 @@ void BeginFrame(float dt) {
     g_context.currentTime += dt;
 
     // 更新所有 Ripple 动画
-    auto& ripples = g_context.ripples;
-    const auto& config = g_context.rippleConfig;
+    auto&       ripples = g_context.ripples;
+    const auto& config  = g_context.rippleConfig;
 
-    for (auto it = ripples.begin(); it != ripples.end(); ) {
+    for (auto it = ripples.begin(); it != ripples.end();) {
         RippleState& r = *it;
         r.time += dt;
 
@@ -157,14 +151,14 @@ void BeginFrame(float dt) {
             float expandProgress = r.time / config.expandDuration;
             if (expandProgress >= 1.0f) {
                 expandProgress = 1.0f;
-                r.fadeOut = true;
-                r.time = 0.0f;  // 重置时间用于淡出
+                r.fadeOut      = true;
+                r.time         = 0.0f; // 重置时间用于淡出
             }
 
             // 使用 ease-out 曲线
             float eased = 1.0f - (1.0f - expandProgress) * (1.0f - expandProgress);
-            r.radius = r.maxRadius * eased;
-            r.alpha = config.maxAlpha;
+            r.radius    = r.maxRadius * eased;
+            r.alpha     = config.maxAlpha;
         } else {
             // 淡出阶段
             float fadeProgress = r.time / config.fadeDuration;
@@ -174,7 +168,7 @@ void BeginFrame(float dt) {
             }
 
             r.radius = r.maxRadius;
-            r.alpha = config.maxAlpha * (1.0f - fadeProgress);
+            r.alpha  = config.maxAlpha * (1.0f - fadeProgress);
         }
 
         ++it;
@@ -224,10 +218,12 @@ void EndFrame() {
 }
 
 void SetDarkMode(bool dark) {
-    if (g_context.isDarkMode == dark) return;
+    if (g_context.isDarkMode == dark) {
+        return;
+    }
 
     g_context.isDarkMode = dark;
-    g_context.colors = dark ? GetDarkColorScheme() : GetLightColorScheme();
+    g_context.colors     = dark ? GetDarkColorScheme() : GetLightColorScheme();
 
     std::cout << "[MD3] Theme changed to: " << (dark ? "Dark" : "Light") << std::endl;
 }
@@ -237,7 +233,7 @@ bool IsDarkMode() {
 }
 
 void SetScreenSize(float width, float height) {
-    g_context.screenWidth = width;
+    g_context.screenWidth  = width;
     g_context.screenHeight = height;
 }
 
@@ -249,8 +245,7 @@ void SetDpiScale(float scale) {
 // Ripple API 实现
 //=============================================================================
 
-void TriggerRipple(ImGuiID id, float centerX, float centerY,
-                   float boundsX, float boundsY, float boundsW, float boundsH,
+void TriggerRipple(ImGuiID id, float centerX, float centerY, float boundsX, float boundsY, float boundsW, float boundsH,
                    float cornerRadius) {
     // 计算最大半径（覆盖整个控件对角线）
     float dx1 = centerX - boundsX;
@@ -258,15 +253,13 @@ void TriggerRipple(ImGuiID id, float centerX, float centerY,
     float dy1 = centerY - boundsY;
     float dy2 = (boundsY + boundsH) - centerY;
 
-    float maxDx = std::max(dx1, dx2);
-    float maxDy = std::max(dy1, dy2);
+    float maxDx     = std::max(dx1, dx2);
+    float maxDy     = std::max(dy1, dy2);
     float maxRadius = std::sqrt(maxDx * maxDx + maxDy * maxDy);
 
     // 获取 Ripple 颜色
-    const auto& colors = g_context.colors;
-    ImVec4 rippleColor = g_context.isDarkMode
-        ? colors.onSurface
-        : colors.primary;
+    const auto& colors      = g_context.colors;
+    ImVec4      rippleColor = g_context.isDarkMode ? colors.onSurface : colors.primary;
 
     // 获取当前窗口信息
     ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -274,43 +267,41 @@ void TriggerRipple(ImGuiID id, float centerX, float centerY,
     RippleState state;
     state.widgetId = id;
     // 存储相对于控件的点击位置
-    state.relCenterX = centerX - boundsX;
-    state.relCenterY = centerY - boundsY;
-    state.radius = 0.0f;
-    state.maxRadius = maxRadius;
-    state.alpha = 0.0f;
-    state.time = 0.0f;
-    state.boundsW = boundsW;
-    state.boundsH = boundsH;
+    state.relCenterX   = centerX - boundsX;
+    state.relCenterY   = centerY - boundsY;
+    state.radius       = 0.0f;
+    state.maxRadius    = maxRadius;
+    state.alpha        = 0.0f;
+    state.time         = 0.0f;
+    state.boundsW      = boundsW;
+    state.boundsH      = boundsH;
     state.cornerRadius = cornerRadius;
-    state.colorR = rippleColor.x;
-    state.colorG = rippleColor.y;
-    state.colorB = rippleColor.z;
-    state.colorA = 1.0f;
+    state.colorR       = rippleColor.x;
+    state.colorG       = rippleColor.y;
+    state.colorB       = rippleColor.z;
+    state.colorA       = 1.0f;
     // 存储窗口信息用于滚动补偿
     if (window) {
-        state.windowId = window->ID;
+        state.windowId          = window->ID;
         state.initialWindowPosX = window->Pos.x;
         state.initialWindowPosY = window->Pos.y;
-        state.initialScrollX = window->Scroll.x;
-        state.initialScrollY = window->Scroll.y;
+        state.initialScrollX    = window->Scroll.x;
+        state.initialScrollY    = window->Scroll.y;
     }
     state.initialBoundsX = boundsX;
     state.initialBoundsY = boundsY;
-    state.active = true;
-    state.fadeOut = false;
+    state.active         = true;
+    state.fadeOut        = false;
 
     g_context.ripples.push_back(state);
 }
 
 void TriggerRippleForCurrentItem(ImGuiID id, float cornerRadius) {
     ImVec2 mousePos = ImGui::GetIO().MousePos;
-    ImVec2 itemMin = ImGui::GetItemRectMin();
-    ImVec2 itemMax = ImGui::GetItemRectMax();
+    ImVec2 itemMin  = ImGui::GetItemRectMin();
+    ImVec2 itemMax  = ImGui::GetItemRectMax();
 
-    TriggerRipple(id, mousePos.x, mousePos.y,
-                  itemMin.x, itemMin.y,
-                  itemMax.x - itemMin.x, itemMax.y - itemMin.y,
+    TriggerRipple(id, mousePos.x, mousePos.y, itemMin.x, itemMin.y, itemMax.x - itemMin.x, itemMax.y - itemMin.y,
                   cornerRadius);
 }
 
@@ -321,14 +312,20 @@ void DrawRipples() {
 
     // 获取当前窗口
     ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (!window) return;
+    if (!window) {
+        return;
+    }
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     // 绘制属于当前窗口的所有 Ripple
     for (const auto& r : g_context.ripples) {
-        if (r.alpha <= 0.001f) continue;
-        if (r.windowId != window->ID) continue;  // 只绘制当前窗口的 ripple
+        if (r.alpha <= 0.001f) {
+            continue;
+        }
+        if (r.windowId != window->ID) {
+            continue; // 只绘制当前窗口的 ripple
+        }
 
         // 计算滚动偏移量
         float scrollDeltaX = window->Scroll.x - r.initialScrollX;
@@ -344,7 +341,7 @@ void DrawRipples() {
 
         // Ripple 颜色
         ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
-        ImU32 col = ColorToU32(rippleColor);
+        ImU32  col = ColorToU32(rippleColor);
 
         // 保存裁剪区域
         ImVec2 clipMin(currentBoundsX, currentBoundsY);
@@ -365,22 +362,15 @@ void DrawRipples() {
 //=============================================================================
 
 ImVec4 BlendColors(const ImVec4& base, const ImVec4& overlay, float alpha) {
-    return ImVec4(
-        base.x + (overlay.x - base.x) * alpha,
-        base.y + (overlay.y - base.y) * alpha,
-        base.z + (overlay.z - base.z) * alpha,
-        base.w + (overlay.w - base.w) * alpha
-    );
+    return ImVec4(base.x + (overlay.x - base.x) * alpha, base.y + (overlay.y - base.y) * alpha,
+                  base.z + (overlay.z - base.z) * alpha, base.w + (overlay.w - base.w) * alpha);
 }
 
 ImVec4 ApplyStateLayer(const ImVec4& base, const ImVec4& stateColor, float stateAlpha) {
     // 正确的状态层混合：在基础颜色上叠加半透明状态颜色
-    return ImVec4(
-        base.x * (1.0f - stateAlpha) + stateColor.x * stateAlpha,
-        base.y * (1.0f - stateAlpha) + stateColor.y * stateAlpha,
-        base.z * (1.0f - stateAlpha) + stateColor.z * stateAlpha,
-        base.w
-    );
+    return ImVec4(base.x * (1.0f - stateAlpha) + stateColor.x * stateAlpha,
+                  base.y * (1.0f - stateAlpha) + stateColor.y * stateAlpha,
+                  base.z * (1.0f - stateAlpha) + stateColor.z * stateAlpha, base.w);
 }
 
 unsigned int ColorToU32(const ImVec4& color) {
@@ -392,12 +382,7 @@ unsigned int ColorToU32(const ImVec4& color) {
 }
 
 ImVec4 HexToColor(unsigned int hex, float alpha) {
-    return ImVec4(
-        ((hex >> 16) & 0xFF) / 255.0f,
-        ((hex >> 8) & 0xFF) / 255.0f,
-        (hex & 0xFF) / 255.0f,
-        alpha
-    );
+    return ImVec4(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f, alpha);
 }
 
 } // namespace MD3
@@ -412,13 +397,10 @@ extern "C" void MD3_OnNewFrame(float dt) {
     MD3::BeginFrame(dt);
 }
 
-extern "C" void MD3_TriggerRipple(unsigned int id, float mouseX, float mouseY,
-                                   float bbMinX, float bbMinY, float bbMaxX, float bbMaxY) {
+extern "C" void MD3_TriggerRipple(unsigned int id, float mouseX, float mouseY, float bbMinX, float bbMinY, float bbMaxX,
+                                  float bbMaxY) {
     float cornerRadius = ImGui::GetStyle().FrameRounding;
-    MD3::TriggerRipple(id, mouseX, mouseY,
-                       bbMinX, bbMinY,
-                       bbMaxX - bbMinX, bbMaxY - bbMinY,
-                       cornerRadius);
+    MD3::TriggerRipple(id, mouseX, mouseY, bbMinX, bbMinY, bbMaxX - bbMinX, bbMaxY - bbMinY, cornerRadius);
 }
 
 extern "C" bool MD3_Checkbox(const char* label, bool* v) {
