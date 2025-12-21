@@ -33,6 +33,23 @@ struct Strings {
     const char* shaderCompileFailed;
     const char* outOfVideoMemory;
 
+    // Error messages - initialization
+    const char* glfwInitFailed;
+    const char* windowCreateFailed;
+    const char* openglLoadFailed;
+    const char* openglVersionUnsupported;
+    const char* fboCreateFailed;
+    const char* embeddedResourceFailed;
+
+    // Error messages - camera details
+    const char* cameraNotFound;
+    const char* cameraInUse;
+    const char* cameraPermissionDenied;
+
+    // Error messages - hand tracker details
+    const char* palmModelLoadFailed;
+    const char* handModelLoadFailed;
+
     // Error messages - fatal
     const char* unexpectedError;
     const char* calculationError;
@@ -164,6 +181,23 @@ inline const Strings& GetChinese() {
         .handTrackerLoadFailed = "手势追踪模块加载失败",
         .shaderCompileFailed   = "图形初始化失败，请尝试更新显卡驱动",
         .outOfVideoMemory      = "显存不足，请关闭其他程序后重试",
+
+        // Error messages - initialization
+        .glfwInitFailed           = "窗口系统初始化失败，请检查系统兼容性",
+        .windowCreateFailed       = "无法创建窗口，您的显卡可能不支持 OpenGL 4.4",
+        .openglLoadFailed         = "OpenGL 扩展加载失败，请更新显卡驱动",
+        .openglVersionUnsupported = "您的显卡不支持 OpenGL 4.4，程序需要此版本才能运行",
+        .fboCreateFailed          = "帧缓冲创建失败，请尝试更新显卡驱动",
+        .embeddedResourceFailed   = "内置资源加载失败，程序文件可能已损坏",
+
+        // Error messages - camera details
+        .cameraNotFound          = "未检测到摄像头设备",
+        .cameraInUse             = "摄像头正在被其他程序使用",
+        .cameraPermissionDenied  = "摄像头访问被拒绝，请在系统设置中允许访问",
+
+        // Error messages - hand tracker details
+        .palmModelLoadFailed = "手掌检测模型加载失败",
+        .handModelLoadFailed = "手部关键点模型加载失败",
 
         // Error messages - fatal
         .unexpectedError  = "程序遇到意外问题，需要关闭",
@@ -298,6 +332,23 @@ inline const Strings& GetEnglish() {
         .handTrackerLoadFailed = "Hand tracking module failed to load",
         .shaderCompileFailed   = "Graphics initialization failed, try updating GPU driver",
         .outOfVideoMemory      = "Out of video memory, please close other programs",
+
+        // Error messages - initialization
+        .glfwInitFailed           = "Window system initialization failed, check system compatibility",
+        .windowCreateFailed       = "Failed to create window, your GPU may not support OpenGL 4.4",
+        .openglLoadFailed         = "Failed to load OpenGL extensions, please update GPU driver",
+        .openglVersionUnsupported = "Your GPU does not support OpenGL 4.4, which is required",
+        .fboCreateFailed          = "Framebuffer creation failed, try updating GPU driver",
+        .embeddedResourceFailed   = "Failed to load embedded resources, program file may be corrupted",
+
+        // Error messages - camera details
+        .cameraNotFound          = "No camera device detected",
+        .cameraInUse             = "Camera is being used by another program",
+        .cameraPermissionDenied  = "Camera access denied, please allow access in system settings",
+
+        // Error messages - hand tracker details
+        .palmModelLoadFailed = "Failed to load palm detection model",
+        .handModelLoadFailed = "Failed to load hand landmark model",
 
         // Error messages - fatal
         .unexpectedError  = "Unexpected error occurred, program needs to close",
