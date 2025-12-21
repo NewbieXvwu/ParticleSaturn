@@ -23,15 +23,15 @@ namespace MD3 {
 // 弹簧动画器 - 使用阻尼谐振器模型
 // 默认参数产生略欠阻尼效果（轻微回弹）
 struct SpringAnimator {
-    float value = 0.0f;
-    float velocity = 0.0f;
-    float target = 0.0f;
-    float stiffness = 300.0f;  // 刚度
-    float damping = 22.0f;     // 阻尼
+    float value     = 0.0f;
+    float velocity  = 0.0f;
+    float target    = 0.0f;
+    float stiffness = 300.0f; // 刚度
+    float damping   = 22.0f;  // 阻尼
 
     // 更新弹簧动画
     void Update(float dt) {
-        float force = stiffness * (target - value);
+        float force  = stiffness * (target - value);
         float damper = -damping * velocity;
         velocity += (force + damper) * dt;
         value += velocity * dt;
@@ -44,14 +44,12 @@ struct SpringAnimator {
 
     // 立即跳转到目标值
     void SnapToTarget() {
-        value = target;
+        value    = target;
         velocity = 0.0f;
     }
 
     // 设置目标值
-    void SetTarget(float t) {
-        target = t;
-    }
+    void SetTarget(float t) { target = t; }
 
     // 带自定义参数的构造
     SpringAnimator(float initial = 0.0f, float stiff = 300.0f, float damp = 22.0f)
@@ -67,9 +65,7 @@ struct SpringAnimator2D {
         y.Update(dt);
     }
 
-    bool IsSettled(float threshold = 0.001f) const {
-        return x.IsSettled(threshold) && y.IsSettled(threshold);
-    }
+    bool IsSettled(float threshold = 0.001f) const { return x.IsSettled(threshold) && y.IsSettled(threshold); }
 
     void SetTarget(float tx, float ty) {
         x.target = tx;
@@ -134,7 +130,7 @@ struct MD3ColorScheme {
     ImVec4 scrim;
 
     // 状态层透明度
-    float stateLayerHover = 0.08f;
+    float stateLayerHover   = 0.08f;
     float stateLayerFocused = 0.12f;
     float stateLayerPressed = 0.12f;
     float stateLayerDragged = 0.16f;
@@ -154,15 +150,15 @@ MD3ColorScheme GetDarkColorScheme();
 struct RippleState {
     ImGuiID widgetId = 0;
     // 所有坐标都存储为相对于控件的偏移量
-    float relCenterX = 0.0f;      // 点击点相对于 bounds 左上角的 X 偏移
-    float relCenterY = 0.0f;      // 点击点相对于 bounds 左上角的 Y 偏移
-    float radius = 0.0f;
-    float maxRadius = 0.0f;
-    float alpha = 0.0f;
-    float time = 0.0f;
+    float relCenterX = 0.0f; // 点击点相对于 bounds 左上角的 X 偏移
+    float relCenterY = 0.0f; // 点击点相对于 bounds 左上角的 Y 偏移
+    float radius     = 0.0f;
+    float maxRadius  = 0.0f;
+    float alpha      = 0.0f;
+    float time       = 0.0f;
     // 控件尺寸（不变）
-    float boundsW = 0.0f;
-    float boundsH = 0.0f;
+    float boundsW      = 0.0f;
+    float boundsH      = 0.0f;
     float cornerRadius = 0.0f;
     // 颜色
     float colorR = 0.0f;
@@ -170,22 +166,22 @@ struct RippleState {
     float colorB = 0.0f;
     float colorA = 0.0f;
     // 所属窗口信息（用于滚动补偿）
-    ImGuiID windowId = 0;
-    float initialWindowPosX = 0.0f;   // 创建时窗口屏幕位置
-    float initialWindowPosY = 0.0f;
-    float initialScrollX = 0.0f;      // 创建时窗口滚动位置
-    float initialScrollY = 0.0f;
-    float initialBoundsX = 0.0f;      // 创建时控件的屏幕位置
-    float initialBoundsY = 0.0f;
-    bool active = false;
-    bool fadeOut = false;  // 是否正在淡出
+    ImGuiID windowId          = 0;
+    float   initialWindowPosX = 0.0f; // 创建时窗口屏幕位置
+    float   initialWindowPosY = 0.0f;
+    float   initialScrollX    = 0.0f; // 创建时窗口滚动位置
+    float   initialScrollY    = 0.0f;
+    float   initialBoundsX    = 0.0f; // 创建时控件的屏幕位置
+    float   initialBoundsY    = 0.0f;
+    bool    active            = false;
+    bool    fadeOut           = false; // 是否正在淡出
 };
 
 // Ripple 系统配置
 struct RippleConfig {
-    float expandDuration = 0.225f;  // 扩散持续时间 (秒)
-    float fadeDuration = 0.150f;    // 淡出持续时间 (秒)
-    float maxAlpha = 0.12f;         // 最大透明度
+    float expandDuration = 0.225f; // 扩散持续时间 (秒)
+    float fadeDuration   = 0.150f; // 淡出持续时间 (秒)
+    float maxAlpha       = 0.12f;  // 最大透明度
 };
 
 //=============================================================================
@@ -194,78 +190,76 @@ struct RippleConfig {
 
 // Toggle 开关动画状态
 struct ToggleAnimState {
-    SpringAnimator knobPosition;    // 旋钮位置 (0-1)
-    SpringAnimator trackFill;       // 轨道填充 (0-1)
-    SpringAnimator knobScale;       // 旋钮缩放
-    SpringAnimator hoverState;      // 悬停状态
+    SpringAnimator knobPosition; // 旋钮位置 (0-1)
+    SpringAnimator trackFill;    // 轨道填充 (0-1)
+    SpringAnimator knobScale;    // 旋钮缩放
+    SpringAnimator hoverState;   // 悬停状态
 
     ToggleAnimState()
-        : knobPosition(0.0f, 300.0f, 22.0f)
-        , trackFill(0.0f, 300.0f, 22.0f)
-        , knobScale(1.0f, 400.0f, 25.0f)
-        , hoverState(0.0f, 500.0f, 30.0f) {}
+        : knobPosition(0.0f, 300.0f, 22.0f),
+          trackFill(0.0f, 300.0f, 22.0f),
+          knobScale(1.0f, 400.0f, 25.0f),
+          hoverState(0.0f, 500.0f, 30.0f) {}
 };
 
 // Button 按钮动画状态
 struct ButtonAnimState {
-    SpringAnimator elevation;       // 高度/阴影
-    SpringAnimator hoverState;      // 悬停状态
-    SpringAnimator pressState;      // 按下状态
+    SpringAnimator elevation;  // 高度/阴影
+    SpringAnimator hoverState; // 悬停状态
+    SpringAnimator pressState; // 按下状态
 
     ButtonAnimState()
-        : elevation(0.0f, 400.0f, 28.0f)
-        , hoverState(0.0f, 500.0f, 30.0f)
-        , pressState(0.0f, 600.0f, 35.0f) {}
+        : elevation(0.0f, 400.0f, 28.0f), hoverState(0.0f, 500.0f, 30.0f), pressState(0.0f, 600.0f, 35.0f) {}
 };
 
 // Slider 滑块动画状态
 struct SliderAnimState {
-    SpringAnimator thumbScale;      // 滑块缩放
-    SpringAnimator activeTrack;     // 活跃轨道长度
-    SpringAnimator hoverState;      // 悬停状态
+    SpringAnimator thumbScale;  // 滑块缩放
+    SpringAnimator activeTrack; // 活跃轨道长度
+    SpringAnimator hoverState;  // 悬停状态
 
     SliderAnimState()
-        : thumbScale(1.0f, 400.0f, 25.0f)
-        , activeTrack(0.0f, 800.0f, 45.0f)  // 更快的弹簧：高刚度、高阻尼
-        , hoverState(0.0f, 500.0f, 30.0f) {}
+        : thumbScale(1.0f, 400.0f, 25.0f),
+          activeTrack(0.0f, 800.0f, 45.0f) // 更快的弹簧：高刚度、高阻尼
+          ,
+          hoverState(0.0f, 500.0f, 30.0f) {}
 };
 
 // Card 卡片动画状态
 struct CardAnimState {
-    SpringAnimator elevation;       // 高度
-    SpringAnimator hoverState;      // 悬停状态
+    SpringAnimator elevation;  // 高度
+    SpringAnimator hoverState; // 悬停状态
 
-    CardAnimState()
-        : elevation(1.0f, 300.0f, 25.0f)
-        , hoverState(0.0f, 400.0f, 28.0f) {}
+    CardAnimState() : elevation(1.0f, 300.0f, 25.0f), hoverState(0.0f, 400.0f, 28.0f) {}
 };
 
 // Combo 下拉框动画状态
 struct ComboAnimState {
-    SpringAnimator hoverState;      // 悬停状态
-    SpringAnimator openState;       // 展开状态 (0-1)
-    SpringAnimator arrowRotation;   // 箭头旋转 (0-180度)
-    float lastContentHeight = 0.0f; // 上次内容高度（用于动画）
+    SpringAnimator hoverState;               // 悬停状态
+    SpringAnimator openState;                // 展开状态 (0-1)
+    SpringAnimator arrowRotation;            // 箭头旋转 (0-180度)
+    float          lastContentHeight = 0.0f; // 上次内容高度（用于动画）
 
     ComboAnimState()
-        : hoverState(0.0f, 500.0f, 30.0f)
-        , openState(0.0f, 800.0f, 40.0f)      // 更快的弹簧：高刚度、高阻尼
-        , arrowRotation(0.0f, 800.0f, 40.0f)  // 箭头也加快
+        : hoverState(0.0f, 500.0f, 30.0f),
+          openState(0.0f, 800.0f, 40.0f) // 更快的弹簧：高刚度、高阻尼
+          ,
+          arrowRotation(0.0f, 800.0f, 40.0f) // 箭头也加快
     {}
 };
 
 // CollapsingHeader 折叠头动画状态
 struct CollapsingHeaderAnimState {
-    SpringAnimator hoverState;      // 悬停状态
-    SpringAnimator openState;       // 展开状态 (0-1)
-    SpringAnimator arrowRotation;   // 箭头旋转 (0-90度)
-    float lastContentHeight;        // 上一帧内容高度（用于动画）
+    SpringAnimator hoverState;        // 悬停状态
+    SpringAnimator openState;         // 展开状态 (0-1)
+    SpringAnimator arrowRotation;     // 箭头旋转 (0-90度)
+    float          lastContentHeight; // 上一帧内容高度（用于动画）
 
     CollapsingHeaderAnimState()
-        : hoverState(0.0f, 500.0f, 30.0f)
-        , openState(0.0f, 350.0f, 26.0f)
-        , arrowRotation(0.0f, 350.0f, 26.0f)
-        , lastContentHeight(0.0f) {}
+        : hoverState(0.0f, 500.0f, 30.0f),
+          openState(0.0f, 350.0f, 26.0f),
+          arrowRotation(0.0f, 350.0f, 26.0f),
+          lastContentHeight(0.0f) {}
 };
 
 //=============================================================================
@@ -274,32 +268,32 @@ struct CollapsingHeaderAnimState {
 
 // MD3 系统上下文（内部使用）
 struct MD3Context {
-    bool initialized = false;
-    bool isDarkMode = true;
-    float dpiScale = 1.0f;
-    float deltaTime = 0.0f;
+    bool  initialized = false;
+    bool  isDarkMode  = true;
+    float dpiScale    = 1.0f;
+    float deltaTime   = 0.0f;
     float currentTime = 0.0f;
 
     // 色彩方案
     MD3ColorScheme colors;
 
     // Ripple 系统
-    RippleConfig rippleConfig;
+    RippleConfig             rippleConfig;
     std::vector<RippleState> ripples;
-    GLuint rippleProgram = 0;
-    GLuint rippleVAO = 0;
-    GLuint rippleVBO = 0;
+    GLuint                   rippleProgram = 0;
+    GLuint                   rippleVAO     = 0;
+    GLuint                   rippleVBO     = 0;
 
     // 控件动画状态缓存
-    std::unordered_map<ImGuiID, ToggleAnimState> toggleStates;
-    std::unordered_map<ImGuiID, ButtonAnimState> buttonStates;
-    std::unordered_map<ImGuiID, SliderAnimState> sliderStates;
-    std::unordered_map<ImGuiID, CardAnimState> cardStates;
-    std::unordered_map<ImGuiID, ComboAnimState> comboStates;
+    std::unordered_map<ImGuiID, ToggleAnimState>           toggleStates;
+    std::unordered_map<ImGuiID, ButtonAnimState>           buttonStates;
+    std::unordered_map<ImGuiID, SliderAnimState>           sliderStates;
+    std::unordered_map<ImGuiID, CardAnimState>             cardStates;
+    std::unordered_map<ImGuiID, ComboAnimState>            comboStates;
     std::unordered_map<ImGuiID, CollapsingHeaderAnimState> collapsingHeaderStates;
 
     // 屏幕尺寸 (用于 Ripple shader)
-    float screenWidth = 1920.0f;
+    float screenWidth  = 1920.0f;
     float screenHeight = 1080.0f;
 };
 
@@ -401,8 +395,7 @@ void EndCollapsingHeader();
 //=============================================================================
 
 // 触发 Ripple 效果
-void TriggerRipple(ImGuiID id, float centerX, float centerY,
-                   float boundsX, float boundsY, float boundsW, float boundsH,
+void TriggerRipple(ImGuiID id, float centerX, float centerY, float boundsX, float boundsY, float boundsW, float boundsH,
                    float cornerRadius = 0.0f);
 
 // 为当前控件触发 Ripple（使用 ImGui 上下文）
@@ -440,8 +433,8 @@ ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
 extern "C" void MD3_OnNewFrame(float dt);
 
 // ImGui ButtonBehavior 钩子
-extern "C" void MD3_TriggerRipple(unsigned int id, float mouseX, float mouseY,
-                                   float bbMinX, float bbMinY, float bbMaxX, float bbMaxY);
+extern "C" void MD3_TriggerRipple(unsigned int id, float mouseX, float mouseY, float bbMinX, float bbMinY, float bbMaxX,
+                                  float bbMaxY);
 
 // ImGui Checkbox 替换钩子
 extern "C" bool MD3_Checkbox(const char* label, bool* v);

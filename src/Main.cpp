@@ -66,9 +66,7 @@ int main() {
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
     if (!window) {
         std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(
-            i18n::Get().windowCreateFailed,
-            i18n::Get().detailWindowCreateFailed);
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);
         glfwTerminate();
         return -1;
     }
@@ -78,9 +76,7 @@ int main() {
     // 加载 OpenGL 扩展
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "[Main] Fatal: gladLoadGLLoader() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(
-            i18n::Get().openglLoadFailed,
-            i18n::Get().detailOpenGLLoadFailed);
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().openglLoadFailed, i18n::Get().detailOpenGLLoadFailed);
         glfwDestroyWindow(window);
         glfwTerminate();
         return -1;
@@ -177,7 +173,8 @@ int main() {
     }
     if (!InitTracker(0, nullptr)) {
         std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                  "InitTracker() returned false - thread creation failed");
     } else if (!WaitForTrackerReady(5000)) {
         // 等待初始化完成（最多 5 秒）
         std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
@@ -211,7 +208,8 @@ int main() {
     std::cout << "[Main] Initializing HandTracker..." << std::endl;
     if (!InitTracker(0, ".")) {
         std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                  "InitTracker() returned false - thread creation failed");
     } else if (!WaitForTrackerReady(5000)) {
         // 等待初始化完成（最多 5 秒）
         std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;

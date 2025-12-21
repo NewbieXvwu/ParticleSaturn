@@ -197,9 +197,9 @@ inline const Strings& GetChinese() {
         .embeddedResourceFailed   = "内置资源加载失败，程序文件可能已损坏",
 
         // Error messages - camera details
-        .cameraNotFound          = "找不到摄像头，手势控制将不可用",
-        .cameraInUse             = "摄像头被其他程序占用，手势控制将不可用",
-        .cameraPermissionDenied  = "摄像头访问被拒绝，请在系统设置中允许访问",
+        .cameraNotFound         = "找不到摄像头，手势控制将不可用",
+        .cameraInUse            = "摄像头被其他程序占用，手势控制将不可用",
+        .cameraPermissionDenied = "摄像头访问被拒绝，请在系统设置中允许访问",
 
         // Error details (technical messages shown in expandable section)
         .detailWindowCreateFailed = "glfwCreateWindow() 返回 NULL。\n\n"
@@ -358,9 +358,9 @@ inline const Strings& GetEnglish() {
         .embeddedResourceFailed   = "Failed to load embedded resources, program file may be corrupted",
 
         // Error messages - camera details
-        .cameraNotFound          = "No camera found, gesture control will be unavailable",
-        .cameraInUse             = "Camera is in use by another app, gesture control will be unavailable",
-        .cameraPermissionDenied  = "Camera access denied, please allow access in system settings",
+        .cameraNotFound         = "No camera found, gesture control will be unavailable",
+        .cameraInUse            = "Camera is in use by another app, gesture control will be unavailable",
+        .cameraPermissionDenied = "Camera access denied, please allow access in system settings",
 
         // Error details (technical messages shown in expandable section)
         .detailWindowCreateFailed = "glfwCreateWindow() returned NULL.\n\n"

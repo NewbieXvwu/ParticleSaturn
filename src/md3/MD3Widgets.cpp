@@ -3,6 +3,7 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
+
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -18,36 +19,36 @@ namespace MD3 {
 bool Toggle(const char* label, bool* v) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID id = GetID(label);
 
     // 获取或创建动画状态
-    auto it = ctx.toggleStates.find(id);
-    bool isNew = (it == ctx.toggleStates.end());
+    auto  it    = ctx.toggleStates.find(id);
+    bool  isNew = (it == ctx.toggleStates.end());
     auto& state = ctx.toggleStates[id];
 
     // 仅在首次创建时初始化状态
     if (isNew) {
-        state.knobPosition.value = *v ? 1.0f : 0.0f;
+        state.knobPosition.value  = *v ? 1.0f : 0.0f;
         state.knobPosition.target = state.knobPosition.value;
-        state.trackFill.value = *v ? 1.0f : 0.0f;
-        state.trackFill.target = state.trackFill.value;
-        state.knobScale.value = *v ? 1.0f : 0.0f;
-        state.knobScale.target = state.knobScale.value;
+        state.trackFill.value     = *v ? 1.0f : 0.0f;
+        state.trackFill.target    = state.trackFill.value;
+        state.knobScale.value     = *v ? 1.0f : 0.0f;
+        state.knobScale.target    = state.knobScale.value;
     }
 
     // MD3 Toggle 尺寸
-    float trackWidth = 52.0f * dpi;
-    float trackHeight = 32.0f * dpi;
-    float knobRadiusOff = 8.0f * dpi;   // 关闭状态旋钮半径
-    float knobRadiusOn = 12.0f * dpi;   // 开启状态旋钮半径
-    float trackPadding = 4.0f * dpi;
+    float trackWidth    = 52.0f * dpi;
+    float trackHeight   = 32.0f * dpi;
+    float knobRadiusOff = 8.0f * dpi;  // 关闭状态旋钮半径
+    float knobRadiusOn  = 12.0f * dpi; // 开启状态旋钮半径
+    float trackPadding  = 4.0f * dpi;
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 创建不可见按钮用于交互
     bool pressed = InvisibleButton(label, ImVec2(trackWidth, trackHeight));
@@ -59,71 +60,71 @@ bool Toggle(const char* label, bool* v) {
 
     // 更新动画目标
     state.knobPosition.target = *v ? 1.0f : 0.0f;
-    state.trackFill.target = *v ? 1.0f : 0.0f;
-    state.hoverState.target = hovered ? 1.0f : 0.0f;
+    state.trackFill.target    = *v ? 1.0f : 0.0f;
+    state.hoverState.target   = hovered ? 1.0f : 0.0f;
 
     // 旋钮缩放：悬停或开启时变大
-    float targetKnobScale = (*v || hovered) ? 1.0f : 0.0f;
+    float targetKnobScale  = (*v || hovered) ? 1.0f : 0.0f;
     state.knobScale.target = targetKnobScale;
 
     // 获取动画值（限制在 0-1 范围内，防止弹簧过冲导致颜色异常）
-    float knobT = std::clamp(state.knobPosition.value, 0.0f, 1.0f);
-    float fillT = std::clamp(state.trackFill.value, 0.0f, 1.0f);
+    float knobT  = std::clamp(state.knobPosition.value, 0.0f, 1.0f);
+    float fillT  = std::clamp(state.trackFill.value, 0.0f, 1.0f);
     float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
     float scaleT = std::clamp(state.knobScale.value, 0.0f, 1.0f);
 
     // 计算颜色
     ImVec4 trackColorOff = colors.surfaceContainerHighest;
-    ImVec4 trackColorOn = colors.primary;
-    ImVec4 trackColor = BlendColors(trackColorOff, trackColorOn, fillT);
+    ImVec4 trackColorOn  = colors.primary;
+    ImVec4 trackColor    = BlendColors(trackColorOff, trackColorOn, fillT);
 
     ImVec4 knobColorOff = colors.outline;
-    ImVec4 knobColorOn = colors.onPrimary;
-    ImVec4 knobColor = BlendColors(knobColorOff, knobColorOn, fillT);
+    ImVec4 knobColorOn  = colors.onPrimary;
+    ImVec4 knobColor    = BlendColors(knobColorOff, knobColorOn, fillT);
 
     // 轨道边框颜色
     ImVec4 borderColorOff = colors.outline;
-    ImVec4 borderColorOn = colors.primary;
-    ImVec4 borderColor = BlendColors(borderColorOff, borderColorOn, fillT);
+    ImVec4 borderColorOn  = colors.primary;
+    ImVec4 borderColor    = BlendColors(borderColorOff, borderColorOn, fillT);
 
     // 悬停状态层 - 使用动画值 fillT 来平滑过渡颜色
     if (hoverT > 0.001f) {
         // MD3 规范：关闭状态用 onSurface，开启状态用 primary（不是 onPrimary）
         ImVec4 stateLayerOff = colors.onSurface;
-        ImVec4 stateLayerOn = colors.primary;
-        ImVec4 stateLayer = BlendColors(stateLayerOff, stateLayerOn, fillT);
-        trackColor = ApplyStateLayer(trackColor, stateLayer, colors.stateLayerHover * hoverT);
+        ImVec4 stateLayerOn  = colors.primary;
+        ImVec4 stateLayer    = BlendColors(stateLayerOff, stateLayerOn, fillT);
+        trackColor           = ApplyStateLayer(trackColor, stateLayer, colors.stateLayerHover * hoverT);
     }
 
     // 绘制轨道
     float trackRadius = trackHeight * 0.5f;
-    ImU32 trackCol = ColorToU32(trackColor);
+    ImU32 trackCol    = ColorToU32(trackColor);
     dl->AddRectFilled(pos, ImVec2(pos.x + trackWidth, pos.y + trackHeight), trackCol, trackRadius);
 
     // 绘制轨道边框（仅在关闭状态）
     if (fillT < 0.95f) {
-        ImU32 borderCol = ColorToU32(borderColor);
-        float borderAlpha = 1.0f - fillT;
+        ImU32  borderCol       = ColorToU32(borderColor);
+        float  borderAlpha     = 1.0f - fillT;
         ImVec4 borderWithAlpha = borderColor;
         borderWithAlpha.w *= borderAlpha;
-        dl->AddRect(pos, ImVec2(pos.x + trackWidth, pos.y + trackHeight),
-                    ColorToU32(borderWithAlpha), trackRadius, 0, 2.0f * dpi);
+        dl->AddRect(pos, ImVec2(pos.x + trackWidth, pos.y + trackHeight), ColorToU32(borderWithAlpha), trackRadius, 0,
+                    2.0f * dpi);
     }
 
     // 计算旋钮位置和大小
     float knobRadius = knobRadiusOff + (knobRadiusOn - knobRadiusOff) * scaleT;
     float knobXStart = pos.x + trackPadding + knobRadiusOn;
-    float knobXEnd = pos.x + trackWidth - trackPadding - knobRadiusOn;
-    float knobX = knobXStart + (knobXEnd - knobXStart) * knobT;
-    float knobY = pos.y + trackHeight * 0.5f;
+    float knobXEnd   = pos.x + trackWidth - trackPadding - knobRadiusOn;
+    float knobX      = knobXStart + (knobXEnd - knobXStart) * knobT;
+    float knobY      = pos.y + trackHeight * 0.5f;
 
     // 绘制旋钮悬停光晕 - 使用动画值 fillT 而不是布尔值 *v
     if (hoverT > 0.001f) {
-        float haloRadius = knobRadius + 8.0f * dpi * hoverT;
+        float  haloRadius   = knobRadius + 8.0f * dpi * hoverT;
         ImVec4 haloColorOff = colors.onSurface;
-        ImVec4 haloColorOn = colors.primary;
-        ImVec4 haloColor = BlendColors(haloColorOff, haloColorOn, fillT);
-        haloColor.w = 0.08f * hoverT;
+        ImVec4 haloColorOn  = colors.primary;
+        ImVec4 haloColor    = BlendColors(haloColorOff, haloColorOn, fillT);
+        haloColor.w         = 0.08f * hoverT;
         dl->AddCircleFilled(ImVec2(knobX, knobY), haloRadius, ColorToU32(haloColor));
     }
 
@@ -133,11 +134,11 @@ bool Toggle(const char* label, bool* v) {
 
     // 绘制旋钮上的图标（可选：开启状态显示勾选）
     if (fillT > 0.5f) {
-        float iconAlpha = (fillT - 0.5f) * 2.0f;
+        float  iconAlpha = (fillT - 0.5f) * 2.0f;
         ImVec4 iconColor = colors.onPrimaryContainer;
-        iconColor.w = iconAlpha;
+        iconColor.w      = iconAlpha;
         // 更大的勾选标记
-        float checkSize = knobRadius * 0.9f;
+        float  checkSize = knobRadius * 0.9f;
         ImVec2 checkStart(knobX - checkSize * 0.35f, knobY + checkSize * 0.05f);
         ImVec2 checkMid(knobX - checkSize * 0.05f, knobY + checkSize * 0.35f);
         ImVec2 checkEnd(knobX + checkSize * 0.4f, knobY - checkSize * 0.35f);
@@ -154,7 +155,7 @@ bool Toggle(const char* label, bool* v) {
     SameLine();
     SetCursorPosX(GetCursorPosX() + 12.0f * dpi);
     float textHeight = GetTextLineHeight();
-    float offsetY = (trackHeight - textHeight) * 0.5f;
+    float offsetY    = (trackHeight - textHeight) * 0.5f;
     SetCursorPosY(GetCursorPosY() + offsetY);
     TextUnformatted(label);
 
@@ -170,9 +171,9 @@ static bool ButtonInternal(const char* label, ImVec2 size, int buttonType) {
     // buttonType: 0=Filled, 1=Tonal, 2=Outlined, 3=Text
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID id = GetID(label);
 
@@ -180,21 +181,25 @@ static bool ButtonInternal(const char* label, ImVec2 size, int buttonType) {
     auto& state = ctx.buttonStates[id];
 
     // 计算按钮尺寸
-    ImVec2 textSize = CalcTextSize(label);
-    float paddingH = 24.0f * dpi;
-    float paddingV = 10.0f * dpi;
-    float minHeight = 40.0f * dpi;
+    ImVec2 textSize  = CalcTextSize(label);
+    float  paddingH  = 24.0f * dpi;
+    float  paddingV  = 10.0f * dpi;
+    float  minHeight = 40.0f * dpi;
 
-    if (size.x <= 0) size.x = textSize.x + paddingH * 2;
-    if (size.y <= 0) size.y = std::max(textSize.y + paddingV * 2, minHeight);
+    if (size.x <= 0) {
+        size.x = textSize.x + paddingH * 2;
+    }
+    if (size.y <= 0) {
+        size.y = std::max(textSize.y + paddingV * 2, minHeight);
+    }
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 创建不可见按钮
     bool pressed = InvisibleButton(label, size);
     bool hovered = IsItemHovered();
-    bool held = IsItemActive();
+    bool held    = IsItemActive();
 
     // 更新动画目标
     state.hoverState.target = hovered ? 1.0f : 0.0f;
@@ -205,73 +210,68 @@ static bool ButtonInternal(const char* label, ImVec2 size, int buttonType) {
 
     // 根据按钮类型确定颜色
     ImVec4 bgColor, textColor, borderColor;
-    float cornerRadius = 20.0f * dpi;  // MD3 全圆角
+    float  cornerRadius = 20.0f * dpi; // MD3 全圆角
 
     switch (buttonType) {
-        case 0: // Filled
-            bgColor = colors.primary;
-            textColor = colors.onPrimary;
-            if (hoverT > 0.001f) {
-                bgColor = ApplyStateLayer(bgColor, colors.onPrimary, colors.stateLayerHover * hoverT);
-            }
-            if (pressT > 0.001f) {
-                bgColor = ApplyStateLayer(bgColor, colors.onPrimary, colors.stateLayerPressed * pressT);
-            }
-            break;
+    case 0: // Filled
+        bgColor   = colors.primary;
+        textColor = colors.onPrimary;
+        if (hoverT > 0.001f) {
+            bgColor = ApplyStateLayer(bgColor, colors.onPrimary, colors.stateLayerHover * hoverT);
+        }
+        if (pressT > 0.001f) {
+            bgColor = ApplyStateLayer(bgColor, colors.onPrimary, colors.stateLayerPressed * pressT);
+        }
+        break;
 
-        case 1: // Tonal
-            bgColor = colors.secondaryContainer;
-            textColor = colors.onSecondaryContainer;
-            if (hoverT > 0.001f) {
-                bgColor = ApplyStateLayer(bgColor, colors.onSecondaryContainer, colors.stateLayerHover * hoverT);
-            }
-            if (pressT > 0.001f) {
-                bgColor = ApplyStateLayer(bgColor, colors.onSecondaryContainer, colors.stateLayerPressed * pressT);
-            }
-            break;
+    case 1: // Tonal
+        bgColor   = colors.secondaryContainer;
+        textColor = colors.onSecondaryContainer;
+        if (hoverT > 0.001f) {
+            bgColor = ApplyStateLayer(bgColor, colors.onSecondaryContainer, colors.stateLayerHover * hoverT);
+        }
+        if (pressT > 0.001f) {
+            bgColor = ApplyStateLayer(bgColor, colors.onSecondaryContainer, colors.stateLayerPressed * pressT);
+        }
+        break;
 
-        case 2: // Outlined
-            bgColor = ImVec4(0, 0, 0, 0);  // 透明背景
-            textColor = colors.primary;
-            borderColor = colors.outline;
-            if (hoverT > 0.001f) {
-                bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerHover * hoverT);
-            }
-            if (pressT > 0.001f) {
-                bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerPressed * pressT);
-            }
-            break;
+    case 2:                               // Outlined
+        bgColor     = ImVec4(0, 0, 0, 0); // 透明背景
+        textColor   = colors.primary;
+        borderColor = colors.outline;
+        if (hoverT > 0.001f) {
+            bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerHover * hoverT);
+        }
+        if (pressT > 0.001f) {
+            bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerPressed * pressT);
+        }
+        break;
 
-        case 3: // Text
-            bgColor = ImVec4(0, 0, 0, 0);
-            textColor = colors.primary;
-            cornerRadius = 4.0f * dpi;  // Text 按钮圆角较小
-            if (hoverT > 0.001f) {
-                bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerHover * hoverT);
-            }
-            if (pressT > 0.001f) {
-                bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerPressed * pressT);
-            }
-            break;
+    case 3: // Text
+        bgColor      = ImVec4(0, 0, 0, 0);
+        textColor    = colors.primary;
+        cornerRadius = 4.0f * dpi; // Text 按钮圆角较小
+        if (hoverT > 0.001f) {
+            bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerHover * hoverT);
+        }
+        if (pressT > 0.001f) {
+            bgColor = ApplyStateLayer(colors.surface, colors.primary, colors.stateLayerPressed * pressT);
+        }
+        break;
     }
 
     // 绘制背景
     if (bgColor.w > 0.001f) {
-        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                          ColorToU32(bgColor), cornerRadius);
+        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ColorToU32(bgColor), cornerRadius);
     }
 
     // 绘制边框（Outlined 按钮）
     if (buttonType == 2) {
-        dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                    ColorToU32(borderColor), cornerRadius, 0, 1.0f * dpi);
+        dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), ColorToU32(borderColor), cornerRadius, 0, 1.0f * dpi);
     }
 
     // 绘制文本
-    ImVec2 textPos(
-        pos.x + (size.x - textSize.x) * 0.5f,
-        pos.y + (size.y - textSize.y) * 0.5f
-    );
+    ImVec2 textPos(pos.x + (size.x - textSize.x) * 0.5f, pos.y + (size.y - textSize.y) * 0.5f);
     dl->AddText(textPos, ColorToU32(textColor), label);
 
     // 触发 Ripple
@@ -310,57 +310,57 @@ bool Button(const char* label, ImVec2 size) {
 bool Slider(const char* label, float* v, float min, float max, const char* format) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID id = GetID(label);
 
     // 获取或创建动画状态
-    auto it = ctx.sliderStates.find(id);
-    bool isNew = (it == ctx.sliderStates.end());
+    auto  it    = ctx.sliderStates.find(id);
+    bool  isNew = (it == ctx.sliderStates.end());
     auto& state = ctx.sliderStates[id];
 
     // 首次创建时，直接跳转到当前值（不播放动画）
     if (isNew) {
-        float t = (*v - min) / (max - min);
-        state.activeTrack.value = t;
-        state.activeTrack.target = t;
+        float t                    = (*v - min) / (max - min);
+        state.activeTrack.value    = t;
+        state.activeTrack.target   = t;
         state.activeTrack.velocity = 0.0f;
     }
 
     // MD3 Slider 尺寸
-    float trackHeight = 4.0f * dpi;
-    float thumbRadius = 10.0f * dpi;
+    float trackHeight      = 4.0f * dpi;
+    float thumbRadius      = 10.0f * dpi;
     float thumbRadiusHover = 14.0f * dpi;
-    float sliderWidth = GetContentRegionAvail().x;
-    float totalHeight = thumbRadiusHover * 2 + 8.0f * dpi;
+    float sliderWidth      = GetContentRegionAvail().x;
+    float totalHeight      = thumbRadiusHover * 2 + 8.0f * dpi;
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 计算轨道位置
-    float trackY = pos.y + totalHeight * 0.5f;
+    float trackY      = pos.y + totalHeight * 0.5f;
     float trackStartX = pos.x + thumbRadiusHover;
-    float trackEndX = pos.x + sliderWidth - thumbRadiusHover;
+    float trackEndX   = pos.x + sliderWidth - thumbRadiusHover;
     float trackLength = trackEndX - trackStartX;
 
     // 创建不可见按钮
     InvisibleButton(label, ImVec2(sliderWidth, totalHeight));
     bool hovered = IsItemHovered();
-    bool active = IsItemActive();
+    bool active  = IsItemActive();
 
     // 处理拖动
-    bool changed = false;
-    static bool wasDragging = false;  // 跟踪是否正在拖动
+    bool        changed     = false;
+    static bool wasDragging = false; // 跟踪是否正在拖动
 
     if (active) {
-        float mouseX = GetIO().MousePos.x;
-        float newT = (mouseX - trackStartX) / trackLength;
-        newT = std::clamp(newT, 0.0f, 1.0f);
+        float mouseX   = GetIO().MousePos.x;
+        float newT     = (mouseX - trackStartX) / trackLength;
+        newT           = std::clamp(newT, 0.0f, 1.0f);
         float newValue = min + newT * (max - min);
         if (newValue != *v) {
-            *v = newValue;
+            *v      = newValue;
             changed = true;
         }
         wasDragging = true;
@@ -369,45 +369,37 @@ bool Slider(const char* label, float* v, float min, float max, const char* forma
     }
 
     // 更新动画
-    float t = (*v - min) / (max - min);
+    float t                  = (*v - min) / (max - min);
     state.activeTrack.target = t;
-    state.hoverState.target = (hovered || active) ? 1.0f : 0.0f;
-    state.thumbScale.target = active ? 1.2f : (hovered ? 1.1f : 1.0f);
+    state.hoverState.target  = (hovered || active) ? 1.0f : 0.0f;
+    state.thumbScale.target  = active ? 1.2f : (hovered ? 1.1f : 1.0f);
 
     // 始终使用弹簧动画（高刚度参数确保拖动时响应迅速）
     // 限制范围防止弹簧过冲导致视觉异常
     float activeT = std::clamp(state.activeTrack.value, 0.0f, 1.0f);
-    float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
-    float scaleT = std::clamp(state.thumbScale.value, 0.0f, 1.5f);  // scale 允许稍大
+    float hoverT  = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+    float scaleT  = std::clamp(state.thumbScale.value, 0.0f, 1.5f); // scale 允许稍大
 
     // 绘制非活跃轨道
     ImVec4 inactiveTrackColor = colors.surfaceContainerHighest;
-    dl->AddRectFilled(
-        ImVec2(trackStartX, trackY - trackHeight * 0.5f),
-        ImVec2(trackEndX, trackY + trackHeight * 0.5f),
-        ColorToU32(inactiveTrackColor),
-        trackHeight * 0.5f
-    );
+    dl->AddRectFilled(ImVec2(trackStartX, trackY - trackHeight * 0.5f), ImVec2(trackEndX, trackY + trackHeight * 0.5f),
+                      ColorToU32(inactiveTrackColor), trackHeight * 0.5f);
 
     // 绘制活跃轨道
-    float activeEndX = trackStartX + trackLength * activeT;
+    float  activeEndX       = trackStartX + trackLength * activeT;
     ImVec4 activeTrackColor = colors.primary;
-    dl->AddRectFilled(
-        ImVec2(trackStartX, trackY - trackHeight * 0.5f),
-        ImVec2(activeEndX, trackY + trackHeight * 0.5f),
-        ColorToU32(activeTrackColor),
-        trackHeight * 0.5f
-    );
+    dl->AddRectFilled(ImVec2(trackStartX, trackY - trackHeight * 0.5f), ImVec2(activeEndX, trackY + trackHeight * 0.5f),
+                      ColorToU32(activeTrackColor), trackHeight * 0.5f);
 
     // 计算滑块位置
-    float thumbX = trackStartX + trackLength * activeT;
+    float thumbX             = trackStartX + trackLength * activeT;
     float currentThumbRadius = thumbRadius * scaleT;
 
     // 绘制滑块悬停光晕
     if (hoverT > 0.001f) {
-        float haloRadius = currentThumbRadius + 10.0f * dpi * hoverT;
-        ImVec4 haloColor = colors.primary;
-        haloColor.w = 0.12f * hoverT;
+        float  haloRadius = currentThumbRadius + 10.0f * dpi * hoverT;
+        ImVec4 haloColor  = colors.primary;
+        haloColor.w       = 0.12f * hoverT;
         dl->AddCircleFilled(ImVec2(thumbX, trackY), haloRadius, ColorToU32(haloColor));
     }
 
@@ -425,19 +417,16 @@ bool Slider(const char* label, float* v, float min, float max, const char* forma
         float labelX = thumbX - valueSize.x * 0.5f;
 
         // 标签背景
-        float labelPadding = 4.0f * dpi;
+        float  labelPadding = 4.0f * dpi;
         ImVec4 labelBgColor = colors.inverseSurface;
-        labelBgColor.w = (hoverT - 0.5f) * 2.0f;
-        dl->AddRectFilled(
-            ImVec2(labelX - labelPadding, labelY - labelPadding),
-            ImVec2(labelX + valueSize.x + labelPadding, labelY + valueSize.y + labelPadding),
-            ColorToU32(labelBgColor),
-            4.0f * dpi
-        );
+        labelBgColor.w      = (hoverT - 0.5f) * 2.0f;
+        dl->AddRectFilled(ImVec2(labelX - labelPadding, labelY - labelPadding),
+                          ImVec2(labelX + valueSize.x + labelPadding, labelY + valueSize.y + labelPadding),
+                          ColorToU32(labelBgColor), 4.0f * dpi);
 
         // 标签文本
         ImVec4 labelTextColor = colors.inverseOnSurface;
-        labelTextColor.w = (hoverT - 0.5f) * 2.0f;
+        labelTextColor.w      = (hoverT - 0.5f) * 2.0f;
         dl->AddText(ImVec2(labelX, labelY), ColorToU32(labelTextColor), valueText);
     }
 
@@ -455,9 +444,9 @@ static std::vector<ImVec2> s_cardSizes;
 bool BeginCard(const char* id, ImVec2 size, int elevation) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID cardId = GetID(id);
 
@@ -465,21 +454,25 @@ bool BeginCard(const char* id, ImVec2 size, int elevation) {
     auto& state = ctx.cardStates[cardId];
 
     // 计算尺寸
-    if (size.x <= 0) size.x = GetContentRegionAvail().x;
-    if (size.y <= 0) size.y = 200.0f * dpi;  // 默认高度
+    if (size.x <= 0) {
+        size.x = GetContentRegionAvail().x;
+    }
+    if (size.y <= 0) {
+        size.y = 200.0f * dpi; // 默认高度
+    }
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 检测悬停
     ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
-    bool hovered = IsMouseHoveringRect(bb.Min, bb.Max);
+    bool   hovered = IsMouseHoveringRect(bb.Min, bb.Max);
 
     // 更新动画
     state.hoverState.target = hovered ? 1.0f : 0.0f;
-    state.elevation.target = (float)elevation + (hovered ? 1.0f : 0.0f);
+    state.elevation.target  = (float)elevation + (hovered ? 1.0f : 0.0f);
 
-    float hoverT = state.hoverState.value;
+    float hoverT     = state.hoverState.value;
     float elevationT = state.elevation.value;
 
     // MD3 圆角
@@ -487,34 +480,41 @@ bool BeginCard(const char* id, ImVec2 size, int elevation) {
 
     // 绘制阴影（基于 elevation）
     if (elevationT > 0.1f) {
-        float shadowOffset = elevationT * 2.0f * dpi;
-        float shadowBlur = elevationT * 4.0f * dpi;
-        ImVec4 shadowColor = colors.shadow;
-        shadowColor.w = 0.15f * (elevationT / 5.0f);
+        float  shadowOffset = elevationT * 2.0f * dpi;
+        float  shadowBlur   = elevationT * 4.0f * dpi;
+        ImVec4 shadowColor  = colors.shadow;
+        shadowColor.w       = 0.15f * (elevationT / 5.0f);
 
         // 简化的阴影：多层半透明矩形
         for (int i = 3; i >= 1; i--) {
-            float offset = shadowOffset * (float)i / 3.0f;
-            float alpha = shadowColor.w * (float)(4 - i) / 3.0f;
+            float  offset     = shadowOffset * (float)i / 3.0f;
+            float  alpha      = shadowColor.w * (float)(4 - i) / 3.0f;
             ImVec4 layerColor = shadowColor;
-            layerColor.w = alpha;
-            dl->AddRectFilled(
-                ImVec2(pos.x + offset, pos.y + offset * 1.5f),
-                ImVec2(pos.x + size.x + offset, pos.y + size.y + offset * 1.5f),
-                ColorToU32(layerColor),
-                cornerRadius
-            );
+            layerColor.w      = alpha;
+            dl->AddRectFilled(ImVec2(pos.x + offset, pos.y + offset * 1.5f),
+                              ImVec2(pos.x + size.x + offset, pos.y + size.y + offset * 1.5f), ColorToU32(layerColor),
+                              cornerRadius);
         }
     }
 
     // 绘制卡片背景
     ImVec4 cardBgColor;
     switch (elevation) {
-        case 0: cardBgColor = colors.surfaceContainerLowest; break;
-        case 1: cardBgColor = colors.surfaceContainerLow; break;
-        case 2: cardBgColor = colors.surfaceContainer; break;
-        case 3: cardBgColor = colors.surfaceContainerHigh; break;
-        default: cardBgColor = colors.surfaceContainerHighest; break;
+    case 0:
+        cardBgColor = colors.surfaceContainerLowest;
+        break;
+    case 1:
+        cardBgColor = colors.surfaceContainerLow;
+        break;
+    case 2:
+        cardBgColor = colors.surfaceContainer;
+        break;
+    case 3:
+        cardBgColor = colors.surfaceContainerHigh;
+        break;
+    default:
+        cardBgColor = colors.surfaceContainerHighest;
+        break;
     }
 
     // 悬停状态层
@@ -522,8 +522,7 @@ bool BeginCard(const char* id, ImVec2 size, int elevation) {
         cardBgColor = ApplyStateLayer(cardBgColor, colors.onSurface, colors.stateLayerHover * hoverT);
     }
 
-    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                      ColorToU32(cardBgColor), cornerRadius);
+    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ColorToU32(cardBgColor), cornerRadius);
 
     // 保存卡片状态
     s_cardPositions.push_back(pos);
@@ -534,11 +533,8 @@ bool BeginCard(const char* id, ImVec2 size, int elevation) {
     BeginGroup();
 
     // 设置内容区域裁剪
-    PushClipRect(
-        ImVec2(pos.x + 8.0f * dpi, pos.y + 8.0f * dpi),
-        ImVec2(pos.x + size.x - 8.0f * dpi, pos.y + size.y - 8.0f * dpi),
-        true
-    );
+    PushClipRect(ImVec2(pos.x + 8.0f * dpi, pos.y + 8.0f * dpi),
+                 ImVec2(pos.x + size.x - 8.0f * dpi, pos.y + size.y - 8.0f * dpi), true);
 
     return true;
 }
@@ -550,7 +546,7 @@ void EndCard() {
     EndGroup();
 
     if (!s_cardPositions.empty()) {
-        ImVec2 pos = s_cardPositions.back();
+        ImVec2 pos  = s_cardPositions.back();
         ImVec2 size = s_cardSizes.back();
         s_cardPositions.pop_back();
         s_cardSizes.pop_back();
@@ -567,17 +563,18 @@ void EndCard() {
 // Combo 状态栈结构
 struct ComboStackItem {
     ImGuiID id;
-    ImVec2 position;
-    ImVec2 size;
-    ImVec2 contentStartPos;
-    float width;
+    ImVec2  position;
+    ImVec2  size;
+    ImVec2  contentStartPos;
+    float   width;
 };
+
 static std::vector<ComboStackItem> s_comboStack;
 
 // 绘制下拉箭头（V 形）
 static void DrawDropdownArrow(ImDrawList* dl, ImVec2 center, float size, float rotation, ImU32 color) {
     // rotation: 0 = 向下 V，180 = 向上 ^
-    float rad = rotation * 3.14159265f / 180.0f;
+    float rad  = rotation * 3.14159265f / 180.0f;
     float cosR = std::cos(rad);
     float sinR = std::sin(rad);
 
@@ -586,15 +583,15 @@ static void DrawDropdownArrow(ImDrawList* dl, ImVec2 center, float size, float r
     float halfH = size * 0.3f;
 
     ImVec2 points[3] = {
-        ImVec2(-halfW, -halfH),  // 左上
-        ImVec2(0, halfH),        // 底部中心
-        ImVec2(halfW, -halfH)    // 右上
+        ImVec2(-halfW, -halfH), // 左上
+        ImVec2(0, halfH),       // 底部中心
+        ImVec2(halfW, -halfH)   // 右上
     };
 
     // 旋转并平移
     for (int i = 0; i < 3; i++) {
-        float x = points[i].x * cosR - points[i].y * sinR;
-        float y = points[i].x * sinR + points[i].y * cosR;
+        float x   = points[i].x * cosR - points[i].y * sinR;
+        float y   = points[i].x * sinR + points[i].y * cosR;
         points[i] = ImVec2(center.x + x, center.y + y);
     }
 
@@ -603,7 +600,7 @@ static void DrawDropdownArrow(ImDrawList* dl, ImVec2 center, float size, float r
 
 // 绘制勾选标记
 static void DrawCheckmark(ImDrawList* dl, ImVec2 center, float size, ImU32 color) {
-    float checkSize = size * 0.5f;
+    float  checkSize = size * 0.5f;
     ImVec2 checkStart(center.x - checkSize * 0.35f, center.y + checkSize * 0.05f);
     ImVec2 checkMid(center.x - checkSize * 0.05f, center.y + checkSize * 0.35f);
     ImVec2 checkEnd(center.x + checkSize * 0.4f, center.y - checkSize * 0.35f);
@@ -614,9 +611,9 @@ static void DrawCheckmark(ImDrawList* dl, ImVec2 center, float size, ImU32 color
 bool BeginCombo(const char* label, const char* preview_value) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID id = GetID(label);
 
@@ -624,19 +621,19 @@ bool BeginCombo(const char* label, const char* preview_value) {
     auto& state = ctx.comboStates[id];
 
     // 计算尺寸 - 根据内容自适应宽度，但有最小和最大限制
-    float height = 40.0f * dpi;  // MD3 标准高度
-    float cornerRadius = height * 0.5f;  // 全圆角
-    float arrowSize = 12.0f * dpi;
-    float padding = 16.0f * dpi;
+    float height       = 40.0f * dpi;   // MD3 标准高度
+    float cornerRadius = height * 0.5f; // 全圆角
+    float arrowSize    = 12.0f * dpi;
+    float padding      = 16.0f * dpi;
 
     // 计算基于文本的宽度
     ImVec2 textSize = CalcTextSize(preview_value);
-    float minWidth = 120.0f * dpi;
-    float maxWidth = 280.0f * dpi;
-    float width = std::clamp(textSize.x + padding * 2 + arrowSize + 8.0f * dpi, minWidth, maxWidth);
+    float  minWidth = 120.0f * dpi;
+    float  maxWidth = 280.0f * dpi;
+    float  width    = std::clamp(textSize.x + padding * 2 + arrowSize + 8.0f * dpi, minWidth, maxWidth);
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 创建不可见按钮
     bool clicked = InvisibleButton(label, ImVec2(width, height));
@@ -661,19 +658,19 @@ bool BeginCombo(const char* label, const char* preview_value) {
     }
 
     // 更新动画目标
-    state.hoverState.target = hovered ? 1.0f : 0.0f;
-    state.openState.target = isOpen ? 1.0f : 0.0f;
+    state.hoverState.target    = hovered ? 1.0f : 0.0f;
+    state.openState.target     = isOpen ? 1.0f : 0.0f;
     state.arrowRotation.target = isOpen ? 180.0f : 0.0f;
 
-    float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
-    float openT = std::clamp(state.openState.value, 0.0f, 1.0f);
+    float hoverT   = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+    float openT    = std::clamp(state.openState.value, 0.0f, 1.0f);
     float arrowRot = state.arrowRotation.value;
 
     // 计算颜色
-    ImVec4 bgColor = colors.surfaceContainerHighest;
+    ImVec4 bgColor     = colors.surfaceContainerHighest;
     ImVec4 borderColor = isOpen ? colors.primary : colors.outline;
-    ImVec4 textColor = colors.onSurface;
-    ImVec4 arrowColor = colors.onSurfaceVariant;
+    ImVec4 textColor   = colors.onSurface;
+    ImVec4 arrowColor  = colors.onSurfaceVariant;
 
     // 悬停状态层
     if (hoverT > 0.001f && !isOpen) {
@@ -684,12 +681,10 @@ bool BeginCombo(const char* label, const char* preview_value) {
     float borderWidth = isOpen ? 2.0f * dpi : 1.0f * dpi;
 
     // 绘制背景
-    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height),
-                      ColorToU32(bgColor), cornerRadius);
+    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius);
 
     // 绘制边框
-    dl->AddRect(pos, ImVec2(pos.x + width, pos.y + height),
-                ColorToU32(borderColor), cornerRadius, 0, borderWidth);
+    dl->AddRect(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(borderColor), cornerRadius, 0, borderWidth);
 
     // 绘制预览文本
     ImVec2 textPos(pos.x + padding, pos.y + (height - GetTextLineHeight()) * 0.5f);
@@ -707,12 +702,12 @@ bool BeginCombo(const char* label, const char* preview_value) {
 
     // 计算弹出位置（智能判断向上或向下）
     float maxMenuHeight = 200.0f * dpi;
-    float screenBottom = GetIO().DisplaySize.y;
-    float spaceBelow = screenBottom - itemMax.y;
-    float spaceAbove = itemMin.y;
+    float screenBottom  = GetIO().DisplaySize.y;
+    float spaceBelow    = screenBottom - itemMax.y;
+    float spaceAbove    = itemMin.y;
 
-    bool openUpward = spaceBelow < maxMenuHeight && spaceAbove > spaceBelow;
-    float popupGap = 4.0f * dpi;
+    bool  openUpward = spaceBelow < maxMenuHeight && spaceAbove > spaceBelow;
+    float popupGap   = 4.0f * dpi;
 
     ImVec2 popupPos;
     if (openUpward) {
@@ -739,15 +734,15 @@ bool BeginCombo(const char* label, const char* preview_value) {
     if (popupOpen) {
         // 保存状态用于 EndCombo
         ComboStackItem stackItem;
-        stackItem.id = id;
-        stackItem.position = itemMin;
-        stackItem.size = ImVec2(width, height);
+        stackItem.id              = id;
+        stackItem.position        = itemMin;
+        stackItem.size            = ImVec2(width, height);
         stackItem.contentStartPos = GetCursorScreenPos();
-        stackItem.width = width;
+        stackItem.width           = width;
         s_comboStack.push_back(stackItem);
 
         // 计算动画高度
-        float openT = std::clamp(state.openState.value, 0.0f, 1.0f);
+        float openT          = std::clamp(state.openState.value, 0.0f, 1.0f);
         float animatedHeight = state.lastContentHeight * openT;
 
         // 如果有上次高度记录，应用 ClipRect 实现展开动画
@@ -784,12 +779,12 @@ void EndCombo() {
     ComboStackItem stackItem = s_comboStack.back();
     s_comboStack.pop_back();
 
-    auto& ctx = GetContext();
+    auto& ctx   = GetContext();
     auto& state = ctx.comboStates[stackItem.id];
 
     // 计算内容高度
-    ImVec2 contentEndPos = GetCursorScreenPos();
-    float fullContentHeight = contentEndPos.y - stackItem.contentStartPos.y;
+    ImVec2 contentEndPos     = GetCursorScreenPos();
+    float  fullContentHeight = contentEndPos.y - stackItem.contentStartPos.y;
 
     // 更新记录的内容高度
     if (fullContentHeight > state.lastContentHeight) {
@@ -809,16 +804,16 @@ void EndCombo() {
 bool Selectable(const char* label, bool selected) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
-    float width = GetContentRegionAvail().x;
-    float height = 44.0f * dpi;
-    float padding = 12.0f * dpi;
-    float checkSize = 18.0f * dpi;
-    float checkSpace = checkSize + 8.0f * dpi;  // 勾选图标占用的空间
-    float cornerRadius = 12.0f * dpi;  // 选项的圆角
+    float width        = GetContentRegionAvail().x;
+    float height       = 44.0f * dpi;
+    float padding      = 12.0f * dpi;
+    float checkSize    = 18.0f * dpi;
+    float checkSpace   = checkSize + 8.0f * dpi; // 勾选图标占用的空间
+    float cornerRadius = 12.0f * dpi;            // 选项的圆角
 
     ImVec2 pos = GetCursorScreenPos();
 
@@ -827,15 +822,15 @@ bool Selectable(const char* label, bool selected) {
 
     // 先检测悬停状态（使用 ItemHoverable）
     ImGuiID id = GetID(label);
-    ImRect bb(pos, ImVec2(pos.x + width, pos.y + height));
+    ImRect  bb(pos, ImVec2(pos.x + width, pos.y + height));
 
     // 创建不可见按钮
     bool clicked = InvisibleButton(label, ImVec2(width, height));
     bool hovered = IsItemHovered();
 
     // 计算颜色
-    ImVec4 bgColor = ImVec4(0, 0, 0, 0);
-    ImVec4 textColor = colors.onSurface;
+    ImVec4 bgColor    = ImVec4(0, 0, 0, 0);
+    ImVec4 textColor  = colors.onSurface;
     ImVec4 checkColor = colors.primary;
 
     // 悬停状态层
@@ -860,8 +855,8 @@ bool Selectable(const char* label, bool selected) {
     }
 
     // 使用 DrawList 直接绘制文本
-    float textStartX = padding + checkSpace;
-    float textOffsetY = (height - GetTextLineHeight()) * 0.5f;
+    float  textStartX  = padding + checkSpace;
+    float  textOffsetY = (height - GetTextLineHeight()) * 0.5f;
     ImVec2 textPos(pos.x + textStartX, pos.y + textOffsetY);
     dl->AddText(textPos, ColorToU32(textColor), label);
 
@@ -877,17 +872,15 @@ bool Selectable(const char* label, bool selected) {
 }
 
 bool Combo(const char* label, int* current_item, const char* const items[], int items_count) {
-    bool changed = false;
-    const char* preview = (*current_item >= 0 && *current_item < items_count)
-                          ? items[*current_item]
-                          : "";
+    bool        changed = false;
+    const char* preview = (*current_item >= 0 && *current_item < items_count) ? items[*current_item] : "";
 
     if (BeginCombo(label, preview)) {
         for (int i = 0; i < items_count; i++) {
             bool selected = (*current_item == i);
             if (Selectable(items[i], selected)) {
                 *current_item = i;
-                changed = true;
+                changed       = true;
             }
         }
         EndCombo();
@@ -903,19 +896,20 @@ bool Combo(const char* label, int* current_item, const char* const items[], int 
 // CollapsingHeader 状态栈
 struct CollapsingHeaderStackItem {
     ImGuiID id;
-    ImVec2 headerPos;
-    ImVec2 headerSize;
-    ImVec2 contentStartPos;
-    bool isOpen;
-    int drawListChannelCount;  // 保存 channel 数量
-    float contentPadding;      // 内容区域边距
+    ImVec2  headerPos;
+    ImVec2  headerSize;
+    ImVec2  contentStartPos;
+    bool    isOpen;
+    int     drawListChannelCount; // 保存 channel 数量
+    float   contentPadding;       // 内容区域边距
 };
+
 static std::vector<CollapsingHeaderStackItem> s_collapsingHeaderStack;
 
 // 绘制展开箭头（右侧，V 形，展开时向下）
 static void DrawExpandArrow(ImDrawList* dl, ImVec2 center, float size, float rotation, ImU32 color) {
     // rotation: 0 = 向右 >，90 = 向下 v
-    float rad = rotation * 3.14159265f / 180.0f;
+    float rad  = rotation * 3.14159265f / 180.0f;
     float cosR = std::cos(rad);
     float sinR = std::sin(rad);
 
@@ -924,15 +918,15 @@ static void DrawExpandArrow(ImDrawList* dl, ImVec2 center, float size, float rot
     float halfH = size * 0.4f;
 
     ImVec2 points[3] = {
-        ImVec2(-halfW, -halfH),  // 左上
-        ImVec2(halfW, 0),        // 右中
-        ImVec2(-halfW, halfH)    // 左下
+        ImVec2(-halfW, -halfH), // 左上
+        ImVec2(halfW, 0),       // 右中
+        ImVec2(-halfW, halfH)   // 左下
     };
 
     // 旋转并平移
     for (int i = 0; i < 3; i++) {
-        float x = points[i].x * cosR - points[i].y * sinR;
-        float y = points[i].x * sinR + points[i].y * cosR;
+        float x   = points[i].x * cosR - points[i].y * sinR;
+        float y   = points[i].x * sinR + points[i].y * cosR;
         points[i] = ImVec2(center.x + x, center.y + y);
     }
 
@@ -942,38 +936,38 @@ static void DrawExpandArrow(ImDrawList* dl, ImVec2 center, float size, float rot
 bool BeginCollapsingHeader(const char* label, bool default_open) {
     using namespace ImGui;
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     ImGuiID id = GetID(label);
 
     // 获取或创建动画状态
-    auto it = ctx.collapsingHeaderStates.find(id);
-    bool isNew = (it == ctx.collapsingHeaderStates.end());
+    auto  it    = ctx.collapsingHeaderStates.find(id);
+    bool  isNew = (it == ctx.collapsingHeaderStates.end());
     auto& state = ctx.collapsingHeaderStates[id];
 
     // 使用 ImGui 存储来持久化开关状态
     ImGuiStorage* storage = GetStateStorage();
-    bool isOpen = storage->GetInt(id, default_open ? 1 : 0) != 0;
+    bool          isOpen  = storage->GetInt(id, default_open ? 1 : 0) != 0;
 
     // 首次创建时初始化动画
     if (isNew) {
-        state.openState.value = isOpen ? 1.0f : 0.0f;
-        state.openState.target = state.openState.value;
-        state.arrowRotation.value = isOpen ? 90.0f : 0.0f;
+        state.openState.value      = isOpen ? 1.0f : 0.0f;
+        state.openState.target     = state.openState.value;
+        state.arrowRotation.value  = isOpen ? 90.0f : 0.0f;
         state.arrowRotation.target = state.arrowRotation.value;
     }
 
     // 计算尺寸
-    float width = GetContentRegionAvail().x;
-    float height = 48.0f * dpi;
+    float width        = GetContentRegionAvail().x;
+    float height       = 48.0f * dpi;
     float cornerRadius = 12.0f * dpi;
-    float arrowSize = 16.0f * dpi;
-    float padding = 16.0f * dpi;
+    float arrowSize    = 16.0f * dpi;
+    float padding      = 16.0f * dpi;
 
-    ImVec2 pos = GetCursorScreenPos();
-    ImDrawList* dl = GetWindowDrawList();
+    ImVec2      pos = GetCursorScreenPos();
+    ImDrawList* dl  = GetWindowDrawList();
 
     // 使用独立的 ID 创建不可见按钮，避免与内容 ID 冲突
     PushID(label);
@@ -988,17 +982,17 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     }
 
     // 更新动画目标
-    state.hoverState.target = hovered ? 1.0f : 0.0f;
-    state.openState.target = isOpen ? 1.0f : 0.0f;
+    state.hoverState.target    = hovered ? 1.0f : 0.0f;
+    state.openState.target     = isOpen ? 1.0f : 0.0f;
     state.arrowRotation.target = isOpen ? 90.0f : 0.0f;
 
-    float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
-    float openT = std::clamp(state.openState.value, 0.0f, 1.0f);
+    float hoverT   = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+    float openT    = std::clamp(state.openState.value, 0.0f, 1.0f);
     float arrowRot = state.arrowRotation.value;
 
     // 计算颜色
-    ImVec4 bgColor = colors.surfaceContainer;
-    ImVec4 textColor = colors.onSurface;
+    ImVec4 bgColor    = colors.surfaceContainer;
+    ImVec4 textColor  = colors.onSurface;
     ImVec4 arrowColor = colors.onSurfaceVariant;
 
     // 悬停状态层
@@ -1015,8 +1009,7 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     }
 
     // 绘制头部背景
-    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height),
-                      ColorToU32(bgColor), cornerRadius, roundingFlags);
+    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius, roundingFlags);
 
     // 绘制文本
     ImVec2 textPos(pos.x + padding, pos.y + (height - GetTextLineHeight()) * 0.5f);
@@ -1039,28 +1032,24 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
 
         // 使用 channels 来确保背景在内容之前绘制
         dl->ChannelsSplit(2);
-        dl->ChannelsSetCurrent(1);  // 切换到内容 channel
+        dl->ChannelsSetCurrent(1); // 切换到内容 channel
 
         // 保存状态到栈
         CollapsingHeaderStackItem stackItem;
-        stackItem.id = id;
-        stackItem.headerPos = pos;
-        stackItem.headerSize = ImVec2(width, height);
-        stackItem.contentStartPos = ImVec2(pos.x, pos.y + height);
-        stackItem.isOpen = isOpen;
+        stackItem.id                   = id;
+        stackItem.headerPos            = pos;
+        stackItem.headerSize           = ImVec2(width, height);
+        stackItem.contentStartPos      = ImVec2(pos.x, pos.y + height);
+        stackItem.isOpen               = isOpen;
         stackItem.drawListChannelCount = 2;
-        stackItem.contentPadding = contentPadding;
+        stackItem.contentPadding       = contentPadding;
         s_collapsingHeaderStack.push_back(stackItem);
 
         // 计算当前动画高度
         float animatedHeight = state.lastContentHeight * openT;
 
         // 始终使用 ClipRect 来控制可见区域
-        PushClipRect(
-            ImVec2(pos.x, pos.y + height),
-            ImVec2(pos.x + width, pos.y + height + animatedHeight),
-            true
-        );
+        PushClipRect(ImVec2(pos.x, pos.y + height), ImVec2(pos.x + width, pos.y + height + animatedHeight), true);
 
         // 开始内容组
         BeginGroup();
@@ -1084,11 +1073,13 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
 void EndCollapsingHeader() {
     using namespace ImGui;
 
-    if (s_collapsingHeaderStack.empty()) return;
+    if (s_collapsingHeaderStack.empty()) {
+        return;
+    }
 
-    auto& ctx = GetContext();
+    auto&       ctx    = GetContext();
     const auto& colors = ctx.colors;
-    float dpi = ctx.dpiScale;
+    float       dpi    = ctx.dpiScale;
 
     CollapsingHeaderStackItem stackItem = s_collapsingHeaderStack.back();
     s_collapsingHeaderStack.pop_back();
@@ -1104,9 +1095,9 @@ void EndCollapsingHeader() {
     EndGroup();
 
     // 计算内容区域实际大小（完整高度）
-    ImVec2 contentEndPos = GetCursorScreenPos();
-    float contentPadding = stackItem.contentPadding;
-    float fullContentHeight = contentEndPos.y - stackItem.contentStartPos.y + contentPadding;
+    ImVec2 contentEndPos     = GetCursorScreenPos();
+    float  contentPadding    = stackItem.contentPadding;
+    float  fullContentHeight = contentEndPos.y - stackItem.contentStartPos.y + contentPadding;
 
     // 更新记录的内容高度（仅在展开时更新，用于关闭动画）
     if (stackItem.isOpen) {
@@ -1120,9 +1111,9 @@ void EndCollapsingHeader() {
     float animatedHeight = state.lastContentHeight * openT;
 
     // 绘制内容区域边框和背景
-    float width = stackItem.headerSize.x;
+    float width        = stackItem.headerSize.x;
     float cornerRadius = 12.0f * dpi;
-    float borderWidth = 1.0f * dpi;
+    float borderWidth  = 1.0f * dpi;
 
     ImVec2 contentBoxMin = stackItem.contentStartPos;
     ImVec2 contentBoxMax(stackItem.headerPos.x + width, stackItem.contentStartPos.y + animatedHeight);
@@ -1138,25 +1129,22 @@ void EndCollapsingHeader() {
     if (animatedHeight > 1.0f) {
         // 内容区域背景
         ImVec4 contentBgColor = colors.surfaceContainerLow;
-        dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor),
-                          cornerRadius, ImDrawFlags_RoundCornersBottom);
+        dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
+                          ImDrawFlags_RoundCornersBottom);
 
         // 内容区域边框
         ImVec4 borderColor = colors.outlineVariant;
         borderColor.w *= 0.5f;
 
         // 左边框
-        dl->AddLine(ImVec2(contentBoxMin.x, contentBoxMin.y),
-                    ImVec2(contentBoxMin.x, contentBoxMax.y - cornerRadius),
+        dl->AddLine(ImVec2(contentBoxMin.x, contentBoxMin.y), ImVec2(contentBoxMin.x, contentBoxMax.y - cornerRadius),
                     ColorToU32(borderColor), borderWidth);
         // 右边框
-        dl->AddLine(ImVec2(contentBoxMax.x, contentBoxMin.y),
-                    ImVec2(contentBoxMax.x, contentBoxMax.y - cornerRadius),
+        dl->AddLine(ImVec2(contentBoxMax.x, contentBoxMin.y), ImVec2(contentBoxMax.x, contentBoxMax.y - cornerRadius),
                     ColorToU32(borderColor), borderWidth);
         // 底部边框
         dl->AddLine(ImVec2(contentBoxMin.x + cornerRadius, contentBoxMax.y),
-                    ImVec2(contentBoxMax.x - cornerRadius, contentBoxMax.y),
-                    ColorToU32(borderColor), borderWidth);
+                    ImVec2(contentBoxMax.x - cornerRadius, contentBoxMax.y), ColorToU32(borderColor), borderWidth);
     }
 
     // 合并 channels
