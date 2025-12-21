@@ -453,9 +453,68 @@ inline void ShowError(const char* localizedMessage, const std::string& technical
     ShowRecoverableError(str.errorTitle, localizedMessage, technicalDetails.c_str(), false);
 }
 
+// Show warning using native Windows dialog (supports dark mode automatically)
 inline void ShowWarning(const char* localizedMessage, const std::string& technicalDetails = "") {
     const auto& str = i18n::Get();
-    ShowRecoverableError(str.warningTitle, localizedMessage, technicalDetails.c_str(), true);
+
+    // Use native TaskDialog for better UX and dark mode support
+    typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
+    HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
+    TaskDialogIndirectFunc pTaskDialogIndirect = nullptr;
+    if (hComctl) {
+        pTaskDialogIndirect = (TaskDialogIndirectFunc)GetProcAddress(hComctl, "TaskDialogIndirect");
+    }
+
+    if (pTaskDialogIndirect) {
+        // Convert to wide strings
+        int titleLen   = MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, nullptr, 0);
+        int msgLen     = MultiByteToWideChar(CP_UTF8, 0, localizedMessage, -1, nullptr, 0);
+        int closeLen   = MultiByteToWideChar(CP_UTF8, 0, str.close, -1, nullptr, 0);
+
+        std::wstring wTitle(titleLen, 0);
+        std::wstring wMsg(msgLen, 0);
+        std::wstring wClose(closeLen, 0);
+
+        MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, wTitle.data(), titleLen);
+        MultiByteToWideChar(CP_UTF8, 0, localizedMessage, -1, wMsg.data(), msgLen);
+        MultiByteToWideChar(CP_UTF8, 0, str.close, -1, wClose.data(), closeLen);
+
+        TASKDIALOGCONFIG config = {sizeof(config)};
+        config.dwFlags          = TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwCommonButtons  = 0;
+        config.pszWindowTitle   = L"Particle Saturn";
+        config.pszMainIcon      = TD_WARNING_ICON;
+        config.pszMainInstruction = wTitle.c_str();
+        config.pszContent       = wMsg.c_str();
+
+        // Add expandable details if provided
+        std::wstring wDetails;
+        if (!technicalDetails.empty()) {
+            int detailsLen = MultiByteToWideChar(CP_UTF8, 0, technicalDetails.c_str(), -1, nullptr, 0);
+            wDetails.resize(detailsLen, 0);
+            MultiByteToWideChar(CP_UTF8, 0, technicalDetails.c_str(), -1, wDetails.data(), detailsLen);
+            config.pszExpandedInformation = wDetails.c_str();
+            config.dwFlags |= TDF_EXPAND_FOOTER_AREA;
+        }
+
+        TASKDIALOG_BUTTON buttons[] = {{IDOK, wClose.c_str()}};
+        config.pButtons       = buttons;
+        config.cButtons       = 1;
+        config.nDefaultButton = IDOK;
+
+        pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
+    } else {
+        // Fallback to MessageBoxW
+        std::string fullMsg = localizedMessage;
+        if (!technicalDetails.empty()) {
+            fullMsg += "\n\n";
+            fullMsg += technicalDetails;
+        }
+        int          msgLen = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+        std::wstring wMsg(msgLen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, wMsg.data(), msgLen);
+        MessageBoxW(nullptr, wMsg.c_str(), L"Particle Saturn", MB_OK | MB_ICONWARNING);
+    }
 }
 
 // Render error dialog (call from main loop after ImGui::NewFrame)
