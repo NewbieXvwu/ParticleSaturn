@@ -191,9 +191,9 @@ inline const Strings& GetChinese() {
         .embeddedResourceFailed   = "内置资源加载失败，程序文件可能已损坏",
 
         // Error messages - camera details
-        .cameraNotFound          = "未检测到摄像头设备",
-        .cameraInUse             = "摄像头正在被其他程序使用",
-        .cameraPermissionDenied  = "摄像头访问被拒绝，请在系统设置中允许访问",
+        .cameraNotFound         = "未检测到摄像头设备",
+        .cameraInUse            = "摄像头正在被其他程序使用",
+        .cameraPermissionDenied = "摄像头访问被拒绝，请在系统设置中允许访问",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "手掌检测模型加载失败",
@@ -342,9 +342,9 @@ inline const Strings& GetEnglish() {
         .embeddedResourceFailed   = "Failed to load embedded resources, program file may be corrupted",
 
         // Error messages - camera details
-        .cameraNotFound          = "No camera device detected",
-        .cameraInUse             = "Camera is being used by another program",
-        .cameraPermissionDenied  = "Camera access denied, please allow access in system settings",
+        .cameraNotFound         = "No camera device detected",
+        .cameraInUse            = "Camera is being used by another program",
+        .cameraPermissionDenied = "Camera access denied, please allow access in system settings",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "Failed to load palm detection model",

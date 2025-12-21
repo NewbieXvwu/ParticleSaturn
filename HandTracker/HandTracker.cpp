@@ -181,7 +181,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     if (!palm_loaded) {
         std::cerr << "[HandTracker] Error: Failed to load palm detection model" << std::endl;
-        g_ctx.SetError(HANDTRACKER_ERROR_PALM_MODEL, "Failed to load palm detection model (palm_detection_full.tflite)");
+        g_ctx.SetError(HANDTRACKER_ERROR_PALM_MODEL,
+                       "Failed to load palm detection model (palm_detection_full.tflite)");
         g_ctx.running = false;
         return;
     }
@@ -211,7 +212,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         // 尝试检测更具体的错误原因
         // 首先检查是否有摄像头设备
         cv::VideoCapture testCap;
-        bool hasCamera = testCap.open(cam_id);
+        bool             hasCamera = testCap.open(cam_id);
         testCap.release();
 
         if (!hasCamera) {

@@ -130,7 +130,7 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
         glDeleteBuffers(3, db.ssbo);
         glDeleteBuffers(1, &db.indirectBuffer);
         db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
-        db.indirectBuffer                     = 0;
+        db.indirectBuffer                    = 0;
         return false;
     }
 
@@ -149,7 +149,7 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
         glDeleteBuffers(3, db.ssbo);
         glDeleteBuffers(1, &db.indirectBuffer);
         db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
-        db.indirectBuffer                     = 0;
+        db.indirectBuffer                    = 0;
         return false;
     }
 
