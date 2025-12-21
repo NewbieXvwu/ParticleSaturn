@@ -103,6 +103,11 @@ struct TrackerContext {
     SharedData latest_data;
     DebugData  debug_data;
 
+    // 错误状态
+    std::atomic<int> last_error{HANDTRACKER_OK};
+    std::string      last_error_message;
+    std::mutex       error_mutex;
+
     // 平滑值
     float smooth_scale = 1.0f;
     float smooth_rot_x = 0.5f;
@@ -119,6 +124,13 @@ struct TrackerContext {
     const void* hand_model_data = nullptr;
     size_t      hand_model_size = 0;
 
+    // 设置错误
+    void SetError(int code, const std::string& message) {
+        std::lock_guard<std::mutex> lock(error_mutex);
+        last_error         = code;
+        last_error_message = message;
+    }
+
     // 重置状态
     void Reset() {
         smooth_scale = 1.0f;
@@ -128,6 +140,8 @@ struct TrackerContext {
         filter_rot_x.reset();
         filter_rot_y.reset();
         filter_scale.reset();
+        last_error = HANDTRACKER_OK;
+        last_error_message.clear();
     }
 };
 
@@ -167,12 +181,14 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     if (!palm_loaded) {
         std::cerr << "[HandTracker] Error: Failed to load palm detection model" << std::endl;
+        g_ctx.SetError(HANDTRACKER_ERROR_PALM_MODEL, "Failed to load palm detection model (palm_detection_full.tflite)");
         g_ctx.running = false;
         return;
     }
 
     if (!landmark_loaded) {
         std::cerr << "[HandTracker] Error: Failed to load hand landmark model" << std::endl;
+        g_ctx.SetError(HANDTRACKER_ERROR_HAND_MODEL, "Failed to load hand landmark model (hand_landmark_full.tflite)");
         g_ctx.running = false;
         return;
     }
@@ -192,6 +208,19 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
 
     if (!camera_ok) {
         std::cerr << "[HandTracker] Error: Failed to open camera " << cam_id << std::endl;
+        // 尝试检测更具体的错误原因
+        // 首先检查是否有摄像头设备
+        cv::VideoCapture testCap;
+        bool hasCamera = testCap.open(cam_id);
+        testCap.release();
+
+        if (!hasCamera) {
+            g_ctx.SetError(HANDTRACKER_ERROR_NO_CAMERA, "No camera device detected at index " + std::to_string(cam_id));
+        } else {
+            // 有设备但打不开，可能被占用
+            g_ctx.SetError(HANDTRACKER_ERROR_CAMERA_IN_USE,
+                           "Camera " + std::to_string(cam_id) + " may be in use by another application");
+        }
         g_ctx.running = false;
         return;
     }
@@ -548,4 +577,16 @@ HAND_API int GetTrackerSIMDMode() {
 
 HAND_API const char* GetTrackerSIMDImplementation() {
     return SIMDNormalize::GetCurrentImplementation();
+}
+
+HAND_API int GetTrackerLastError() {
+    return g_ctx.last_error.load();
+}
+
+HAND_API const char* GetTrackerLastErrorMessage() {
+    std::lock_guard<std::mutex> lock(g_ctx.error_mutex);
+    // 返回静态缓冲区以保持指针有效
+    static std::string s_errorMessage;
+    s_errorMessage = g_ctx.last_error_message;
+    return s_errorMessage.c_str();
 }

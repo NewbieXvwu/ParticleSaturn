@@ -180,7 +180,27 @@ int main() {
     }
     if (!InitTracker(0, nullptr)) {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false (embedded models)");
+        int         errCode = GetTrackerLastError();
+        const char* errMsg  = GetTrackerLastErrorMessage();
+        const char* localizedMsg;
+        switch (errCode) {
+        case HANDTRACKER_ERROR_PALM_MODEL:
+            localizedMsg = i18n::Get().palmModelLoadFailed;
+            break;
+        case HANDTRACKER_ERROR_HAND_MODEL:
+            localizedMsg = i18n::Get().handModelLoadFailed;
+            break;
+        case HANDTRACKER_ERROR_NO_CAMERA:
+            localizedMsg = i18n::Get().cameraNotFound;
+            break;
+        case HANDTRACKER_ERROR_CAMERA_IN_USE:
+            localizedMsg = i18n::Get().cameraInUse;
+            break;
+        default:
+            localizedMsg = i18n::Get().cameraInitFailed;
+            break;
+        }
+        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "InitTracker() returned false");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;
@@ -190,7 +210,27 @@ int main() {
     std::cout << "[Main] Initializing HandTracker..." << std::endl;
     if (!InitTracker(0, ".")) {
         std::cerr << "[Main] Warning: Failed to initialize HandTracker DLL." << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false");
+        int         errCode = GetTrackerLastError();
+        const char* errMsg  = GetTrackerLastErrorMessage();
+        const char* localizedMsg;
+        switch (errCode) {
+        case HANDTRACKER_ERROR_PALM_MODEL:
+            localizedMsg = i18n::Get().palmModelLoadFailed;
+            break;
+        case HANDTRACKER_ERROR_HAND_MODEL:
+            localizedMsg = i18n::Get().handModelLoadFailed;
+            break;
+        case HANDTRACKER_ERROR_NO_CAMERA:
+            localizedMsg = i18n::Get().cameraNotFound;
+            break;
+        case HANDTRACKER_ERROR_CAMERA_IN_USE:
+            localizedMsg = i18n::Get().cameraInUse;
+            break;
+        default:
+            localizedMsg = i18n::Get().cameraInitFailed;
+            break;
+        }
+        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "InitTracker() returned false");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;

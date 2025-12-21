@@ -16,6 +16,18 @@ enum HandTrackerSIMDMode {
     SIMD_SCALAR = 3  // 强制使用标量实现
 };
 
+// 初始化错误码枚举
+enum HandTrackerError {
+    HANDTRACKER_OK                  = 0,  // 初始化成功
+    HANDTRACKER_ERROR_UNKNOWN       = 1,  // 未知错误
+    HANDTRACKER_ERROR_PALM_MODEL    = 2,  // 手掌检测模型加载失败
+    HANDTRACKER_ERROR_HAND_MODEL    = 3,  // 手部关键点模型加载失败
+    HANDTRACKER_ERROR_CAMERA_OPEN   = 4,  // 摄像头打开失败
+    HANDTRACKER_ERROR_CAMERA_IN_USE = 5,  // 摄像头被占用
+    HANDTRACKER_ERROR_NO_CAMERA     = 6,  // 未检测到摄像头
+    HANDTRACKER_ERROR_THREAD        = 7   // 工作线程创建失败
+};
+
 extern "C" {
 // 设置嵌入式模型数据（静态链接时在 InitTracker 前调用）
 HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const void* hand_data, size_t hand_size);
@@ -24,6 +36,12 @@ HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const v
 // camera_id: 摄像头索引（通常为 0）
 // model_dir: 模型目录路径（使用嵌入式模型时可为 nullptr）
 HAND_API bool InitTracker(int camera_id, const char* model_dir);
+
+// 获取最后一次错误码
+HAND_API int GetTrackerLastError();
+
+// 获取最后一次错误信息（人类可读）
+HAND_API const char* GetTrackerLastErrorMessage();
 
 // 获取手部追踪数据（已平滑处理）
 // out_scale: 缩放值（拇指-食指距离）
