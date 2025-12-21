@@ -324,8 +324,18 @@ int main() {
     ErrorHandler::SetStage(ErrorHandler::AppStage::PARTICLE_INIT);
     DoubleBufferSSBO particleBuffers;
     if (!ParticleSystem::InitParticlesGPU(particleBuffers)) {
-        std::cerr << "Failed to initialize particle system" << std::endl;
-        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "ParticleSystem::InitParticlesGPU() returned false");
+        std::cerr << "[Main] Fatal: Failed to initialize particle system" << std::endl;
+        // 检查是否是显存不足
+        bool isOutOfMemory = ParticleSystem::g_lastError.find("OUT_OF_MEMORY") != std::string::npos;
+        const char* message = isOutOfMemory ? i18n::Get().outOfVideoMemory : i18n::Get().shaderCompileFailed;
+        std::ostringstream details;
+        details << "ParticleSystem::InitParticlesGPU() failed\n\n"
+                << ParticleSystem::g_lastError << "\n\n"
+                << "GPU: " << appState.gl.renderer << "\n"
+                << "OpenGL: " << appState.gl.version;
+        ErrorHandler::ShowError(message, details.str());
+        UIManager::Shutdown();
+        glfwDestroyWindow(window);
         glfwTerminate();
         return -1;
     }

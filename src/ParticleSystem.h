@@ -62,8 +62,12 @@ struct DoubleBufferSSBO {
 
 namespace ParticleSystem {
 
+// 全局错误信息（用于向调用者传递详细错误原因）
+inline std::string g_lastError;
+
 // GPU 粒子初始化 (三缓冲)，返回是否成功
 inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
+    g_lastError.clear();
     db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
     db.vao[0] = db.vao[1] = db.vao[2] = 0;
     db.indirectBuffer                 = 0;
@@ -71,11 +75,36 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
     db.readIdx                        = 0;
     db.writeIdx                       = 1;
 
+    // 清除之前的 OpenGL 错误
+    while (glGetError() != GL_NO_ERROR) {}
+
     // 1. 创建三个 SSBO (三缓冲)
     glGenBuffers(3, db.ssbo);
+    size_t bufferSize = MAX_PARTICLES * sizeof(GPUParticle);
     for (int i = 0; i < 3; i++) {
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, db.ssbo[i]);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, MAX_PARTICLES * sizeof(GPUParticle), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, bufferSize, nullptr, GL_DYNAMIC_DRAW);
+
+        GLenum err = glGetError();
+        if (err == GL_OUT_OF_MEMORY) {
+            std::ostringstream oss;
+            oss << "GL_OUT_OF_MEMORY while allocating SSBO " << i << "\n"
+                << "Requested: " << (bufferSize / 1024 / 1024) << " MB per buffer\n"
+                << "Total: " << (bufferSize * 3 / 1024 / 1024) << " MB for triple buffering";
+            g_lastError = oss.str();
+            std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
+            glDeleteBuffers(3, db.ssbo);
+            db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
+            return false;
+        } else if (err != GL_NO_ERROR) {
+            std::ostringstream oss;
+            oss << "OpenGL error 0x" << std::hex << err << std::dec << " while allocating SSBO " << i;
+            g_lastError = oss.str();
+            std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
+            glDeleteBuffers(3, db.ssbo);
+            db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
+            return false;
+        }
     }
 
     // 1.5 创建 Indirect Draw Buffer
@@ -95,10 +124,13 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
     glGetShaderiv(cs, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(cs, 512, NULL, infoLog);
-        std::cerr << "Init Shader Compilation Failed:\n" << infoLog << std::endl;
+        g_lastError = std::string("Init shader compilation failed:\n") + infoLog;
+        std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
         glDeleteShader(cs);
         glDeleteBuffers(3, db.ssbo);
+        glDeleteBuffers(1, &db.indirectBuffer);
         db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
+        db.indirectBuffer                     = 0;
         return false;
     }
 
@@ -110,11 +142,14 @@ inline bool InitParticlesGPU(DoubleBufferSSBO& db) {
     glGetProgramiv(pInit, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(pInit, 512, NULL, infoLog);
-        std::cerr << "Init Program Linking Failed:\n" << infoLog << std::endl;
+        g_lastError = std::string("Init program linking failed:\n") + infoLog;
+        std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
         glDeleteShader(cs);
         glDeleteProgram(pInit);
         glDeleteBuffers(3, db.ssbo);
+        glDeleteBuffers(1, &db.indirectBuffer);
         db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
+        db.indirectBuffer                     = 0;
         return false;
     }
 
