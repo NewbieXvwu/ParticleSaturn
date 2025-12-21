@@ -41,26 +41,38 @@ bool CheckProgramLinkStatus(unsigned int program) {
     return CheckProgramLink(program);
 }
 
-// 创建着色器程序
+// 创建着色器程序，失败时返回 0
 unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc) {
-    unsigned int program = glCreateProgram();
-    unsigned int vs      = glCreateShader(GL_VERTEX_SHADER);
+    unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vertexSrc, 0);
     glCompileShader(vs);
-    CheckShaderCompile(vs, "Vertex");
+    if (!CheckShaderCompile(vs, "Vertex")) {
+        glDeleteShader(vs);
+        return 0;
+    }
 
     unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &fragmentSrc, 0);
     glCompileShader(fs);
-    CheckShaderCompile(fs, "Fragment");
+    if (!CheckShaderCompile(fs, "Fragment")) {
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return 0;
+    }
 
+    unsigned int program = glCreateProgram();
     glAttachShader(program, vs);
     glAttachShader(program, fs);
     glLinkProgram(program);
-    CheckProgramLink(program);
 
     glDeleteShader(vs);
     glDeleteShader(fs);
+
+    if (!CheckProgramLink(program)) {
+        glDeleteProgram(program);
+        return 0;
+    }
+
     return program;
 }
 

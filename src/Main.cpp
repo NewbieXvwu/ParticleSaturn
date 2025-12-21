@@ -198,14 +198,54 @@ int main() {
     unsigned int pQuad   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
     unsigned int pBlur   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
 
+    // 检查核心着色器是否编译成功
+    if (!pSaturn || !pStar || !pPlanet || !pUI || !pQuad || !pBlur) {
+        std::cerr << "[Main] Fatal: Core shader compilation failed" << std::endl;
+        std::ostringstream details;
+        details << "Shader compilation status:\n"
+                << "  pSaturn: " << (pSaturn ? "OK" : "FAILED") << "\n"
+                << "  pStar:   " << (pStar ? "OK" : "FAILED") << "\n"
+                << "  pPlanet: " << (pPlanet ? "OK" : "FAILED") << "\n"
+                << "  pUI:     " << (pUI ? "OK" : "FAILED") << "\n"
+                << "  pQuad:   " << (pQuad ? "OK" : "FAILED") << "\n"
+                << "  pBlur:   " << (pBlur ? "OK" : "FAILED") << "\n\n"
+                << "GPU: " << appState.gl.renderer << "\n"
+                << "OpenGL: " << appState.gl.version;
+        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, details.str());
+        UIManager::Shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
+
+    // 创建计算着色器
     unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(cs, 1, &Shaders::ComputeSaturn, 0);
     glCompileShader(cs);
-    Renderer::CheckShaderCompileStatus(cs, "Compute");
+    if (!Renderer::CheckShaderCompileStatus(cs, "Compute")) {
+        std::cerr << "[Main] Fatal: Compute shader compilation failed" << std::endl;
+        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader compilation failed");
+        glDeleteShader(cs);
+        UIManager::Shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
+
     unsigned int pComp = glCreateProgram();
     glAttachShader(pComp, cs);
     glLinkProgram(pComp);
-    Renderer::CheckProgramLinkStatus(pComp);
+    glDeleteShader(cs);
+
+    if (!Renderer::CheckProgramLinkStatus(pComp)) {
+        std::cerr << "[Main] Fatal: Compute program linking failed" << std::endl;
+        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader program linking failed");
+        glDeleteProgram(pComp);
+        UIManager::Shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
 
     // 离屏渲染 FBO
     unsigned int fbo, fboTex, rbo;
