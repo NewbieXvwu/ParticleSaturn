@@ -1,9 +1,8 @@
 // UIManager.cpp - UI 管理器实现
 // 将大型函数从头文件移到 cpp 文件，减少编译时间
 
-#include "UIManager.h"
-
 #include "pch.h"
+#include "UIManager.h"
 
 // 全局变量定义
 std::unordered_map<ImGuiID, UIAnimState> g_animStates;

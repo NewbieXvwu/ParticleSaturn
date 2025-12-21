@@ -58,7 +58,10 @@ SeparateDefinitionBlocks: Always
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 IncludeCategories:
-  # glad 必须最先包含 (优先级最高)
+  # 预编译头文件必须最先包含 (MSVC 要求)
+  - Regex:           '"pch\.h"'
+    Priority:        -2
+  # glad 必须在其他库之前包含
   - Regex:           '<glad/.*>'
     Priority:        -1
   # GLFW 紧随其后
