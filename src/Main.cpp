@@ -47,16 +47,64 @@ int main() {
     std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
 
     ErrorHandler::SetStage(ErrorHandler::AppStage::WINDOW_INIT);
-    glfwInit();
+
+    // 初始化 GLFW
+    if (!glfwInit()) {
+        std::cerr << "[Main] Fatal: glfwInit() failed" << std::endl;
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().glfwInitFailed, "glfwInit() returned false");
+        return -1;
+    }
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4); // 升级到 4.4 以支持 glBufferStorage
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
 
+    // 创建窗口
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
+    if (!window) {
+        std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
+        ErrorHandler::ShowEarlyFatalError(
+            i18n::Get().windowCreateFailed,
+            "glfwCreateWindow() returned NULL.\n\n"
+            "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
+            "Please update your graphics driver or check hardware compatibility.");
+        glfwTerminate();
+        return -1;
+    }
+
     glfwMakeContextCurrent(window);
-    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+
+    // 加载 OpenGL 扩展
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        std::cerr << "[Main] Fatal: gladLoadGLLoader() failed" << std::endl;
+        ErrorHandler::ShowEarlyFatalError(
+            i18n::Get().openglLoadFailed,
+            "gladLoadGLLoader() returned false.\n\n"
+            "Failed to load OpenGL function pointers.\n"
+            "Please update your graphics driver.");
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
+
+    // 验证 OpenGL 版本
+    int glMajor, glMinor;
+    glGetIntegerv(GL_MAJOR_VERSION, &glMajor);
+    glGetIntegerv(GL_MINOR_VERSION, &glMinor);
+    if (glMajor < 4 || (glMajor == 4 && glMinor < 4)) {
+        std::cerr << "[Main] Fatal: OpenGL " << glMajor << "." << glMinor << " < 4.4" << std::endl;
+        std::ostringstream details;
+        details << "Detected OpenGL version: " << glMajor << "." << glMinor << "\n"
+                << "Required: OpenGL 4.4 or higher\n\n"
+                << "GPU: " << (const char*)glGetString(GL_RENDERER) << "\n"
+                << "Driver: " << (const char*)glGetString(GL_VERSION);
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().openglVersionUnsupported, details.str().c_str());
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
 
     // 初始化 VSync: 优先使用 Adaptive VSync，不支持时回退到传统 VSync
     appState.render.adaptiveVSyncSupported = glfwExtensionSupported("WGL_EXT_swap_control_tear");

@@ -530,6 +530,61 @@ inline LONG WINAPI GlobalExceptionHandler(EXCEPTION_POINTERS* exceptionInfo) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
+// Show early fatal error (before OpenGL/ImGui is available) - uses native Windows dialog
+inline void ShowEarlyFatalError(const char* message, const char* details = nullptr) {
+    const auto& str = i18n::Get();
+
+    // Try TaskDialogIndirect first for a nicer UI
+    typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
+    HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
+    TaskDialogIndirectFunc pTaskDialogIndirect = nullptr;
+    if (hComctl) {
+        pTaskDialogIndirect = (TaskDialogIndirectFunc)GetProcAddress(hComctl, "TaskDialogIndirect");
+    }
+
+    if (pTaskDialogIndirect && details) {
+        // Convert to wide strings
+        int titleLen   = MultiByteToWideChar(CP_UTF8, 0, str.errorTitle, -1, nullptr, 0);
+        int msgLen     = MultiByteToWideChar(CP_UTF8, 0, message, -1, nullptr, 0);
+        int detailsLen = MultiByteToWideChar(CP_UTF8, 0, details, -1, nullptr, 0);
+        int closeLen   = MultiByteToWideChar(CP_UTF8, 0, str.closeProgram, -1, nullptr, 0);
+
+        std::wstring wTitle(titleLen, 0);
+        std::wstring wMsg(msgLen, 0);
+        std::wstring wDetails(detailsLen, 0);
+        std::wstring wClose(closeLen, 0);
+
+        MultiByteToWideChar(CP_UTF8, 0, str.errorTitle, -1, wTitle.data(), titleLen);
+        MultiByteToWideChar(CP_UTF8, 0, message, -1, wMsg.data(), msgLen);
+        MultiByteToWideChar(CP_UTF8, 0, details, -1, wDetails.data(), detailsLen);
+        MultiByteToWideChar(CP_UTF8, 0, str.closeProgram, -1, wClose.data(), closeLen);
+
+        TASKDIALOGCONFIG config       = {sizeof(config)};
+        config.dwFlags                = TDF_EXPAND_FOOTER_AREA | TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwCommonButtons        = 0;
+        config.pszWindowTitle         = L"Particle Saturn";
+        config.pszMainIcon            = TD_ERROR_ICON;
+        config.pszMainInstruction     = wTitle.c_str();
+        config.pszContent             = wMsg.c_str();
+        config.pszExpandedInformation = wDetails.c_str();
+
+        TASKDIALOG_BUTTON buttons[] = {{IDCLOSE, wClose.c_str()}};
+        config.pButtons             = buttons;
+        config.cButtons             = 1;
+        config.nDefaultButton       = IDCLOSE;
+
+        pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
+    } else {
+        // Fallback to MessageBox
+        std::string fullMsg = message;
+        if (details) {
+            fullMsg += "\n\n";
+            fullMsg += details;
+        }
+        MessageBoxA(nullptr, fullMsg.c_str(), "Particle Saturn", MB_OK | MB_ICONERROR);
+    }
+}
+
 // Initialize error handler
 inline void Init() {
     g_startTime = std::chrono::steady_clock::now();
