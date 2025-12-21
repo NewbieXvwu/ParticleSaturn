@@ -457,6 +457,32 @@ inline void ShowError(const char* localizedMessage, const std::string& technical
 inline void ShowWarning(const char* localizedMessage, const std::string& technicalDetails = "") {
     const auto& str = i18n::Get();
 
+    // Enable dark mode for TaskDialog using undocumented uxtheme APIs
+    typedef BOOL(WINAPI * SetPreferredAppModeFunc)(int);
+    typedef void(WINAPI * FlushMenuThemesFunc)();
+    typedef BOOL(WINAPI * AllowDarkModeForWindowFunc)(HWND, BOOL);
+    static SetPreferredAppModeFunc    pSetPreferredAppMode    = nullptr;
+    static FlushMenuThemesFunc        pFlushMenuThemes        = nullptr;
+    static AllowDarkModeForWindowFunc pAllowDarkModeForWindow = nullptr;
+    static bool                       darkModeApisLoaded      = false;
+
+    if (!darkModeApisLoaded) {
+        darkModeApisLoaded  = true;
+        HMODULE hUxtheme = LoadLibraryW(L"uxtheme.dll");
+        if (hUxtheme) {
+            // SetPreferredAppMode (ordinal 135): 0=Default, 1=AllowDark, 2=ForceDark, 3=ForceLight
+            pSetPreferredAppMode    = (SetPreferredAppModeFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(135));
+            pFlushMenuThemes        = (FlushMenuThemesFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(136));
+            pAllowDarkModeForWindow = (AllowDarkModeForWindowFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133));
+            if (pSetPreferredAppMode) {
+                pSetPreferredAppMode(1); // AllowDark
+            }
+            if (pFlushMenuThemes) {
+                pFlushMenuThemes();
+            }
+        }
+    }
+
     // Use native TaskDialog for better UX and dark mode support
     typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
     HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
@@ -501,6 +527,69 @@ inline void ShowWarning(const char* localizedMessage, const std::string& technic
         config.pButtons       = buttons;
         config.cButtons       = 1;
         config.nDefaultButton = IDOK;
+
+        // Callback to enable dark mode for the dialog window
+        config.pfCallback = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LONG_PTR lpRefData) -> HRESULT {
+            if (msg == TDN_CREATED) {
+                // Check if system is in dark mode
+                HKEY hKey;
+                DWORD useLightTheme = 1;
+                if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                                  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ,
+                                  &hKey) == ERROR_SUCCESS) {
+                    DWORD size = sizeof(useLightTheme);
+                    RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr, (LPBYTE)&useLightTheme, &size);
+                    RegCloseKey(hKey);
+                }
+
+                bool isDarkMode = (useLightTheme == 0);
+                if (isDarkMode) {
+                    // Enable dark mode for this window using uxtheme APIs
+                    HMODULE hUxtheme = GetModuleHandleW(L"uxtheme.dll");
+                    if (hUxtheme) {
+                        typedef BOOL(WINAPI * AllowDarkModeForWindowFunc)(HWND, BOOL);
+                        auto pAllowDarkModeForWindow =
+                            (AllowDarkModeForWindowFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133));
+                        if (pAllowDarkModeForWindow) {
+                            pAllowDarkModeForWindow(hwnd, TRUE);
+                        }
+
+                        // SetWindowTheme to dark mode
+                        typedef HRESULT(WINAPI * SetWindowThemeFunc)(HWND, LPCWSTR, LPCWSTR);
+                        auto pSetWindowTheme = (SetWindowThemeFunc)GetProcAddress(hUxtheme, "SetWindowTheme");
+                        if (pSetWindowTheme) {
+                            pSetWindowTheme(hwnd, L"DarkMode_Explorer", nullptr);
+                            // Also apply to child windows
+                            EnumChildWindows(
+                                hwnd,
+                                [](HWND hChild, LPARAM lParam) -> BOOL {
+                                    auto pSetWindowTheme = (HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR))lParam;
+                                    pSetWindowTheme(hChild, L"DarkMode_Explorer", nullptr);
+                                    return TRUE;
+                                },
+                                (LPARAM)pSetWindowTheme);
+                        }
+                    }
+
+                    // Use DWMWA_USE_IMMERSIVE_DARK_MODE to set dark title bar
+                    HMODULE hDwmapi = GetModuleHandleW(L"dwmapi.dll");
+                    if (!hDwmapi) {
+                        hDwmapi = LoadLibraryW(L"dwmapi.dll");
+                    }
+                    if (hDwmapi) {
+                        typedef HRESULT(WINAPI * DwmSetWindowAttributeFunc)(HWND, DWORD, LPCVOID, DWORD);
+                        auto pDwmSetWindowAttribute =
+                            (DwmSetWindowAttributeFunc)GetProcAddress(hDwmapi, "DwmSetWindowAttribute");
+                        if (pDwmSetWindowAttribute) {
+                            BOOL value = TRUE;
+                            // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 20H1+)
+                            pDwmSetWindowAttribute(hwnd, 20, &value, sizeof(value));
+                        }
+                    }
+                }
+            }
+            return S_OK;
+        };
 
         pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
     } else {
