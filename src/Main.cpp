@@ -154,16 +154,28 @@ int main() {
     std::cout << "[Main] Loading embedded models..." << std::endl;
     HRSRC hPalmRes = FindResource(NULL, MAKEINTRESOURCE(IDR_PALM_MODEL), RT_RCDATA);
     HRSRC hHandRes = FindResource(NULL, MAKEINTRESOURCE(IDR_HAND_MODEL), RT_RCDATA);
-    if (hPalmRes && hHandRes) {
+    if (!hPalmRes || !hHandRes) {
+        std::cerr << "[Main] Warning: Failed to find embedded model resources" << std::endl;
+        std::ostringstream details;
+        details << "FindResource() failed:\n"
+                << "  Palm model: " << (hPalmRes ? "Found" : "NOT FOUND") << "\n"
+                << "  Hand model: " << (hHandRes ? "Found" : "NOT FOUND") << "\n\n"
+                << "The executable may be corrupted or built incorrectly.";
+        ErrorHandler::ShowWarning(i18n::Get().embeddedResourceFailed, details.str());
+    } else {
         HGLOBAL hPalmData = LoadResource(NULL, hPalmRes);
         HGLOBAL hHandData = LoadResource(NULL, hHandRes);
-        if (hPalmData && hHandData) {
+        if (!hPalmData || !hHandData) {
+            std::cerr << "[Main] Warning: Failed to load embedded model resources" << std::endl;
+            ErrorHandler::ShowWarning(i18n::Get().embeddedResourceFailed, "LoadResource() failed");
+        } else {
             const void* palmData = LockResource(hPalmData);
             const void* handData = LockResource(hHandData);
             DWORD       palmSize = SizeofResource(NULL, hPalmRes);
             DWORD       handSize = SizeofResource(NULL, hHandRes);
             SetEmbeddedModels(palmData, palmSize, handData, handSize);
-            std::cout << "[Main] Embedded models loaded" << std::endl;
+            std::cout << "[Main] Embedded models loaded (palm: " << palmSize << " bytes, hand: " << handSize << " bytes)"
+                      << std::endl;
         }
     }
     if (!InitTracker(0, nullptr)) {
