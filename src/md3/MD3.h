@@ -153,21 +153,30 @@ MD3ColorScheme GetDarkColorScheme();
 // 单个 Ripple 的状态
 struct RippleState {
     ImGuiID widgetId = 0;
-    float centerX = 0.0f;
-    float centerY = 0.0f;
+    // 所有坐标都存储为相对于控件的偏移量
+    float relCenterX = 0.0f;      // 点击点相对于 bounds 左上角的 X 偏移
+    float relCenterY = 0.0f;      // 点击点相对于 bounds 左上角的 Y 偏移
     float radius = 0.0f;
     float maxRadius = 0.0f;
     float alpha = 0.0f;
     float time = 0.0f;
-    float boundsX = 0.0f;
-    float boundsY = 0.0f;
+    // 控件尺寸（不变）
     float boundsW = 0.0f;
     float boundsH = 0.0f;
     float cornerRadius = 0.0f;
+    // 颜色
     float colorR = 0.0f;
     float colorG = 0.0f;
     float colorB = 0.0f;
     float colorA = 0.0f;
+    // 所属窗口信息（用于滚动补偿）
+    ImGuiID windowId = 0;
+    float initialWindowPosX = 0.0f;   // 创建时窗口屏幕位置
+    float initialWindowPosY = 0.0f;
+    float initialScrollX = 0.0f;      // 创建时窗口滚动位置
+    float initialScrollY = 0.0f;
+    float initialBoundsX = 0.0f;      // 创建时控件的屏幕位置
+    float initialBoundsY = 0.0f;
     bool active = false;
     bool fadeOut = false;  // 是否正在淡出
 };
@@ -231,6 +240,34 @@ struct CardAnimState {
         , hoverState(0.0f, 400.0f, 28.0f) {}
 };
 
+// Combo 下拉框动画状态
+struct ComboAnimState {
+    SpringAnimator hoverState;      // 悬停状态
+    SpringAnimator openState;       // 展开状态 (0-1)
+    SpringAnimator arrowRotation;   // 箭头旋转 (0-180度)
+    float lastContentHeight = 0.0f; // 上次内容高度（用于动画）
+
+    ComboAnimState()
+        : hoverState(0.0f, 500.0f, 30.0f)
+        , openState(0.0f, 800.0f, 40.0f)      // 更快的弹簧：高刚度、高阻尼
+        , arrowRotation(0.0f, 800.0f, 40.0f)  // 箭头也加快
+    {}
+};
+
+// CollapsingHeader 折叠头动画状态
+struct CollapsingHeaderAnimState {
+    SpringAnimator hoverState;      // 悬停状态
+    SpringAnimator openState;       // 展开状态 (0-1)
+    SpringAnimator arrowRotation;   // 箭头旋转 (0-90度)
+    float lastContentHeight;        // 上一帧内容高度（用于动画）
+
+    CollapsingHeaderAnimState()
+        : hoverState(0.0f, 500.0f, 30.0f)
+        , openState(0.0f, 350.0f, 26.0f)
+        , arrowRotation(0.0f, 350.0f, 26.0f)
+        , lastContentHeight(0.0f) {}
+};
+
 //=============================================================================
 // MD3 上下文
 //=============================================================================
@@ -258,6 +295,8 @@ struct MD3Context {
     std::unordered_map<ImGuiID, ButtonAnimState> buttonStates;
     std::unordered_map<ImGuiID, SliderAnimState> sliderStates;
     std::unordered_map<ImGuiID, CardAnimState> cardStates;
+    std::unordered_map<ImGuiID, ComboAnimState> comboStates;
+    std::unordered_map<ImGuiID, CollapsingHeaderAnimState> collapsingHeaderStates;
 
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth = 1920.0f;
@@ -329,6 +368,35 @@ bool BeginCard(const char* id, ImVec2 size = {0, 0}, int elevation = 1);
 void EndCard();
 
 //=============================================================================
+// Combo 下拉框
+//=============================================================================
+
+// 开始下拉框
+// preview_value: 当前显示的预览文本
+bool BeginCombo(const char* label, const char* preview_value);
+
+// 结束下拉框
+void EndCombo();
+
+// 下拉框选项
+// selected: 是否为当前选中项（会显示勾选标记）
+bool Selectable(const char* label, bool selected);
+
+// 简化版下拉框（字符串数组）
+bool Combo(const char* label, int* current_item, const char* const items[], int items_count);
+
+//=============================================================================
+// CollapsingHeader 折叠头
+//=============================================================================
+
+// 开始折叠头区域
+// 返回 true 表示当前展开，内容应该被渲染
+bool BeginCollapsingHeader(const char* label, bool default_open = false);
+
+// 结束折叠头区域
+void EndCollapsingHeader();
+
+//=============================================================================
 // Ripple 系统 API
 //=============================================================================
 
@@ -339,6 +407,10 @@ void TriggerRipple(ImGuiID id, float centerX, float centerY,
 
 // 为当前控件触发 Ripple（使用 ImGui 上下文）
 void TriggerRippleForCurrentItem(ImGuiID id, float cornerRadius = 0.0f);
+
+// 绘制所有活跃的 Ripple（在控件绘制后调用）
+// 使用 ImDrawList 渲染，自动跟随滚动位置
+void DrawRipples();
 
 //=============================================================================
 // 工具函数

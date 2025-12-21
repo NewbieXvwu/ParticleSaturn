@@ -2,6 +2,7 @@
 
 #include <glad/glad.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <iostream>
 #include <unordered_map>
 #include <vector>
@@ -203,63 +204,23 @@ void BeginFrame(float dt) {
         state.elevation.Update(dt);
         state.hoverState.Update(dt);
     }
+
+    for (auto& [id, state] : g_context.comboStates) {
+        state.hoverState.Update(dt);
+        state.openState.Update(dt);
+        state.arrowRotation.Update(dt);
+    }
+
+    for (auto& [id, state] : g_context.collapsingHeaderStates) {
+        state.hoverState.Update(dt);
+        state.openState.Update(dt);
+        state.arrowRotation.Update(dt);
+    }
 }
 
 void EndFrame() {
-    if (g_context.ripples.empty() || !g_context.rippleProgram) {
-        return;
-    }
-
-    // 保存当前 OpenGL 状态
-    GLboolean blendEnabled;
-    GLint blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha;
-    glGetBooleanv(GL_BLEND, &blendEnabled);
-    glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRGB);
-    glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRGB);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
-
-    // 设置混合模式
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glUseProgram(g_context.rippleProgram);
-    glBindVertexArray(g_context.rippleVAO);
-
-    // 获取 uniform 位置
-    GLint uRippleCenter = glGetUniformLocation(g_context.rippleProgram, "uRippleCenter");
-    GLint uRippleRadius = glGetUniformLocation(g_context.rippleProgram, "uRippleRadius");
-    GLint uRippleAlpha = glGetUniformLocation(g_context.rippleProgram, "uRippleAlpha");
-    GLint uRippleColor = glGetUniformLocation(g_context.rippleProgram, "uRippleColor");
-    GLint uBounds = glGetUniformLocation(g_context.rippleProgram, "uBounds");
-    GLint uCornerRadius = glGetUniformLocation(g_context.rippleProgram, "uCornerRadius");
-    GLint uScreenSize = glGetUniformLocation(g_context.rippleProgram, "uScreenSize");
-
-    glUniform2f(uScreenSize, g_context.screenWidth, g_context.screenHeight);
-
-    // 渲染每个 Ripple
-    for (const auto& r : g_context.ripples) {
-        if (r.alpha <= 0.001f) continue;
-
-        glUniform2f(uRippleCenter, r.centerX, g_context.screenHeight - r.centerY);
-        glUniform1f(uRippleRadius, r.radius);
-        glUniform1f(uRippleAlpha, r.alpha);
-        glUniform4f(uRippleColor, r.colorR, r.colorG, r.colorB, r.colorA);
-
-        // 转换 bounds 到 OpenGL 坐标系 (Y 翻转)
-        float glBoundsY = g_context.screenHeight - r.boundsY - r.boundsH;
-        glUniform4f(uBounds, r.boundsX, glBoundsY, r.boundsW, r.boundsH);
-        glUniform1f(uCornerRadius, r.cornerRadius);
-
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
-
-    glBindVertexArray(0);
-    glUseProgram(0);
-
-    // 恢复 OpenGL 状态
-    if (!blendEnabled) glDisable(GL_BLEND);
-    glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
+    // Ripples 现在在 DrawRipples() 中使用 ImDrawList 渲染
+    // 这里不再需要做任何事情
 }
 
 void SetDarkMode(bool dark) {
@@ -307,16 +268,18 @@ void TriggerRipple(ImGuiID id, float centerX, float centerY,
         ? colors.onSurface
         : colors.primary;
 
+    // 获取当前窗口信息
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+
     RippleState state;
     state.widgetId = id;
-    state.centerX = centerX;
-    state.centerY = centerY;
+    // 存储相对于控件的点击位置
+    state.relCenterX = centerX - boundsX;
+    state.relCenterY = centerY - boundsY;
     state.radius = 0.0f;
     state.maxRadius = maxRadius;
     state.alpha = 0.0f;
     state.time = 0.0f;
-    state.boundsX = boundsX;
-    state.boundsY = boundsY;
     state.boundsW = boundsW;
     state.boundsH = boundsH;
     state.cornerRadius = cornerRadius;
@@ -324,6 +287,16 @@ void TriggerRipple(ImGuiID id, float centerX, float centerY,
     state.colorG = rippleColor.y;
     state.colorB = rippleColor.z;
     state.colorA = 1.0f;
+    // 存储窗口信息用于滚动补偿
+    if (window) {
+        state.windowId = window->ID;
+        state.initialWindowPosX = window->Pos.x;
+        state.initialWindowPosY = window->Pos.y;
+        state.initialScrollX = window->Scroll.x;
+        state.initialScrollY = window->Scroll.y;
+    }
+    state.initialBoundsX = boundsX;
+    state.initialBoundsY = boundsY;
     state.active = true;
     state.fadeOut = false;
 
@@ -339,6 +312,52 @@ void TriggerRippleForCurrentItem(ImGuiID id, float cornerRadius) {
                   itemMin.x, itemMin.y,
                   itemMax.x - itemMin.x, itemMax.y - itemMin.y,
                   cornerRadius);
+}
+
+void DrawRipples() {
+    if (g_context.ripples.empty()) {
+        return;
+    }
+
+    // 获取当前窗口
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window) return;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // 绘制属于当前窗口的所有 Ripple
+    for (const auto& r : g_context.ripples) {
+        if (r.alpha <= 0.001f) continue;
+        if (r.windowId != window->ID) continue;  // 只绘制当前窗口的 ripple
+
+        // 计算滚动偏移量
+        float scrollDeltaX = window->Scroll.x - r.initialScrollX;
+        float scrollDeltaY = window->Scroll.y - r.initialScrollY;
+
+        // 计算当前控件位置（补偿滚动）
+        float currentBoundsX = r.initialBoundsX - scrollDeltaX;
+        float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        // 计算 ripple 中心的屏幕位置
+        float centerX = currentBoundsX + r.relCenterX;
+        float centerY = currentBoundsY + r.relCenterY;
+
+        // Ripple 颜色
+        ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
+        ImU32 col = ColorToU32(rippleColor);
+
+        // 保存裁剪区域
+        ImVec2 clipMin(currentBoundsX, currentBoundsY);
+        ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        dl->PushClipRect(clipMin, clipMax, true);
+
+        // 使用多个同心圆来模拟 ripple 效果（渐变边缘）
+        // 简化版本：只画一个实心圆
+        int segments = 64;
+        dl->AddCircleFilled(ImVec2(centerX, centerY), r.radius, col, segments);
+
+        dl->PopClipRect();
+    }
 }
 
 //=============================================================================

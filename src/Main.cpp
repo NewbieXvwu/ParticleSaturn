@@ -771,7 +771,7 @@ int main() {
             }
             ImGui::PopStyleColor(4);
 
-            if (ImGui::CollapsingHeader(str.sectionPerformance, ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
                 ImGui::Text("%s: %.1f", str.fps, currentFps);
                 ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
                 ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
@@ -790,10 +790,9 @@ int main() {
                     vsyncIndex = 2; // -1 (Adaptive)
                 }
 
-                ImGui::SetNextItemWidth(-1);
                 if (appState.render.adaptiveVSyncSupported) {
                     const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn, str.vsyncAdaptive};
-                    if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
+                    if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
                         int newMode               = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
                         appState.render.vsyncMode = newMode;
                         glfwSwapInterval(newMode);
@@ -801,15 +800,16 @@ int main() {
                     }
                 } else {
                     const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn};
-                    if (ImGui::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
+                    if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
                         appState.render.vsyncMode = vsyncIndex;
                         glfwSwapInterval(vsyncIndex);
                         std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
                     }
                 }
+                MD3::EndCollapsingHeader();
             }
 
-            if (ImGui::CollapsingHeader(str.sectionHandTracking, ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (MD3::BeginCollapsingHeader(str.sectionHandTracking, true)) {
                 ImGui::Text("%s: %s", str.handDetected, handState.hasHand ? str.yes : str.no);
                 ImGui::Text("%s: %.3f", str.scale, handState.scale);
                 ImGui::Text("Rot X: %.3f", handState.rotX);
@@ -824,9 +824,10 @@ int main() {
                     SetTrackerDebugMode(cameraDebug);
                     appState.ui.showCameraDebug = cameraDebug;
                 }
+                MD3::EndCollapsingHeader();
             }
 
-            if (ImGui::CollapsingHeader(str.sectionVisuals)) {
+            if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
                 if (MD3::Toggle(str.darkMode, &appState.ui.isDarkMode)) {
                     UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
                     MD3::SetDarkMode(appState.ui.isDarkMode);
@@ -835,13 +836,13 @@ int main() {
                 MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
                 if (appState.ui.enableBlur) {
                     ImGui::Indent(10);
-                    ImGui::SetNextItemWidth(-1);
                     MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
                     ImGui::Unindent(10);
                 }
+                MD3::EndCollapsingHeader();
             }
 
-            if (ImGui::CollapsingHeader(str.sectionWindow)) {
+            if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
                 const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
                 if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
                     ImGui::Text("%s: %s", str.backdrop,
@@ -849,40 +850,45 @@ int main() {
                 }
                 ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
                 ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
+                MD3::EndCollapsingHeader();
             }
 
-            if (ImGui::CollapsingHeader(str.sectionAdvanced)) {
+            if (MD3::BeginCollapsingHeader(str.sectionAdvanced)) {
                 // SIMD Mode selection
                 ImGui::Text("%s:", str.simdMode);
                 int         currentSIMD = GetTrackerSIMDMode();
                 const char* simdModes[] = {str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar};
-                ImGui::SetNextItemWidth(-1);
-                if (ImGui::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
+                if (MD3::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
                     SetTrackerSIMDMode(currentSIMD);
                     std::cout << "[Main] SIMD mode changed to: " << GetTrackerSIMDImplementation() << std::endl;
                 }
                 ImGui::Text("%s: %s", str.simdCurrent, GetTrackerSIMDImplementation());
+                MD3::EndCollapsingHeader();
             }
 
-            if (ImGui::CollapsingHeader(str.sectionLog, ImGuiTreeNodeFlags_DefaultOpen)) {
-                if (ImGui::Button(str.clearLog)) {
+            if (MD3::BeginCollapsingHeader(str.sectionLog, true)) {
+                if (MD3::TonalButton(str.clearLog)) {
                     DebugLog::Instance().Clear();
                 }
                 ImGui::SameLine();
-                if (ImGui::Button(str.copyAllLog)) {
+                if (MD3::TonalButton(str.copyAllLog)) {
                     std::string allText = DebugLog::Instance().GetAllText();
                     ImGui::SetClipboardText(allText.c_str());
                 }
                 DebugLog::Instance().Draw();
+                MD3::EndCollapsingHeader();
             }
 
             // Crash Analyzer button
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
-            if (ImGui::Button(str.crashAnalyzerButton, ImVec2(-1, 36 * appState.ui.dpiScale))) {
+            if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(-1, 48 * appState.ui.dpiScale))) {
                 CrashAnalyzer::Open();
             }
+
+            // 在窗口关闭前绘制 Ripple 效果（跟随滚动）
+            MD3::DrawRipples();
 
             ImGui::End();
         }

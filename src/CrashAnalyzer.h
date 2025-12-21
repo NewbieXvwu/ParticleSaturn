@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "Localization.h"
+#include "md3/MD3.h"
 
 #pragma comment(lib, "comdlg32.lib")
 
@@ -430,7 +431,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         if (!canLoadPdb) {
             ImGui::BeginDisabled();
         }
-        if (ImGui::Button(str.dropOrSelect)) {
+        if (MD3::TonalButton(str.dropOrSelect)) {
             std::string path = OpenPdbFileDialog();
             if (!path.empty()) {
                 LoadPdb(path);
@@ -483,7 +484,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         if (!canAnalyze) {
             ImGui::BeginDisabled();
         }
-        if (ImGui::Button(str.analyze, ImVec2(120, 0))) {
+        if (MD3::FilledButton(str.analyze, ImVec2(140, 0))) {
             g_state.analysisResult = Analyze(g_state.reportInput);
             g_state.hasResult      = true;
         }
@@ -503,7 +504,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             ImGui::TextUnformatted(g_state.analysisResult.c_str());
             ImGui::EndChild();
 
-            if (ImGui::Button(str.copyResult)) {
+            if (MD3::TonalButton(str.copyResult)) {
                 if (OpenClipboard(nullptr)) {
                     EmptyClipboard();
                     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, g_state.analysisResult.size() + 1);
@@ -517,6 +518,9 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
                 }
             }
         }
+
+        // 绘制 Ripple 效果
+        MD3::DrawRipples();
     }
     ImGui::End();
     ImGui::PopStyleColor(4);
