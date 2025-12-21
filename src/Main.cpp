@@ -175,7 +175,11 @@ int main() {
         }
     }
     if (!InitTracker(0, nullptr)) {
-        std::cerr << "[Main] Warning: Failed to initialize HandTracker" << std::endl;
+        std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+    } else if (!WaitForTrackerReady(5000)) {
+        // 等待初始化完成（最多 5 秒）
+        std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
         int         errCode = GetTrackerLastError();
         const char* errMsg  = GetTrackerLastErrorMessage();
         const char* localizedMsg;
@@ -196,7 +200,7 @@ int main() {
             localizedMsg = i18n::Get().cameraInitFailed;
             break;
         }
-        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "InitTracker() returned false");
+        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "WaitForTrackerReady() returned false");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;
@@ -205,7 +209,11 @@ int main() {
 #else
     std::cout << "[Main] Initializing HandTracker..." << std::endl;
     if (!InitTracker(0, ".")) {
-        std::cerr << "[Main] Warning: Failed to initialize HandTracker DLL." << std::endl;
+        std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+    } else if (!WaitForTrackerReady(5000)) {
+        // 等待初始化完成（最多 5 秒）
+        std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
         int         errCode = GetTrackerLastError();
         const char* errMsg  = GetTrackerLastErrorMessage();
         const char* localizedMsg;
@@ -226,7 +234,7 @@ int main() {
             localizedMsg = i18n::Get().cameraInitFailed;
             break;
         }
-        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "InitTracker() returned false");
+        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "WaitForTrackerReady() returned false");
     } else {
         std::cout << "[Main] HandTracker initialized successfully." << std::endl;
         handTrackerInitialized = true;

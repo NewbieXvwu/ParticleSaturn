@@ -37,6 +37,12 @@ HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const v
 // model_dir: 模型目录路径（使用嵌入式模型时可为 nullptr）
 HAND_API bool InitTracker(int camera_id, const char* model_dir);
 
+// 等待追踪器初始化完成
+// timeout_ms: 超时时间（毫秒），0 表示无限等待
+// 返回值: true 表示初始化成功，false 表示初始化失败或超时
+// 注意: 初始化失败时可通过 GetTrackerLastError() 获取错误码
+HAND_API bool WaitForTrackerReady(int timeout_ms);
+
 // 获取最后一次错误码
 HAND_API int GetTrackerLastError();
 

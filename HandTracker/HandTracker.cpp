@@ -93,6 +93,12 @@ struct TrackerContext {
     std::thread*      worker_thread = nullptr;
     std::atomic<bool> running{false};
 
+    // 初始化状态同步
+    std::atomic<bool>       init_complete{false};  // 初始化是否完成（无论成功或失败）
+    std::atomic<bool>       init_success{false};   // 初始化是否成功
+    std::mutex              init_mutex;
+    std::condition_variable init_cv;
+
     // 调试模式
     std::atomic<bool> debug_mode{false};
     std::atomic<bool> debug_window_created{false};
@@ -142,6 +148,8 @@ struct TrackerContext {
         filter_scale.reset();
         last_error = HANDTRACKER_OK;
         last_error_message.clear();
+        init_complete = false;
+        init_success  = false;
     }
 };
 
@@ -184,6 +192,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         g_ctx.SetError(HANDTRACKER_ERROR_PALM_MODEL,
                        "Failed to load palm detection model (palm_detection_full.tflite)");
         g_ctx.running = false;
+        // 通知初始化失败
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.init_mutex);
+            g_ctx.init_success  = false;
+            g_ctx.init_complete = true;
+        }
+        g_ctx.init_cv.notify_all();
         return;
     }
 
@@ -191,6 +206,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
         std::cerr << "[HandTracker] Error: Failed to load hand landmark model" << std::endl;
         g_ctx.SetError(HANDTRACKER_ERROR_HAND_MODEL, "Failed to load hand landmark model (hand_landmark_full.tflite)");
         g_ctx.running = false;
+        // 通知初始化失败
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.init_mutex);
+            g_ctx.init_success  = false;
+            g_ctx.init_complete = true;
+        }
+        g_ctx.init_cv.notify_all();
         return;
     }
 
@@ -223,6 +245,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
                            "Camera " + std::to_string(cam_id) + " may be in use by another application");
         }
         g_ctx.running = false;
+        // 通知初始化失败
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.init_mutex);
+            g_ctx.init_success  = false;
+            g_ctx.init_complete = true;
+        }
+        g_ctx.init_cv.notify_all();
         return;
     }
 
@@ -230,6 +259,14 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     int frameHeight = camera->getHeight();
 
     std::cout << "[HandTracker] Camera opened, starting detection loop..." << std::endl;
+
+    // 通知初始化成功
+    {
+        std::lock_guard<std::mutex> lock(g_ctx.init_mutex);
+        g_ctx.init_success  = true;
+        g_ctx.init_complete = true;
+    }
+    g_ctx.init_cv.notify_all();
 
     // 预分配 cv::Mat 缓冲区，避免每帧重新分配内存
     cv::Mat frame(frameHeight, frameWidth, CV_8UC3);
@@ -518,6 +555,26 @@ HAND_API bool InitTracker(int camera_id, const char* model_dir) {
         return false;
     }
     return true;
+}
+
+HAND_API bool WaitForTrackerReady(int timeout_ms) {
+    std::unique_lock<std::mutex> lock(g_ctx.init_mutex);
+
+    if (timeout_ms <= 0) {
+        // 无限等待
+        g_ctx.init_cv.wait(lock, [] { return g_ctx.init_complete.load(); });
+    } else {
+        // 带超时等待
+        bool completed = g_ctx.init_cv.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                                                 [] { return g_ctx.init_complete.load(); });
+        if (!completed) {
+            // 超时
+            g_ctx.SetError(HANDTRACKER_ERROR_UNKNOWN, "Initialization timed out after " + std::to_string(timeout_ms) + "ms");
+            return false;
+        }
+    }
+
+    return g_ctx.init_success.load();
 }
 
 HAND_API bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand) {
