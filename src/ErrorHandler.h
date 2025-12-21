@@ -8,6 +8,7 @@
 #include <functional>
 #include <iomanip>
 #include <sstream>
+#include <thread>
 #include <vector>
 
 #include "DebugLog.h"
@@ -400,7 +401,7 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
         s_details = details;
 
         TASKDIALOGCONFIG config        = {sizeof(config)};
-        config.dwFlags                 = TDF_ENABLE_HYPERLINKS | TDF_EXPAND_FOOTER_AREA | TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwFlags                 = TDF_ENABLE_HYPERLINKS | TDF_ALLOW_DIALOG_CANCELLATION;
         config.dwCommonButtons         = 0;
         config.pszWindowTitle          = L"Particle Saturn";
         config.pszMainIcon             = TD_ERROR_ICON;
@@ -453,157 +454,74 @@ inline void ShowError(const char* localizedMessage, const std::string& technical
     ShowRecoverableError(str.errorTitle, localizedMessage, technicalDetails.c_str(), false);
 }
 
-// Show warning using native Windows dialog (supports dark mode automatically)
+// Show warning using native Windows dialog (non-blocking, runs in separate thread)
 inline void ShowWarning(const char* localizedMessage, const std::string& technicalDetails = "") {
-    const auto& str = i18n::Get();
+    // Copy strings for use in thread
+    std::string msgCopy = localizedMessage;
+    std::string detailsCopy = technicalDetails;
 
-    // Enable dark mode for TaskDialog using undocumented uxtheme APIs
-    typedef BOOL(WINAPI * SetPreferredAppModeFunc)(int);
-    typedef void(WINAPI * FlushMenuThemesFunc)();
-    typedef BOOL(WINAPI * AllowDarkModeForWindowFunc)(HWND, BOOL);
-    static SetPreferredAppModeFunc    pSetPreferredAppMode    = nullptr;
-    static FlushMenuThemesFunc        pFlushMenuThemes        = nullptr;
-    static AllowDarkModeForWindowFunc pAllowDarkModeForWindow = nullptr;
-    static bool                       darkModeApisLoaded      = false;
+    // Run dialog in separate thread to avoid blocking render loop
+    std::thread([msgCopy, detailsCopy]() {
+        const auto& str = i18n::Get();
 
-    if (!darkModeApisLoaded) {
-        darkModeApisLoaded  = true;
-        HMODULE hUxtheme = LoadLibraryW(L"uxtheme.dll");
-        if (hUxtheme) {
-            // SetPreferredAppMode (ordinal 135): 0=Default, 1=AllowDark, 2=ForceDark, 3=ForceLight
-            pSetPreferredAppMode    = (SetPreferredAppModeFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(135));
-            pFlushMenuThemes        = (FlushMenuThemesFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(136));
-            pAllowDarkModeForWindow = (AllowDarkModeForWindowFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133));
-            if (pSetPreferredAppMode) {
-                pSetPreferredAppMode(1); // AllowDark
-            }
-            if (pFlushMenuThemes) {
-                pFlushMenuThemes();
-            }
-        }
-    }
-
-    // Use native TaskDialog for better UX and dark mode support
-    typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
-    HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
-    TaskDialogIndirectFunc pTaskDialogIndirect = nullptr;
-    if (hComctl) {
-        pTaskDialogIndirect = (TaskDialogIndirectFunc)GetProcAddress(hComctl, "TaskDialogIndirect");
-    }
-
-    if (pTaskDialogIndirect) {
-        // Convert to wide strings
-        int titleLen   = MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, nullptr, 0);
-        int msgLen     = MultiByteToWideChar(CP_UTF8, 0, localizedMessage, -1, nullptr, 0);
-        int closeLen   = MultiByteToWideChar(CP_UTF8, 0, str.close, -1, nullptr, 0);
-
-        std::wstring wTitle(titleLen, 0);
-        std::wstring wMsg(msgLen, 0);
-        std::wstring wClose(closeLen, 0);
-
-        MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, wTitle.data(), titleLen);
-        MultiByteToWideChar(CP_UTF8, 0, localizedMessage, -1, wMsg.data(), msgLen);
-        MultiByteToWideChar(CP_UTF8, 0, str.close, -1, wClose.data(), closeLen);
-
-        TASKDIALOGCONFIG config = {sizeof(config)};
-        config.dwFlags          = TDF_ALLOW_DIALOG_CANCELLATION;
-        config.dwCommonButtons  = 0;
-        config.pszWindowTitle   = L"Particle Saturn";
-        config.pszMainIcon      = TD_WARNING_ICON;
-        config.pszMainInstruction = wTitle.c_str();
-        config.pszContent       = wMsg.c_str();
-
-        // Add expandable details if provided
-        std::wstring wDetails;
-        if (!technicalDetails.empty()) {
-            int detailsLen = MultiByteToWideChar(CP_UTF8, 0, technicalDetails.c_str(), -1, nullptr, 0);
-            wDetails.resize(detailsLen, 0);
-            MultiByteToWideChar(CP_UTF8, 0, technicalDetails.c_str(), -1, wDetails.data(), detailsLen);
-            config.pszExpandedInformation = wDetails.c_str();
-            config.dwFlags |= TDF_EXPAND_FOOTER_AREA;
+        // Use native TaskDialog for better UX
+        typedef HRESULT(WINAPI * TaskDialogIndirectFunc)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
+        HMODULE                hComctl             = GetModuleHandleW(L"comctl32.dll");
+        TaskDialogIndirectFunc pTaskDialogIndirect = nullptr;
+        if (hComctl) {
+            pTaskDialogIndirect = (TaskDialogIndirectFunc)GetProcAddress(hComctl, "TaskDialogIndirect");
         }
 
-        TASKDIALOG_BUTTON buttons[] = {{IDOK, wClose.c_str()}};
-        config.pButtons       = buttons;
-        config.cButtons       = 1;
-        config.nDefaultButton = IDOK;
+        if (pTaskDialogIndirect) {
+            // Convert to wide strings
+            int titleLen   = MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, nullptr, 0);
+            int msgLen     = MultiByteToWideChar(CP_UTF8, 0, msgCopy.c_str(), -1, nullptr, 0);
+            int closeLen   = MultiByteToWideChar(CP_UTF8, 0, str.close, -1, nullptr, 0);
 
-        // Callback to enable dark mode for the dialog window
-        config.pfCallback = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LONG_PTR lpRefData) -> HRESULT {
-            if (msg == TDN_CREATED) {
-                // Check if system is in dark mode
-                HKEY hKey;
-                DWORD useLightTheme = 1;
-                if (RegOpenKeyExW(HKEY_CURRENT_USER,
-                                  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ,
-                                  &hKey) == ERROR_SUCCESS) {
-                    DWORD size = sizeof(useLightTheme);
-                    RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr, (LPBYTE)&useLightTheme, &size);
-                    RegCloseKey(hKey);
-                }
+            std::wstring wTitle(titleLen, 0);
+            std::wstring wMsg(msgLen, 0);
+            std::wstring wClose(closeLen, 0);
 
-                bool isDarkMode = (useLightTheme == 0);
-                if (isDarkMode) {
-                    // Enable dark mode for this window using uxtheme APIs
-                    HMODULE hUxtheme = GetModuleHandleW(L"uxtheme.dll");
-                    if (hUxtheme) {
-                        typedef BOOL(WINAPI * AllowDarkModeForWindowFunc)(HWND, BOOL);
-                        auto pAllowDarkModeForWindow =
-                            (AllowDarkModeForWindowFunc)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133));
-                        if (pAllowDarkModeForWindow) {
-                            pAllowDarkModeForWindow(hwnd, TRUE);
-                        }
+            MultiByteToWideChar(CP_UTF8, 0, str.warningTitle, -1, wTitle.data(), titleLen);
+            MultiByteToWideChar(CP_UTF8, 0, msgCopy.c_str(), -1, wMsg.data(), msgLen);
+            MultiByteToWideChar(CP_UTF8, 0, str.close, -1, wClose.data(), closeLen);
 
-                        // SetWindowTheme to dark mode
-                        typedef HRESULT(WINAPI * SetWindowThemeFunc)(HWND, LPCWSTR, LPCWSTR);
-                        auto pSetWindowTheme = (SetWindowThemeFunc)GetProcAddress(hUxtheme, "SetWindowTheme");
-                        if (pSetWindowTheme) {
-                            pSetWindowTheme(hwnd, L"DarkMode_Explorer", nullptr);
-                            // Also apply to child windows
-                            EnumChildWindows(
-                                hwnd,
-                                [](HWND hChild, LPARAM lParam) -> BOOL {
-                                    auto pSetWindowTheme = (HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR))lParam;
-                                    pSetWindowTheme(hChild, L"DarkMode_Explorer", nullptr);
-                                    return TRUE;
-                                },
-                                (LPARAM)pSetWindowTheme);
-                        }
-                    }
+            TASKDIALOGCONFIG config = {sizeof(config)};
+            config.dwFlags          = TDF_ALLOW_DIALOG_CANCELLATION;
+            config.dwCommonButtons  = 0;
+            config.pszWindowTitle   = L"Particle Saturn";
+            config.pszMainIcon      = TD_WARNING_ICON;
+            config.pszMainInstruction = wTitle.c_str();
+            config.pszContent       = wMsg.c_str();
 
-                    // Use DWMWA_USE_IMMERSIVE_DARK_MODE to set dark title bar
-                    HMODULE hDwmapi = GetModuleHandleW(L"dwmapi.dll");
-                    if (!hDwmapi) {
-                        hDwmapi = LoadLibraryW(L"dwmapi.dll");
-                    }
-                    if (hDwmapi) {
-                        typedef HRESULT(WINAPI * DwmSetWindowAttributeFunc)(HWND, DWORD, LPCVOID, DWORD);
-                        auto pDwmSetWindowAttribute =
-                            (DwmSetWindowAttributeFunc)GetProcAddress(hDwmapi, "DwmSetWindowAttribute");
-                        if (pDwmSetWindowAttribute) {
-                            BOOL value = TRUE;
-                            // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 20H1+)
-                            pDwmSetWindowAttribute(hwnd, 20, &value, sizeof(value));
-                        }
-                    }
-                }
+            // Add expandable details if provided
+            std::wstring wDetails;
+            if (!detailsCopy.empty()) {
+                int detailsLen = MultiByteToWideChar(CP_UTF8, 0, detailsCopy.c_str(), -1, nullptr, 0);
+                wDetails.resize(detailsLen, 0);
+                MultiByteToWideChar(CP_UTF8, 0, detailsCopy.c_str(), -1, wDetails.data(), detailsLen);
+                config.pszExpandedInformation = wDetails.c_str();
             }
-            return S_OK;
-        };
 
-        pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
-    } else {
-        // Fallback to MessageBoxW
-        std::string fullMsg = localizedMessage;
-        if (!technicalDetails.empty()) {
-            fullMsg += "\n\n";
-            fullMsg += technicalDetails;
+            TASKDIALOG_BUTTON buttons[] = {{IDOK, wClose.c_str()}};
+            config.pButtons       = buttons;
+            config.cButtons       = 1;
+            config.nDefaultButton = IDOK;
+
+            pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
+        } else {
+            // Fallback to MessageBoxW
+            std::string fullMsg = msgCopy;
+            if (!detailsCopy.empty()) {
+                fullMsg += "\n\n";
+                fullMsg += detailsCopy;
+            }
+            int          msgLen = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+            std::wstring wMsg(msgLen, 0);
+            MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, wMsg.data(), msgLen);
+            MessageBoxW(nullptr, wMsg.c_str(), L"Particle Saturn", MB_OK | MB_ICONWARNING);
         }
-        int          msgLen = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
-        std::wstring wMsg(msgLen, 0);
-        MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, wMsg.data(), msgLen);
-        MessageBoxW(nullptr, wMsg.c_str(), L"Particle Saturn", MB_OK | MB_ICONWARNING);
-    }
+    }).detach();
 }
 
 // Render error dialog (call from main loop after ImGui::NewFrame)
@@ -714,7 +632,7 @@ inline void ShowEarlyFatalError(const char* message, const char* details = nullp
         MultiByteToWideChar(CP_UTF8, 0, str.closeProgram, -1, wClose.data(), closeLen);
 
         TASKDIALOGCONFIG config       = {sizeof(config)};
-        config.dwFlags                = TDF_EXPAND_FOOTER_AREA | TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwFlags                = TDF_ALLOW_DIALOG_CANCELLATION;
         config.dwCommonButtons        = 0;
         config.pszWindowTitle         = L"Particle Saturn";
         config.pszMainIcon            = TD_ERROR_ICON;

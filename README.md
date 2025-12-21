@@ -61,7 +61,10 @@ scripts\build_opencv.cmd
 git -C HandTracker/libs/tensorflow apply ../../scripts/tflite-prune.patch
 scripts\build_tflite.cmd
 
-# 5. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
+# 5. 应用 ImGui MD3 补丁（Material Design 3 UI 系统）
+git apply scripts/imgui_md3.patch --directory=libs/imgui
+
+# 6. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
 msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64
 ```
 

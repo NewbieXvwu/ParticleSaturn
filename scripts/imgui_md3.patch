@@ -1,0 +1,50 @@
+diff --git a/imgui.cpp b/imgui.cpp
+index a977c773c..3264957f8 100644
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -5437,6 +5437,12 @@ void ImGui::NewFrame()
+     g.WindowsActiveCount = 0;
+     g.MenusIdSubmittedThisFrame.resize(0);
+ 
++#ifdef IMGUI_MD3_ENABLED
++    // MD3 UI 系统帧开始钩子
++    extern void MD3_OnNewFrame(float dt);
++    MD3_OnNewFrame(g.IO.DeltaTime);
++#endif
++
+     // Calculate frame-rate for the user, as a purely luxurious feature
+     g.FramerateSecPerFrameAccum += g.IO.DeltaTime - g.FramerateSecPerFrame[g.FramerateSecPerFrameIdx];
+     g.FramerateSecPerFrame[g.FramerateSecPerFrameIdx] = g.IO.DeltaTime;
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+index 6be8f7691..d82dc90e6 100644
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -767,6 +767,15 @@ bool ImGui::ButtonBehavior(const ImRect& bb, ImGuiID id, bool* out_hovered, bool
+     if (out_hovered) *out_hovered = hovered;
+     if (out_held) *out_held = held;
+ 
++#ifdef IMGUI_MD3_ENABLED
++    // MD3 Ripple 触发钩子
++    if (pressed)
++    {
++        extern void MD3_TriggerRipple(unsigned int, float, float, float, float, float, float);
++        MD3_TriggerRipple(id, g.IO.MousePos.x, g.IO.MousePos.y, bb.Min.x, bb.Min.y, bb.Max.x, bb.Max.y);
++    }
++#endif
++
+     return pressed;
+ }
+ 
+@@ -1219,6 +1228,12 @@ bool ImGui::ImageButton(ImTextureID user_texture_id, const ImVec2& size, const I
+ 
+ bool ImGui::Checkbox(const char* label, bool* v)
+ {
++#ifdef IMGUI_MD3_ENABLED
++    // MD3 Checkbox 替换钩子
++    extern bool MD3_Checkbox(const char*, bool*);
++    return MD3_Checkbox(label, v);
++#endif
++
+     ImGuiWindow* window = GetCurrentWindow();
+     if (window->SkipItems)
+         return false;

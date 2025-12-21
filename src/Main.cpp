@@ -19,6 +19,7 @@
 #include "UIManager.h"
 #include "Utils.h"
 #include "WindowManager.h"
+#include "md3/MD3.h"
 
 // 初始窗口尺寸常量
 const unsigned int INIT_WIDTH  = 1920;
@@ -245,6 +246,11 @@ int main() {
     ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
     UIManager::Init(window, appState);
 
+    // 初始化 MD3 UI 系统
+    MD3::Init(appState.ui.dpiScale);
+    MD3::SetDarkMode(appState.ui.isDarkMode);
+    MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
+
     // 创建着色器程序
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
     unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
@@ -440,6 +446,9 @@ int main() {
         float dt  = t - lastFrame;
         lastFrame = t;
 
+        // MD3 帧开始
+        MD3::BeginFrame(dt);
+
         // 处理窗口大小变化
         if (appState.window.resized) {
             appState.window.resized = false;
@@ -448,6 +457,7 @@ int main() {
             resizeFBO(appState.window.width, appState.window.height);
             fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
             fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
+            MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
         }
 
         // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
@@ -810,24 +820,23 @@ int main() {
                 ImGui::Text("%s: %.3f", str.animationRotY, currentAnim.rotY);
                 ImGui::Separator();
                 bool cameraDebug = GetTrackerDebugMode();
-                if (UIManager::ToggleMD3(str.showCameraDebug, &cameraDebug, dt)) {
+                if (MD3::Toggle(str.showCameraDebug, &cameraDebug)) {
                     SetTrackerDebugMode(cameraDebug);
                     appState.ui.showCameraDebug = cameraDebug;
                 }
             }
 
             if (ImGui::CollapsingHeader(str.sectionVisuals)) {
-                if (UIManager::ToggleMD3(str.darkMode, &appState.ui.isDarkMode, dt)) {
+                if (MD3::Toggle(str.darkMode, &appState.ui.isDarkMode)) {
                     UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
+                    MD3::SetDarkMode(appState.ui.isDarkMode);
                 }
                 ImGui::Dummy(ImVec2(0, 5));
-                UIManager::ToggleMD3(str.glassBlur, &appState.ui.enableBlur, dt);
+                MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
                 if (appState.ui.enableBlur) {
                     ImGui::Indent(10);
                     ImGui::SetNextItemWidth(-1);
-                    char blurLabel[64];
-                    snprintf(blurLabel, sizeof(blurLabel), "%s: %%.0f", str.blurStrength);
-                    ImGui::SliderFloat("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, blurLabel);
+                    MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
                     ImGui::Unindent(10);
                 }
             }
@@ -881,6 +890,9 @@ int main() {
         ImGui::Render();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // MD3 帧结束 - 渲染 Ripple 效果
+        MD3::EndFrame();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -937,6 +949,7 @@ int main() {
     std::cout << "[Main] Shutting down..." << std::endl;
     asyncTracker.Stop(); // 停止异步追踪线程
     CrashAnalyzer::Shutdown();
+    MD3::Shutdown();
     UIManager::Shutdown();
     ReleaseTracker();
     glfwTerminate();

@@ -66,6 +66,10 @@ jobs:
         run: scripts\build_opencv.cmd
         shell: cmd
 
+      - name: Apply ImGui MD3 patch
+        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        shell: bash
+
       - name: Build Release
         run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
 

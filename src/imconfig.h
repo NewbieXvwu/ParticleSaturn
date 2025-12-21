@@ -52,6 +52,10 @@
 //---- Use glad as OpenGL loader
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD
 
+//---- Enable Material Design 3 UI system integration
+// 启用 MD3 UI 系统，提供弹簧动画、Ripple 效果和 MD3 控件
+#define IMGUI_MD3_ENABLED
+
 //---- Don't implement some functions to reduce linkage requirements.
 // #define IMGUI_DISABLE_WIN32_DEFAULT_CLIPBOARD_FUNCTIONS   // [Win32] Don't implement default clipboard handler. Won't
 // use and link with OpenClipboard/GetClipboardData/CloseClipboard etc. (user32.lib/.a, kernel32.lib/.a) #define
