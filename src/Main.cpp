@@ -65,11 +65,10 @@ int main() {
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
     if (!window) {
         std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(
-            i18n::Get().windowCreateFailed,
-            "glfwCreateWindow() returned NULL.\n\n"
-            "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
-            "Please update your graphics driver or check hardware compatibility.");
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed,
+                                          "glfwCreateWindow() returned NULL.\n\n"
+                                          "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
+                                          "Please update your graphics driver or check hardware compatibility.");
         glfwTerminate();
         return -1;
     }
@@ -79,11 +78,9 @@ int main() {
     // 加载 OpenGL 扩展
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "[Main] Fatal: gladLoadGLLoader() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(
-            i18n::Get().openglLoadFailed,
-            "gladLoadGLLoader() returned false.\n\n"
-            "Failed to load OpenGL function pointers.\n"
-            "Please update your graphics driver.");
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().openglLoadFailed, "gladLoadGLLoader() returned false.\n\n"
+                                                                        "Failed to load OpenGL function pointers.\n"
+                                                                        "Please update your graphics driver.");
         glfwDestroyWindow(window);
         glfwTerminate();
         return -1;
@@ -174,8 +171,8 @@ int main() {
             DWORD       palmSize = SizeofResource(NULL, hPalmRes);
             DWORD       handSize = SizeofResource(NULL, hHandRes);
             SetEmbeddedModels(palmData, palmSize, handData, handSize);
-            std::cout << "[Main] Embedded models loaded (palm: " << palmSize << " bytes, hand: " << handSize << " bytes)"
-                      << std::endl;
+            std::cout << "[Main] Embedded models loaded (palm: " << palmSize << " bytes, hand: " << handSize
+                      << " bytes)" << std::endl;
         }
     }
     if (!InitTracker(0, nullptr)) {
@@ -366,8 +363,8 @@ int main() {
     if (!ParticleSystem::InitParticlesGPU(particleBuffers)) {
         std::cerr << "[Main] Fatal: Failed to initialize particle system" << std::endl;
         // 检查是否是显存不足
-        bool isOutOfMemory = ParticleSystem::g_lastError.find("OUT_OF_MEMORY") != std::string::npos;
-        const char* message = isOutOfMemory ? i18n::Get().outOfVideoMemory : i18n::Get().shaderCompileFailed;
+        bool               isOutOfMemory = ParticleSystem::g_lastError.find("OUT_OF_MEMORY") != std::string::npos;
+        const char*        message = isOutOfMemory ? i18n::Get().outOfVideoMemory : i18n::Get().shaderCompileFailed;
         std::ostringstream details;
         details << "ParticleSystem::InitParticlesGPU() failed\n\n"
                 << ParticleSystem::g_lastError << "\n\n"

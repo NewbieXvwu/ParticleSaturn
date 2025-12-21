@@ -18,14 +18,14 @@ enum HandTrackerSIMDMode {
 
 // 初始化错误码枚举
 enum HandTrackerError {
-    HANDTRACKER_OK                  = 0,  // 初始化成功
-    HANDTRACKER_ERROR_UNKNOWN       = 1,  // 未知错误
-    HANDTRACKER_ERROR_PALM_MODEL    = 2,  // 手掌检测模型加载失败
-    HANDTRACKER_ERROR_HAND_MODEL    = 3,  // 手部关键点模型加载失败
-    HANDTRACKER_ERROR_CAMERA_OPEN   = 4,  // 摄像头打开失败
-    HANDTRACKER_ERROR_CAMERA_IN_USE = 5,  // 摄像头被占用
-    HANDTRACKER_ERROR_NO_CAMERA     = 6,  // 未检测到摄像头
-    HANDTRACKER_ERROR_THREAD        = 7   // 工作线程创建失败
+    HANDTRACKER_OK                  = 0, // 初始化成功
+    HANDTRACKER_ERROR_UNKNOWN       = 1, // 未知错误
+    HANDTRACKER_ERROR_PALM_MODEL    = 2, // 手掌检测模型加载失败
+    HANDTRACKER_ERROR_HAND_MODEL    = 3, // 手部关键点模型加载失败
+    HANDTRACKER_ERROR_CAMERA_OPEN   = 4, // 摄像头打开失败
+    HANDTRACKER_ERROR_CAMERA_IN_USE = 5, // 摄像头被占用
+    HANDTRACKER_ERROR_NO_CAMERA     = 6, // 未检测到摄像头
+    HANDTRACKER_ERROR_THREAD        = 7  // 工作线程创建失败
 };
 
 extern "C" {
