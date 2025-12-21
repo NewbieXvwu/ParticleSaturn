@@ -65,10 +65,9 @@ int main() {
     GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
     if (!window) {
         std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed,
-                                          "glfwCreateWindow() returned NULL.\n\n"
-                                          "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
-                                          "Please update your graphics driver or check hardware compatibility.");
+        ErrorHandler::ShowEarlyFatalError(
+            i18n::Get().windowCreateFailed,
+            i18n::Get().detailWindowCreateFailed);
         glfwTerminate();
         return -1;
     }
@@ -78,9 +77,9 @@ int main() {
     // 加载 OpenGL 扩展
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "[Main] Fatal: gladLoadGLLoader() failed" << std::endl;
-        ErrorHandler::ShowEarlyFatalError(i18n::Get().openglLoadFailed, "gladLoadGLLoader() returned false.\n\n"
-                                                                        "Failed to load OpenGL function pointers.\n"
-                                                                        "Please update your graphics driver.");
+        ErrorHandler::ShowEarlyFatalError(
+            i18n::Get().openglLoadFailed,
+            i18n::Get().detailOpenGLLoadFailed);
         glfwDestroyWindow(window);
         glfwTerminate();
         return -1;
@@ -93,8 +92,8 @@ int main() {
     if (glMajor < 4 || (glMajor == 4 && glMinor < 4)) {
         std::cerr << "[Main] Fatal: OpenGL " << glMajor << "." << glMinor << " < 4.4" << std::endl;
         std::ostringstream details;
-        details << "Detected OpenGL version: " << glMajor << "." << glMinor << "\n"
-                << "Required: OpenGL 4.4 or higher\n\n"
+        details << i18n::Get().detailOpenGLVersionLow << ": " << glMajor << "." << glMinor << "\n"
+                << i18n::Get().detailOpenGLRequired << "\n\n"
                 << "GPU: " << (const char*)glGetString(GL_RENDERER) << "\n"
                 << "Driver: " << (const char*)glGetString(GL_VERSION);
         ErrorHandler::ShowEarlyFatalError(i18n::Get().openglVersionUnsupported, details.str().c_str());

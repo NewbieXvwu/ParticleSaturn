@@ -254,6 +254,9 @@
     <ClInclude Include="src\AppState.h" />
     <ClInclude Include="Resource.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
   <ItemGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">
     <ResourceCompile Include="resources.rc" />
   </ItemGroup>

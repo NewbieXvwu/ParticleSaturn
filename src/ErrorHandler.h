@@ -425,9 +425,15 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
 
         pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
     } else {
-        // Fallback to simple MessageBox
+        // Fallback to MessageBoxW (MessageBoxA doesn't support UTF-8)
         std::string fullMsg = friendlyMsg + "\n\n" + details;
-        MessageBoxA(nullptr, fullMsg.c_str(), "Particle Saturn - Crash", MB_OK | MB_ICONERROR);
+        int         titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, nullptr, 0);
+        int         msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+        std::wstring wTitle(titleLen, 0);
+        std::wstring wMsg(msgLen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, wTitle.data(), titleLen);
+        MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, wMsg.data(), msgLen);
+        MessageBoxW(nullptr, wMsg.c_str(), wTitle.c_str(), MB_OK | MB_ICONERROR);
     }
 }
 
@@ -575,13 +581,19 @@ inline void ShowEarlyFatalError(const char* message, const char* details = nullp
 
         pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
     } else {
-        // Fallback to MessageBox
+        // Fallback to MessageBoxW (MessageBoxA doesn't support UTF-8)
         std::string fullMsg = message;
         if (details) {
             fullMsg += "\n\n";
             fullMsg += details;
         }
-        MessageBoxA(nullptr, fullMsg.c_str(), "Particle Saturn", MB_OK | MB_ICONERROR);
+        int         titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn", -1, nullptr, 0);
+        int         msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
+        std::wstring wTitle(titleLen, 0);
+        std::wstring wMsg(msgLen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn", -1, wTitle.data(), titleLen);
+        MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, wMsg.data(), msgLen);
+        MessageBoxW(nullptr, wMsg.c_str(), wTitle.c_str(), MB_OK | MB_ICONERROR);
     }
 }
 

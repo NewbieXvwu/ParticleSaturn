@@ -46,6 +46,12 @@ struct Strings {
     const char* cameraInUse;
     const char* cameraPermissionDenied;
 
+    // Error details (technical messages shown in expandable section)
+    const char* detailWindowCreateFailed;
+    const char* detailOpenGLLoadFailed;
+    const char* detailOpenGLVersionLow;
+    const char* detailOpenGLRequired;
+
     // Error messages - hand tracker details
     const char* palmModelLoadFailed;
     const char* handModelLoadFailed;
@@ -194,6 +200,16 @@ inline const Strings& GetChinese() {
         .cameraNotFound         = "未检测到摄像头设备",
         .cameraInUse            = "摄像头正在被其他程序使用",
         .cameraPermissionDenied = "摄像头访问被拒绝，请在系统设置中允许访问",
+
+        // Error details (technical messages shown in expandable section)
+        .detailWindowCreateFailed = "glfwCreateWindow() 返回 NULL。\n\n"
+                                    "这通常意味着您的显卡不支持 OpenGL 4.4 Core Profile。\n"
+                                    "请更新显卡驱动或检查硬件兼容性。",
+        .detailOpenGLLoadFailed   = "gladLoadGLLoader() 返回 false。\n\n"
+                                    "无法加载 OpenGL 函数指针。\n"
+                                    "请更新显卡驱动。",
+        .detailOpenGLVersionLow   = "检测到的 OpenGL 版本",
+        .detailOpenGLRequired     = "需要 OpenGL 4.4 或更高版本",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "手掌检测模型加载失败",
@@ -345,6 +361,16 @@ inline const Strings& GetEnglish() {
         .cameraNotFound         = "No camera device detected",
         .cameraInUse            = "Camera is being used by another program",
         .cameraPermissionDenied = "Camera access denied, please allow access in system settings",
+
+        // Error details (technical messages shown in expandable section)
+        .detailWindowCreateFailed = "glfwCreateWindow() returned NULL.\n\n"
+                                    "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
+                                    "Please update your graphics driver or check hardware compatibility.",
+        .detailOpenGLLoadFailed   = "gladLoadGLLoader() returned false.\n\n"
+                                    "Failed to load OpenGL function pointers.\n"
+                                    "Please update your graphics driver.",
+        .detailOpenGLVersionLow   = "Detected OpenGL version",
+        .detailOpenGLRequired     = "Required: OpenGL 4.4 or higher",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "Failed to load palm detection model",
