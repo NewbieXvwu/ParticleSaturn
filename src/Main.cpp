@@ -267,7 +267,8 @@ int main() {
 
     // 优化: 使用 R11F_G11F_B10F 格式 (4字节/像素) 替代 RGBA16F (8字节/像素)
     // R11F_G11F_B10F 是紧凑的 HDR 格式，足够存储加法混合的高光值
-    auto resizeFBO = [&](int width, int height) {
+    // 返回 true 表示成功，false 表示失败
+    auto resizeFBO = [&](int width, int height) -> bool {
         glBindTexture(GL_TEXTURE_2D, fboTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R11F_G11F_B10F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -277,9 +278,30 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboTex, 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "[Main] FBO incomplete, status: 0x" << std::hex << status << std::dec << std::endl;
+            return false;
+        }
+        return true;
     };
-    resizeFBO(appState.window.width, appState.window.height);
+
+    if (!resizeFBO(appState.window.width, appState.window.height)) {
+        std::cerr << "[Main] Fatal: Failed to create main framebuffer" << std::endl;
+        std::ostringstream details;
+        details << "glCheckFramebufferStatus() != GL_FRAMEBUFFER_COMPLETE\n\n"
+                << "Resolution: " << appState.window.width << "x" << appState.window.height << "\n"
+                << "GPU: " << appState.gl.renderer << "\n"
+                << "OpenGL: " << appState.gl.version;
+        ErrorHandler::ShowError(i18n::Get().fboCreateFailed, details.str());
+        UIManager::Shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return -1;
+    }
 
     // 模糊效果 FBO
     BlurFramebuffer fboBlur1, fboBlur2;
