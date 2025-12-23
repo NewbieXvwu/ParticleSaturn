@@ -43,6 +43,10 @@ HAND_API bool InitTracker(int camera_id, const char* model_dir);
 // 注意: 初始化失败时可通过 GetTrackerLastError() 获取错误码
 HAND_API bool WaitForTrackerReady(int timeout_ms);
 
+// 非阻塞检查追踪器是否已就绪
+// 返回值: 0 = 仍在初始化中, 1 = 初始化成功, -1 = 初始化失败
+HAND_API int IsTrackerReady();
+
 // 获取最后一次错误码
 HAND_API int GetTrackerLastError();
 
