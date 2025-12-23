@@ -34,12 +34,13 @@ struct AppState {
 
     // UI 状态
     struct {
-        bool  showDebugWindow = false;
-        bool  showCameraDebug = false;
-        float dpiScale        = 1.0f;
-        bool  isDarkMode      = true;
-        bool  enableBlur      = true;
-        float blurStrength    = 2.0f;
+        bool  showDebugWindow  = false;
+        bool  showCameraDebug  = false;
+        float dpiScale         = 1.0f;
+        bool  isDarkMode       = true;
+        bool  enableBlur       = true;
+        float blurStrength     = 2.0f;
+        bool  imguiInitialized = false; // 惰性加载标志
     } ui;
 
     // 输入状态 (按键防抖)

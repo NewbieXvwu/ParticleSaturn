@@ -262,6 +262,30 @@ struct CollapsingHeaderAnimState {
           lastContentHeight(0.0f) {}
 };
 
+// Window 窗口动画状态
+struct WindowAnimState {
+    SpringAnimator closeButtonHover;   // 关闭按钮悬停状态
+    SpringAnimator closeButtonPress;   // 关闭按钮按下状态
+
+    WindowAnimState()
+        : closeButtonHover(0.0f, 500.0f, 30.0f)
+        , closeButtonPress(0.0f, 600.0f, 35.0f) {}
+};
+
+// Scrollbar 滚动条动画状态
+struct ScrollbarAnimState {
+    SpringAnimator hoverState;         // 悬停状态 (0-1)
+    SpringAnimator dragState;          // 拖拽状态 (0-1)
+    SpringAnimator visibility;         // 可见性 (0-1)
+    float lastScrollY = 0.0f;          // 上次滚动位置（用于检测滚动）
+    float hideTimer = 0.0f;            // 隐藏计时器
+
+    ScrollbarAnimState()
+        : hoverState(0.0f, 500.0f, 30.0f)
+        , dragState(0.0f, 600.0f, 35.0f)
+        , visibility(0.0f, 400.0f, 28.0f) {}
+};
+
 //=============================================================================
 // MD3 上下文
 //=============================================================================
@@ -291,6 +315,8 @@ struct MD3Context {
     std::unordered_map<ImGuiID, CardAnimState>             cardStates;
     std::unordered_map<ImGuiID, ComboAnimState>            comboStates;
     std::unordered_map<ImGuiID, CollapsingHeaderAnimState> collapsingHeaderStates;
+    std::unordered_map<ImGuiID, WindowAnimState> windowStates;
+    std::unordered_map<ImGuiID, ScrollbarAnimState> scrollbarStates;
 
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth  = 1920.0f;
@@ -313,7 +339,7 @@ void Shutdown();
 // 每帧开始时调用
 void BeginFrame(float dt);
 
-// 每帧结束时调用（渲染 Ripples）
+// 每帧结束时调用（在 ImGui::Render 之前）
 void EndFrame();
 
 // 设置深色/浅色模式
@@ -391,6 +417,34 @@ bool BeginCollapsingHeader(const char* label, bool default_open = false);
 void EndCollapsingHeader();
 
 //=============================================================================
+// Window 窗口（Chrome OS 风格标题栏）
+//=============================================================================
+
+// 开始 MD3 风格窗口（完整封装版本，不支持自定义背景）
+// title: 窗口标题
+// p_open: 关闭按钮控制（nullptr = 无关闭按钮）
+// flags: 额外的 ImGui 窗口标志
+// 返回值：与 ImGui::Begin() 相同
+bool BeginWindow(const char* title, bool* p_open = nullptr, int flags = 0);
+
+// 结束 MD3 风格窗口
+void EndWindow();
+
+// 为标题栏预留空间（在 ImGui::Begin 之后、内容之前调用）
+// 返回标题栏高度（像素）
+float WindowTitleBarSpace();
+
+// 绘制 MD3 风格窗口标题栏（在 ImGui::End 之前调用）
+// title: 窗口标题
+// p_open: 关闭按钮控制（nullptr = 无关闭按钮）
+void WindowTitleBar(const char* title, bool* p_open = nullptr);
+
+// 绘制 MD3 风格滚动条（在 ImGui::End 之前调用）
+// 自动检测窗口滚动状态并绘制 overlay 滚动条
+// titleBarHeight: 标题栏高度（用于计算滚动条位置），0 表示无标题栏
+void WindowScrollbar(float titleBarHeight = 0.0f);
+
+//=============================================================================
 // Ripple 系统 API
 //=============================================================================
 
@@ -420,6 +474,12 @@ unsigned int ColorToU32(const ImVec4& color);
 
 // 从十六进制创建颜色
 ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
+
+// 绘制带圆角的图片（解决模糊背景黑边问题）
+void AddImageRounded(ImDrawList* dl, unsigned int tex_id,
+                     const ImVec2& p_min, const ImVec2& p_max,
+                     const ImVec2& uv_min, const ImVec2& uv_max,
+                     unsigned int col, float rounding, int flags = 0);
 
 } // namespace MD3
 

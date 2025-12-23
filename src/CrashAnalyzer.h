@@ -378,7 +378,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
     ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
 
-    if (ImGui::Begin(str.crashAnalyzerTitle, &g_state.windowOpen)) {
+    if (ImGui::Begin(str.crashAnalyzerTitle, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar)) {
         ImVec2      pos  = ImGui::GetWindowPos();
         ImVec2      size = ImGui::GetWindowSize();
         ImDrawList* dl   = ImGui::GetWindowDrawList();
@@ -386,7 +386,9 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         if (enableBlur && blurTex != 0 && scrWidth > 0 && scrHeight > 0) {
             ImVec2 uv0 = ImVec2(pos.x / scrWidth, 1.0f - pos.y / scrHeight);
             ImVec2 uv1 = ImVec2((pos.x + size.x) / scrWidth, 1.0f - (pos.y + size.y) / scrHeight);
-            dl->AddImage((ImTextureID)(intptr_t)blurTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1);
+            // 使用带圆角的图片绘制，避免黑边
+            MD3::AddImageRounded(dl, blurTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
+                                 IM_COL32(255, 255, 255, 255), style.WindowRounding);
             ImU32 tintColor = isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
             dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
             ImU32 highlight = isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
@@ -397,6 +399,10 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
                               style.WindowRounding);
         }
+
+        // MD3 风格标题栏
+        MD3::WindowTitleBarSpace();
+
         // Check DbgHelp availability
         if (!g_dbgHelp.Init()) {
             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: %s", g_dbgHelp.errorMessage.c_str());
@@ -521,6 +527,12 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
 
         // 绘制 Ripple 效果
         MD3::DrawRipples();
+
+        // 绘制 MD3 滚动条
+        MD3::WindowScrollbar(40.0f * ImGui::GetIO().FontGlobalScale);
+
+        // 绘制标题栏（在所有内容之上）
+        MD3::WindowTitleBar(str.crashAnalyzerTitle, &g_state.windowOpen);
     }
     ImGui::End();
     ImGui::PopStyleColor(4);

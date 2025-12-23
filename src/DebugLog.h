@@ -4,6 +4,8 @@
 #include <deque>
 #include <mutex>
 #include <streambuf>
+#include <imgui.h>
+#include "md3/MD3.h"
 
 class DebugLog {
   public:

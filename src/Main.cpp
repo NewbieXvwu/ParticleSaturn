@@ -140,9 +140,11 @@ int main() {
     }
 #endif
 
-    // 初始化手部追踪
+    // 初始化手部追踪（异步，不阻塞启动）
     ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
     bool handTrackerInitialized = false;
+    bool handTrackerStarted     = false;  // 追踪器线程是否已启动
+    bool handTrackerCheckDone   = false;  // 是否已完成初始化检查
 #ifdef EMBED_MODELS
     std::cout << "[Main] Loading embedded models..." << std::endl;
     HRSRC hPalmRes = FindResource(NULL, MAKEINTRESOURCE(IDR_PALM_MODEL), RT_RCDATA);
@@ -155,12 +157,14 @@ int main() {
                 << "  Hand model: " << (hHandRes ? "Found" : "NOT FOUND") << "\n\n"
                 << "The executable may be corrupted or built incorrectly.";
         ErrorHandler::ShowWarning(i18n::Get().embeddedResourceFailed, details.str());
+        handTrackerCheckDone = true;  // 跳过后续检查
     } else {
         HGLOBAL hPalmData = LoadResource(NULL, hPalmRes);
         HGLOBAL hHandData = LoadResource(NULL, hHandRes);
         if (!hPalmData || !hHandData) {
             std::cerr << "[Main] Warning: Failed to load embedded model resources" << std::endl;
             ErrorHandler::ShowWarning(i18n::Get().embeddedResourceFailed, "LoadResource() failed");
+            handTrackerCheckDone = true;
         } else {
             const void* palmData = LockResource(hPalmData);
             const void* handData = LockResource(hHandData);
@@ -171,83 +175,31 @@ int main() {
                       << " bytes)" << std::endl;
         }
     }
-    if (!InitTracker(0, nullptr)) {
-        std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
-                                  "InitTracker() returned false - thread creation failed");
-    } else if (!WaitForTrackerReady(5000)) {
-        // 等待初始化完成（最多 5 秒）
-        std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
-        int         errCode = GetTrackerLastError();
-        const char* errMsg  = GetTrackerLastErrorMessage();
-        const char* localizedMsg;
-        switch (errCode) {
-        case HANDTRACKER_ERROR_PALM_MODEL:
-            localizedMsg = i18n::Get().palmModelLoadFailed;
-            break;
-        case HANDTRACKER_ERROR_HAND_MODEL:
-            localizedMsg = i18n::Get().handModelLoadFailed;
-            break;
-        case HANDTRACKER_ERROR_NO_CAMERA:
-            localizedMsg = i18n::Get().cameraNotFound;
-            break;
-        case HANDTRACKER_ERROR_CAMERA_IN_USE:
-            localizedMsg = i18n::Get().cameraInUse;
-            break;
-        default:
-            localizedMsg = i18n::Get().cameraInitFailed;
-            break;
+    if (!handTrackerCheckDone) {
+        if (!InitTracker(0, nullptr)) {
+            std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
+            ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+            handTrackerCheckDone = true;
+        } else {
+            handTrackerStarted = true;
+            std::cout << "[Main] HandTracker thread started (async initialization)" << std::endl;
         }
-        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "WaitForTrackerReady() returned false");
-    } else {
-        std::cout << "[Main] HandTracker initialized successfully." << std::endl;
-        handTrackerInitialized = true;
-        ErrorHandler::SetCameraInfo(0, 640, 480, true);
     }
 #else
-    std::cout << "[Main] Initializing HandTracker..." << std::endl;
+    std::cout << "[Main] Initializing HandTracker (async)..." << std::endl;
     if (!InitTracker(0, ".")) {
         std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
-                                  "InitTracker() returned false - thread creation failed");
-    } else if (!WaitForTrackerReady(5000)) {
-        // 等待初始化完成（最多 5 秒）
-        std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
-        int         errCode = GetTrackerLastError();
-        const char* errMsg  = GetTrackerLastErrorMessage();
-        const char* localizedMsg;
-        switch (errCode) {
-        case HANDTRACKER_ERROR_PALM_MODEL:
-            localizedMsg = i18n::Get().palmModelLoadFailed;
-            break;
-        case HANDTRACKER_ERROR_HAND_MODEL:
-            localizedMsg = i18n::Get().handModelLoadFailed;
-            break;
-        case HANDTRACKER_ERROR_NO_CAMERA:
-            localizedMsg = i18n::Get().cameraNotFound;
-            break;
-        case HANDTRACKER_ERROR_CAMERA_IN_USE:
-            localizedMsg = i18n::Get().cameraInUse;
-            break;
-        default:
-            localizedMsg = i18n::Get().cameraInitFailed;
-            break;
-        }
-        ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "WaitForTrackerReady() returned false");
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+        handTrackerCheckDone = true;
     } else {
-        std::cout << "[Main] HandTracker initialized successfully." << std::endl;
-        handTrackerInitialized = true;
-        ErrorHandler::SetCameraInfo(0, 640, 480, true);
+        handTrackerStarted = true;
+        std::cout << "[Main] HandTracker thread started (async initialization)" << std::endl;
     }
 #endif
 
-    ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
-    UIManager::Init(window, appState);
-
-    // 初始化 MD3 UI 系统
-    MD3::Init(appState.ui.dpiScale);
-    MD3::SetDarkMode(appState.ui.isDarkMode);
-    MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
+    // UI 系统采用惰性加载策略：首次按 F3 打开调试窗口时才初始化
+    // 这可以显著加快程序启动速度（节省字体加载和着色器编译时间）
+    // appState.ui.imguiInitialized 标志用于跟踪初始化状态
 
     // 创建着色器程序
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
@@ -425,10 +377,8 @@ int main() {
     float       autoTime = 0;
 
     // 异步手部追踪器 (优化: 消除主线程阻塞)
+    // 注意: asyncTracker.Start() 会在主循环中检测到 HandTracker 初始化成功后调用
     AsyncHandTracker asyncTracker;
-    if (handTrackerInitialized) {
-        asyncTracker.Start();
-    }
 
     // 主循环变量
     float             lastFrame  = 0;
@@ -444,8 +394,48 @@ int main() {
         float dt  = t - lastFrame;
         lastFrame = t;
 
-        // MD3 帧开始
-        MD3::BeginFrame(dt);
+        // 异步检查 HandTracker 初始化状态（非阻塞）
+        if (handTrackerStarted && !handTrackerCheckDone) {
+            int readyStatus = IsTrackerReady();
+            if (readyStatus != 0) {
+                // 初始化完成（成功或失败）
+                handTrackerCheckDone = true;
+                if (readyStatus == 1) {
+                    std::cout << "[Main] HandTracker initialized successfully." << std::endl;
+                    handTrackerInitialized = true;
+                    asyncTracker.Start();
+                    ErrorHandler::SetCameraInfo(0, 640, 480, true);
+                } else {
+                    std::cerr << "[Main] Warning: HandTracker initialization failed" << std::endl;
+                    int         errCode = GetTrackerLastError();
+                    const char* errMsg  = GetTrackerLastErrorMessage();
+                    const char* localizedMsg;
+                    switch (errCode) {
+                    case HANDTRACKER_ERROR_PALM_MODEL:
+                        localizedMsg = i18n::Get().palmModelLoadFailed;
+                        break;
+                    case HANDTRACKER_ERROR_HAND_MODEL:
+                        localizedMsg = i18n::Get().handModelLoadFailed;
+                        break;
+                    case HANDTRACKER_ERROR_NO_CAMERA:
+                        localizedMsg = i18n::Get().cameraNotFound;
+                        break;
+                    case HANDTRACKER_ERROR_CAMERA_IN_USE:
+                        localizedMsg = i18n::Get().cameraInUse;
+                        break;
+                    default:
+                        localizedMsg = i18n::Get().cameraInitFailed;
+                        break;
+                    }
+                    ErrorHandler::ShowWarning(localizedMsg, errMsg ? errMsg : "Initialization failed");
+                }
+            }
+        }
+
+        // MD3 帧开始（仅在 UI 已初始化时）
+        if (appState.ui.imguiInitialized) {
+            MD3::BeginFrame(dt);
+        }
 
         // 处理窗口大小变化
         if (appState.window.resized) {
@@ -455,7 +445,9 @@ int main() {
             resizeFBO(appState.window.width, appState.window.height);
             fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
             fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
-            MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
+            if (appState.ui.imguiInitialized) {
+                MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
+            }
         }
 
         // 获取手部追踪数据 (异步: 非阻塞读取最新状态)
@@ -721,19 +713,20 @@ int main() {
         ErrorHandler::UpdateState(totalFrameCount, appState.render.activeParticleCount, appState.render.pixelRatio,
                                   handState.hasHand);
 
-        // 渲染 ImGui
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+        // 渲染 ImGui（仅在已初始化时）
+        if (appState.ui.imguiInitialized) {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
 
-        // Render error dialogs
-        ErrorHandler::RenderErrorDialog(dt);
+            // Render error dialogs
+            ErrorHandler::RenderErrorDialog(dt);
 
-        // Render crash analyzer window
-        CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height,
-                              appState.ui.isDarkMode);
+            // Render crash analyzer window
+            CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height,
+                                  appState.ui.isDarkMode);
 
-        if (appState.ui.showDebugWindow) {
+            if (appState.ui.showDebugWindow) {
             const auto& str = i18n::Get();
             ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
                                      ImGuiCond_FirstUseEver);
@@ -744,7 +737,7 @@ int main() {
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, &appState.ui.showDebugWindow, ImGuiWindowFlags_NoCollapse);
+            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
@@ -754,8 +747,9 @@ int main() {
                 ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
                 ImVec2 uv1 =
                     ImVec2((pos.x + size.x) / appState.window.width, 1.0f - (pos.y + size.y) / appState.window.height);
-                dl->AddImage((ImTextureID)(intptr_t)fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
-                             uv1);
+                // 使用带圆角的图片绘制，避免黑边
+                MD3::AddImageRounded(dl, fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
+                                     IM_COL32(255, 255, 255, 255), style.WindowRounding);
                 ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
                 dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
                 ImU32 highlight = appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
@@ -768,6 +762,9 @@ int main() {
                                   style.WindowRounding);
             }
             ImGui::PopStyleColor(4);
+
+            // 为标题栏预留空间
+            MD3::WindowTitleBarSpace();
 
             if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
                 ImGui::Text("%s: %.1f", str.fps, currentFps);
@@ -888,15 +885,22 @@ int main() {
             // 在窗口关闭前绘制 Ripple 效果（跟随滚动）
             MD3::DrawRipples();
 
+            // 绘制 MD3 滚动条
+            MD3::WindowScrollbar(40.0f * appState.ui.dpiScale);
+
+            // 绘制标题栏（在所有内容之上）
+            MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
+
             ImGui::End();
         }
 
-        ImGui::Render();
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            // MD3 帧结束 - 处理全局平滑滚动（必须在 ImGui::Render 之前）
+            MD3::EndFrame();
 
-        // MD3 帧结束 - 渲染 Ripple 效果
-        MD3::EndFrame();
+            ImGui::Render();
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -906,6 +910,20 @@ int main() {
             if (!appState.input.keyF3_pressed) {
                 appState.input.keyF3_pressed = true;
                 appState.ui.showDebugWindow  = !appState.ui.showDebugWindow;
+
+                // 惰性初始化 ImGui 和 MD3（首次打开调试窗口时）
+                if (appState.ui.showDebugWindow && !appState.ui.imguiInitialized) {
+                    std::cout << "[Main] Lazy-loading UI system..." << std::endl;
+                    ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
+                    UIManager::Init(window, appState);
+                    MD3::Init(appState.ui.dpiScale);
+                    MD3::SetDarkMode(appState.ui.isDarkMode);
+                    MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
+                    appState.ui.imguiInitialized = true;
+                    ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
+                    std::cout << "[Main] UI system initialized (lazy load)" << std::endl;
+                }
+
                 std::cout << "[Main] Debug window: " << (appState.ui.showDebugWindow ? "shown" : "hidden") << std::endl;
             }
         } else {
@@ -953,8 +971,10 @@ int main() {
     std::cout << "[Main] Shutting down..." << std::endl;
     asyncTracker.Stop(); // 停止异步追踪线程
     CrashAnalyzer::Shutdown();
-    MD3::Shutdown();
-    UIManager::Shutdown();
+    if (appState.ui.imguiInitialized) {
+        MD3::Shutdown();
+        UIManager::Shutdown();
+    }
     ReleaseTracker();
     glfwTerminate();
     return 0;

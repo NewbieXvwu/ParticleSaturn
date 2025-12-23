@@ -1157,4 +1157,464 @@ void EndCollapsingHeader() {
     SetCursorScreenPos(ImVec2(stackItem.headerPos.x, stackItem.contentStartPos.y + animatedHeight + spacing));
 }
 
+//=============================================================================
+// Window 窗口控件（Chrome OS 风格标题栏）
+//=============================================================================
+
+// 窗口状态栈
+struct WindowStackItem {
+    ImGuiID id;
+    ImVec2 windowPos;
+    ImVec2 windowSize;
+    float titleBarHeight;
+    float contentPadding;
+};
+static std::vector<WindowStackItem> s_windowStack;
+
+// 绘制关闭按钮 X 图标
+static void DrawCloseIcon(ImDrawList* dl, ImVec2 center, float size, ImU32 color) {
+    float half = size * 0.5f;
+    dl->AddLine(
+        ImVec2(center.x - half, center.y - half),
+        ImVec2(center.x + half, center.y + half),
+        color, 1.5f
+    );
+    dl->AddLine(
+        ImVec2(center.x + half, center.y - half),
+        ImVec2(center.x - half, center.y + half),
+        color, 1.5f
+    );
+}
+
+bool BeginWindow(const char* title, bool* p_open, int flags) {
+    using namespace ImGui;
+
+    auto& ctx = GetContext();
+    const auto& colors = ctx.colors;
+    float dpi = ctx.dpiScale;
+
+    // 窗口参数
+    float titleBarHeight = 40.0f * dpi;
+    float cornerRadius = 12.0f * dpi;
+    float contentPadding = 16.0f * dpi;
+    float closeButtonSize = 24.0f * dpi;
+    float closeButtonMargin = 8.0f * dpi;
+    float closeIconSize = 10.0f * dpi;
+
+    // 强制添加 NoTitleBar 标志
+    ImGuiWindowFlags windowFlags = flags | ImGuiWindowFlags_NoTitleBar;
+
+    // 设置窗口样式
+    PushStyleVar(ImGuiStyleVar_WindowRounding, cornerRadius);
+    PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    PushStyleColor(ImGuiCol_WindowBg, colors.surfaceContainerLow);
+
+    // 开始 ImGui 窗口
+    bool windowVisible = Begin(title, nullptr, windowFlags);
+
+    if (!windowVisible) {
+        PopStyleColor(1);
+        PopStyleVar(3);
+        End();
+        return false;
+    }
+
+    ImGuiID windowId = GetCurrentWindow()->ID;
+    auto& state = ctx.windowStates[windowId];
+
+    ImVec2 windowPos = GetWindowPos();
+    ImVec2 windowSize = GetWindowSize();
+    ImDrawList* dl = GetWindowDrawList();
+
+    // 绘制标题栏背景（与窗口背景融合，可选微调）
+    ImVec2 titleBarMin = windowPos;
+    ImVec2 titleBarMax = ImVec2(windowPos.x + windowSize.x, windowPos.y + titleBarHeight);
+
+    // 标题栏可以与窗口背景相同，或略有区分
+    // 这里使用相同颜色，依靠标题文字和关闭按钮区分
+    // 如果需要区分，可以使用 surfaceContainer
+
+    // 绘制标题文字（居中）
+    ImVec2 titleSize = CalcTextSize(title);
+    ImVec2 titlePos(
+        windowPos.x + (windowSize.x - titleSize.x) * 0.5f,
+        windowPos.y + (titleBarHeight - titleSize.y) * 0.5f
+    );
+    dl->AddText(titlePos, ColorToU32(colors.onSurface), title);
+
+    // 绘制关闭按钮（如果 p_open 不为 nullptr）
+    if (p_open != nullptr) {
+        ImVec2 closeButtonPos(
+            windowPos.x + windowSize.x - closeButtonMargin - closeButtonSize,
+            windowPos.y + (titleBarHeight - closeButtonSize) * 0.5f
+        );
+        ImVec2 closeButtonCenter(
+            closeButtonPos.x + closeButtonSize * 0.5f,
+            closeButtonPos.y + closeButtonSize * 0.5f
+        );
+
+        // 关闭按钮交互区域
+        ImRect closeButtonRect(closeButtonPos, ImVec2(closeButtonPos.x + closeButtonSize, closeButtonPos.y + closeButtonSize));
+        ImGuiID closeButtonId = GetID("##CloseButton");
+
+        bool closeHovered = IsMouseHoveringRect(closeButtonRect.Min, closeButtonRect.Max);
+        bool closePressed = closeHovered && IsMouseClicked(0);
+        bool closeHeld = closeHovered && IsMouseDown(0);
+
+        // 更新动画目标
+        state.closeButtonHover.target = closeHovered ? 1.0f : 0.0f;
+        state.closeButtonPress.target = closeHeld ? 1.0f : 0.0f;
+
+        float hoverT = std::clamp(state.closeButtonHover.value, 0.0f, 1.0f);
+        float pressT = std::clamp(state.closeButtonPress.value, 0.0f, 1.0f);
+
+        // 绘制关闭按钮背景（悬停时显示）
+        if (hoverT > 0.001f) {
+            ImVec4 bgColor = colors.surfaceContainerHighest;
+            bgColor = ApplyStateLayer(bgColor, colors.onSurface, colors.stateLayerHover * hoverT);
+            if (pressT > 0.001f) {
+                bgColor = ApplyStateLayer(bgColor, colors.onSurface, colors.stateLayerPressed * pressT);
+            }
+            dl->AddCircleFilled(closeButtonCenter, closeButtonSize * 0.5f, ColorToU32(bgColor));
+        }
+
+        // 绘制关闭图标
+        ImVec4 iconColor = colors.onSurfaceVariant;
+        // 悬停时图标颜色加深
+        if (hoverT > 0.5f) {
+            iconColor = colors.onSurface;
+        }
+        DrawCloseIcon(dl, closeButtonCenter, closeIconSize, ColorToU32(iconColor));
+
+        // 处理关闭事件
+        if (closePressed) {
+            *p_open = false;
+        }
+    }
+
+    // 创建标题栏拖拽区域（排除关闭按钮区域）
+    float dragAreaWidth = windowSize.x;
+    if (p_open != nullptr) {
+        dragAreaWidth -= (closeButtonSize + closeButtonMargin * 2);
+    }
+
+    SetCursorScreenPos(windowPos);
+    InvisibleButton("##TitleBarDrag", ImVec2(dragAreaWidth, titleBarHeight));
+
+    // 处理窗口拖动
+    if (IsItemActive() && IsMouseDragging(0)) {
+        ImVec2 delta = GetIO().MouseDelta;
+        SetWindowPos(ImVec2(windowPos.x + delta.x, windowPos.y + delta.y));
+    }
+
+    // 保存窗口状态到栈
+    WindowStackItem stackItem;
+    stackItem.id = windowId;
+    stackItem.windowPos = windowPos;
+    stackItem.windowSize = windowSize;
+    stackItem.titleBarHeight = titleBarHeight;
+    stackItem.contentPadding = contentPadding;
+    s_windowStack.push_back(stackItem);
+
+    // 设置内容区域起始位置
+    SetCursorScreenPos(ImVec2(windowPos.x + contentPadding, windowPos.y + titleBarHeight + 8.0f * dpi));
+
+    // 设置内容区域宽度
+    PushItemWidth(windowSize.x - contentPadding * 2);
+
+    return true;
+}
+
+void EndWindow() {
+    using namespace ImGui;
+
+    PopItemWidth();
+
+    if (!s_windowStack.empty()) {
+        s_windowStack.pop_back();
+    }
+
+    PopStyleColor(1);
+    PopStyleVar(3);
+
+    End();
+}
+
+float WindowTitleBarSpace() {
+    using namespace ImGui;
+
+    auto& ctx = GetContext();
+    float dpi = ctx.dpiScale;
+    float titleBarHeight = 40.0f * dpi;
+
+    // 添加一个 Dummy 来占据标题栏空间
+    Dummy(ImVec2(GetWindowSize().x, titleBarHeight));
+
+    return titleBarHeight;
+}
+
+void WindowTitleBar(const char* title, bool* p_open) {
+    using namespace ImGui;
+
+    auto& ctx = GetContext();
+    const auto& colors = ctx.colors;
+    float dpi = ctx.dpiScale;
+
+    // 标题栏参数
+    float titleBarHeight = 40.0f * dpi;
+    float closeButtonSize = 24.0f * dpi;
+    float closeButtonMargin = 12.0f * dpi;
+    float closeIconSize = 10.0f * dpi;
+
+    ImGuiWindow* window = GetCurrentWindow();
+    if (!window) return;
+
+    ImGuiID windowId = window->ID;
+    auto& state = ctx.windowStates[windowId];
+
+    ImVec2 windowPos = GetWindowPos();
+    ImVec2 windowSize = GetWindowSize();
+    ImDrawList* dl = GetWindowDrawList();
+
+    // 绘制标题栏背景（覆盖滚动内容）
+    ImVec2 titleBarMin = windowPos;
+    ImVec2 titleBarMax = ImVec2(windowPos.x + windowSize.x, windowPos.y + titleBarHeight);
+
+    // 使用与窗口背景相同的颜色，或者从窗口获取
+    ImVec4 titleBgColor = colors.surfaceContainerLow;
+    dl->AddRectFilled(titleBarMin, titleBarMax, ColorToU32(titleBgColor),
+                      GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
+
+    // 绘制标题文字（居中）
+    ImVec2 titleSize = CalcTextSize(title);
+    ImVec2 titlePos(
+        windowPos.x + (windowSize.x - titleSize.x) * 0.5f,
+        windowPos.y + (titleBarHeight - titleSize.y) * 0.5f
+    );
+    dl->AddText(titlePos, ColorToU32(colors.onSurface), title);
+
+    // 绘制关闭按钮（如果 p_open 不为 nullptr）
+    if (p_open != nullptr) {
+        ImVec2 closeButtonPos(
+            windowPos.x + windowSize.x - closeButtonMargin - closeButtonSize,
+            windowPos.y + (titleBarHeight - closeButtonSize) * 0.5f
+        );
+        ImVec2 closeButtonCenter(
+            closeButtonPos.x + closeButtonSize * 0.5f,
+            closeButtonPos.y + closeButtonSize * 0.5f
+        );
+
+        // 关闭按钮交互区域
+        ImRect closeButtonRect(closeButtonPos, ImVec2(closeButtonPos.x + closeButtonSize, closeButtonPos.y + closeButtonSize));
+
+        // 检查鼠标是否在关闭按钮区域内
+        ImVec2 mousePos = GetIO().MousePos;
+        bool closeHovered = closeButtonRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        bool closePressed = closeHovered && IsMouseClicked(0);
+        bool closeHeld = closeHovered && IsMouseDown(0);
+
+        // 更新动画目标
+        state.closeButtonHover.target = closeHovered ? 1.0f : 0.0f;
+        state.closeButtonPress.target = closeHeld ? 1.0f : 0.0f;
+
+        float hoverT = std::clamp(state.closeButtonHover.value, 0.0f, 1.0f);
+        float pressT = std::clamp(state.closeButtonPress.value, 0.0f, 1.0f);
+
+        // 绘制关闭按钮背景（悬停时显示）
+        if (hoverT > 0.001f) {
+            ImVec4 bgColor = colors.surfaceContainerHighest;
+            bgColor = ApplyStateLayer(bgColor, colors.onSurface, colors.stateLayerHover * hoverT);
+            if (pressT > 0.001f) {
+                bgColor = ApplyStateLayer(bgColor, colors.onSurface, colors.stateLayerPressed * pressT);
+            }
+            dl->AddCircleFilled(closeButtonCenter, closeButtonSize * 0.5f, ColorToU32(bgColor));
+        }
+
+        // 绘制关闭图标
+        ImVec4 iconColor = colors.onSurfaceVariant;
+        if (hoverT > 0.5f) {
+            iconColor = colors.onSurface;
+        }
+        DrawCloseIcon(dl, closeButtonCenter, closeIconSize, ColorToU32(iconColor));
+
+        // 处理关闭事件
+        if (closePressed) {
+            *p_open = false;
+        }
+    }
+}
+
+void WindowScrollbar(float titleBarHeight) {
+    using namespace ImGui;
+
+    auto& ctx = GetContext();
+    const auto& colors = ctx.colors;
+    float dpi = ctx.dpiScale;
+
+    ImGuiWindow* window = GetCurrentWindow();
+    if (!window) return;
+
+    // 检查是否需要滚动条
+    float contentHeight = window->ContentSize.y;
+    float windowHeight = window->Size.y - titleBarHeight;
+
+    if (contentHeight <= windowHeight) {
+        return;  // 不需要滚动条
+    }
+
+    ImGuiID scrollbarId = GetID("##MD3Scrollbar");
+    auto& state = ctx.scrollbarStates[scrollbarId];
+
+    // 滚动条参数
+    float scrollbarWidthMin = 4.0f * dpi;    // 默认宽度
+    float scrollbarWidthMax = 8.0f * dpi;    // 悬停时宽度
+    float scrollbarMargin = 4.0f * dpi;      // 距离窗口边缘
+    float scrollbarPadding = 8.0f * dpi;     // 上下留白
+    float minThumbHeight = 32.0f * dpi;      // 最小滑块高度
+
+    ImVec2 windowPos = GetWindowPos();
+    ImVec2 windowSize = GetWindowSize();
+    float scrollY = GetScrollY();
+    float scrollMaxY = GetScrollMaxY();
+
+    // 检测滚动变化，显示滚动条
+    if (std::abs(scrollY - state.lastScrollY) > 0.5f) {
+        state.visibility.target = 1.0f;
+        state.hideTimer = 1.5f;  // 1.5秒后开始隐藏
+        state.lastScrollY = scrollY;
+    }
+
+    // 计算滚动条区域
+    float trackTop = windowPos.y + titleBarHeight + scrollbarPadding;
+    float trackBottom = windowPos.y + windowSize.y - scrollbarPadding;
+    float trackHeight = trackBottom - trackTop;
+
+    // 计算滑块大小和位置
+    float thumbRatio = windowHeight / contentHeight;
+    float thumbHeight = std::max(trackHeight * thumbRatio, minThumbHeight);
+    float thumbTravel = trackHeight - thumbHeight;
+    float scrollRatio = scrollMaxY > 0 ? scrollY / scrollMaxY : 0.0f;
+    float thumbTop = trackTop + thumbTravel * scrollRatio;
+
+    // 计算当前滚动条宽度（基于悬停状态）
+    float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+    float dragT = std::clamp(state.dragState.value, 0.0f, 1.0f);
+    float visibilityT = std::clamp(state.visibility.value, 0.0f, 1.0f);
+
+    // 悬停或拖拽时滚动条变粗
+    float currentWidth = scrollbarWidthMin + (scrollbarWidthMax - scrollbarWidthMin) * std::max(hoverT, dragT);
+
+    // 滚动条右侧位置
+    float scrollbarRight = windowPos.x + windowSize.x - scrollbarMargin;
+    float scrollbarLeft = scrollbarRight - currentWidth;
+
+    // 滑块区域（用于交互检测，使用最大宽度以便于点击）
+    ImRect thumbRect(
+        scrollbarRight - scrollbarWidthMax - 4.0f * dpi,  // 扩大点击区域
+        thumbTop,
+        scrollbarRight + 4.0f * dpi,
+        thumbTop + thumbHeight
+    );
+
+    // 轨道区域（用于点击跳转）
+    ImRect trackRect(
+        scrollbarRight - scrollbarWidthMax - 4.0f * dpi,
+        trackTop,
+        scrollbarRight + 4.0f * dpi,
+        trackBottom
+    );
+
+    // 检测交互
+    ImVec2 mousePos = GetIO().MousePos;
+    bool trackHovered = trackRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    bool thumbHovered = thumbRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+    // 当滚动条区域悬停时，设置 HoveredId 阻止窗口 resize
+    if (trackHovered || thumbHovered) {
+        SetHoveredID(scrollbarId);
+    }
+
+    // 静态变量跟踪拖拽状态
+    static bool isDragging = false;
+    static float dragStartY = 0.0f;
+    static float dragStartScroll = 0.0f;
+    static ImGuiID dragWindowId = 0;
+
+    // 开始拖拽
+    if (thumbHovered && IsMouseClicked(0)) {
+        isDragging = true;
+        dragStartY = mousePos.y;
+        dragStartScroll = scrollY;
+        dragWindowId = window->ID;
+        // 设置 ActiveID 以阻止其他控件响应鼠标事件
+        SetActiveID(scrollbarId, window);
+    }
+
+    // 处理拖拽
+    if (isDragging && dragWindowId == window->ID) {
+        if (IsMouseDown(0)) {
+            float deltaY = mousePos.y - dragStartY;
+            float scrollDelta = (deltaY / thumbTravel) * scrollMaxY;
+            SetScrollY(std::clamp(dragStartScroll + scrollDelta, 0.0f, scrollMaxY));
+
+            // 保持可见
+            state.visibility.target = 1.0f;
+            state.hideTimer = 1.5f;
+
+            // 保持 ActiveID
+            SetActiveID(scrollbarId, window);
+        } else {
+            isDragging = false;
+            dragWindowId = 0;
+            // 清除 ActiveID
+            if (GetActiveID() == scrollbarId) {
+                ClearActiveID();
+            }
+        }
+    }
+
+    // 点击轨道跳转
+    if (trackHovered && !thumbHovered && IsMouseClicked(0) && !isDragging) {
+        float clickRatio = (mousePos.y - trackTop - thumbHeight * 0.5f) / thumbTravel;
+        clickRatio = std::clamp(clickRatio, 0.0f, 1.0f);
+        SetScrollY(clickRatio * scrollMaxY);
+
+        state.visibility.target = 1.0f;
+        state.hideTimer = 1.5f;
+    }
+
+    // 更新动画目标
+    bool isActive = isDragging && dragWindowId == window->ID;
+    state.hoverState.target = (trackHovered || thumbHovered) ? 1.0f : 0.0f;
+    state.dragState.target = isActive ? 1.0f : 0.0f;
+
+    // 悬停时保持可见
+    if (trackHovered || thumbHovered || isActive) {
+        state.visibility.target = 1.0f;
+        state.hideTimer = 1.5f;
+    }
+
+    // 如果完全不可见，不绘制
+    if (visibilityT < 0.01f) {
+        return;
+    }
+
+    // 绘制滚动条
+    ImDrawList* dl = GetWindowDrawList();
+
+    // 滑块颜色
+    ImVec4 thumbColor = colors.onSurfaceVariant;
+    // 基础透明度 40%，悬停时 80%
+    float baseAlpha = 0.4f + 0.4f * std::max(hoverT, dragT);
+    thumbColor.w = baseAlpha * visibilityT;
+
+    // 绘制滑块（圆角胶囊形状）
+    float thumbRadius = currentWidth * 0.5f;
+    ImVec2 thumbMin(scrollbarLeft, thumbTop);
+    ImVec2 thumbMax(scrollbarRight, thumbTop + thumbHeight);
+
+    dl->AddRectFilled(thumbMin, thumbMax, ColorToU32(thumbColor), thumbRadius);
+}
+
 } // namespace MD3

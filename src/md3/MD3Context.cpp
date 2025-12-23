@@ -129,6 +129,8 @@ void Shutdown() {
     g_context.buttonStates.clear();
     g_context.sliderStates.clear();
     g_context.cardStates.clear();
+    g_context.windowStates.clear();
+    g_context.scrollbarStates.clear();
 
     g_context.initialized = false;
     std::cout << "[MD3] Material Design 3 UI system shutdown" << std::endl;
@@ -210,11 +212,28 @@ void BeginFrame(float dt) {
         state.openState.Update(dt);
         state.arrowRotation.Update(dt);
     }
+
+    for (auto& [id, state] : g_context.windowStates) {
+        state.closeButtonHover.Update(dt);
+        state.closeButtonPress.Update(dt);
+    }
+
+    for (auto& [id, state] : g_context.scrollbarStates) {
+        state.hoverState.Update(dt);
+        state.dragState.Update(dt);
+        state.visibility.Update(dt);
+        // 更新隐藏计时器
+        if (state.hideTimer > 0.0f) {
+            state.hideTimer -= dt;
+            if (state.hideTimer <= 0.0f) {
+                state.visibility.target = 0.0f;
+            }
+        }
+    }
 }
 
 void EndFrame() {
-    // Ripples 现在在 DrawRipples() 中使用 ImDrawList 渲染
-    // 这里不再需要做任何事情
+    // 预留给将来使用
 }
 
 void SetDarkMode(bool dark) {
@@ -383,6 +402,62 @@ unsigned int ColorToU32(const ImVec4& color) {
 
 ImVec4 HexToColor(unsigned int hex, float alpha) {
     return ImVec4(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f, alpha);
+}
+
+void AddImageRounded(ImDrawList* dl, unsigned int tex_id,
+                     const ImVec2& p_min, const ImVec2& p_max,
+                     const ImVec2& uv_min, const ImVec2& uv_max,
+                     unsigned int col, float rounding, int flags) {
+    if ((col & IM_COL32_A_MASK) == 0 || rounding < 0.5f) {
+        // 无透明度或无圆角，直接使用普通 AddImage
+        dl->AddImage((ImTextureID)(uintptr_t)tex_id, p_min, p_max, uv_min, uv_max, col);
+        return;
+    }
+
+    // 创建圆角矩形路径
+    dl->PathRect(p_min, p_max, rounding, flags);
+
+    // 获取路径点数量
+    int path_count = dl->_Path.Size;
+    if (path_count < 3) {
+        dl->PathClear();
+        return;
+    }
+
+    // 计算尺寸用于 UV 映射
+    float inv_w = 1.0f / (p_max.x - p_min.x);
+    float inv_h = 1.0f / (p_max.y - p_min.y);
+    float uv_w = uv_max.x - uv_min.x;
+    float uv_h = uv_max.y - uv_min.y;
+
+    // 切换到指定纹理
+    dl->PushTextureID((ImTextureID)(uintptr_t)tex_id);
+
+    // 预留顶点和索引空间（三角形扇形）
+    int idx_count = (path_count - 2) * 3;
+    dl->PrimReserve(idx_count, path_count);
+
+    // 获取当前顶点索引基址
+    ImDrawIdx idx_base = (ImDrawIdx)dl->_VtxCurrentIdx;
+
+    // 添加顶点（带 UV 计算）
+    for (int i = 0; i < path_count; i++) {
+        ImVec2 p = dl->_Path[i];
+        // 计算 UV：线性插值
+        float u = uv_min.x + (p.x - p_min.x) * inv_w * uv_w;
+        float v = uv_min.y + (p.y - p_min.y) * inv_h * uv_h;
+        dl->PrimWriteVtx(p, ImVec2(u, v), col);
+    }
+
+    // 添加索引（三角形扇形）
+    for (int i = 2; i < path_count; i++) {
+        dl->PrimWriteIdx(idx_base);
+        dl->PrimWriteIdx((ImDrawIdx)(idx_base + i - 1));
+        dl->PrimWriteIdx((ImDrawIdx)(idx_base + i));
+    }
+
+    dl->PopTextureID();
+    dl->PathClear();
 }
 
 } // namespace MD3
