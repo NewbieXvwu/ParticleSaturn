@@ -131,6 +131,7 @@ void Shutdown() {
     g_context.cardStates.clear();
     g_context.windowStates.clear();
     g_context.scrollbarStates.clear();
+    g_context.resizeStates.clear();
 
     g_context.initialized = false;
     std::cout << "[MD3] Material Design 3 UI system shutdown" << std::endl;
@@ -216,6 +217,11 @@ void BeginFrame(float dt) {
     for (auto& [id, state] : g_context.windowStates) {
         state.closeButtonHover.Update(dt);
         state.closeButtonPress.Update(dt);
+        // 窗口生命周期动画
+        state.openProgress.Update(dt);
+        state.scale.Update(dt);
+        state.offsetY.Update(dt);
+        state.alpha.Update(dt);
     }
 
     for (auto& [id, state] : g_context.scrollbarStates) {
@@ -229,6 +235,10 @@ void BeginFrame(float dt) {
                 state.visibility.target = 0.0f;
             }
         }
+    }
+
+    for (auto& [id, state] : g_context.resizeStates) {
+        state.hoverState.Update(dt);
     }
 }
 

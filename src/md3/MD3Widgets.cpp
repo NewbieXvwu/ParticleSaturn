@@ -1201,6 +1201,76 @@ bool BeginWindow(const char* title, bool* p_open, int flags) {
     float closeButtonMargin = 8.0f * dpi;
     float closeIconSize = 10.0f * dpi;
 
+    // 使用窗口名称生成稳定的 ID（在 Begin 之前）
+    ImGuiID windowId = ImHashStr(title);
+    auto& state = ctx.windowStates[windowId];
+
+    // 处理窗口生命周期状态
+    using LifecycleState = WindowAnimState::LifecycleState;
+
+    // 首帧初始化：设置动画初始值并开始打开动画
+    if (state.firstFrame) {
+        state.firstFrame = false;
+        state.lifecycleState = LifecycleState::Opening;
+        // 设置初始值（关闭状态）
+        state.scale.value = 0.85f;
+        state.scale.velocity = 0.0f;
+        state.offsetY.value = 12.0f;
+        state.offsetY.velocity = 0.0f;
+        state.alpha.value = 0.0f;
+        state.alpha.velocity = 0.0f;
+        // 设置目标值（打开状态）
+        state.scale.target = 1.0f;
+        state.offsetY.target = 0.0f;
+        state.alpha.target = 1.0f;
+    }
+
+    // 处理关闭请求
+    if (state.wantClose && state.lifecycleState == LifecycleState::Open) {
+        state.lifecycleState = LifecycleState::Closing;
+        // 关闭动画：更高刚度，无回弹
+        state.scale.stiffness = 550.0f;
+        state.scale.damping = 38.0f;
+        state.offsetY.stiffness = 550.0f;
+        state.offsetY.damping = 38.0f;
+        state.alpha.stiffness = 600.0f;
+        state.alpha.damping = 40.0f;
+        // 设置关闭目标
+        state.scale.target = 0.90f;
+        state.offsetY.target = 8.0f;
+        state.alpha.target = 0.0f;
+    }
+
+    // 检查动画是否完成
+    float scaleSettledThreshold = 0.005f;
+    float alphaSettledThreshold = 0.01f;
+    bool animationSettled = state.scale.IsSettled(scaleSettledThreshold) &&
+                            state.offsetY.IsSettled(scaleSettledThreshold) &&
+                            state.alpha.IsSettled(alphaSettledThreshold);
+
+    if (state.lifecycleState == LifecycleState::Opening && animationSettled) {
+        state.lifecycleState = LifecycleState::Open;
+        // 确保值精确
+        state.scale.SnapToTarget();
+        state.offsetY.SnapToTarget();
+        state.alpha.SnapToTarget();
+    } else if (state.lifecycleState == LifecycleState::Closing && animationSettled) {
+        state.lifecycleState = LifecycleState::Closed;
+        state.wantClose = false;
+        // 通知调用者窗口已关闭
+        if (p_open) {
+            *p_open = false;
+        }
+        // 重置状态以便下次打开
+        state.firstFrame = true;
+        return false;
+    }
+
+    // 获取动画值
+    float scaleValue = std::clamp(state.scale.value, 0.0f, 1.1f);  // 允许轻微过冲
+    float offsetYValue = state.offsetY.value;
+    float alphaValue = std::clamp(state.alpha.value, 0.0f, 1.0f);
+
     // 强制添加 NoTitleBar 标志
     ImGuiWindowFlags windowFlags = flags | ImGuiWindowFlags_NoTitleBar;
 
@@ -1208,7 +1278,10 @@ bool BeginWindow(const char* title, bool* p_open, int flags) {
     PushStyleVar(ImGuiStyleVar_WindowRounding, cornerRadius);
     PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    PushStyleColor(ImGuiCol_WindowBg, colors.surfaceContainerLow);
+    // 应用透明度到窗口背景
+    ImVec4 bgColor = colors.surfaceContainerLow;
+    bgColor.w *= alphaValue;
+    PushStyleColor(ImGuiCol_WindowBg, bgColor);
 
     // 开始 ImGui 窗口
     bool windowVisible = Begin(title, nullptr, windowFlags);
@@ -1220,28 +1293,32 @@ bool BeginWindow(const char* title, bool* p_open, int flags) {
         return false;
     }
 
-    ImGuiID windowId = GetCurrentWindow()->ID;
-    auto& state = ctx.windowStates[windowId];
-
     ImVec2 windowPos = GetWindowPos();
     ImVec2 windowSize = GetWindowSize();
     ImDrawList* dl = GetWindowDrawList();
 
-    // 绘制标题栏背景（与窗口背景融合，可选微调）
-    ImVec2 titleBarMin = windowPos;
-    ImVec2 titleBarMax = ImVec2(windowPos.x + windowSize.x, windowPos.y + titleBarHeight);
+    // 计算缩放变换（以窗口中心为原点）
+    ImVec2 windowCenter(windowPos.x + windowSize.x * 0.5f, windowPos.y + windowSize.y * 0.5f);
+    float scaledWidth = windowSize.x * scaleValue;
+    float scaledHeight = windowSize.y * scaleValue;
+    ImVec2 scaledPos(
+        windowCenter.x - scaledWidth * 0.5f,
+        windowCenter.y - scaledHeight * 0.5f + offsetYValue * dpi
+    );
 
-    // 标题栏可以与窗口背景相同，或略有区分
-    // 这里使用相同颜色，依靠标题文字和关闭按钮区分
-    // 如果需要区分，可以使用 surfaceContainer
+    // 应用缩放：调整绘制区域
+    // 注意：ImGui 窗口本身不支持直接缩放，我们通过绘制层模拟
+    // 对于完整的缩放效果，需要使用变换矩阵或调整所有绘制坐标
 
     // 绘制标题文字（居中）
+    ImVec4 titleColor = colors.onSurface;
+    titleColor.w *= alphaValue;
     ImVec2 titleSize = CalcTextSize(title);
     ImVec2 titlePos(
         windowPos.x + (windowSize.x - titleSize.x) * 0.5f,
         windowPos.y + (titleBarHeight - titleSize.y) * 0.5f
     );
-    dl->AddText(titlePos, ColorToU32(colors.onSurface), title);
+    dl->AddText(titlePos, ColorToU32(titleColor), title);
 
     // 绘制关闭按钮（如果 p_open 不为 nullptr）
     if (p_open != nullptr) {
@@ -1470,7 +1547,8 @@ void WindowScrollbar(float titleBarHeight) {
     float scrollbarWidthMin = 4.0f * dpi;    // 默认宽度
     float scrollbarWidthMax = 8.0f * dpi;    // 悬停时宽度
     float scrollbarMargin = 4.0f * dpi;      // 距离窗口边缘
-    float scrollbarPadding = 8.0f * dpi;     // 上下留白
+    float scrollbarPaddingTop = 8.0f * dpi;  // 上留白
+    float scrollbarPaddingBottom = 16.0f * dpi; // 下留白（避开窗口圆角）
     float minThumbHeight = 32.0f * dpi;      // 最小滑块高度
 
     ImVec2 windowPos = GetWindowPos();
@@ -1486,8 +1564,8 @@ void WindowScrollbar(float titleBarHeight) {
     }
 
     // 计算滚动条区域
-    float trackTop = windowPos.y + titleBarHeight + scrollbarPadding;
-    float trackBottom = windowPos.y + windowSize.y - scrollbarPadding;
+    float trackTop = windowPos.y + titleBarHeight + scrollbarPaddingTop;
+    float trackBottom = windowPos.y + windowSize.y - scrollbarPaddingBottom;
     float trackHeight = trackBottom - trackTop;
 
     // 计算滑块大小和位置
@@ -1527,8 +1605,19 @@ void WindowScrollbar(float titleBarHeight) {
 
     // 检测交互
     ImVec2 mousePos = GetIO().MousePos;
-    bool trackHovered = trackRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-    bool thumbHovered = thumbRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+    // 排除右下角 resize 区域（避免与 WindowResize 冲突）
+    float resizeAreaSize = 38.0f * dpi;
+    ImRect resizeRect(
+        windowPos.x + windowSize.x - resizeAreaSize,
+        windowPos.y + windowSize.y - resizeAreaSize,
+        windowPos.x + windowSize.x,
+        windowPos.y + windowSize.y
+    );
+    bool inResizeArea = resizeRect.Contains(mousePos);
+
+    bool trackHovered = trackRect.Contains(mousePos) && !inResizeArea && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    bool thumbHovered = thumbRect.Contains(mousePos) && !inResizeArea && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 
     // 当滚动条区域悬停时，设置 HoveredId 阻止窗口 resize
     if (trackHovered || thumbHovered) {
@@ -1615,6 +1704,125 @@ void WindowScrollbar(float titleBarHeight) {
     ImVec2 thumbMax(scrollbarRight, thumbTop + thumbHeight);
 
     dl->AddRectFilled(thumbMin, thumbMax, ColorToU32(thumbColor), thumbRadius);
+}
+
+//=============================================================================
+// Window Resize 控件（iPadOS 风格右下角圆弧）
+//=============================================================================
+
+void WindowResize(float minWidth, float minHeight) {
+    using namespace ImGui;
+
+    auto& ctx = GetContext();
+    const auto& colors = ctx.colors;
+    float dpi = ctx.dpiScale;
+
+    ImGuiWindow* window = GetCurrentWindow();
+    if (!window) return;
+
+    ImGuiID resizeId = GetID("##MD3Resize");
+    auto& state = ctx.resizeStates[resizeId];
+
+    ImVec2 windowPos = GetWindowPos();
+    ImVec2 windowSize = GetWindowSize();
+    ImVec2 mousePos = GetIO().MousePos;
+
+    // 参数
+    float windowRadius = 12.0f * dpi;      // 窗口圆角
+    float arcInset = -1.0f * dpi;          // 圆弧距离窗口内边缘的偏移（负值=更靠近边缘）
+    float arcRadius = 17.0f * dpi;         // 圆弧半径
+    float arcThickness = 3.8f * dpi;       // 圆弧线条粗细
+    float hitAreaSize = 38.0f * dpi;       // 点击区域大小
+
+    // 窗口右下角位置
+    float right = windowPos.x + windowSize.x;
+    float bottom = windowPos.y + windowSize.y;
+
+    // 圆弧圆心（往内偏移，完全避开窗口圆角）
+    float arcCenterX = right - windowRadius - arcInset - arcRadius;
+    float arcCenterY = bottom - windowRadius - arcInset - arcRadius;
+
+    // 点击检测区域（右下角方形区域）
+    ImRect hitRect(
+        right - hitAreaSize,
+        bottom - hitAreaSize,
+        right,
+        bottom
+    );
+
+    bool isHovered = hitRect.Contains(mousePos) && IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+    // 处理拖动
+    if (!state.isDragging) {
+        if (isHovered && IsMouseClicked(0)) {
+            state.isDragging = true;
+            state.dragStartMouseX = mousePos.x;
+            state.dragStartMouseY = mousePos.y;
+            state.dragStartSizeW = windowSize.x;
+            state.dragStartSizeH = windowSize.y;
+            SetActiveID(resizeId, window);
+        }
+    } else {
+        if (IsMouseDown(0)) {
+            float deltaX = mousePos.x - state.dragStartMouseX;
+            float deltaY = mousePos.y - state.dragStartMouseY;
+
+            float newSizeW = std::max(state.dragStartSizeW + deltaX, minWidth);
+            float newSizeH = std::max(state.dragStartSizeH + deltaY, minHeight);
+
+            SetWindowSize(ImVec2(newSizeW, newSizeH));
+            SetActiveID(resizeId, window);
+        } else {
+            state.isDragging = false;
+            if (GetActiveID() == resizeId) {
+                ClearActiveID();
+            }
+        }
+    }
+
+    // 设置鼠标光标和 HoveredID
+    if (isHovered || state.isDragging) {
+        SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+        if (!state.isDragging) {
+            SetHoveredID(resizeId);
+        }
+    }
+
+    // 更新动画
+    state.hoverState.target = (isHovered || state.isDragging) ? 1.0f : 0.0f;
+    float hoverT = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+
+    // 绘制圆弧
+    ImDrawList* dl = GetWindowDrawList();
+
+    // 圆弧颜色：默认 30% 透明度，悬停/拖动时 70%
+    ImVec4 arcColor = colors.onSurfaceVariant;
+    arcColor.w = 0.3f + 0.4f * hoverT;
+    ImU32 arcColorU32 = ColorToU32(arcColor);
+
+    // 绘制 90° 圆弧（从右边到下边）
+    // PathArcTo 角度：0 = 右, PI/2 = 下, PI = 左, 3PI/2 = 上
+    float arcStartAngle = 0.0f;           // 右边（3点钟方向）
+    float arcEndAngle = IM_PI * 0.5f;     // 下边（6点钟方向）
+
+    dl->PathArcTo(
+        ImVec2(arcCenterX, arcCenterY),
+        arcRadius,
+        arcStartAngle,
+        arcEndAngle,
+        12  // 分段数
+    );
+    dl->PathStroke(arcColorU32, false, arcThickness);
+
+    // 在圆弧两端添加圆形端点（实现圆角效果）
+    float capRadius = arcThickness * 0.5f;
+    // 起点（右边，3点钟方向）
+    ImVec2 startPoint(arcCenterX + arcRadius, arcCenterY);
+    // 终点（下边，6点钟方向）
+    ImVec2 endPoint(arcCenterX, arcCenterY + arcRadius);
+
+    dl->AddCircleFilled(startPoint, capRadius, arcColorU32, 8);
+    dl->AddCircleFilled(endPoint, capRadius, arcColorU32, 8);
 }
 
 } // namespace MD3
