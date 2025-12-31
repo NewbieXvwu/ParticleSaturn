@@ -728,6 +728,8 @@ int main() {
 
             if (appState.ui.showDebugWindow) {
             const auto& str = i18n::Get();
+            ImGui::SetNextWindowPos(ImVec2(20 * appState.ui.dpiScale, 10 * appState.ui.dpiScale),
+                                    ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
                                      ImGuiCond_FirstUseEver);
             ImGuiStyle& style            = ImGui::GetStyle();
@@ -737,7 +739,7 @@ int main() {
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
+            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
@@ -887,6 +889,9 @@ int main() {
 
             // 绘制 MD3 滚动条
             MD3::WindowScrollbar(40.0f * appState.ui.dpiScale);
+
+            // 处理窗口 resize（自定义实现）
+            MD3::WindowResize(300.0f * appState.ui.dpiScale, 200.0f * appState.ui.dpiScale);
 
             // 绘制标题栏（在所有内容之上）
             MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
