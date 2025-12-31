@@ -278,6 +278,28 @@
     <ResourceCompile Include="resources.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="EnsureGlfw3DllInOutDir"
+          BeforeTargets="CopyFilesToOutputDirectory;AfterBuild"
+          Condition="'$(Platform)'=='x64' and '$(Configuration)'!='Release_Static'">
+    <PropertyGroup>
+      <_VcpkgRuntimeBinDir>$(SolutionDir)vcpkg_installed\$(VcpkgTriplet)\bin\</_VcpkgRuntimeBinDir>
+      <_VcpkgRuntimeBinDir Condition="'$(Configuration)'=='Debug'">$(SolutionDir)vcpkg_installed\$(VcpkgTriplet)\debug\bin\</_VcpkgRuntimeBinDir>
+      <_VcpkgRuntimeBinDir Condition="'$(Configuration)'=='Debug' and !Exists('$(_VcpkgRuntimeBinDir)')">$(SolutionDir)vcpkg_installed\$(VcpkgTriplet)\$(VcpkgTriplet)\debug\bin\</_VcpkgRuntimeBinDir>
+      <_VcpkgRuntimeBinDir Condition="'$(Configuration)'!='Debug' and !Exists('$(_VcpkgRuntimeBinDir)')">$(SolutionDir)vcpkg_installed\$(VcpkgTriplet)\$(VcpkgTriplet)\bin\</_VcpkgRuntimeBinDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_RuntimeDll Include="$(_VcpkgRuntimeBinDir)glfw3.dll" Condition="Exists('$(_VcpkgRuntimeBinDir)glfw3.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_RuntimeDll)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RuntimeDll)'!=''" />
+
+    <Warning Text="glfw3.dll not found; expected at $(_VcpkgRuntimeBinDir)glfw3.dll (vcpkg triplet: $(VcpkgTriplet))."
+             Condition="'@(_RuntimeDll)'=='' and !Exists('$(OutDir)glfw3.dll')" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
