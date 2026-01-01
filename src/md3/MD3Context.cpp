@@ -274,6 +274,68 @@ void SetDpiScale(float scale) {
 // Ripple API 实现
 //=============================================================================
 
+struct RippleDrawData {
+    float centerX;
+    float centerY;
+    float radius;
+    float alpha;
+    float boundsX;
+    float boundsY;
+    float boundsW;
+    float boundsH;
+    float cornerRadius;
+    float colorR;
+    float colorG;
+    float colorB;
+    float screenW;
+    float screenH;
+};
+
+static void DrawRippleShaderCallback(const ImDrawList*, const ImDrawCmd* cmd) {
+    const RippleDrawData* data = static_cast<const RippleDrawData*>(cmd->UserCallbackData);
+    if (!data) {
+        return;
+    }
+
+    if (!g_context.rippleProgram || !g_context.rippleVAO) {
+        ImGui::MemFree(cmd->UserCallbackData);
+        return;
+    }
+
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+
+    glUseProgram(g_context.rippleProgram);
+
+    const GLint uRippleCenter = glGetUniformLocation(g_context.rippleProgram, "uRippleCenter");
+    const GLint uRippleRadius = glGetUniformLocation(g_context.rippleProgram, "uRippleRadius");
+    const GLint uRippleAlpha = glGetUniformLocation(g_context.rippleProgram, "uRippleAlpha");
+    const GLint uRippleColor = glGetUniformLocation(g_context.rippleProgram, "uRippleColor");
+    const GLint uBounds = glGetUniformLocation(g_context.rippleProgram, "uBounds");
+    const GLint uCornerRadius = glGetUniformLocation(g_context.rippleProgram, "uCornerRadius");
+    const GLint uScreenSize = glGetUniformLocation(g_context.rippleProgram, "uScreenSize");
+
+    if (uRippleCenter >= 0) glUniform2f(uRippleCenter, data->centerX, data->centerY);
+    if (uRippleRadius >= 0) glUniform1f(uRippleRadius, data->radius);
+    if (uRippleAlpha >= 0) glUniform1f(uRippleAlpha, data->alpha);
+    if (uRippleColor >= 0) glUniform4f(uRippleColor, data->colorR, data->colorG, data->colorB, 1.0f);
+    if (uBounds >= 0) glUniform4f(uBounds, data->boundsX, data->boundsY, data->boundsW, data->boundsH);
+    if (uCornerRadius >= 0) glUniform1f(uCornerRadius, data->cornerRadius);
+    if (uScreenSize >= 0) glUniform2f(uScreenSize, data->screenW, data->screenH);
+
+    glBindVertexArray(g_context.rippleVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+
+    glUseProgram(0);
+
+    ImGui::MemFree(cmd->UserCallbackData);
+}
+
 void TriggerRipple(ImGuiID id, float centerX, float centerY, float boundsX, float boundsY, float boundsW, float boundsH,
                    float cornerRadius) {
     // 计算最大半径（覆盖整个控件对角线）
@@ -346,6 +408,7 @@ void DrawRipples() {
     }
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    const bool useShader = (g_context.rippleProgram != 0 && g_context.rippleVAO != 0);
 
     // 绘制属于当前窗口的所有 Ripple
     for (const auto& r : g_context.ripples) {
@@ -368,19 +431,35 @@ void DrawRipples() {
         float centerX = currentBoundsX + r.relCenterX;
         float centerY = currentBoundsY + r.relCenterY;
 
-        // Ripple 颜色
-        ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
-        ImU32  col = ColorToU32(rippleColor);
-
-        // 保存裁剪区域
+        // 保存裁剪区域（先用矩形裁剪把像素工作量限定在控件区域内）
         ImVec2 clipMin(currentBoundsX, currentBoundsY);
         ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
         dl->PushClipRect(clipMin, clipMax, true);
 
-        // 使用多个同心圆来模拟 ripple 效果（渐变边缘）
-        // 简化版本：只画一个实心圆
-        int segments = 64;
-        dl->AddCircleFilled(ImVec2(centerX, centerY), r.radius, col, segments);
+        if (useShader) {
+            RippleDrawData* data = static_cast<RippleDrawData*>(ImGui::MemAlloc(sizeof(RippleDrawData)));
+            data->centerX = centerX;
+            data->centerY = centerY;
+            data->radius = r.radius;
+            data->alpha = r.alpha;
+            data->boundsX = currentBoundsX;
+            data->boundsY = currentBoundsY;
+            data->boundsW = r.boundsW;
+            data->boundsH = r.boundsH;
+            data->cornerRadius = r.cornerRadius;
+            data->colorR = r.colorR;
+            data->colorG = r.colorG;
+            data->colorB = r.colorB;
+            data->screenW = g_context.screenWidth;
+            data->screenH = g_context.screenHeight;
+
+            dl->AddCallback(DrawRippleShaderCallback, data);
+            dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+        } else {
+            ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
+            ImU32 col = ColorToU32(rippleColor);
+            dl->AddCircleFilled(ImVec2(centerX, centerY), r.radius, col, 64);
+        }
 
         dl->PopClipRect();
     }
