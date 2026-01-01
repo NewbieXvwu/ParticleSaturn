@@ -3,6 +3,7 @@
 // MD3.h - Material Design 3 完整 UI 系统
 // 包含弹簧动画、Ripple 效果、MD3 色彩系统和控件
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 #include <vector>
@@ -31,10 +32,41 @@ struct SpringAnimator {
 
     // 更新弹簧动画
     void Update(float dt) {
-        float force  = stiffness * (target - value);
-        float damper = -damping * velocity;
-        velocity += (force + damper) * dt;
-        value += velocity * dt;
+        if (!std::isfinite(dt) || dt <= 0.0f) {
+            return;
+        }
+
+        if (!std::isfinite(value) || !std::isfinite(target) || !std::isfinite(velocity) || !std::isfinite(stiffness) ||
+            !std::isfinite(damping)) {
+            if (!std::isfinite(target)) {
+                target = 0.0f;
+            }
+            value    = target;
+            velocity = 0.0f;
+            return;
+        }
+
+        // UI 动画不需要“精确物理”，但必须稳定：避免卡顿导致数值爆炸然后 NaN 把状态永久污染。
+        dt = std::clamp(dt, 0.0f, 0.5f);
+
+        // 将大 dt 切成小步，避免高刚度参数下积分不稳定。
+        constexpr float kMaxStep = 1.0f / 120.0f;
+        int steps = (dt > kMaxStep) ? (int)(dt / kMaxStep) + 1 : 1;
+        steps = std::min(steps, 64);
+        float stepDt = dt / (float)steps;
+
+        for (int i = 0; i < steps; i++) {
+            float force  = stiffness * (target - value);
+            float damper = -damping * velocity;
+            velocity += (force + damper) * stepDt;
+            value += velocity * stepDt;
+
+            if (!std::isfinite(value) || !std::isfinite(velocity)) {
+                value    = target;
+                velocity = 0.0f;
+                break;
+            }
+        }
     }
 
     // 检查是否已稳定

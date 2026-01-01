@@ -1650,6 +1650,7 @@ void HandleSmoothScroll(float scrollSpeed) {
     if (dt <= 0.0f) {
         dt = 1.0f / 60.0f;
     }
+    dt = ImClamp(dt, 0.0f, 0.5f);
 
     bool isLogChild = (window->ChildId != 0) && (std::strstr(window->Name, "LogScroll") != nullptr);
     float effectiveScrollSpeed = scrollSpeed * (isLogChild ? 1.0f : 1.5f);
@@ -1664,8 +1665,20 @@ void HandleSmoothScroll(float scrollSpeed) {
         state.lastAppliedScrollY = currentScrollY;
     }
 
+    // 如果某帧卡顿把弹簧积分搞成 NaN/Inf，这里必须立刻自愈：否则之后任何 wheel/target 运算都是 NaN，窗口就“死”了。
+    if (!std::isfinite(currentScrollY) || !std::isfinite(state.lastAppliedScrollY) || !std::isfinite(state.scrollY.value) ||
+        !std::isfinite(state.scrollY.target) || !std::isfinite(state.scrollY.velocity)) {
+        state.scrollY.value     = std::isfinite(currentScrollY) ? currentScrollY : 0.0f;
+        state.scrollY.target    = state.scrollY.value;
+        state.scrollY.velocity  = 0.0f;
+        state.lastAppliedScrollY = state.scrollY.value;
+    }
+
     const ImGuiIO& io = g.IO;
     float wheel = io.MouseWheel;
+    if (!std::isfinite(wheel)) {
+        wheel = 0.0f;
+    }
 
     bool hasNewRequest = false;
     float requestedTarget = state.scrollY.target;
@@ -1738,6 +1751,12 @@ void HandleSmoothScroll(float scrollSpeed) {
 
     state.scrollY.Update(dt);
     float smoothed = ImClamp(state.scrollY.value, 0.0f, scrollMaxY);
+    if (!std::isfinite(smoothed)) {
+        state.scrollY.value    = currentScrollY;
+        state.scrollY.target   = currentScrollY;
+        state.scrollY.velocity = 0.0f;
+        return;
+    }
     SetScrollY(window, smoothed);
     state.lastAppliedScrollY = smoothed;
 }

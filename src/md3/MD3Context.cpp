@@ -414,6 +414,11 @@ void DrawRipples() {
         return;
     }
 
+    const ImGuiIO& io = ImGui::GetIO();
+    const float    fbScaleX = (io.DisplayFramebufferScale.x > 0.0f) ? io.DisplayFramebufferScale.x : 1.0f;
+    const float    fbScaleY = (io.DisplayFramebufferScale.y > 0.0f) ? io.DisplayFramebufferScale.y : 1.0f;
+    const float    fbScaleR = std::max(fbScaleX, fbScaleY);
+
     // 获取当前窗口
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (!window) {
@@ -451,20 +456,21 @@ void DrawRipples() {
 
         if (useShader) {
             RippleDrawData* data = static_cast<RippleDrawData*>(ImGui::MemAlloc(sizeof(RippleDrawData)));
-            data->centerX = centerX;
-            data->centerY = centerY;
-            data->radius = r.radius;
-            data->alpha = r.alpha;
-            data->boundsX = currentBoundsX;
-            data->boundsY = currentBoundsY;
-            data->boundsW = r.boundsW;
-            data->boundsH = r.boundsH;
-            data->cornerRadius = r.cornerRadius;
-            data->colorR = r.colorR;
-            data->colorG = r.colorG;
-            data->colorB = r.colorB;
-            data->screenW = g_context.screenWidth;
-            data->screenH = g_context.screenHeight;
+            // Shader 使用 gl_FragCoord（Framebuffer 像素坐标），所以这里必须把 ImGui 坐标转换到 FB 像素坐标。
+            data->centerX      = centerX * fbScaleX;
+            data->centerY      = centerY * fbScaleY;
+            data->radius       = r.radius * fbScaleR;
+            data->alpha        = r.alpha;
+            data->boundsX      = currentBoundsX * fbScaleX;
+            data->boundsY      = currentBoundsY * fbScaleY;
+            data->boundsW      = r.boundsW * fbScaleX;
+            data->boundsH      = r.boundsH * fbScaleY;
+            data->cornerRadius = r.cornerRadius * fbScaleR;
+            data->colorR       = r.colorR;
+            data->colorG       = r.colorG;
+            data->colorB       = r.colorB;
+            data->screenW      = io.DisplaySize.x * fbScaleX;
+            data->screenH      = io.DisplaySize.y * fbScaleY;
 
             dl->AddCallback(DrawRippleShaderCallback, data);
             dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
