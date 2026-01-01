@@ -1,10 +1,12 @@
 #pragma once
 // 调试日志系统 - 带 ImGui 显示的日志记录
 
+#include <imgui.h>
+
 #include <deque>
 #include <mutex>
 #include <streambuf>
-#include <imgui.h>
+
 #include "md3/MD3.h"
 
 class DebugLog {

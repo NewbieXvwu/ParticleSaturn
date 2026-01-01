@@ -143,8 +143,8 @@ int main() {
     // 初始化手部追踪（异步，不阻塞启动）
     ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
     bool handTrackerInitialized = false;
-    bool handTrackerStarted     = false;  // 追踪器线程是否已启动
-    bool handTrackerCheckDone   = false;  // 是否已完成初始化检查
+    bool handTrackerStarted     = false; // 追踪器线程是否已启动
+    bool handTrackerCheckDone   = false; // 是否已完成初始化检查
 #ifdef EMBED_MODELS
     std::cout << "[Main] Loading embedded models..." << std::endl;
     HRSRC hPalmRes = FindResource(NULL, MAKEINTRESOURCE(IDR_PALM_MODEL), RT_RCDATA);
@@ -157,7 +157,7 @@ int main() {
                 << "  Hand model: " << (hHandRes ? "Found" : "NOT FOUND") << "\n\n"
                 << "The executable may be corrupted or built incorrectly.";
         ErrorHandler::ShowWarning(i18n::Get().embeddedResourceFailed, details.str());
-        handTrackerCheckDone = true;  // 跳过后续检查
+        handTrackerCheckDone = true; // 跳过后续检查
     } else {
         HGLOBAL hPalmData = LoadResource(NULL, hPalmRes);
         HGLOBAL hHandData = LoadResource(NULL, hHandRes);
@@ -178,7 +178,8 @@ int main() {
     if (!handTrackerCheckDone) {
         if (!InitTracker(0, nullptr)) {
             std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-            ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+            ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                      "InitTracker() returned false - thread creation failed");
             handTrackerCheckDone = true;
         } else {
             handTrackerStarted = true;
@@ -189,7 +190,8 @@ int main() {
     std::cout << "[Main] Initializing HandTracker (async)..." << std::endl;
     if (!InitTracker(0, ".")) {
         std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                  "InitTracker() returned false - thread creation failed");
         handTrackerCheckDone = true;
     } else {
         handTrackerStarted = true;
@@ -476,14 +478,14 @@ int main() {
                 } else if (appState.render.pixelRatio > 0.7f) {
                     appState.render.pixelRatio -= 0.03f;
                     appState.render.pixelRatio = std::max(appState.render.pixelRatio, 0.7f);
-                    pixelRatioChanged = true;
+                    pixelRatioChanged          = true;
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
                 if (appState.render.pixelRatio < 1.0f) {
                     appState.render.pixelRatio += 0.03f;
                     appState.render.pixelRatio = std::min(appState.render.pixelRatio, 1.0f);
-                    pixelRatioChanged = true;
+                    pixelRatioChanged          = true;
                 } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
                     appState.render.activeParticleCount = std::min(appState.render.activeParticleCount, MAX_PARTICLES);
@@ -734,177 +736,181 @@ int main() {
                                   appState.ui.isDarkMode);
 
             if (appState.ui.showDebugWindow) {
-            const auto& str = i18n::Get();
-            ImGui::SetNextWindowPos(ImVec2(20 * appState.ui.dpiScale, 10 * appState.ui.dpiScale),
-                                    ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
-                                     ImGuiCond_FirstUseEver);
-            ImGuiStyle& style            = ImGui::GetStyle();
-            ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
+                const auto& str = i18n::Get();
+                ImGui::SetNextWindowPos(ImVec2(20 * appState.ui.dpiScale, 10 * appState.ui.dpiScale),
+                                        ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
+                                         ImGuiCond_FirstUseEver);
+                ImGuiStyle& style            = ImGui::GetStyle();
+                ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
 
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
+                ImGui::Begin(str.debugPanelTitle, nullptr,
+                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
+                                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
 
-            ImVec2      pos  = ImGui::GetWindowPos();
-            ImVec2      size = ImGui::GetWindowSize();
-            ImDrawList* dl   = ImGui::GetWindowDrawList();
+                ImVec2      pos  = ImGui::GetWindowPos();
+                ImVec2      size = ImGui::GetWindowSize();
+                ImDrawList* dl   = ImGui::GetWindowDrawList();
 
-            if (appState.ui.enableBlur) {
-                ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
-                ImVec2 uv1 =
-                    ImVec2((pos.x + size.x) / appState.window.width, 1.0f - (pos.y + size.y) / appState.window.height);
-                // 使用带圆角的图片绘制，避免黑边
-                MD3::AddImageRounded(dl, fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
-                                     IM_COL32(255, 255, 255, 255), style.WindowRounding);
-                ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
-                dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
-                ImU32 highlight = appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
-                dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
-            } else {
-                // Use the saved original background color instead of the overridden transparent one
-                ImVec4 bgCol = originalWindowBg;
-                bgCol.w      = 0.95f;
-                dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
-                                  style.WindowRounding);
-            }
-            ImGui::PopStyleColor(4);
-
-            // 为标题栏预留空间
-            MD3::WindowTitleBarSpace();
-
-            if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
-                ImGui::Text("%s: %.1f", str.fps, currentFps);
-                ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
-                ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
-                ImGui::Text("%s: %u x %u", str.resolution, appState.window.width, appState.window.height);
-
-                ImGui::Dummy(ImVec2(0, 5));
-
-                // VSync Mode selection
-                ImGui::Text("%s:", str.vsync);
-                int vsyncIndex;
-                if (appState.render.vsyncMode == 0) {
-                    vsyncIndex = 0;
-                } else if (appState.render.vsyncMode == 1) {
-                    vsyncIndex = 1;
-                } else {
-                    vsyncIndex = 2; // -1 (Adaptive)
-                }
-
-                if (appState.render.adaptiveVSyncSupported) {
-                    const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn, str.vsyncAdaptive};
-                    if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
-                        int newMode               = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
-                        appState.render.vsyncMode = newMode;
-                        glfwSwapInterval(newMode);
-                        std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
-                    }
-                } else {
-                    const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn};
-                    if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
-                        appState.render.vsyncMode = vsyncIndex;
-                        glfwSwapInterval(vsyncIndex);
-                        std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
-                    }
-                }
-                MD3::EndCollapsingHeader();
-            }
-
-            if (MD3::BeginCollapsingHeader(str.sectionHandTracking, true)) {
-                ImGui::Text("%s: %s", str.handDetected, handState.hasHand ? str.yes : str.no);
-                ImGui::Text("%s: %.3f", str.scale, handState.scale);
-                ImGui::Text("Rot X: %.3f", handState.rotX);
-                ImGui::Text("Rot Y: %.3f", handState.rotY);
-                ImGui::Separator();
-                ImGui::Text("%s: %.3f", str.animationScale, currentAnim.scale);
-                ImGui::Text("%s: %.3f", str.animationRotX, currentAnim.rotX);
-                ImGui::Text("%s: %.3f", str.animationRotY, currentAnim.rotY);
-                ImGui::Separator();
-                bool cameraDebug = GetTrackerDebugMode();
-                if (MD3::Toggle(str.showCameraDebug, &cameraDebug)) {
-                    SetTrackerDebugMode(cameraDebug);
-                    appState.ui.showCameraDebug = cameraDebug;
-                }
-                MD3::EndCollapsingHeader();
-            }
-
-            if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
-                if (MD3::Toggle(str.darkMode, &appState.ui.isDarkMode)) {
-                    UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
-                    MD3::SetDarkMode(appState.ui.isDarkMode);
-                }
-                ImGui::Dummy(ImVec2(0, 5));
-                MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
                 if (appState.ui.enableBlur) {
-                    ImGui::Indent(10);
-                    MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
-                    ImGui::Unindent(10);
+                    ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
+                    ImVec2 uv1 = ImVec2((pos.x + size.x) / appState.window.width,
+                                        1.0f - (pos.y + size.y) / appState.window.height);
+                    // 使用带圆角的图片绘制，避免黑边
+                    MD3::AddImageRounded(dl, fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
+                                         IM_COL32(255, 255, 255, 255), style.WindowRounding);
+                    ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
+                    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
+                    ImU32 highlight =
+                        appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                    dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
+                } else {
+                    // Use the saved original background color instead of the overridden transparent one
+                    ImVec4 bgCol = originalWindowBg;
+                    bgCol.w      = 0.95f;
+                    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
+                                      style.WindowRounding);
                 }
-                MD3::EndCollapsingHeader();
-            }
+                ImGui::PopStyleColor(4);
 
-            if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
-                const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
-                if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
-                    ImGui::Text("%s: %s", str.backdrop,
-                                backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
+                // 为标题栏预留空间
+                MD3::WindowTitleBarSpace();
+
+                if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
+                    ImGui::Text("%s: %.1f", str.fps, currentFps);
+                    ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
+                    ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
+                    ImGui::Text("%s: %u x %u", str.resolution, appState.window.width, appState.window.height);
+
+                    ImGui::Dummy(ImVec2(0, 5));
+
+                    // VSync Mode selection
+                    ImGui::Text("%s:", str.vsync);
+                    int vsyncIndex;
+                    if (appState.render.vsyncMode == 0) {
+                        vsyncIndex = 0;
+                    } else if (appState.render.vsyncMode == 1) {
+                        vsyncIndex = 1;
+                    } else {
+                        vsyncIndex = 2; // -1 (Adaptive)
+                    }
+
+                    if (appState.render.adaptiveVSyncSupported) {
+                        const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn, str.vsyncAdaptive};
+                        if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 3)) {
+                            int newMode               = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
+                            appState.render.vsyncMode = newMode;
+                            glfwSwapInterval(newMode);
+                            std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
+                        }
+                    } else {
+                        const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn};
+                        if (MD3::Combo("##VSyncMode", &vsyncIndex, vsyncModes, 2)) {
+                            appState.render.vsyncMode = vsyncIndex;
+                            glfwSwapInterval(vsyncIndex);
+                            std::cout << "[Main] VSync mode changed to: " << vsyncModes[vsyncIndex] << std::endl;
+                        }
+                    }
+                    MD3::EndCollapsingHeader();
                 }
-                ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
-                ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
-                MD3::EndCollapsingHeader();
-            }
 
-            if (MD3::BeginCollapsingHeader(str.sectionAdvanced)) {
-                // SIMD Mode selection
-                ImGui::Text("%s:", str.simdMode);
-                int         currentSIMD = GetTrackerSIMDMode();
-                const char* simdModes[] = {str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar};
-                if (MD3::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
-                    SetTrackerSIMDMode(currentSIMD);
-                    std::cout << "[Main] SIMD mode changed to: " << GetTrackerSIMDImplementation() << std::endl;
+                if (MD3::BeginCollapsingHeader(str.sectionHandTracking, true)) {
+                    ImGui::Text("%s: %s", str.handDetected, handState.hasHand ? str.yes : str.no);
+                    ImGui::Text("%s: %.3f", str.scale, handState.scale);
+                    ImGui::Text("Rot X: %.3f", handState.rotX);
+                    ImGui::Text("Rot Y: %.3f", handState.rotY);
+                    ImGui::Separator();
+                    ImGui::Text("%s: %.3f", str.animationScale, currentAnim.scale);
+                    ImGui::Text("%s: %.3f", str.animationRotX, currentAnim.rotX);
+                    ImGui::Text("%s: %.3f", str.animationRotY, currentAnim.rotY);
+                    ImGui::Separator();
+                    bool cameraDebug = GetTrackerDebugMode();
+                    if (MD3::Toggle(str.showCameraDebug, &cameraDebug)) {
+                        SetTrackerDebugMode(cameraDebug);
+                        appState.ui.showCameraDebug = cameraDebug;
+                    }
+                    MD3::EndCollapsingHeader();
                 }
-                ImGui::Text("%s: %s", str.simdCurrent, GetTrackerSIMDImplementation());
-                MD3::EndCollapsingHeader();
-            }
 
-            if (MD3::BeginCollapsingHeader(str.sectionLog, true)) {
-                if (MD3::TonalButton(str.clearLog)) {
-                    DebugLog::Instance().Clear();
+                if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
+                    if (MD3::Toggle(str.darkMode, &appState.ui.isDarkMode)) {
+                        UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
+                        MD3::SetDarkMode(appState.ui.isDarkMode);
+                    }
+                    ImGui::Dummy(ImVec2(0, 5));
+                    MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
+                    if (appState.ui.enableBlur) {
+                        ImGui::Indent(10);
+                        MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
+                        ImGui::Unindent(10);
+                    }
+                    MD3::EndCollapsingHeader();
                 }
-                ImGui::SameLine();
-                if (MD3::TonalButton(str.copyAllLog)) {
-                    std::string allText = DebugLog::Instance().GetAllText();
-                    ImGui::SetClipboardText(allText.c_str());
+
+                if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
+                    const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
+                    if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
+                        ImGui::Text(
+                            "%s: %s", str.backdrop,
+                            backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
+                    }
+                    ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
+                    ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
+                    MD3::EndCollapsingHeader();
                 }
-                DebugLog::Instance().Draw();
-                MD3::EndCollapsingHeader();
+
+                if (MD3::BeginCollapsingHeader(str.sectionAdvanced)) {
+                    // SIMD Mode selection
+                    ImGui::Text("%s:", str.simdMode);
+                    int         currentSIMD = GetTrackerSIMDMode();
+                    const char* simdModes[] = {str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar};
+                    if (MD3::Combo("##SIMDMode", &currentSIMD, simdModes, 4)) {
+                        SetTrackerSIMDMode(currentSIMD);
+                        std::cout << "[Main] SIMD mode changed to: " << GetTrackerSIMDImplementation() << std::endl;
+                    }
+                    ImGui::Text("%s: %s", str.simdCurrent, GetTrackerSIMDImplementation());
+                    MD3::EndCollapsingHeader();
+                }
+
+                if (MD3::BeginCollapsingHeader(str.sectionLog, true)) {
+                    if (MD3::TonalButton(str.clearLog)) {
+                        DebugLog::Instance().Clear();
+                    }
+                    ImGui::SameLine();
+                    if (MD3::TonalButton(str.copyAllLog)) {
+                        std::string allText = DebugLog::Instance().GetAllText();
+                        ImGui::SetClipboardText(allText.c_str());
+                    }
+                    DebugLog::Instance().Draw();
+                    MD3::EndCollapsingHeader();
+                }
+
+                // Crash Analyzer button
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+                if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(-1, 48 * appState.ui.dpiScale))) {
+                    CrashAnalyzer::Open();
+                }
+
+                // 在窗口关闭前绘制 Ripple 效果（跟随滚动）
+                MD3::DrawRipples();
+
+                // 绘制 MD3 滚动条
+                MD3::WindowScrollbar(40.0f * appState.ui.dpiScale);
+
+                // 处理窗口 resize（自定义实现）
+                MD3::WindowResize(300.0f * appState.ui.dpiScale, 200.0f * appState.ui.dpiScale);
+
+                // 绘制标题栏（在所有内容之上）
+                MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
+
+                ImGui::End();
             }
-
-            // Crash Analyzer button
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-            if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(-1, 48 * appState.ui.dpiScale))) {
-                CrashAnalyzer::Open();
-            }
-
-            // 在窗口关闭前绘制 Ripple 效果（跟随滚动）
-            MD3::DrawRipples();
-
-            // 绘制 MD3 滚动条
-            MD3::WindowScrollbar(40.0f * appState.ui.dpiScale);
-
-            // 处理窗口 resize（自定义实现）
-            MD3::WindowResize(300.0f * appState.ui.dpiScale, 200.0f * appState.ui.dpiScale);
-
-            // 绘制标题栏（在所有内容之上）
-            MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
-
-            ImGui::End();
-        }
 
             // MD3 帧结束（必须在 ImGui::Render 之前）
             MD3::EndFrame();
