@@ -5,6 +5,8 @@
 #include <Windows.h>
 
 #include <commdlg.h>
+#include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <regex>
@@ -18,6 +20,22 @@
 #pragma comment(lib, "comdlg32.lib")
 
 namespace CrashAnalyzer {
+
+static void AppendTextToBuffer(char* dst, size_t dstSize, const std::string& text) {
+    if (!dst || dstSize == 0 || text.empty()) {
+        return;
+    }
+
+    size_t curLen = strlen(dst);
+    if (curLen >= dstSize - 1) {
+        return;
+    }
+
+    size_t maxAppend = (dstSize - 1) - curLen;
+    size_t n         = std::min(maxAppend, text.size());
+    memcpy(dst + curLen, text.data(), n);
+    dst[curLen + n] = '\0';
+}
 
 // DbgHelp types (defined manually to avoid header dependency)
 #define SYMOPT_UNDNAME 0x00000002
@@ -454,34 +472,37 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         ImGui::Text("%s", str.crashReport);
         ImGui::Separator();
 
-        ImGui::InputTextMultiline("##ReportInput", g_state.reportInput, sizeof(g_state.reportInput), ImVec2(-1, 200),
-                                  ImGuiInputTextFlags_AllowTabInput);
+        {
+            ImGuiStyle& style = ImGui::GetStyle();
+
+            float width  = ImGui::GetContentRegionAvail().x;
+            float height = 200.0f;
+            ImVec2 pos   = ImGui::GetCursorScreenPos();
+            ImVec2 size  = ImVec2(width, height);
+
+            MD3::PushRoundedClipRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), style.FrameRounding);
+            ImGui::InputTextMultiline("##ReportInput", g_state.reportInput, sizeof(g_state.reportInput), size,
+                                      ImGuiInputTextFlags_AllowTabInput);
+            MD3::PopRoundedClipRect();
+        }
 
         // Right-click context menu for paste
+        float dpi = MD3::GetContext().dpiScale;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * dpi, 6.0f * dpi));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
         if (ImGui::BeginPopupContextItem("##ReportInputContext")) {
-            if (ImGui::MenuItem(str.paste)) {
-                if (OpenClipboard(nullptr)) {
-                    HANDLE hData = GetClipboardData(CF_TEXT);
-                    if (hData) {
-                        char* pszText = static_cast<char*>(GlobalLock(hData));
-                        if (pszText) {
-                            size_t currentLen = strlen(g_state.reportInput);
-                            size_t pasteLen   = strlen(pszText);
-                            size_t maxLen     = sizeof(g_state.reportInput) - 1;
-                            if (currentLen + pasteLen < maxLen) {
-                                strcat_s(g_state.reportInput, pszText);
-                            }
-                            GlobalUnlock(hData);
-                        }
-                    }
-                    CloseClipboard();
-                }
+            const char* clipText = ImGui::GetClipboardText();
+            bool        canPaste = (clipText && clipText[0] != '\0');
+            if (MD3::MenuItem(str.paste, canPaste, 36.0f * dpi)) {
+                AppendTextToBuffer(g_state.reportInput, sizeof(g_state.reportInput), clipText);
             }
-            if (ImGui::MenuItem(str.clear)) {
+            bool canClear = g_state.reportInput[0] != '\0';
+            if (MD3::MenuItem(str.clear, canClear, 36.0f * dpi)) {
                 g_state.reportInput[0] = '\0';
             }
             ImGui::EndPopup();
         }
+        ImGui::PopStyleVar(2);
 
         ImGui::Spacing();
 

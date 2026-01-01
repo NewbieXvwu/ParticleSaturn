@@ -822,31 +822,48 @@ bool Selectable(const char* label, bool selected) {
     // 绘制背景（在 InvisibleButton 之前，使用 GetWindowDrawList）
     ImDrawList* dl = GetWindowDrawList();
 
-    // 先检测悬停状态（使用 ItemHoverable）
-    ImGuiID id = GetID(label);
-    ImRect  bb(pos, ImVec2(pos.x + width, pos.y + height));
-
     // 创建不可见按钮
     bool clicked = InvisibleButton(label, ImVec2(width, height));
     bool hovered = IsItemHovered();
+
+    ImGuiID id = GetItemID();
+
+    // 获取或创建动画状态
+    auto  it    = ctx.selectableStates.find(id);
+    bool  isNew = (it == ctx.selectableStates.end());
+    auto& state = ctx.selectableStates[id];
+
+    if (isNew) {
+        state.hoverState.value  = hovered ? 1.0f : 0.0f;
+        state.hoverState.target = state.hoverState.value;
+    }
+
+    state.lastFrameSeen     = ctx.frameIndex;
+    state.hoverState.target = hovered ? 1.0f : 0.0f;
+    float hoverT            = std::clamp(state.hoverState.value, 0.0f, 1.0f);
 
     // 计算颜色
     ImVec4 bgColor    = ImVec4(0, 0, 0, 0);
     ImVec4 textColor  = colors.onSurface;
     ImVec4 checkColor = colors.primary;
 
-    // 悬停状态层
-    if (hovered) {
-        bgColor = ApplyStateLayer(colors.surfaceContainer, colors.onSurface, colors.stateLayerHover);
+    bool needBg = false;
+
+    // 选中项背景（基础层）
+    if (selected) {
+        bgColor = ApplyStateLayer(colors.surfaceContainer, colors.primary, 0.08f);
+        needBg  = true;
     }
 
-    // 选中项背景
-    if (selected && !hovered) {
-        bgColor = ApplyStateLayer(colors.surfaceContainer, colors.primary, 0.08f);
+    // 悬停状态层（淡入淡出）
+    if (hoverT > 0.001f) {
+        ImVec4 base = needBg ? bgColor : colors.surfaceContainer;
+        bgColor     = ApplyStateLayer(base, colors.onSurface, colors.stateLayerHover * hoverT);
+        needBg      = true;
     }
 
     // 绘制背景（带圆角）
-    if (bgColor.w > 0.001f) {
+    if (needBg) {
         dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius);
     }
 
@@ -873,6 +890,74 @@ bool Selectable(const char* label, bool selected) {
     return clicked;
 }
 
+bool MenuItem(const char* label, bool enabled, float height_override) {
+    using namespace ImGui;
+
+    auto&       ctx    = GetContext();
+    const auto& colors = ctx.colors;
+    float       dpi    = ctx.dpiScale;
+
+    float height       = (height_override > 0.0f) ? height_override : (40.0f * dpi);
+    float paddingX     = 12.0f * dpi;
+    float cornerRadius = 12.0f * dpi;
+
+    if (!enabled) {
+        BeginDisabled();
+    }
+
+    ImVec2 pos   = GetCursorScreenPos();
+    float  width = GetContentRegionAvail().x;
+    if (width < 1.0f) {
+        width = CalcTextSize(label).x + paddingX * 2.0f;
+    }
+
+    bool clicked = InvisibleButton(label, ImVec2(width, height));
+    bool hovered = IsItemHovered();
+    ImGuiID id   = GetItemID();
+
+    // 获取或创建动画状态
+    auto  it    = ctx.selectableStates.find(id);
+    bool  isNew = (it == ctx.selectableStates.end());
+    auto& state = ctx.selectableStates[id];
+
+    if (isNew) {
+        state.hoverState.value  = hovered ? 1.0f : 0.0f;
+        state.hoverState.target = state.hoverState.value;
+    }
+
+    state.lastFrameSeen     = ctx.frameIndex;
+    state.hoverState.target = hovered ? 1.0f : 0.0f;
+    float hoverT            = std::clamp(state.hoverState.value, 0.0f, 1.0f);
+
+    ImDrawList* dl = GetWindowDrawList();
+
+    if (hoverT > 0.001f) {
+        ImVec4 baseBg  = GetStyleColorVec4(ImGuiCol_PopupBg);
+        ImVec4 bgColor = ApplyStateLayer(baseBg, colors.onSurface, colors.stateLayerHover * hoverT);
+        dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius);
+    }
+
+    ImVec4 textColor = colors.onSurface;
+    if (!enabled) {
+        textColor.w *= 0.38f;
+    }
+
+    float  textOffsetY = (height - GetTextLineHeight()) * 0.5f;
+    ImVec2 textPos(pos.x + paddingX, pos.y + textOffsetY);
+    dl->AddText(textPos, ColorToU32(textColor), label);
+
+    if (!enabled) {
+        EndDisabled();
+        return false;
+    }
+
+    if (clicked) {
+        CloseCurrentPopup();
+    }
+
+    return clicked;
+}
+
 bool Combo(const char* label, int* current_item, const char* const items[], int items_count) {
     bool        changed = false;
     const char* preview = (*current_item >= 0 && *current_item < items_count) ? items[*current_item] : "";
@@ -880,10 +965,12 @@ bool Combo(const char* label, int* current_item, const char* const items[], int 
     if (BeginCombo(label, preview)) {
         for (int i = 0; i < items_count; i++) {
             bool selected = (*current_item == i);
+            ImGui::PushID(i);
             if (Selectable(items[i], selected)) {
                 *current_item = i;
                 changed       = true;
             }
+            ImGui::PopID();
         }
         EndCombo();
     }

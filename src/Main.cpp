@@ -60,6 +60,7 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4); // 升级到 4.4 以支持 glBufferStorage
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
+    glfwWindowHint(GLFW_STENCIL_BITS, 8);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
 
     // 创建窗口
@@ -702,7 +703,7 @@ int main() {
             glClearColor(0, 0, 0, 1);
             glBlendFunc(GL_ONE, GL_ZERO);
         }
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glUseProgram(pQuad);
         glActiveTexture(GL_TEXTURE0);

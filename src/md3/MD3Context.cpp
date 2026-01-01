@@ -129,9 +129,13 @@ void Shutdown() {
     g_context.buttonStates.clear();
     g_context.sliderStates.clear();
     g_context.cardStates.clear();
+    g_context.comboStates.clear();
+    g_context.selectableStates.clear();
+    g_context.collapsingHeaderStates.clear();
     g_context.windowStates.clear();
     g_context.scrollbarStates.clear();
     g_context.resizeStates.clear();
+    g_context.smoothScrollStates.clear();
 
     g_context.initialized = false;
     std::cout << "[MD3] Material Design 3 UI system shutdown" << std::endl;
@@ -140,6 +144,7 @@ void Shutdown() {
 void BeginFrame(float dt) {
     g_context.deltaTime = dt;
     g_context.currentTime += dt;
+    g_context.frameIndex++;
 
     // 更新所有 Ripple 动画
     auto&       ripples = g_context.ripples;
@@ -206,6 +211,14 @@ void BeginFrame(float dt) {
         state.hoverState.Update(dt);
         state.openState.Update(dt);
         state.arrowRotation.Update(dt);
+    }
+
+    int expectedFrameSeen = g_context.frameIndex - 1;
+    for (auto& [id, state] : g_context.selectableStates) {
+        if (state.lastFrameSeen != expectedFrameSeen) {
+            state.hoverState.target = 0.0f;
+        }
+        state.hoverState.Update(dt);
     }
 
     for (auto& [id, state] : g_context.collapsingHeaderStates) {
@@ -468,6 +481,126 @@ void DrawRipples() {
 //=============================================================================
 // 工具函数实现
 //=============================================================================
+
+//=============================================================================
+// 圆角裁剪（stencil）
+//=============================================================================
+
+struct RoundedClipBeginData {
+    int prevRef;
+    int newRef;
+};
+
+struct RoundedClipEndData {
+    int ref;
+    bool disable;
+};
+
+static std::vector<int> s_roundedClipStack;
+static int              s_roundedClipRef = 0;
+
+static void RoundedClipBeginCallback(const ImDrawList*, const ImDrawCmd* cmd) {
+    const auto* data = static_cast<const RoundedClipBeginData*>(cmd->UserCallbackData);
+    if (!data) {
+        return;
+    }
+
+    glEnable(GL_STENCIL_TEST);
+    glStencilMask(0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+    if (data->prevRef == 0) {
+        glStencilFunc(GL_ALWAYS, data->newRef, 0xFF);
+    } else {
+        glStencilFunc(GL_EQUAL, data->prevRef, 0xFF);
+    }
+
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+    ImGui::MemFree(cmd->UserCallbackData);
+}
+
+static void RoundedClipEndCallback(const ImDrawList*, const ImDrawCmd* cmd) {
+    const auto* data = static_cast<const RoundedClipEndData*>(cmd->UserCallbackData);
+    if (!data) {
+        return;
+    }
+
+    if (data->disable) {
+        glDisable(GL_STENCIL_TEST);
+        glStencilMask(0xFF);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        ImGui::MemFree(cmd->UserCallbackData);
+        return;
+    }
+
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glStencilMask(0x00);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilFunc(GL_EQUAL, data->ref, 0xFF);
+
+    ImGui::MemFree(cmd->UserCallbackData);
+}
+
+void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float rounding) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (!dl) {
+        return;
+    }
+
+    int prevRef = s_roundedClipRef;
+    int newRef  = prevRef + 1;
+    if (newRef <= 0 || newRef > 255) {
+        s_roundedClipRef = 0;
+        s_roundedClipStack.clear();
+        prevRef = 0;
+        newRef  = 1;
+    }
+
+    s_roundedClipStack.push_back(prevRef);
+    s_roundedClipRef = newRef;
+
+    auto* begin = static_cast<RoundedClipBeginData*>(ImGui::MemAlloc(sizeof(RoundedClipBeginData)));
+    begin->prevRef = prevRef;
+    begin->newRef  = newRef;
+    dl->AddCallback(RoundedClipBeginCallback, begin);
+
+    ImVec4 dummy(1.0f, 1.0f, 1.0f, 1.0f);
+    dl->AddRectFilled(clip_min, clip_max, ColorToU32(dummy), rounding);
+
+    auto* end = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
+    end->ref     = newRef;
+    end->disable = false;
+    dl->AddCallback(RoundedClipEndCallback, end);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
+
+void PopRoundedClipRect() {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (!dl) {
+        return;
+    }
+
+    if (s_roundedClipStack.empty()) {
+        s_roundedClipRef = 0;
+        auto* end        = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
+        end->ref         = 0;
+        end->disable     = true;
+        dl->AddCallback(RoundedClipEndCallback, end);
+        dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+        return;
+    }
+
+    int prevRef = s_roundedClipStack.back();
+    s_roundedClipStack.pop_back();
+    s_roundedClipRef = prevRef;
+
+    auto* end    = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
+    end->ref     = prevRef;
+    end->disable = (prevRef == 0);
+    dl->AddCallback(RoundedClipEndCallback, end);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
 
 ImVec4 BlendColors(const ImVec4& base, const ImVec4& overlay, float alpha) {
     return ImVec4(base.x + (overlay.x - base.x) * alpha, base.y + (overlay.y - base.y) * alpha,

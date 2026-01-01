@@ -248,6 +248,14 @@ struct ComboAnimState {
     {}
 };
 
+// Selectable（用于 Combo/List 等）动画状态
+struct SelectableAnimState {
+    SpringAnimator hoverState; // 悬停状态
+    int            lastFrameSeen = -1;
+
+    SelectableAnimState() : hoverState(0.0f, 500.0f, 30.0f) {}
+};
+
 // CollapsingHeader 折叠头动画状态
 struct CollapsingHeaderAnimState {
     SpringAnimator hoverState;        // 悬停状态
@@ -340,6 +348,7 @@ struct MD3Context {
     float dpiScale    = 1.0f;
     float deltaTime   = 0.0f;
     float currentTime = 0.0f;
+    int   frameIndex  = 0;
 
     // 色彩方案
     MD3ColorScheme colors;
@@ -357,6 +366,7 @@ struct MD3Context {
     std::unordered_map<ImGuiID, SliderAnimState>           sliderStates;
     std::unordered_map<ImGuiID, CardAnimState>             cardStates;
     std::unordered_map<ImGuiID, ComboAnimState>            comboStates;
+    std::unordered_map<ImGuiID, SelectableAnimState>       selectableStates;
     std::unordered_map<ImGuiID, CollapsingHeaderAnimState> collapsingHeaderStates;
     std::unordered_map<ImGuiID, WindowAnimState> windowStates;
     std::unordered_map<ImGuiID, ScrollbarAnimState> scrollbarStates;
@@ -449,6 +459,13 @@ bool Selectable(const char* label, bool selected);
 
 // 简化版下拉框（字符串数组）
 bool Combo(const char* label, int* current_item, const char* const items[], int items_count);
+
+// MenuItem（用于右键菜单等弹出菜单）
+bool MenuItem(const char* label, bool enabled = true, float height_override = 0.0f);
+
+// 圆角裁剪（使用 stencil，适合裁剪 InputTextMultiline 的内部文本/滚动条）
+void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float rounding);
+void PopRoundedClipRect();
 
 //=============================================================================
 // CollapsingHeader 折叠头
