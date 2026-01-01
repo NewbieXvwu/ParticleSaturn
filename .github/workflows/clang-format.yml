@@ -29,12 +29,16 @@ jobs:
           sudo apt-get install -y clang-format-18
 
       - name: Import GPG key (optional, for signed commits)
-        if: ${{ secrets.CI_GPG_PRIVATE_KEY != '' }}
         env:
           CI_GPG_PRIVATE_KEY: ${{ secrets.CI_GPG_PRIVATE_KEY }}
           CI_GPG_FINGERPRINT: ${{ secrets.CI_GPG_FINGERPRINT }}
         run: |
           set -euo pipefail
+
+          if [ -z "${CI_GPG_PRIVATE_KEY:-}" ]; then
+            echo "CI_GPG_PRIVATE_KEY is not set; skipping GPG import."
+            exit 0
+          fi
 
           echo "$CI_GPG_PRIVATE_KEY" | gpg --batch --import
 
