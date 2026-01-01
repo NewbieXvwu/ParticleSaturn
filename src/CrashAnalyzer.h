@@ -378,7 +378,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
     ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
 
-    if (ImGui::Begin(str.crashAnalyzerTitle, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize)) {
+    if (ImGui::Begin(str.crashAnalyzerTitle, nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize)) {
         ImVec2      pos  = ImGui::GetWindowPos();
         ImVec2      size = ImGui::GetWindowSize();
         ImDrawList* dl   = ImGui::GetWindowDrawList();

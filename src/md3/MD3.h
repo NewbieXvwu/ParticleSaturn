@@ -264,29 +264,35 @@ struct CollapsingHeaderAnimState {
 
 // Window 窗口动画状态
 struct WindowAnimState {
-    SpringAnimator closeButtonHover;   // 关闭按钮悬停状态
-    SpringAnimator closeButtonPress;   // 关闭按钮按下状态
+    SpringAnimator closeButtonHover; // 关闭按钮悬停状态
+    SpringAnimator closeButtonPress; // 关闭按钮按下状态
 
     // 窗口生命周期动画
-    SpringAnimator openProgress;       // 打开进度 (0=关闭, 1=打开)
-    SpringAnimator scale;              // 缩放 (0.85-1.0)
-    SpringAnimator offsetY;            // Y轴位移
-    SpringAnimator alpha;              // 整体透明度
+    SpringAnimator openProgress; // 打开进度 (0=关闭, 1=打开)
+    SpringAnimator scale;        // 缩放 (0.85-1.0)
+    SpringAnimator offsetY;      // Y轴位移
+    SpringAnimator alpha;        // 整体透明度
 
     // 窗口状态
-    enum class LifecycleState { Closed, Opening, Open, Closing };
+    enum class LifecycleState {
+        Closed,
+        Opening,
+        Open,
+        Closing
+    };
     LifecycleState lifecycleState = LifecycleState::Closed;
-    bool wantClose = false;            // 用户请求关闭
-    bool firstFrame = true;            // 首帧标记（用于初始化）
+    bool           wantClose      = false; // 用户请求关闭
+    bool           firstFrame     = true;  // 首帧标记（用于初始化）
 
     WindowAnimState()
-        : closeButtonHover(0.0f, 500.0f, 30.0f)
-        , closeButtonPress(0.0f, 600.0f, 35.0f)
-        // 打开动画：较高刚度，略欠阻尼（轻微回弹）
-        , openProgress(0.0f, 450.0f, 30.0f)
-        , scale(0.85f, 450.0f, 30.0f)
-        , offsetY(12.0f, 450.0f, 30.0f)
-        , alpha(0.0f, 500.0f, 35.0f) {}
+        : closeButtonHover(0.0f, 500.0f, 30.0f),
+          closeButtonPress(0.0f, 600.0f, 35.0f)
+          // 打开动画：较高刚度，略欠阻尼（轻微回弹）
+          ,
+          openProgress(0.0f, 450.0f, 30.0f),
+          scale(0.85f, 450.0f, 30.0f),
+          offsetY(12.0f, 450.0f, 30.0f),
+          alpha(0.0f, 500.0f, 35.0f) {}
 };
 
 // Scrollbar 滚动条动画状态
@@ -294,39 +300,36 @@ struct ScrollbarAnimState {
     SpringAnimator hoverState;         // 悬停状态 (0-1)
     SpringAnimator dragState;          // 拖拽状态 (0-1)
     SpringAnimator visibility;         // 可见性 (0-1)
-    float lastScrollY = 0.0f;          // 上次滚动位置（用于检测滚动）
-    float hideTimer = 0.0f;            // 隐藏计时器
+    float          lastScrollY = 0.0f; // 上次滚动位置（用于检测滚动）
+    float          hideTimer   = 0.0f; // 隐藏计时器
 
     ScrollbarAnimState()
-        : hoverState(0.0f, 500.0f, 30.0f)
-        , dragState(0.0f, 600.0f, 35.0f)
-        , visibility(0.0f, 400.0f, 28.0f) {}
+        : hoverState(0.0f, 500.0f, 30.0f), dragState(0.0f, 600.0f, 35.0f), visibility(0.0f, 400.0f, 28.0f) {}
 };
 
 // Resize 动画状态（仅右下角）
 struct ResizeAnimState {
-    SpringAnimator hoverState;         // 悬停状态 (0-1)
-    bool isDragging = false;           // 是否正在拖动
-    float dragStartMouseX = 0.0f;      // 拖动开始时鼠标位置
-    float dragStartMouseY = 0.0f;
-    float dragStartSizeW = 0.0f;       // 拖动开始时窗口大小
-    float dragStartSizeH = 0.0f;
+    SpringAnimator hoverState;              // 悬停状态 (0-1)
+    bool           isDragging      = false; // 是否正在拖动
+    float          dragStartMouseX = 0.0f;  // 拖动开始时鼠标位置
+    float          dragStartMouseY = 0.0f;
+    float          dragStartSizeW  = 0.0f; // 拖动开始时窗口大小
+    float          dragStartSizeH  = 0.0f;
 
-    ResizeAnimState()
-        : hoverState(0.0f, 500.0f, 30.0f) {}
+    ResizeAnimState() : hoverState(0.0f, 500.0f, 30.0f) {}
 };
 
 // Smooth scroll 状态（按窗口 ID 缓存）
 struct SmoothScrollState {
     SpringAnimator scrollY;
-    float lastAppliedScrollY = 0.0f;
-    bool initialized = false;
-    int lastFrameProcessed = -1;
+    float          lastAppliedScrollY = 0.0f;
+    bool           initialized        = false;
+    int            lastFrameProcessed = -1;
 
     // 日志窗口滚轮加速
     float lastWheelTime = -1.0f;
-    int lastWheelDir = 0;
-    int wheelStreak = 0;
+    int   lastWheelDir  = 0;
+    int   wheelStreak   = 0;
 };
 
 //=============================================================================
@@ -358,10 +361,10 @@ struct MD3Context {
     std::unordered_map<ImGuiID, CardAnimState>             cardStates;
     std::unordered_map<ImGuiID, ComboAnimState>            comboStates;
     std::unordered_map<ImGuiID, CollapsingHeaderAnimState> collapsingHeaderStates;
-    std::unordered_map<ImGuiID, WindowAnimState> windowStates;
-    std::unordered_map<ImGuiID, ScrollbarAnimState> scrollbarStates;
-    std::unordered_map<ImGuiID, ResizeAnimState> resizeStates;
-    std::unordered_map<ImGuiID, SmoothScrollState> smoothScrollStates;
+    std::unordered_map<ImGuiID, WindowAnimState>           windowStates;
+    std::unordered_map<ImGuiID, ScrollbarAnimState>        scrollbarStates;
+    std::unordered_map<ImGuiID, ResizeAnimState>           resizeStates;
+    std::unordered_map<ImGuiID, SmoothScrollState>         smoothScrollStates;
 
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth  = 1920.0f;
@@ -530,10 +533,8 @@ unsigned int ColorToU32(const ImVec4& color);
 ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
 
 // 绘制带圆角的图片（解决模糊背景黑边问题）
-void AddImageRounded(ImDrawList* dl, unsigned int tex_id,
-                     const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max,
-                     unsigned int col, float rounding, int flags = 0);
+void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
+                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
 
 } // namespace MD3
 

@@ -581,9 +581,9 @@ HAND_API bool WaitForTrackerReady(int timeout_ms) {
 HAND_API int IsTrackerReady() {
     // 非阻塞检查
     if (!g_ctx.init_complete.load()) {
-        return 0;  // 仍在初始化中
+        return 0; // 仍在初始化中
     }
-    return g_ctx.init_success.load() ? 1 : -1;  // 1 = 成功, -1 = 失败
+    return g_ctx.init_success.load() ? 1 : -1; // 1 = 成功, -1 = 失败
 }
 
 HAND_API bool GetHandData(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand) {
