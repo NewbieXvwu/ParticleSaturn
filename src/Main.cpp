@@ -21,6 +21,8 @@
 #include "WindowManager.h"
 #include "md3/MD3.h"
 
+#include <cmath>
+
 // 初始窗口尺寸常量
 const unsigned int INIT_WIDTH  = 1920;
 const unsigned int INIT_HEIGHT = 1080;
@@ -63,14 +65,119 @@ int main() {
     glfwWindowHint(GLFW_STENCIL_BITS, 8);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
 
+    int initialClientW = (int)INIT_WIDTH;
+    int initialClientH = (int)INIT_HEIGHT;
+
+    int         workX    = 0;
+    int         workY    = 0;
+    int         workW    = 0;
+    int         workH    = 0;
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    if (monitor) {
+#if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 3)
+        glfwGetMonitorWorkarea(monitor, &workX, &workY, &workW, &workH);
+#elif defined(_WIN32)
+        RECT workArea{};
+        if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0)) {
+            workX = (int)workArea.left;
+            workY = (int)workArea.top;
+            workW = (int)(workArea.right - workArea.left);
+            workH = (int)(workArea.bottom - workArea.top);
+        }
+#endif
+        if (workW <= 0 || workH <= 0) {
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+            if (mode) {
+                workW = mode->width;
+                workH = mode->height;
+            }
+        }
+
+        if (workW > 0 && workH > 0) {
+            const double scaleW = (double)workW / (double)INIT_WIDTH;
+            const double scaleH = (double)workH / (double)INIT_HEIGHT;
+            const double scale  = std::min(1.0, std::min(scaleW, scaleH));
+            initialClientW      = (int)std::lround((double)INIT_WIDTH * scale);
+            initialClientH      = (int)std::lround((double)INIT_HEIGHT * scale);
+        }
+    }
+
     // 创建窗口
-    GLFWwindow* window = glfwCreateWindow(INIT_WIDTH, INIT_HEIGHT, "Particle Saturn", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(initialClientW, initialClientH, "Particle Saturn", NULL, NULL);
     if (!window) {
         std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
         ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);
         glfwTerminate();
         return -1;
     }
+
+    if (monitor && workW > 0 && workH > 0) {
+        int frameL = 0, frameT = 0, frameR = 0, frameB = 0;
+        glfwGetWindowFrameSize(window, &frameL, &frameT, &frameR, &frameB);
+
+        const int maxClientW = workW - (frameL + frameR);
+        const int maxClientH = workH - (frameT + frameB);
+        if (maxClientW > 0 && maxClientH > 0) {
+            const double scaleW = (double)maxClientW / (double)INIT_WIDTH;
+            const double scaleH = (double)maxClientH / (double)INIT_HEIGHT;
+            const double scale  = std::min(1.0, std::min(scaleW, scaleH));
+
+            const int fittedClientW = (int)std::lround((double)INIT_WIDTH * scale);
+            const int fittedClientH = (int)std::lround((double)INIT_HEIGHT * scale);
+            if (fittedClientW != initialClientW || fittedClientH != initialClientH) {
+                glfwSetWindowSize(window, fittedClientW, fittedClientH);
+                initialClientW = fittedClientW;
+                initialClientH = fittedClientH;
+            }
+
+            const int outerW = fittedClientW + frameL + frameR;
+            const int outerH = fittedClientH + frameT + frameB;
+            const int posX   = workX + std::max(0, (workW - outerW) / 2);
+            const int posY   = workY + std::max(0, (workH - outerH) / 2);
+            glfwSetWindowPos(window, posX, posY);
+        }
+    }
+
+#ifdef _WIN32
+    if (HWND hwnd = glfwGetWin32Window(window)) {
+        RECT rect{};
+        if (GetWindowRect(hwnd, &rect)) {
+            HMONITOR    hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi{};
+            mi.cbSize = sizeof(mi);
+            if (GetMonitorInfoW(hmon, &mi)) {
+                const int width  = (int)(rect.right - rect.left);
+                const int height = (int)(rect.bottom - rect.top);
+
+                int x = rect.left;
+                int y = rect.top;
+
+                if (y < mi.rcWork.top) {
+                    y = mi.rcWork.top;
+                }
+                if (x < mi.rcWork.left) {
+                    x = mi.rcWork.left;
+                }
+                if (x + width > mi.rcWork.right) {
+                    x = mi.rcWork.right - width;
+                }
+                if (y + height > mi.rcWork.bottom) {
+                    y = mi.rcWork.bottom - height;
+                }
+                if (x < mi.rcWork.left) {
+                    x = mi.rcWork.left;
+                }
+                if (y < mi.rcWork.top) {
+                    y = mi.rcWork.top;
+                }
+
+                if (x != rect.left || y != rect.top) {
+                    SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+        }
+    }
+#endif
 
     glfwMakeContextCurrent(window);
 
@@ -117,6 +224,11 @@ int main() {
 
     glfwSetFramebufferSizeCallback(window, WindowManager::FramebufferSizeCallback);
     glfwSetDropCallback(window, DropCallback);
+
+    int fbW = 0, fbH = 0;
+    glfwGetFramebufferSize(window, &fbW, &fbH);
+    WindowManager::FramebufferSizeCallback(window, fbW, fbH);
+    glfwGetWindowSize(window, &appState.window.windowedW, &appState.window.windowedH);
 
     // Store OpenGL info for crash reports
     ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
@@ -740,14 +852,14 @@ int main() {
                                     ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
                                      ImGuiCond_FirstUseEver);
-            ImGuiStyle& style            = ImGui::GetStyle();
-            ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
+	            ImGuiStyle& style            = ImGui::GetStyle();
+	            ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
 
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
+	            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+	            ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
+	            ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
+	            ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
+	            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
@@ -901,11 +1013,11 @@ int main() {
             // 处理窗口 resize（自定义实现）
             MD3::WindowResize(300.0f * appState.ui.dpiScale, 200.0f * appState.ui.dpiScale);
 
-            // 绘制标题栏（在所有内容之上）
-            MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
+	            // 绘制标题栏（在所有内容之上）
+	            MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
 
-            ImGui::End();
-        }
+	            ImGui::End();
+	        }
 
             // MD3 帧结束（必须在 ImGui::Render 之前）
             MD3::EndFrame();

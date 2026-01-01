@@ -18,7 +18,7 @@ void ApplyMaterialYouTheme(bool dark) {
     ImGuiStyle& style  = ImGui::GetStyle();
     ImVec4*     colors = style.Colors;
 
-    style.WindowRounding    = 28.0f; // MD3 大圆角
+    style.WindowRounding    = 14.0f; // 更小的窗口圆角
     style.ChildRounding     = 16.0f;
     style.FrameRounding     = 20.0f;
     style.PopupRounding     = 20.0f; // Popup 也用大圆角
