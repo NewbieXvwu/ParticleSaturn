@@ -16,20 +16,26 @@ STATUS_RE = re.compile(r"(?mi)^\s*STATUS\s*:\s*(APPROVED|CHANGES_REQUESTED)\s*$"
 
 def run_cmd(args, cwd: Path, input_text: Optional[str] = None, timeout: int = 60) -> Tuple[int, str, str]:
     try:
+        # 显式传递完整环境变量，确保 PATH 正确继承
+        env = os.environ.copy()
+        # Windows 上强制使用 UTF-8 编码
+        env["PYTHONIOENCODING"] = "utf-8"
         p = subprocess.run(
             args,
             cwd=str(cwd),
             input=input_text,
-            text=True,
             capture_output=True,
             timeout=timeout,
-            shell=False,
+            shell=True,  # 使用 shell 以正确解析 PATH
+            env=env,
+            encoding="utf-8",
+            errors="replace",
         )
         return p.returncode, p.stdout or "", p.stderr or ""
     except FileNotFoundError:
-        return 127, "", f"command not found: {args[0]}"
+        return 127, "", f"command not found: {args[0] if isinstance(args, list) else args}"
     except subprocess.TimeoutExpired:
-        return 124, "", f"timeout: {' '.join(args)}"
+        return 124, "", f"timeout: {args if isinstance(args, str) else ' '.join(args)}"
 
 def is_git_repo(project_dir: Path) -> bool:
     return (project_dir / ".git").exists()
@@ -99,6 +105,18 @@ def main() -> int:
     claude_reply_path = state_dir / "claude_reply.md"
     post_state_path = state_dir / "post_state.json"
 
+    # 提取本次编辑的文件路径（PostToolUse 会带 tool_input.file_path）
+    tool_input = payload.get("tool_input") or {}
+    edited_file = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+
+    # 先检查是否有代码变更，无变更直接放行（设计/讨论阶段不触发审阅）
+    changed_files = get_git_name_only(project_dir)
+    diff = get_git_diff(project_dir, edited_file if mode == "post" else None).strip()
+
+    if mode in ("post", "stop") and not diff and not changed_files:
+        print("{}")
+        return 0
+
     # PostToolUse：节流，避免每次小改都打爆额度
     if mode == "post":
         post_state = load_json(post_state_path, {"last_ts": 0})
@@ -109,6 +127,7 @@ def main() -> int:
         post_state["last_ts"] = now
         save_json(post_state_path, post_state)
 
+    # 有代码变更时才检查 Codex 可用性
     ok, why = codex_available(project_dir)
     if not ok:
         # Post：不强行 block，避免 Codex 不可用时影响 Claude 工作流
@@ -124,18 +143,6 @@ def main() -> int:
                 "需要继续结束本轮：运行 codex-off.cmd（或创建 .claude/hooks/state/codex.disabled）后再结束。"
             )
         }, ensure_ascii=False))
-        return 0
-
-    # 提取本次编辑的文件路径（PostToolUse 会带 tool_input.file_path）:contentReference[oaicite:14]{index=14}
-    tool_input = payload.get("tool_input") or {}
-    edited_file = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-
-    changed_files = get_git_name_only(project_dir)
-    diff = get_git_diff(project_dir, edited_file if mode == "post" else None).strip()
-
-    # 没有 diff（比如没用 git 或没改动），Stop 直接放行；Post 不做事
-    if mode in ("post", "stop") and not diff and not changed_files:
-        print("{}")
         return 0
 
     # Stop：多轮辩论状态
