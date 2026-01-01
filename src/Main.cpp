@@ -471,18 +471,22 @@ int main() {
                 // 更保守的降质策略: 0.95 替代 0.9
                 if (appState.render.activeParticleCount > MIN_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 0.95f);
+                    appState.render.activeParticleCount = std::max(appState.render.activeParticleCount, MIN_PARTICLES);
                     particleCountChanged                = true;
                 } else if (appState.render.pixelRatio > 0.7f) {
                     appState.render.pixelRatio -= 0.03f;
+                    appState.render.pixelRatio = std::max(appState.render.pixelRatio, 0.7f);
                     pixelRatioChanged = true;
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
                 if (appState.render.pixelRatio < 1.0f) {
                     appState.render.pixelRatio += 0.03f;
+                    appState.render.pixelRatio = std::min(appState.render.pixelRatio, 1.0f);
                     pixelRatioChanged = true;
                 } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
+                    appState.render.activeParticleCount = std::min(appState.render.activeParticleCount, MAX_PARTICLES);
                     particleCountChanged                = true;
                 }
             }
@@ -719,6 +723,9 @@ int main() {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
+            // 平滑滚动：必须在提交任何窗口内容之前跑一次（否则这一帧改 ScrollY 没意义）
+            MD3::HandleSmoothScroll(60.0f);
+
             // Render error dialogs
             ErrorHandler::RenderErrorDialog(dt);
 
@@ -739,7 +746,7 @@ int main() {
             ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImVec4(0, 0, 0, 0));
-            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize);
+            ImGui::Begin(str.debugPanelTitle, nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
 
             ImVec2      pos  = ImGui::GetWindowPos();
             ImVec2      size = ImGui::GetWindowSize();
@@ -899,7 +906,7 @@ int main() {
             ImGui::End();
         }
 
-            // MD3 帧结束 - 处理全局平滑滚动（必须在 ImGui::Render 之前）
+            // MD3 帧结束（必须在 ImGui::Render 之前）
             MD3::EndFrame();
 
             ImGui::Render();

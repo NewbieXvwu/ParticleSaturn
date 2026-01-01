@@ -316,6 +316,19 @@ struct ResizeAnimState {
         : hoverState(0.0f, 500.0f, 30.0f) {}
 };
 
+// Smooth scroll 状态（按窗口 ID 缓存）
+struct SmoothScrollState {
+    SpringAnimator scrollY;
+    float lastAppliedScrollY = 0.0f;
+    bool initialized = false;
+    int lastFrameProcessed = -1;
+
+    // 日志窗口滚轮加速
+    float lastWheelTime = -1.0f;
+    int lastWheelDir = 0;
+    int wheelStreak = 0;
+};
+
 //=============================================================================
 // MD3 上下文
 //=============================================================================
@@ -348,6 +361,7 @@ struct MD3Context {
     std::unordered_map<ImGuiID, WindowAnimState> windowStates;
     std::unordered_map<ImGuiID, ScrollbarAnimState> scrollbarStates;
     std::unordered_map<ImGuiID, ResizeAnimState> resizeStates;
+    std::unordered_map<ImGuiID, SmoothScrollState> smoothScrollStates;
 
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth  = 1920.0f;
@@ -479,6 +493,10 @@ void WindowScrollbar(float titleBarHeight = 0.0f);
 // 需要配合 ImGuiWindowFlags_NoResize 使用
 // minWidth/minHeight: 最小窗口尺寸
 void WindowResize(float minWidth = 200.0f, float minHeight = 100.0f);
+
+// 处理当前窗口的平滑滚动（建议在绘制滚动条之前调用）
+// scrollSpeed: 每个滚轮单位对应的像素滚动距离（会自动乘 DPI）
+void HandleSmoothScroll(float scrollSpeed = 90.0f);
 
 //=============================================================================
 // Ripple 系统 API

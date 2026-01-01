@@ -5,6 +5,8 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cfloat>
+#include <cstring>
 #include <cmath>
 #include <vector>
 
@@ -1520,6 +1522,137 @@ void WindowTitleBar(const char* title, bool* p_open) {
             *p_open = false;
         }
     }
+}
+
+void HandleSmoothScroll(float scrollSpeed) {
+    using namespace ImGui;
+
+    if (scrollSpeed <= 0.0f) {
+        return;
+    }
+
+    auto& ctx = GetContext();
+    float dpi = ctx.dpiScale;
+
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = g.WheelingWindow ? g.WheelingWindow : g.HoveredWindow;
+    if (!window || window->Collapsed) {
+        return;
+    }
+
+    if (window->Flags & ImGuiWindowFlags_NoMouseInputs) {
+        return;
+    }
+
+    float scrollMaxY = window->ScrollMax.y;
+    if (scrollMaxY <= 0.0f) {
+        return;
+    }
+
+    ImGuiID windowId = window->ID;
+    auto& state = ctx.smoothScrollStates[windowId];
+
+    if (state.lastFrameProcessed == g.FrameCount) {
+        return;
+    }
+    state.lastFrameProcessed = g.FrameCount;
+
+    float currentScrollY = window->Scroll.y;
+
+    float dt = ctx.deltaTime;
+    if (dt <= 0.0f) {
+        dt = 1.0f / 60.0f;
+    }
+
+    bool isLogChild = (window->ChildId != 0) && (std::strstr(window->Name, "LogScroll") != nullptr);
+    float effectiveScrollSpeed = scrollSpeed * (isLogChild ? 1.0f : 1.5f);
+
+    if (!state.initialized) {
+        state.initialized = true;
+        state.scrollY.value = currentScrollY;
+        state.scrollY.target = currentScrollY;
+        state.scrollY.velocity = 0.0f;
+        state.scrollY.stiffness = isLogChild ? 2200.0f : 1900.0f;
+        state.scrollY.damping = isLogChild ? 170.0f : 150.0f;
+        state.lastAppliedScrollY = currentScrollY;
+    }
+
+    const ImGuiIO& io = g.IO;
+    float wheel = io.MouseWheel;
+
+    bool hasNewRequest = false;
+    float requestedTarget = state.scrollY.target;
+
+    // 日志窗口：持续滚轮加速（更符合“刷日志”的使用习惯）
+    if (isLogChild && wheel != 0.0f && !io.KeyCtrl) {
+        int dir = (wheel > 0.0f) ? 1 : -1;
+        float now = ctx.currentTime;
+        float since = (state.lastWheelTime >= 0.0f) ? (now - state.lastWheelTime) : 1e9f;
+
+        if (since < 0.22f && dir == state.lastWheelDir) {
+            state.wheelStreak++;
+        } else {
+            state.wheelStreak = 1;
+        }
+        state.lastWheelTime = now;
+        state.lastWheelDir = dir;
+
+        float accel = 1.0f + ImMin(1.5f, 0.15f * (float)(state.wheelStreak - 1));
+
+        // 吃掉 ImGui 本帧的 ScrollTarget（如果有），用我们自己的加速模型覆盖它。
+        if (window->ScrollTarget.y != FLT_MAX) {
+            window->ScrollTarget.y = FLT_MAX;
+        }
+
+        requestedTarget = state.scrollY.target + (-wheel * effectiveScrollSpeed * accel * dpi);
+        hasNewRequest = true;
+    } else if (window->ScrollTarget.y != FLT_MAX) {
+        // 先吃掉 ImGui 自己产生的滚动目标（来自鼠标滚轮/SetScrollHereY/导航等）。
+        requestedTarget = window->ScrollTarget.y;
+        window->ScrollTarget.y = FLT_MAX;
+        hasNewRequest = true;
+    } else if (wheel != 0.0f && !io.KeyCtrl) {
+        // 对于 NoScrollWithMouse 的窗口，ImGui 不会生成 ScrollTarget，我们自己算。
+        requestedTarget = state.scrollY.target + (-wheel * effectiveScrollSpeed * dpi);
+        hasNewRequest = true;
+    }
+
+    if (wheel == 0.0f && std::abs(currentScrollY - state.lastAppliedScrollY) > 2.0f) {
+        state.scrollY.value = currentScrollY;
+        state.scrollY.target = currentScrollY;
+        state.scrollY.velocity = 0.0f;
+        state.lastAppliedScrollY = currentScrollY;
+        return;
+    }
+
+    if (hasNewRequest) {
+        requestedTarget = ImClamp(requestedTarget, 0.0f, scrollMaxY);
+
+        if (state.scrollY.IsSettled(0.01f)) {
+            state.scrollY.value = state.lastAppliedScrollY;
+            state.scrollY.target = state.lastAppliedScrollY;
+            state.scrollY.velocity = 0.0f;
+        }
+
+        float diff = requestedTarget - state.scrollY.value;
+        state.scrollY.target = requestedTarget;
+        state.scrollY.velocity += (diff / ImMax(dt, 1.0f / 240.0f)) * (isLogChild ? 0.05f : 0.09f);
+    } else {
+        state.scrollY.target = ImClamp(state.scrollY.target, 0.0f, scrollMaxY);
+
+        if (state.scrollY.IsSettled(0.01f)) {
+            state.scrollY.value = currentScrollY;
+            state.scrollY.target = currentScrollY;
+            state.scrollY.velocity = 0.0f;
+            state.lastAppliedScrollY = currentScrollY;
+            return;
+        }
+    }
+
+    state.scrollY.Update(dt);
+    float smoothed = ImClamp(state.scrollY.value, 0.0f, scrollMaxY);
+    SetScrollY(window, smoothed);
+    state.lastAppliedScrollY = smoothed;
 }
 
 void WindowScrollbar(float titleBarHeight) {
