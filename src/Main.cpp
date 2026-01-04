@@ -8,6 +8,7 @@
 #endif
 
 #include "AppState.h"
+#include "CameraSelector/CameraSelector.h"
 #include "CrashAnalyzer.h"
 #include "DebugLog.h"
 #include "ErrorHandler.h"
@@ -289,24 +290,42 @@ int main() {
         }
     }
     if (!handTrackerCheckDone) {
-        if (!InitTracker(0, nullptr)) {
+        // 摄像头选择：如果有多个摄像头，弹出选择对话框
+        int selectedCamera = CameraSelector::ShowCameraSelectorDialog();
+        if (selectedCamera < 0) {
+            // 用户取消，回退到默认摄像头 0
+            std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
+            selectedCamera = 0;
+        }
+        {
+            if (!InitTracker(selectedCamera, nullptr)) {
+                std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
+                ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+                handTrackerCheckDone = true;
+            } else {
+                handTrackerStarted = true;
+                std::cout << "[Main] HandTracker thread started with camera " << selectedCamera << " (async initialization)" << std::endl;
+            }
+        }
+    }
+#else
+    std::cout << "[Main] Initializing HandTracker (async)..." << std::endl;
+    // 摄像头选择：如果有多个摄像头，弹出选择对话框
+    int selectedCamera = CameraSelector::ShowCameraSelectorDialog();
+    if (selectedCamera < 0) {
+        // 用户取消，回退到默认摄像头 0
+        std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
+        selectedCamera = 0;
+    }
+    {
+        if (!InitTracker(selectedCamera, ".")) {
             std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
             ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
             handTrackerCheckDone = true;
         } else {
             handTrackerStarted = true;
-            std::cout << "[Main] HandTracker thread started (async initialization)" << std::endl;
+            std::cout << "[Main] HandTracker thread started with camera " << selectedCamera << " (async initialization)" << std::endl;
         }
-    }
-#else
-    std::cout << "[Main] Initializing HandTracker (async)..." << std::endl;
-    if (!InitTracker(0, ".")) {
-        std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
-        handTrackerCheckDone = true;
-    } else {
-        handTrackerStarted = true;
-        std::cout << "[Main] HandTracker thread started (async initialization)" << std::endl;
     }
 #endif
 
