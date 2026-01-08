@@ -51,3 +51,4 @@ HandTracker/libs/tensorflow/tflite_build/
 .codex-session
 .claude/codex_review_state.json
 .claude/hooks/state/post_state.json
+.claude/hooks/state/codex.disabled
