@@ -326,19 +326,33 @@ static void DrawRippleShaderCallback(const ImDrawList*, const ImDrawCmd* cmd) {
 
     const GLint uRippleCenter = glGetUniformLocation(g_context.rippleProgram, "uRippleCenter");
     const GLint uRippleRadius = glGetUniformLocation(g_context.rippleProgram, "uRippleRadius");
-    const GLint uRippleAlpha = glGetUniformLocation(g_context.rippleProgram, "uRippleAlpha");
-    const GLint uRippleColor = glGetUniformLocation(g_context.rippleProgram, "uRippleColor");
-    const GLint uBounds = glGetUniformLocation(g_context.rippleProgram, "uBounds");
+    const GLint uRippleAlpha  = glGetUniformLocation(g_context.rippleProgram, "uRippleAlpha");
+    const GLint uRippleColor  = glGetUniformLocation(g_context.rippleProgram, "uRippleColor");
+    const GLint uBounds       = glGetUniformLocation(g_context.rippleProgram, "uBounds");
     const GLint uCornerRadius = glGetUniformLocation(g_context.rippleProgram, "uCornerRadius");
-    const GLint uScreenSize = glGetUniformLocation(g_context.rippleProgram, "uScreenSize");
+    const GLint uScreenSize   = glGetUniformLocation(g_context.rippleProgram, "uScreenSize");
 
-    if (uRippleCenter >= 0) glUniform2f(uRippleCenter, data->centerX, data->centerY);
-    if (uRippleRadius >= 0) glUniform1f(uRippleRadius, data->radius);
-    if (uRippleAlpha >= 0) glUniform1f(uRippleAlpha, data->alpha);
-    if (uRippleColor >= 0) glUniform4f(uRippleColor, data->colorR, data->colorG, data->colorB, 1.0f);
-    if (uBounds >= 0) glUniform4f(uBounds, data->boundsX, data->boundsY, data->boundsW, data->boundsH);
-    if (uCornerRadius >= 0) glUniform1f(uCornerRadius, data->cornerRadius);
-    if (uScreenSize >= 0) glUniform2f(uScreenSize, data->screenW, data->screenH);
+    if (uRippleCenter >= 0) {
+        glUniform2f(uRippleCenter, data->centerX, data->centerY);
+    }
+    if (uRippleRadius >= 0) {
+        glUniform1f(uRippleRadius, data->radius);
+    }
+    if (uRippleAlpha >= 0) {
+        glUniform1f(uRippleAlpha, data->alpha);
+    }
+    if (uRippleColor >= 0) {
+        glUniform4f(uRippleColor, data->colorR, data->colorG, data->colorB, 1.0f);
+    }
+    if (uBounds >= 0) {
+        glUniform4f(uBounds, data->boundsX, data->boundsY, data->boundsW, data->boundsH);
+    }
+    if (uCornerRadius >= 0) {
+        glUniform1f(uCornerRadius, data->cornerRadius);
+    }
+    if (uScreenSize >= 0) {
+        glUniform2f(uScreenSize, data->screenW, data->screenH);
+    }
 
     glBindVertexArray(g_context.rippleVAO);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -425,8 +439,8 @@ void DrawRipples() {
         return;
     }
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const bool useShader = (g_context.rippleProgram != 0 && g_context.rippleVAO != 0);
+    ImDrawList* dl        = ImGui::GetWindowDrawList();
+    const bool  useShader = (g_context.rippleProgram != 0 && g_context.rippleVAO != 0);
 
     // 绘制属于当前窗口的所有 Ripple
     for (const auto& r : g_context.ripples) {
@@ -476,7 +490,7 @@ void DrawRipples() {
             dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
         } else {
             ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
-            ImU32 col = ColorToU32(rippleColor);
+            ImU32  col = ColorToU32(rippleColor);
             dl->AddCircleFilled(ImVec2(centerX, centerY), r.radius, col, 64);
         }
 
@@ -632,10 +646,8 @@ ImVec4 HexToColor(unsigned int hex, float alpha) {
     return ImVec4(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f, alpha);
 }
 
-void AddImageRounded(ImDrawList* dl, unsigned int tex_id,
-                     const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max,
-                     unsigned int col, float rounding, int flags) {
+void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
+                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
     if ((col & IM_COL32_A_MASK) == 0 || rounding < 0.5f) {
         // 无透明度或无圆角，直接使用普通 AddImage
         dl->AddImage((ImTextureID)(uintptr_t)tex_id, p_min, p_max, uv_min, uv_max, col);
@@ -655,8 +667,8 @@ void AddImageRounded(ImDrawList* dl, unsigned int tex_id,
     // 计算尺寸用于 UV 映射
     float inv_w = 1.0f / (p_max.x - p_min.x);
     float inv_h = 1.0f / (p_max.y - p_min.y);
-    float uv_w = uv_max.x - uv_min.x;
-    float uv_h = uv_max.y - uv_min.y;
+    float uv_w  = uv_max.x - uv_min.x;
+    float uv_h  = uv_max.y - uv_min.y;
 
     // 切换到指定纹理
     dl->PushTextureID((ImTextureID)(uintptr_t)tex_id);
