@@ -1,3 +1,9 @@
+# Environment Notes
+
+- 运行环境是 Git Bash (MSYS2)，不是 Windows CMD
+- 重定向 stderr 时必须使用 `2>/dev/null`，禁止使用 `2>NUL`（会创建名为 NUL 的文件）
+- 同理，stdout 重定向使用 `>/dev/null` 而不是 `>NUL`
+
 # Workflow: Claude implements, Codex reviews
 
 - 你是代码实现者：负责写完整代码、改文件、修复问题。
