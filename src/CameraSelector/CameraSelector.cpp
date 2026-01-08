@@ -16,6 +16,7 @@ namespace CameraSelector {
 // 注册表路径
 static const wchar_t* REGISTRY_KEY = L"SOFTWARE\\ParticleSaturn";
 static const wchar_t* REGISTRY_VALUE = L"SelectedCamera";
+static const wchar_t* REGISTRY_VALUE_SKIP = L"SkipCameraSelectorDialog";
 
 // 窗口类名
 static const wchar_t* WINDOW_CLASS = L"CameraSelectorWindow";
@@ -27,11 +28,14 @@ static constexpr int CARD_PADDING = 20;
 static constexpr int PREVIEW_WIDTH = 320;
 static constexpr int PREVIEW_HEIGHT = 240;
 static constexpr int CARD_SPACING = 20;
-static constexpr int TITLE_HEIGHT = 60;
+static constexpr int TITLE_HEIGHT = 72;
 static constexpr int BUTTON_HEIGHT = 40;
 static constexpr int BUTTON_WIDTH = 120;
+static constexpr int BUTTON_GAP = 12;
 static constexpr int CHECKBOX_SIZE = 20;
-static constexpr int BOTTOM_PADDING = 80;
+static constexpr int BOTTOM_PADDING = 112;
+static constexpr int BUTTON_BOTTOM_MARGIN = 18;
+static constexpr int CHECKBOX_ROW_TOP = 14;
 
 // 对话框状态
 struct DialogState {
@@ -44,9 +48,24 @@ struct DialogState {
     int hoverIndex = -1;
     bool rememberChoice = false;
     bool checkboxHover = false;
-    bool buttonHover = false;
+    bool checkboxPressed = false;
+    bool okHover = false;
+    bool okPressed = false;
+    bool cancelHover = false;
+    bool cancelPressed = false;
     bool confirmed = false;
     bool isDarkMode = true;
+
+    // 动画状态
+    std::vector<CardAnimState> cardAnims;
+    CheckboxAnimState checkboxAnim;
+    ButtonAnimState okButtonAnim;
+    ButtonAnimState cancelButtonAnim;
+
+    // 时间跟踪
+    LARGE_INTEGER lastTime = {};
+    LARGE_INTEGER frequency = {};
+    float dt = 0.0f;
 
     // 缓存的位图
     std::map<int, ID2D1Bitmap*> cachedBitmaps;
@@ -113,17 +132,29 @@ static D2D1_RECT_F GetCardRect(const DialogState& state, int index) {
     return D2D1::RectF(x, y, x + CARD_WIDTH, y + CARD_HEIGHT);
 }
 
-// 获取按钮矩形
-static D2D1_RECT_F GetButtonRect(const DialogState& state) {
-    float x = (state.windowWidth - BUTTON_WIDTH) / 2.0f;
-    float y = static_cast<float>(state.windowHeight - BOTTOM_PADDING + 10);
+static float GetBottomSectionTop(const DialogState& state) {
+    return static_cast<float>(state.windowHeight - BOTTOM_PADDING);
+}
+
+static D2D1_RECT_F GetCancelButtonRect(const DialogState& state) {
+    float totalWidth = BUTTON_WIDTH * 2.0f + BUTTON_GAP;
+    float x0 = (state.windowWidth - totalWidth) / 2.0f;
+    float y = static_cast<float>(state.windowHeight - BUTTON_BOTTOM_MARGIN - BUTTON_HEIGHT);
+    return D2D1::RectF(x0, y, x0 + BUTTON_WIDTH, y + BUTTON_HEIGHT);
+}
+
+static D2D1_RECT_F GetOkButtonRect(const DialogState& state) {
+    float totalWidth = BUTTON_WIDTH * 2.0f + BUTTON_GAP;
+    float x0 = (state.windowWidth - totalWidth) / 2.0f;
+    float y = static_cast<float>(state.windowHeight - BUTTON_BOTTOM_MARGIN - BUTTON_HEIGHT);
+    float x = x0 + BUTTON_WIDTH + BUTTON_GAP;
     return D2D1::RectF(x, y, x + BUTTON_WIDTH, y + BUTTON_HEIGHT);
 }
 
 // 获取复选框矩形
 static D2D1_RECT_F GetCheckboxRect(const DialogState& state) {
     float x = static_cast<float>(CARD_SPACING);
-    float y = static_cast<float>(state.windowHeight - BOTTOM_PADDING + 15);
+    float y = GetBottomSectionTop(state) + CHECKBOX_ROW_TOP;
     return D2D1::RectF(x, y, x + CHECKBOX_SIZE, y + CHECKBOX_SIZE);
 }
 
@@ -138,8 +169,13 @@ static int HitTestCard(const DialogState& state, int x, int y) {
     return -1;
 }
 
-static bool HitTestButton(const DialogState& state, int x, int y) {
-    D2D1_RECT_F rect = GetButtonRect(state);
+static bool HitTestOkButton(const DialogState& state, int x, int y) {
+    D2D1_RECT_F rect = GetOkButtonRect(state);
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+static bool HitTestCancelButton(const DialogState& state, int x, int y) {
+    D2D1_RECT_F rect = GetCancelButtonRect(state);
     return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
@@ -154,30 +190,54 @@ static void Render(DialogState& state) {
     state.renderer.BeginDraw();
     state.renderer.Clear(state.theme.background);
 
+    // 更新 Ripple
+    state.renderer.UpdateRipples(state.dt);
+
     // 标题
-    D2D1_RECT_F titleRect = D2D1::RectF(0, 10, static_cast<float>(state.windowWidth), static_cast<float>(TITLE_HEIGHT));
+    D2D1_RECT_F titleRect = D2D1::RectF(0, 8, static_cast<float>(state.windowWidth), 42.0f);
     state.renderer.DrawText(L"选择摄像头", titleRect, state.theme.textPrimary, 24.0f,
                             DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
                             DWRITE_FONT_WEIGHT_SEMI_BOLD);
+
+    // 副标题（更“产品化”一点）
+    D2D1_RECT_F subtitleRect = D2D1::RectF(0, 40, static_cast<float>(state.windowWidth), static_cast<float>(TITLE_HEIGHT));
+    state.renderer.DrawText(L"请选择要用于手势追踪的摄像头", subtitleRect, state.theme.textSecondary, 13.0f,
+                            DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    // 分隔线
+    D2D1_COLOR_F divider = state.theme.cardBorder;
+    divider.a *= 0.65f;
+    D2D1_RECT_F dividerRect = D2D1::RectF(static_cast<float>(CARD_SPACING),
+                                          static_cast<float>(TITLE_HEIGHT - 4),
+                                          static_cast<float>(state.windowWidth - CARD_SPACING),
+                                          static_cast<float>(TITLE_HEIGHT - 3));
+    state.renderer.DrawRoundedRect(dividerRect, 0.0f, divider, nullptr);
 
     // 摄像头卡片
     for (size_t i = 0; i < state.cameras.size(); i++) {
         int idx = static_cast<int>(i);
         D2D1_RECT_F cardRect = GetCardRect(state, idx);
 
-        // 卡片背景
-        D2D1_COLOR_F borderColor = state.theme.cardBorder;
-        float borderWidth = 1.0f;
+        // 使用带动画的卡片绘制
+        bool isSelected = (idx == state.selectedIndex);
+        bool isHovered = (idx == state.hoverIndex);
 
-        if (idx == state.selectedIndex) {
-            borderColor = state.theme.cardSelected;
-            borderWidth = 2.5f;
-        } else if (idx == state.hoverIndex) {
-            borderColor = state.theme.cardHover;
-            borderWidth = 1.5f;
+        if (idx < static_cast<int>(state.cardAnims.size())) {
+            state.renderer.DrawAnimatedCard(cardRect, state.cardAnims[idx],
+                                            isSelected, isHovered, state.theme, state.dt);
+        } else {
+            // Fallback
+            D2D1_COLOR_F borderColor = state.theme.cardBorder;
+            float borderWidth = 1.0f;
+            if (isSelected) {
+                borderColor = state.theme.cardSelected;
+                borderWidth = 2.5f;
+            } else if (isHovered) {
+                borderColor = state.theme.cardHover;
+                borderWidth = 1.5f;
+            }
+            state.renderer.DrawRoundedRect(cardRect, 12.0f, state.theme.cardBackground, &borderColor, borderWidth);
         }
-
-        state.renderer.DrawRoundedRect(cardRect, 12.0f, state.theme.cardBackground, &borderColor, borderWidth);
 
         // 预览区域
         float previewX = cardRect.left + (CARD_WIDTH - PREVIEW_WIDTH) / 2.0f;
@@ -187,7 +247,9 @@ static void Render(DialogState& state) {
 
         // 预览背景
         D2D1_COLOR_F previewBg = D2D1::ColorF(0x000000);
-        state.renderer.DrawRoundedRect(previewRect, 8.0f, previewBg, nullptr);
+        D2D1_COLOR_F previewBorder = (idx == state.selectedIndex) ? state.theme.cardSelected : state.theme.cardBorder;
+        previewBorder.a *= (idx == state.selectedIndex) ? 0.90f : 0.55f;
+        state.renderer.DrawRoundedRect(previewRect, 8.0f, previewBg, &previewBorder, 1.0f);
 
         // 获取并绘制摄像头画面
         ID2D1Bitmap* newBitmap = state.previewManager.GetBitmap(idx, state.renderer);
@@ -201,11 +263,32 @@ static void Render(DialogState& state) {
 
         if (state.cachedBitmaps.count(idx) && state.cachedBitmaps[idx]) {
             state.renderer.DrawBitmap(state.cachedBitmaps[idx], previewRect);
+        } else {
+            // 没有帧时给出占位提示，避免“黑框=坏了”的错觉
+            state.renderer.DrawText(L"正在启动预览…", previewRect, state.theme.textSecondary, 13.0f,
+                                    DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
+        // 预览角标：摄像头序号
+        {
+            float chipW = 72.0f;
+            float chipH = 22.0f;
+            D2D1_RECT_F chipRect = D2D1::RectF(previewRect.left + 10.0f, previewRect.top + 10.0f,
+                                               previewRect.left + 10.0f + chipW, previewRect.top + 10.0f + chipH);
+            D2D1_COLOR_F chipBg = state.theme.cardBackground;
+            chipBg.a = (std::max)(chipBg.a, 0.90f);
+            state.renderer.DrawRoundedRect(chipRect, 11.0f, chipBg, &state.theme.cardBorder, 1.0f);
+
+            std::wstring chipText = L"摄像头 ";
+            chipText += std::to_wstring(idx + 1);
+            state.renderer.DrawText(chipText, chipRect, state.theme.textPrimary, 12.0f,
+                                    DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+                                    DWRITE_FONT_WEIGHT_SEMI_BOLD);
         }
 
         // 选中指示器 (radio button) - 与文字在同一水平线
         float radioX = cardRect.left + 20;
-        float radioY = cardRect.bottom - 22;  // 往下移
+        float radioY = cardRect.bottom - 22;
         float radioRadius = 10.0f;  // 恢复原尺寸
 
         if (idx == state.selectedIndex) {
@@ -218,30 +301,39 @@ static void Render(DialogState& state) {
             state.renderer.DrawCircle(radioX, radioY, radioRadius, transparent, &state.theme.cardBorder, 2.0f);
         }
 
-        // 摄像头名称 - 调整位置与 radio 对齐
-        D2D1_RECT_F nameRect = D2D1::RectF(cardRect.left + 40, cardRect.bottom - 35,
-                                            cardRect.right - 10, cardRect.bottom - 8);
-        state.renderer.DrawText(state.cameras[i].name, nameRect, state.theme.textPrimary, 14.0f,
-                                DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        // 摄像头名称 - 与 radio 对齐 + 更清晰的层级（字号稍大一点）
+        D2D1_RECT_F nameRect = D2D1::RectF(cardRect.left + 40, cardRect.bottom - 36,
+                                           cardRect.right - 12, cardRect.bottom - 8);
+        state.renderer.DrawText(state.cameras[i].name, nameRect, state.theme.textPrimary, 14.5f,
+                                DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+                                DWRITE_FONT_WEIGHT_SEMI_BOLD);
     }
 
-    // 确定按钮
-    D2D1_RECT_F buttonRect = GetButtonRect(state);
-    D2D1_COLOR_F buttonBg = state.buttonHover ? state.theme.buttonHover : state.theme.buttonBg;
-    state.renderer.DrawRoundedRect(buttonRect, 6.0f, buttonBg, nullptr);
-    state.renderer.DrawText(L"确定", buttonRect, state.theme.buttonText, 14.0f,
-                            DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
-                            DWRITE_FONT_WEIGHT_SEMI_BOLD);
+    // 取消 / 确定按钮（带动画）
+    D2D1_RECT_F cancelRect = GetCancelButtonRect(state);
+    state.renderer.DrawAnimatedButton(cancelRect, L"取消", state.cancelButtonAnim,
+                                      state.cancelHover, state.cancelPressed,
+                                      state.theme, state.dt, false);
 
-    // 复选框
+    D2D1_RECT_F okRect = GetOkButtonRect(state);
+    state.renderer.DrawAnimatedButton(okRect, L"确定", state.okButtonAnim,
+                                      state.okHover, state.okPressed,
+                                      state.theme, state.dt, true);
+
+    // 复选框（带动画）
     D2D1_RECT_F checkboxRect = GetCheckboxRect(state);
-    state.renderer.DrawCheckbox(checkboxRect, state.rememberChoice, state.theme);
+    state.renderer.DrawAnimatedCheckbox(checkboxRect, state.checkboxAnim,
+                                         state.rememberChoice, state.checkboxHover,
+                                         state.checkboxPressed, state.theme, state.dt);
 
     // 复选框文字
     D2D1_RECT_F checkboxTextRect = D2D1::RectF(checkboxRect.right + 8, checkboxRect.top - 2,
                                                 checkboxRect.right + 200, checkboxRect.bottom + 2);
     state.renderer.DrawText(L"记住我的选择", checkboxTextRect, state.theme.textSecondary, 13.0f,
                             DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    // Ripple：只画一次，放在最顶层。之前那种“每张卡片都画一遍所有 ripple”属于纯粹的愚蠢。
+    state.renderer.DrawRipples();
 
     state.renderer.EndDraw();
 }
@@ -271,19 +363,21 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
                 int y = HIWORD(lParam);
 
                 int newHover = HitTestCard(*state, x, y);
-                bool newButtonHover = HitTestButton(*state, x, y);
+                bool newOkHover = HitTestOkButton(*state, x, y);
+                bool newCancelHover = HitTestCancelButton(*state, x, y);
                 bool newCheckboxHover = HitTestCheckbox(*state, x, y);
 
-                if (newHover != state->hoverIndex || newButtonHover != state->buttonHover ||
+                if (newHover != state->hoverIndex || newOkHover != state->okHover || newCancelHover != state->cancelHover ||
                     newCheckboxHover != state->checkboxHover) {
                     state->hoverIndex = newHover;
-                    state->buttonHover = newButtonHover;
+                    state->okHover = newOkHover;
+                    state->cancelHover = newCancelHover;
                     state->checkboxHover = newCheckboxHover;
                     InvalidateRect(hwnd, nullptr, FALSE);
                 }
 
                 // 设置光标
-                if (newHover >= 0 || newButtonHover || newCheckboxHover) {
+                if (newHover >= 0 || newOkHover || newCancelHover || newCheckboxHover) {
                     SetCursor(LoadCursorW(nullptr, IDC_HAND));
                 } else {
                     SetCursor(LoadCursorW(nullptr, IDC_ARROW));
@@ -298,20 +392,75 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
                 int y = HIWORD(lParam);
 
                 int clickedCard = HitTestCard(*state, x, y);
-                if (clickedCard >= 0 && clickedCard != state->selectedIndex) {
-                    state->selectedIndex = clickedCard;
+                if (clickedCard >= 0) {
+                    // 触发卡片 Ripple
+                    D2D1_RECT_F cardRect = GetCardRect(*state, clickedCard);
+                    D2D1_COLOR_F cardInk = state->isDarkMode ? state->theme.textPrimary : state->theme.accent;
+                    state->renderer.TriggerRipple(static_cast<float>(x), static_cast<float>(y), cardRect, 12.0f, cardInk);
+
+                    if (clickedCard != state->selectedIndex) {
+                        state->selectedIndex = clickedCard;
+                    }
                     InvalidateRect(hwnd, nullptr, FALSE);
                 }
 
                 if (HitTestCheckbox(*state, x, y)) {
-                    state->rememberChoice = !state->rememberChoice;
+                    state->checkboxPressed = true;
+                    // 触发复选框 Ripple
+                    D2D1_RECT_F checkboxRect = GetCheckboxRect(*state);
+                    D2D1_COLOR_F checkboxInk = state->rememberChoice
+                                                   ? D2D1::ColorF(D2D1::ColorF::White)
+                                                   : (state->isDarkMode ? state->theme.textPrimary : state->theme.accent);
+                    state->renderer.TriggerRipple(static_cast<float>(x), static_cast<float>(y), checkboxRect, 3.0f,
+                                                  checkboxInk);
                     InvalidateRect(hwnd, nullptr, FALSE);
                 }
 
-                if (HitTestButton(*state, x, y)) {
+                if (HitTestOkButton(*state, x, y)) {
+                    state->okPressed = true;
+                    D2D1_RECT_F buttonRect = GetOkButtonRect(*state);
+                    state->renderer.TriggerRipple(static_cast<float>(x), static_cast<float>(y), buttonRect, 6.0f,
+                                                  state->theme.buttonText);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+
+                if (HitTestCancelButton(*state, x, y)) {
+                    state->cancelPressed = true;
+                    D2D1_RECT_F buttonRect = GetCancelButtonRect(*state);
+                    state->renderer.TriggerRipple(static_cast<float>(x), static_cast<float>(y), buttonRect, 6.0f,
+                                                  state->theme.textPrimary);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+            }
+            return 0;
+        }
+
+        case WM_LBUTTONUP: {
+            if (state) {
+                int x = LOWORD(lParam);
+                int y = HIWORD(lParam);
+
+                // 复选框点击
+                if (state->checkboxPressed && HitTestCheckbox(*state, x, y)) {
+                    state->rememberChoice = !state->rememberChoice;
+                }
+                state->checkboxPressed = false;
+
+                // 确定按钮点击
+                if (state->okPressed && HitTestOkButton(*state, x, y)) {
                     state->confirmed = true;
                     PostMessageW(hwnd, WM_CLOSE, 0, 0);
                 }
+                state->okPressed = false;
+
+                // 取消按钮点击
+                if (state->cancelPressed && HitTestCancelButton(*state, x, y)) {
+                    state->confirmed = false;
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                }
+                state->cancelPressed = false;
+
+                InvalidateRect(hwnd, nullptr, FALSE);
             }
             return 0;
         }
@@ -353,6 +502,20 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 
         case WM_TIMER: {
             if (state && wParam == 1) {
+                // 计算 dt
+                LARGE_INTEGER currentTime;
+                QueryPerformanceCounter(&currentTime);
+                if (state->lastTime.QuadPart > 0 && state->frequency.QuadPart > 0) {
+                    state->dt = static_cast<float>(currentTime.QuadPart - state->lastTime.QuadPart)
+                              / static_cast<float>(state->frequency.QuadPart);
+                    // 限制 dt 防止异常
+                    if (state->dt > 0.1f) state->dt = 0.1f;
+                    if (state->dt < 0.0f) state->dt = 0.001f;
+                } else {
+                    state->dt = 0.033f; // ~30fps fallback
+                }
+                state->lastTime = currentTime;
+
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
             return 0;
@@ -380,6 +543,33 @@ static void SaveCameraChoice(int index) {
     }
 }
 
+static void SaveSkipCameraSelectorDialog(bool skip) {
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        DWORD value = skip ? 1u : 0u;
+        RegSetValueExW(hKey, REGISTRY_VALUE_SKIP, 0, REG_DWORD,
+                       reinterpret_cast<const BYTE*>(&value), sizeof(value));
+        RegCloseKey(hKey);
+    }
+}
+
+static bool GetSkipCameraSelectorDialog() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD value = 0;
+        DWORD size = sizeof(value);
+        DWORD type = 0;
+        if (RegQueryValueExW(hKey, REGISTRY_VALUE_SKIP, nullptr, &type,
+                             reinterpret_cast<BYTE*>(&value), &size) == ERROR_SUCCESS && type == REG_DWORD) {
+            RegCloseKey(hKey);
+            return value != 0;
+        }
+        RegCloseKey(hKey);
+    }
+    return false;
+}
+
 // 公开 API 实现
 
 int GetSavedCameraChoice() {
@@ -402,11 +592,12 @@ void ClearSavedCameraChoice() {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, REGISTRY_KEY, 0, KEY_WRITE, &hKey) == ERROR_SUCCESS) {
         RegDeleteValueW(hKey, REGISTRY_VALUE);
+        RegDeleteValueW(hKey, REGISTRY_VALUE_SKIP);
         RegCloseKey(hKey);
     }
 }
 
-int ShowCameraSelectorDialog(HINSTANCE hInstance) {
+int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance) {
     // 初始化 COM
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool comInitialized = SUCCEEDED(hr);
@@ -428,8 +619,12 @@ int ShowCameraSelectorDialog(HINSTANCE hInstance) {
 
     // 检查是否有保存的选择
     int savedChoice = GetSavedCameraChoice();
-    if (savedChoice >= 0 && savedChoice < static_cast<int>(cameras.size())) {
-        std::cout << "[CameraSelector] Using saved camera choice: " << savedChoice << std::endl;
+    bool savedChoiceValid = savedChoice >= 0 && savedChoice < static_cast<int>(cameras.size());
+    int  fallbackChoice = savedChoiceValid ? savedChoice : 0;
+
+    // 如果用户勾选“记住我的选择”，且保存的索引仍有效，则不弹窗，直接返回
+    if (savedChoiceValid && GetSkipCameraSelectorDialog()) {
+        std::cout << "[CameraSelector] Skipping dialog (remember choice): " << savedChoice << std::endl;
         if (comInitialized) CoUninitialize();
         return savedChoice;
     }
@@ -439,6 +634,13 @@ int ShowCameraSelectorDialog(HINSTANCE hInstance) {
     state.cameras = std::move(cameras);
     state.isDarkMode = IsSystemDarkMode();
     state.theme = state.isDarkMode ? GetDarkTheme() : GetLightTheme();
+    state.selectedIndex = fallbackChoice;
+    state.rememberChoice = GetSkipCameraSelectorDialog();
+
+    // 初始化动画状态
+    state.cardAnims.resize(state.cameras.size());
+    QueryPerformanceFrequency(&state.frequency);
+    QueryPerformanceCounter(&state.lastTime);
 
     CalculateLayout(state);
 
@@ -470,14 +672,15 @@ int ShowCameraSelectorDialog(HINSTANCE hInstance) {
     int adjustedWidth = rect.right - rect.left;
     int adjustedHeight = rect.bottom - rect.top;
 
-    // 创建窗口 (无关闭按钮，用户必须通过确定按钮或 ESC 退出)
+    // 创建窗口 (作为父窗口的 owned window，父窗口关闭时自动关闭)
     state.hwnd = CreateWindowExW(
         0,
         WINDOW_CLASS,
         L"选择摄像头",
         WS_OVERLAPPED | WS_CAPTION,  // 移除 WS_SYSMENU 禁用关闭按钮
         windowX, windowY, adjustedWidth, adjustedHeight,
-        nullptr, nullptr, hInstance, &state
+        parentHwnd,  // 设置父窗口，使此窗口成为 owned window
+        nullptr, hInstance, &state
     );
 
     if (!state.hwnd) {
@@ -537,15 +740,17 @@ int ShowCameraSelectorDialog(HINSTANCE hInstance) {
 
     // 返回结果
     if (state.confirmed) {
-        if (state.rememberChoice) {
-            SaveCameraChoice(state.selectedIndex);
-        }
-        std::cout << "[CameraSelector] User selected camera " << state.selectedIndex << std::endl;
+        // “上一次选中的摄像头”：总是保存，供下次默认选中/取消回退使用
+        SaveCameraChoice(state.selectedIndex);
+        // “记住我的选择”：控制下次是否跳过弹窗
+        SaveSkipCameraSelectorDialog(state.rememberChoice);
+        std::cout << "[CameraSelector] User selected camera " << state.selectedIndex
+                  << (state.rememberChoice ? " (remember)" : "") << std::endl;
         return state.selectedIndex;
     }
 
-    std::cout << "[CameraSelector] User cancelled" << std::endl;
-    return -1;
+    std::cout << "[CameraSelector] User cancelled, using previous camera " << fallbackChoice << std::endl;
+    return fallbackChoice;
 }
 
 } // namespace CameraSelector
