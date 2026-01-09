@@ -1366,7 +1366,6 @@ int main() {
                     // 暂停/继续按钮（MD3风格按钮+图标）
                     ImGui::SameLine();
                     bool isPaused = DebugLog::Instance().IsPaused();
-                    float buttonSize = 32 * dpi;
 
                     // 使用InvisibleButton作为基础，然后绘制MD3风格背景和图标
                     ImVec2 btnPos = ImGui::GetCursorScreenPos();
