@@ -171,6 +171,58 @@ struct Strings {
     const char* vsyncOff;
     const char* vsyncOn;
     const char* vsyncAdaptive;
+
+    // Status bar (new)
+    const char* statusBarHand;
+    const char* statusBarNoHand;
+
+    // Hand tracking status card (new)
+    const char* trackerStatus;
+    const char* trackerInitializing;
+    const char* trackerReady;
+    const char* trackerFailed;
+    const char* trackerError;
+    const char* cameraInfo;
+    const char* frameTime;
+
+    // Hand tracking parameters (new)
+    const char* sensitivity;
+    const char* invertX;
+    const char* invertY;
+    const char* handLostDelay;
+    const char* resetDefaults;
+    const char* frames;
+
+    // Log filtering (new)
+    const char* logSearch;
+    const char* logPause;
+    const char* logResume;
+    const char* logLevelAll;
+    const char* logLevelInfo;
+    const char* logLevelWarn;
+    const char* logLevelError;
+    const char* copySingleLine;
+
+    // Diagnostics (new)
+    const char* copyDiagnostics;
+    const char* diagnosticsCopied;
+
+    // FPS history (new)
+    const char* fpsHistory;
+    const char* fpsAvg;
+    const char* fpsMin;
+    const char* fpsMax;
+
+    // LOD control (new)
+    const char* lodLock;
+    const char* lodThresholdLow;
+    const char* lodThresholdHigh;
+    const char* lodLastDecision;
+    const char* lodDecreaseParticles;
+    const char* lodDecreasePixelRatio;
+    const char* lodIncreasePixelRatio;
+    const char* lodIncreaseParticles;
+    const char* lodStable;
 };
 
 // Chinese strings
@@ -336,6 +388,58 @@ inline const Strings& GetChinese() {
         .vsyncOff      = "关闭",
         .vsyncOn       = "开启",
         .vsyncAdaptive = "自适应",
+
+        // Status bar (new)
+        .statusBarHand   = "手势",
+        .statusBarNoHand = "无手势",
+
+        // Hand tracking status card (new)
+        .trackerStatus       = "追踪器状态",
+        .trackerInitializing = "初始化中",
+        .trackerReady        = "就绪",
+        .trackerFailed       = "失败",
+        .trackerError        = "错误",
+        .cameraInfo          = "摄像头",
+        .frameTime           = "帧耗时",
+
+        // Hand tracking parameters (new)
+        .sensitivity    = "灵敏度",
+        .invertX        = "反转 X",
+        .invertY        = "反转 Y",
+        .handLostDelay  = "丢手延迟",
+        .resetDefaults  = "重置默认值",
+        .frames         = "帧",
+
+        // Log filtering (new)
+        .logSearch      = "搜索",
+        .logPause       = "暂停",
+        .logResume      = "继续",
+        .logLevelAll    = "全部",
+        .logLevelInfo   = "信息",
+        .logLevelWarn   = "警告",
+        .logLevelError  = "错误",
+        .copySingleLine = "复制",
+
+        // Diagnostics (new)
+        .copyDiagnostics   = "复制诊断信息",
+        .diagnosticsCopied = "已复制到剪贴板",
+
+        // FPS history (new)
+        .fpsHistory = "帧率历史",
+        .fpsAvg     = "平均",
+        .fpsMin     = "最低",
+        .fpsMax     = "最高",
+
+        // LOD control (new)
+        .lodLock               = "锁定 LOD",
+        .lodThresholdLow       = "低阈值",
+        .lodThresholdHigh      = "高阈值",
+        .lodLastDecision       = "上次决策",
+        .lodDecreaseParticles  = "降低粒子数",
+        .lodDecreasePixelRatio = "降低像素比例",
+        .lodIncreasePixelRatio = "提高像素比例",
+        .lodIncreaseParticles  = "提高粒子数",
+        .lodStable             = "稳定",
     };
     return zh;
 }
@@ -503,6 +607,58 @@ inline const Strings& GetEnglish() {
         .vsyncOff      = "Off",
         .vsyncOn       = "On",
         .vsyncAdaptive = "Adaptive",
+
+        // Status bar (new)
+        .statusBarHand   = "Hand",
+        .statusBarNoHand = "No Hand",
+
+        // Hand tracking status card (new)
+        .trackerStatus       = "Tracker Status",
+        .trackerInitializing = "Initializing",
+        .trackerReady        = "Ready",
+        .trackerFailed       = "Failed",
+        .trackerError        = "Error",
+        .cameraInfo          = "Camera",
+        .frameTime           = "Frame Time",
+
+        // Hand tracking parameters (new)
+        .sensitivity    = "Sensitivity",
+        .invertX        = "Invert X",
+        .invertY        = "Invert Y",
+        .handLostDelay  = "Hand Lost Delay",
+        .resetDefaults  = "Reset Defaults",
+        .frames         = "frames",
+
+        // Log filtering (new)
+        .logSearch      = "Search",
+        .logPause       = "Pause",
+        .logResume      = "Resume",
+        .logLevelAll    = "All",
+        .logLevelInfo   = "Info",
+        .logLevelWarn   = "Warn",
+        .logLevelError  = "Error",
+        .copySingleLine = "Copy",
+
+        // Diagnostics (new)
+        .copyDiagnostics   = "Copy Diagnostics",
+        .diagnosticsCopied = "Copied to clipboard",
+
+        // FPS history (new)
+        .fpsHistory = "FPS History",
+        .fpsAvg     = "Avg",
+        .fpsMin     = "Min",
+        .fpsMax     = "Max",
+
+        // LOD control (new)
+        .lodLock               = "Lock LOD",
+        .lodThresholdLow       = "Low Threshold",
+        .lodThresholdHigh      = "High Threshold",
+        .lodLastDecision       = "Last Decision",
+        .lodDecreaseParticles  = "Decrease Particles",
+        .lodDecreasePixelRatio = "Decrease Pixel Ratio",
+        .lodIncreasePixelRatio = "Increase Pixel Ratio",
+        .lodIncreaseParticles  = "Increase Particles",
+        .lodStable             = "Stable",
     };
     return en;
 }
