@@ -290,8 +290,8 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     while (g_ctx.running) {
         auto frame_start = std::chrono::steady_clock::now();
 
-        if (!camera->getLatestFrame(frame)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // 事件驱动：阻塞等待新帧，避免轮询
+        if (!camera->waitForFrame(frame, 50)) {
             continue;
         }
 
