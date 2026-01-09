@@ -59,8 +59,6 @@ int main() {
         return -1;
     }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // 最低要求 4.3 (Compute Shader + SSBO)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_STENCIL_BITS, 8);
@@ -103,8 +101,19 @@ int main() {
         }
     }
 
-    // 创建窗口
-    GLFWwindow* window = glfwCreateWindow(initialClientW, initialClientH, "Particle Saturn", NULL, NULL);
+    // 创建窗口: 优先尝试 OpenGL 4.6 以获取持久映射支持, 失败则回退到 4.3
+    // 某些驱动 (AMD/Intel) 只返回请求的版本而非设备支持的最高版本
+    GLFWwindow* window = nullptr;
+    const int glVersionsToTry[][2] = {{4, 6}, {4, 5}, {4, 4}, {4, 3}};
+    for (const auto& ver : glVersionsToTry) {
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, ver[0]);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, ver[1]);
+        window = glfwCreateWindow(initialClientW, initialClientH, "Particle Saturn", NULL, NULL);
+        if (window) {
+            std::cout << "[Main] OpenGL " << ver[0] << "." << ver[1] << " context created" << std::endl;
+            break;
+        }
+    }
     if (!window) {
         std::cerr << "[Main] Fatal: glfwCreateWindow() failed" << std::endl;
         ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);
