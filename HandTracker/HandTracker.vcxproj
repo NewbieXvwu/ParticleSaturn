@@ -28,6 +28,7 @@
     <ClCompile Include="PalmDetector.cpp" />
     <ClCompile Include="HandLandmark.cpp" />
     <ClCompile Include="SIMDNormalize.cpp" />
+    <ClCompile Include="Win7Compat_GetSystemTimePreciseAsFileTime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraCapture.h" />

@@ -208,6 +208,7 @@
     <ClCompile Include="src\Renderer.cpp" />
     <ClCompile Include="src\UIManager.cpp" />
     <ClCompile Include="src\AppState.cpp" />
+    <ClCompile Include="src\Win7Compat_GetSystemTimePreciseAsFileTime.cpp" />
     <ClCompile Include="src\CameraSelector\CameraEnumerator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
