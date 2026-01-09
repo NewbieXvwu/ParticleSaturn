@@ -97,6 +97,7 @@ template <int N = 60> class RingBufferFPS {
         // 预填充假设 60 FPS 的帧时间，避免启动时 FPS 从 0 涨上去
         for (int i = 0; i < N; i++) {
             frameTimes[i] = 1.0f / 60.0f;
+            fpsHistory[i] = 60.0f;
         }
         count = N; // 标记为已填满，与 sum 的初始值匹配
     }
@@ -106,6 +107,15 @@ template <int N = 60> class RingBufferFPS {
         sum -= frameTimes[index];
         frameTimes[index] = dt;
         sum += dt;
+
+        // 更新 FPS 历史（用于曲线图）
+        float currentFps = (dt > 0.0f) ? 1.0f / dt : 60.0f;
+        fpsHistory[index] = currentFps;
+
+        // 更新 min/max
+        if (currentFps < minFps) minFps = currentFps;
+        if (currentFps > maxFps) maxFps = currentFps;
+
         index = (index + 1) % N;
         // count 已经在构造函数中设为 N，不再增长
     }
@@ -126,11 +136,29 @@ template <int N = 60> class RingBufferFPS {
         return sum / (float)N; // 始终使用 N 作为分母
     }
 
+    // 获取 FPS 历史（用于曲线图）
+    const float* GetFPSHistory() const { return fpsHistory; }
+    int GetHistorySize() const { return N; }
+    int GetCurrentIndex() const { return index; }
+
+    // 获取 min/max FPS
+    float GetMinFPS() const { return minFps; }
+    float GetMaxFPS() const { return maxFps; }
+
+    // 重置 min/max（可选，用于周期性重置）
+    void ResetMinMax() {
+        minFps = 9999.0f;
+        maxFps = 0.0f;
+    }
+
   private:
     float frameTimes[N];
+    float fpsHistory[N];  // FPS 历史记录
     float sum   = N * (1.0f / 60.0f); // 初始假设 60 FPS
     int   index = 0;
     int   count = N; // 初始化为 N，与预填充的数据匹配
+    float minFps = 60.0f;
+    float maxFps = 60.0f;
 };
 
 // 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
