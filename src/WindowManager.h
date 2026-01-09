@@ -38,18 +38,57 @@ enum {
 namespace WindowManager {
 
 #ifdef _WIN32
+inline bool IsDwmCompositionEnabled() {
+    BOOL enabled = FALSE;
+    HRESULT hr   = DwmIsCompositionEnabled(&enabled);
+    return SUCCEEDED(hr) && enabled;
+}
+
+inline void DisableAeroBlur(HWND hwnd) {
+    DWM_BLURBEHIND bb = {};
+    bb.dwFlags        = DWM_BB_ENABLE;
+    bb.fEnable        = FALSE;
+    (void)DwmEnableBlurBehindWindow(hwnd, &bb);
+}
+
+inline bool EnableAeroBlur(HWND hwnd) {
+    if (!IsDwmCompositionEnabled()) {
+        return false;
+    }
+
+    MARGINS margins = {-1, -1, -1, -1};
+    (void)DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+    DWM_BLURBEHIND bb = {};
+    bb.dwFlags        = DWM_BB_ENABLE;
+    bb.fEnable        = TRUE;
+    return SUCCEEDED(DwmEnableBlurBehindWindow(hwnd, &bb));
+}
+
 // 检测系统是否使用深色模式
 inline bool IsSystemDarkMode() {
+    auto IsColorDark = [](COLORREF c) -> bool {
+        const double r = static_cast<double>(GetRValue(c)) / 255.0;
+        const double g = static_cast<double>(GetGValue(c)) / 255.0;
+        const double b = static_cast<double>(GetBValue(c)) / 255.0;
+        const double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luminance < 0.5;
+    };
+
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0,
                       KEY_READ, &hKey) == ERROR_SUCCESS) {
         DWORD value = 1;
         DWORD size  = sizeof(value);
-        RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr, (LPBYTE)&value, &size);
+        if (RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr, (LPBYTE)&value, &size) == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            return value == 0;
+        }
         RegCloseKey(hKey);
-        return value == 0;
     }
-    return true;
+
+    // Win7 / legacy fallback: infer from system window background color instead of forcing dark.
+    return IsColorDark(GetSysColor(COLOR_WINDOW));
 }
 
 // 设置标题栏深色/浅色模式
@@ -64,7 +103,11 @@ inline void SetTitleBarDarkMode(HWND hwnd, bool dark) {
 // 检测可用的背景效果
 inline void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
     state.backdrop.availableBackdrops.clear();
-    state.backdrop.availableBackdrops.push_back(0); // Solid black always available
+    // Desired cycle order (highest -> lowest): Mica > Acrylic > Aero > Solid
+    // Build the list in that order so the B-key cycle can just increment the index.
+    bool aeroSupported    = IsDwmCompositionEnabled();
+    bool acrylicSupported = false;
+    bool micaSupported    = false;
 
     MARGINS margins = {-1, -1, -1, -1};
     DwmExtendFrameIntoClientArea(hwnd, &margins);
@@ -73,7 +116,7 @@ inline void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
     int     backdropType = 3;
     HRESULT hr           = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
     if (SUCCEEDED(hr)) {
-        state.backdrop.availableBackdrops.push_back(1);
+        acrylicSupported = true;
         std::cout << "[DWM] Acrylic: Supported" << std::endl;
     } else {
         std::cout << "[DWM] Acrylic: Not supported (0x" << std::hex << hr << std::dec << ")" << std::endl;
@@ -83,10 +126,16 @@ inline void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
     backdropType = 2;
     hr           = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
     if (SUCCEEDED(hr)) {
-        state.backdrop.availableBackdrops.push_back(2);
+        micaSupported = true;
         std::cout << "[DWM] Mica: Supported" << std::endl;
     } else {
         std::cout << "[DWM] Mica: Not supported (0x" << std::hex << hr << std::dec << ")" << std::endl;
+    }
+
+    if (aeroSupported) {
+        std::cout << "[DWM] Aero: Supported" << std::endl;
+    } else {
+        std::cout << "[DWM] Aero: Not supported (composition disabled)" << std::endl;
     }
 
     // Reset
@@ -94,17 +143,32 @@ inline void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
     DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
     margins = {0, 0, 0, 0};
     DwmExtendFrameIntoClientArea(hwnd, &margins);
+    DisableAeroBlur(hwnd);
+
+    // Cycle order: Mica > Acrylic > Solid > Aero (supported subset).
+    if (micaSupported) {
+        state.backdrop.availableBackdrops.push_back(3);
+    }
+    if (acrylicSupported) {
+        state.backdrop.availableBackdrops.push_back(2);
+    }
+    state.backdrop.availableBackdrops.push_back(0); // Solid always available
+    if (aeroSupported) {
+        state.backdrop.availableBackdrops.push_back(1);
+    }
 
     std::cout << "[DWM] Available backdrops: ";
     for (int m : state.backdrop.availableBackdrops) {
-        const char* names[] = {"Black", "Acrylic", "Mica"};
+        const char* names[] = {"Black", "Aero", "Acrylic", "Mica"};
         std::cout << names[m] << " ";
     }
     std::cout << std::endl;
 }
 
-// 设置背景模式：0=纯黑, 1=Acrylic, 2=Mica
+// 设置背景模式：0=纯黑, 1=Aero, 2=Acrylic, 3=Mica
 inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
+    DisableAeroBlur(hwnd);
+
     int resetType = 1;
     DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
 
@@ -113,15 +177,19 @@ inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
         DwmExtendFrameIntoClientArea(hwnd, &margins);
         state.backdrop.useTransparent = false;
         std::cout << "[DWM] Backdrop: Solid Black" << std::endl;
+    } else if (mode == 1) {
+        bool ok                    = EnableAeroBlur(hwnd);
+        state.backdrop.useTransparent = true;
+        std::cout << "[DWM] Backdrop: Aero " << (ok ? "OK" : "FAILED") << std::endl;
     } else {
         MARGINS margins = {-1, -1, -1, -1};
         DwmExtendFrameIntoClientArea(hwnd, &margins);
 
-        int     backdropType = (mode == 1) ? 3 : 2;
+        int     backdropType = (mode == 2) ? 3 : 2;
         HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         state.backdrop.useTransparent = true;
 
-        const char* name = (mode == 1) ? "Acrylic" : "Mica";
+        const char* name = (mode == 2) ? "Acrylic" : "Mica";
         std::cout << "[DWM] Backdrop: " << name << " (type=" << backdropType << ") "
                   << (SUCCEEDED(hr) ? "OK" : "FAILED") << std::endl;
     }
