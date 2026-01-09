@@ -60,7 +60,7 @@ int main() {
     }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4); // 升级到 4.4 以支持 glBufferStorage
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // 最低要求 4.3 (Compute Shader + SSBO)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_STENCIL_BITS, 8);
@@ -195,8 +195,8 @@ int main() {
     int glMajor, glMinor;
     glGetIntegerv(GL_MAJOR_VERSION, &glMajor);
     glGetIntegerv(GL_MINOR_VERSION, &glMinor);
-    if (glMajor < 4 || (glMajor == 4 && glMinor < 4)) {
-        std::cerr << "[Main] Fatal: OpenGL " << glMajor << "." << glMinor << " < 4.4" << std::endl;
+    if (glMajor < 4 || (glMajor == 4 && glMinor < 3)) {
+        std::cerr << "[Main] Fatal: OpenGL " << glMajor << "." << glMinor << " < 4.3" << std::endl;
         std::ostringstream details;
         details << i18n::Get().detailOpenGLVersionLow << ": " << glMajor << "." << glMinor << "\n"
                 << i18n::Get().detailOpenGLRequired << "\n\n"
@@ -235,8 +235,13 @@ int main() {
     ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
     appState.gl.version  = (const char*)glGetString(GL_VERSION);
     appState.gl.renderer = (const char*)glGetString(GL_RENDERER);
+    appState.gl.major    = glMajor;
+    appState.gl.minor    = glMinor;
+    // OpenGL 4.4+ 支持 Persistent Mapped Buffers
+    appState.gl.persistentMapping = (glMajor > 4 || (glMajor == 4 && glMinor >= 4));
     ErrorHandler::SetGPUInfo(appState.gl.renderer, appState.gl.version);
-    std::cout << "[Main] OpenGL: " << appState.gl.version << std::endl;
+    std::cout << "[Main] OpenGL: " << appState.gl.version
+              << " (Persistent Mapping: " << (appState.gl.persistentMapping ? "Yes" : "No") << ")" << std::endl;
 
 #ifdef _WIN32
     ImmAssociateContext(glfwGetWin32Window(window), NULL);
@@ -248,7 +253,7 @@ int main() {
         std::cout << "[DWM] System theme: " << (appState.ui.isDarkMode ? "Dark" : "Light") << std::endl;
         WindowManager::InstallThemeChangeHook(hwnd);
         WindowManager::DetectAvailableBackdrops(hwnd, appState);
-        appState.backdrop.backdropIndex = (int)appState.backdrop.availableBackdrops.size() - 1;
+        appState.backdrop.backdropIndex = 0;
         WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex],
                                        appState);
     }
@@ -500,7 +505,7 @@ int main() {
 
     // 初始化 Uniform 缓存
     UniformCache uc;
-    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI, pBlur, pQuad);
+    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI, pBlur, pQuad, appState.gl.persistentMapping);
 
     // 投影和视图矩阵
     glm::mat4 proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
@@ -730,23 +735,40 @@ int main() {
         glBindTexture(GL_TEXTURE_2D, fbmTexture);
         glUniform1i(uc.pl_uFBMTex, 0);
 
-        // 更新行星 UBO 数据 (直接写入 persistent mapped buffer，无需 glBufferSubData)
+        // 更新行星 UBO 数据
         glm::mat4 orbitRot = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
         float     selfRot  = t * 0.1f;
 
-        // 直接写入 persistent mapped buffer (无 CPU-GPU 同步开销)
+        // 临时缓冲区用于 fallback 路径
+        PlanetInstance planetData[8];
+
         for (int i = 0; i < planetCount; i++) {
-            const PlanetData& p             = planets[i];
-            glm::mat4         m             = orbitRot;
-            m                               = glm::translate(m, p.pos);
-            m                               = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
-            m                               = glm::scale(m, glm::vec3(p.radius));
-            uc.pl_ubo_mapped[i].modelMatrix = m;
-            uc.pl_ubo_mapped[i].color1      = glm::vec4(p.color1, p.noiseScale);
-            uc.pl_ubo_mapped[i].color2      = glm::vec4(p.color2, p.atmosphere);
+            const PlanetData& p = planets[i];
+            glm::mat4         m = orbitRot;
+            m                   = glm::translate(m, p.pos);
+            m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
+            m                   = glm::scale(m, glm::vec3(p.radius));
+
+            if (uc.pl_ubo_mapped) {
+                // OpenGL 4.4+: 直接写入 persistent mapped buffer (无 CPU-GPU 同步开销)
+                uc.pl_ubo_mapped[i].modelMatrix = m;
+                uc.pl_ubo_mapped[i].color1      = glm::vec4(p.color1, p.noiseScale);
+                uc.pl_ubo_mapped[i].color2      = glm::vec4(p.color2, p.atmosphere);
+            } else {
+                // OpenGL 4.3 fallback: 写入临时缓冲区
+                planetData[i].modelMatrix = m;
+                planetData[i].color1      = glm::vec4(p.color1, p.noiseScale);
+                planetData[i].color2      = glm::vec4(p.color2, p.atmosphere);
+            }
         }
 
-        // 渲染所有行星 (GL_MAP_COHERENT_BIT 保证自动同步)
+        // OpenGL 4.3 fallback: 使用 glBufferSubData 上传数据
+        if (!uc.pl_ubo_mapped) {
+            glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, planetCount * sizeof(PlanetInstance), planetData);
+        }
+
+        // 渲染所有行星 (4.4+: GL_MAP_COHERENT_BIT 保证自动同步)
         glBindVertexArray(vaoPlanet);
         glDrawElementsInstanced(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0, planetCount);
 
@@ -918,6 +940,8 @@ int main() {
                     ImGui::Text("%s: %u / %u", str.particles, appState.render.activeParticleCount, MAX_PARTICLES);
                     ImGui::Text("%s: %.2f", str.pixelRatio, appState.render.pixelRatio);
                     ImGui::Text("%s: %u x %u", str.resolution, appState.window.width, appState.window.height);
+                    ImGui::Text("%s: %d.%d%s", str.openglVersion, appState.gl.major, appState.gl.minor,
+                                appState.gl.persistentMapping ? "" : " (compat)");
 
                     ImGui::Dummy(ImVec2(0, 5));
 
@@ -985,12 +1009,41 @@ int main() {
                 }
 
                 if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
-                    const char* backdropNames[] = {"Solid Black", "Acrylic", "Mica"};
-                    if (appState.backdrop.backdropIndex < (int)appState.backdrop.availableBackdrops.size()) {
-                        ImGui::Text(
-                            "%s: %s", str.backdrop,
-                            backdropNames[appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex]]);
+#ifdef _WIN32
+                    HWND hwnd = glfwGetWin32Window(window);
+                    auto GetBackdropLabel = [&](int mode) -> const char* {
+                        switch (mode) {
+                            case 0:
+                                return str.backdropSolid;
+                            case 1:
+                                return str.backdropAero;
+                            case 2:
+                                return str.backdropAcrylic;
+                            case 3:
+                                return str.backdropMica;
+                            default:
+                                return str.statusUnknown;
+                        }
+                    };
+
+                    std::vector<const char*> items;
+                    items.reserve(appState.backdrop.availableBackdrops.size());
+                    for (int mode : appState.backdrop.availableBackdrops) {
+                        items.push_back(GetBackdropLabel(mode));
                     }
+
+                    if (!items.empty()) {
+                        ImGui::Text("%s:", str.backdrop);
+                        int idx = appState.backdrop.backdropIndex;
+                        if (idx < 0 || idx >= (int)items.size()) {
+                            idx = 0;
+                        }
+                        if (MD3::Combo("##Backdrop", &idx, items.data(), (int)items.size())) {
+                            appState.backdrop.backdropIndex = idx;
+                            WindowManager::SetBackdropMode(hwnd, appState.backdrop.availableBackdrops[idx], appState);
+                        }
+                    }
+#endif
                     ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
                     ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
                     MD3::EndCollapsingHeader();
@@ -1026,7 +1079,13 @@ int main() {
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
-                if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(-1, 48 * appState.ui.dpiScale))) {
+                float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+                float buttonHeight = 48 * appState.ui.dpiScale;
+                if (MD3::FilledButton(str.cameraSelectorButton, ImVec2(buttonWidth, buttonHeight))) {
+                    CameraSelector::ShowCameraSelectorDialog(glfwGetWin32Window(window), GetModuleHandle(nullptr), true);
+                }
+                ImGui::SameLine();
+                if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(buttonWidth, buttonHeight))) {
                     CrashAnalyzer::Open();
                 }
 

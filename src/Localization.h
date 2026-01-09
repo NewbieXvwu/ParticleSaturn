@@ -107,6 +107,7 @@ struct Strings {
     // Crash analyzer
     const char* crashAnalyzerTitle;
     const char* crashAnalyzerButton;
+    const char* cameraSelectorButton;
     const char* pdbFile;
     const char* dropOrSelect;
     const char* crashReport;
@@ -134,6 +135,7 @@ struct Strings {
     const char* particles;
     const char* pixelRatio;
     const char* resolution;
+    const char* openglVersion;
     const char* handDetected;
     const char* yes;
     const char* no;
@@ -146,6 +148,10 @@ struct Strings {
     const char* glassBlur;
     const char* blurStrength;
     const char* backdrop;
+    const char* backdropSolid;
+    const char* backdropAero;
+    const char* backdropAcrylic;
+    const char* backdropMica;
     const char* fullscreen;
     const char* transparent;
     const char* clearLog;
@@ -190,9 +196,9 @@ inline const Strings& GetChinese() {
 
         // Error messages - initialization
         .glfwInitFailed           = "窗口系统初始化失败，请检查系统兼容性",
-        .windowCreateFailed       = "无法创建窗口，您的显卡可能不支持 OpenGL 4.4",
+        .windowCreateFailed       = "无法创建窗口，您的显卡可能不支持 OpenGL 4.3",
         .openglLoadFailed         = "OpenGL 扩展加载失败，请更新显卡驱动",
-        .openglVersionUnsupported = "您的显卡不支持 OpenGL 4.4，程序需要此版本才能运行",
+        .openglVersionUnsupported = "您的显卡不支持 OpenGL 4.3，程序需要此版本才能运行",
         .fboCreateFailed          = "帧缓冲创建失败，请尝试更新显卡驱动",
         .embeddedResourceFailed   = "内置资源加载失败，程序文件可能已损坏",
 
@@ -203,13 +209,13 @@ inline const Strings& GetChinese() {
 
         // Error details (technical messages shown in expandable section)
         .detailWindowCreateFailed = "glfwCreateWindow() 返回 NULL。\n\n"
-                                    "这通常意味着您的显卡不支持 OpenGL 4.4 Core Profile。\n"
+                                    "这通常意味着您的显卡不支持 OpenGL 4.3 Core Profile。\n"
                                     "请更新显卡驱动或检查硬件兼容性。",
         .detailOpenGLLoadFailed   = "gladLoadGLLoader() 返回 false。\n\n"
                                     "无法加载 OpenGL 函数指针。\n"
                                     "请更新显卡驱动。",
         .detailOpenGLVersionLow   = "检测到的 OpenGL 版本",
-        .detailOpenGLRequired     = "需要 OpenGL 4.4 或更高版本",
+        .detailOpenGLRequired     = "需要 OpenGL 4.3 或更高版本",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "手掌检测模型加载失败",
@@ -266,6 +272,7 @@ inline const Strings& GetChinese() {
         // Crash analyzer
         .crashAnalyzerTitle  = "崩溃分析工具",
         .crashAnalyzerButton = "打开崩溃分析工具",
+        .cameraSelectorButton = "打开摄像头选择窗口",
         .pdbFile             = "PDB 文件",
         .dropOrSelect        = "拖入文件或点击选择",
         .crashReport         = "崩溃报告",
@@ -293,6 +300,7 @@ inline const Strings& GetChinese() {
         .particles           = "粒子数",
         .pixelRatio          = "像素比例",
         .resolution          = "分辨率",
+        .openglVersion       = "OpenGL",
         .handDetected        = "检测到手势",
         .yes                 = "是",
         .no                  = "否",
@@ -305,6 +313,10 @@ inline const Strings& GetChinese() {
         .glassBlur           = "玻璃模糊",
         .blurStrength        = "模糊强度",
         .backdrop            = "背景",
+        .backdropSolid       = "纯色",
+        .backdropAero        = "Aero",
+        .backdropAcrylic     = "Acrylic",
+        .backdropMica        = "Mica",
         .fullscreen          = "全屏",
         .transparent         = "透明",
         .clearLog            = "清空",
@@ -351,9 +363,9 @@ inline const Strings& GetEnglish() {
 
         // Error messages - initialization
         .glfwInitFailed           = "Window system initialization failed, check system compatibility",
-        .windowCreateFailed       = "Failed to create window, your GPU may not support OpenGL 4.4",
+        .windowCreateFailed       = "Failed to create window, your GPU may not support OpenGL 4.3",
         .openglLoadFailed         = "Failed to load OpenGL extensions, please update GPU driver",
-        .openglVersionUnsupported = "Your GPU does not support OpenGL 4.4, which is required",
+        .openglVersionUnsupported = "Your GPU does not support OpenGL 4.3, which is required",
         .fboCreateFailed          = "Framebuffer creation failed, try updating GPU driver",
         .embeddedResourceFailed   = "Failed to load embedded resources, program file may be corrupted",
 
@@ -364,13 +376,13 @@ inline const Strings& GetEnglish() {
 
         // Error details (technical messages shown in expandable section)
         .detailWindowCreateFailed = "glfwCreateWindow() returned NULL.\n\n"
-                                    "This usually means your GPU does not support OpenGL 4.4 Core Profile.\n"
+                                    "This usually means your GPU does not support OpenGL 4.3 Core Profile.\n"
                                     "Please update your graphics driver or check hardware compatibility.",
         .detailOpenGLLoadFailed   = "gladLoadGLLoader() returned false.\n\n"
                                     "Failed to load OpenGL function pointers.\n"
                                     "Please update your graphics driver.",
         .detailOpenGLVersionLow   = "Detected OpenGL version",
-        .detailOpenGLRequired     = "Required: OpenGL 4.4 or higher",
+        .detailOpenGLRequired     = "Required: OpenGL 4.3 or higher",
 
         // Error messages - hand tracker details
         .palmModelLoadFailed = "Failed to load palm detection model",
@@ -427,6 +439,7 @@ inline const Strings& GetEnglish() {
         // Crash analyzer
         .crashAnalyzerTitle  = "Crash Analyzer",
         .crashAnalyzerButton = "Open Crash Analyzer",
+        .cameraSelectorButton = "Open Camera Selector",
         .pdbFile             = "PDB File",
         .dropOrSelect        = "Drop file or click to select",
         .crashReport         = "Crash Report",
@@ -454,6 +467,7 @@ inline const Strings& GetEnglish() {
         .particles           = "Particles",
         .pixelRatio          = "Pixel Ratio",
         .resolution          = "Resolution",
+        .openglVersion       = "OpenGL",
         .handDetected        = "Hand Detected",
         .yes                 = "Yes",
         .no                  = "No",
@@ -466,6 +480,10 @@ inline const Strings& GetEnglish() {
         .glassBlur           = "Glass Blur",
         .blurStrength        = "Blur Strength",
         .backdrop            = "Backdrop",
+        .backdropSolid       = "Solid",
+        .backdropAero        = "Aero",
+        .backdropAcrylic     = "Acrylic",
+        .backdropMica        = "Mica",
         .fullscreen          = "Fullscreen",
         .transparent         = "Transparent",
         .clearLog            = "Clear",
