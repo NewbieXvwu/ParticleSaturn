@@ -535,12 +535,16 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             if (MD3::TonalButton(str.copyResult)) {
                 if (OpenClipboard(nullptr)) {
                     EmptyClipboard();
-                    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, g_state.analysisResult.size() + 1);
-                    if (hMem) {
-                        char* ptr = (char*)GlobalLock(hMem);
-                        memcpy(ptr, g_state.analysisResult.c_str(), g_state.analysisResult.size() + 1);
-                        GlobalUnlock(hMem);
-                        SetClipboardData(CF_TEXT, hMem);
+                    // Convert UTF-8 to UTF-16 for proper Chinese character support
+                    int wideLen = MultiByteToWideChar(CP_UTF8, 0, g_state.analysisResult.c_str(), -1, nullptr, 0);
+                    if (wideLen > 0) {
+                        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wideLen * sizeof(wchar_t));
+                        if (hMem) {
+                            wchar_t* ptr = (wchar_t*)GlobalLock(hMem);
+                            MultiByteToWideChar(CP_UTF8, 0, g_state.analysisResult.c_str(), -1, ptr, wideLen);
+                            GlobalUnlock(hMem);
+                            SetClipboardData(CF_UNICODETEXT, hMem);
+                        }
                     }
                     CloseClipboard();
                 }

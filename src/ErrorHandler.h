@@ -340,16 +340,20 @@ inline std::string BuildCrashReport(EXCEPTION_RECORD* exceptionRecord = nullptr,
     return report.str();
 }
 
-// Copy text to clipboard
+// Copy text to clipboard (UTF-8 to UTF-16 for proper Chinese support)
 inline void CopyToClipboard(const std::string& text) {
     if (OpenClipboard(nullptr)) {
         EmptyClipboard();
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1);
-        if (hMem) {
-            char* ptr = (char*)GlobalLock(hMem);
-            memcpy(ptr, text.c_str(), text.size() + 1);
-            GlobalUnlock(hMem);
-            SetClipboardData(CF_TEXT, hMem);
+        // Convert UTF-8 to UTF-16 for proper Chinese character support
+        int wideLen = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+        if (wideLen > 0) {
+            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wideLen * sizeof(wchar_t));
+            if (hMem) {
+                wchar_t* ptr = (wchar_t*)GlobalLock(hMem);
+                MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, ptr, wideLen);
+                GlobalUnlock(hMem);
+                SetClipboardData(CF_UNICODETEXT, hMem);
+            }
         }
         CloseClipboard();
     }
