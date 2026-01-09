@@ -43,6 +43,21 @@ struct AppState {
         bool  imguiInitialized = false; // 惰性加载标志
     } ui;
 
+    // 手势追踪参数 (用户可调)
+    struct {
+        float sensitivity   = 1.0f;   // 灵敏度倍数
+        bool  invertX       = false;  // 反转 X 轴
+        bool  invertY       = false;  // 反转 Y 轴
+        int   handLostDelay = 10;     // 丢手延迟帧数
+    } handParams;
+
+    // LOD 控制状态
+    struct {
+        bool        locked          = false; // 锁定 LOD，禁用自动调整
+        int         lastDecision    = 0;     // 0=稳定, 1=降粒子, 2=降像素, 3=升像素, 4=升粒子
+        float       lastDecisionTime = 0.0f; // 上次决策时间
+    } lod;
+
     // 输入状态 (按键防抖)
     struct {
         bool keyB_pressed   = false;
