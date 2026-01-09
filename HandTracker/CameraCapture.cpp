@@ -147,18 +147,22 @@ STDMETHODIMP DSGrabberCallback::BufferCB(double SampleTime, BYTE* pBuffer, long 
     }
 
     // 复制帧数据到缓冲区 (BGR 格式，需要垂直翻转)
-    std::lock_guard<std::mutex> lock(m_owner->m_frameMutex);
-    if (m_owner->m_frameBuffer.empty() || m_owner->m_frameBuffer.cols != width ||
-        m_owner->m_frameBuffer.rows != height) {
-        m_owner->m_frameBuffer.create(height, width, CV_8UC3);
+    {
+        std::lock_guard<std::mutex> lock(m_owner->m_frameMutex);
+        if (m_owner->m_frameBuffer.empty() || m_owner->m_frameBuffer.cols != width ||
+            m_owner->m_frameBuffer.rows != height) {
+            m_owner->m_frameBuffer.create(height, width, CV_8UC3);
+        }
+
+        // DirectShow 返回的图像是上下颠倒的，需要翻转
+        // 优化: 使用 cv::flip 替代手动逐行 memcpy（内部有 SIMD 优化）
+        cv::Mat temp(height, width, CV_8UC3, pBuffer);
+        cv::flip(temp, m_owner->m_frameBuffer, 0); // 0 = 垂直翻转
+
+        m_owner->m_hasFrame = true;
     }
-
-    // DirectShow 返回的图像是上下颠倒的，需要翻转
-    // 优化: 使用 cv::flip 替代手动逐行 memcpy（内部有 SIMD 优化）
-    cv::Mat temp(height, width, CV_8UC3, pBuffer);
-    cv::flip(temp, m_owner->m_frameBuffer, 0); // 0 = 垂直翻转
-
-    m_owner->m_hasFrame = true;
+    // 通知等待者有新帧
+    m_owner->m_frameCV.notify_one();
     return S_OK;
 }
 
@@ -369,6 +373,8 @@ void DirectShowCapture::close() {
     m_opened   = false;
     m_hasFrame = false;
     m_impl->Release();
+    // 唤醒可能在等待的线程
+    m_frameCV.notify_all();
 }
 
 bool DirectShowCapture::isOpened() const {
@@ -388,6 +394,30 @@ bool DirectShowCapture::getLatestFrame(cv::Mat& frame) {
     m_frameBuffer.copyTo(frame);
     m_hasFrame = false;
     return true;
+}
+
+bool DirectShowCapture::waitForFrame(cv::Mat& frame, int timeout_ms) {
+    if (!m_opened) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(m_frameMutex);
+
+    // 等待新帧或超时
+    bool gotFrame = m_frameCV.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                                       [this] { return m_hasFrame.load() || !m_opened.load(); });
+
+    if (!m_opened) {
+        return false;
+    }
+
+    if (gotFrame && m_hasFrame && !m_frameBuffer.empty()) {
+        m_frameBuffer.copyTo(frame);
+        m_hasFrame = false;
+        return true;
+    }
+
+    return false;
 }
 
 #endif // _WIN32
@@ -437,27 +467,85 @@ bool OpenCVCapture::open(int cameraId, int width, int height) {
     m_width  = (int)m_cap.get(cv::CAP_PROP_FRAME_WIDTH);
     m_height = (int)m_cap.get(cv::CAP_PROP_FRAME_HEIGHT);
 
+    // 启动读帧线程
+    m_running      = true;
+    m_readerThread = std::thread(&OpenCVCapture::readerLoop, this);
+
     std::cout << "[OpenCV] Camera opened: " << m_width << "x" << m_height << std::endl;
     return true;
 }
 
 void OpenCVCapture::close() {
+    // 停止读帧线程
+    m_running = false;
+    if (m_readerThread.joinable()) {
+        m_readerThread.join();
+    }
+
     if (m_cap.isOpened()) {
         m_cap.release();
     }
     m_width  = 0;
     m_height = 0;
+    m_hasNewFrame = false;
+
+    // 唤醒可能在等待的线程
+    m_frameCV.notify_all();
 }
 
 bool OpenCVCapture::isOpened() const {
-    return m_cap.isOpened();
+    return m_cap.isOpened() && m_running;
+}
+
+void OpenCVCapture::readerLoop() {
+    cv::Mat temp;
+    while (m_running) {
+        if (m_cap.read(temp)) {
+            {
+                std::lock_guard<std::mutex> lock(m_frameMutex);
+                temp.copyTo(m_frameBuffer);
+                m_hasNewFrame = true;
+            }
+            m_frameCV.notify_one();
+        } else {
+            // 读取失败，短暂等待后重试
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
 }
 
 bool OpenCVCapture::getLatestFrame(cv::Mat& frame) {
-    if (!m_cap.isOpened()) {
+    std::lock_guard<std::mutex> lock(m_frameMutex);
+    if (!m_hasNewFrame || m_frameBuffer.empty()) {
         return false;
     }
-    return m_cap.read(frame);
+    m_frameBuffer.copyTo(frame);
+    m_hasNewFrame = false;
+    return true;
+}
+
+bool OpenCVCapture::waitForFrame(cv::Mat& frame, int timeout_ms) {
+    if (!m_running) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(m_frameMutex);
+
+    // 等待新帧或超时
+    bool gotFrame = m_frameCV.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                                       [this] { return m_hasNewFrame.load() || !m_running.load(); });
+
+    if (!m_running) {
+        return false;
+    }
+
+    if (gotFrame && m_hasNewFrame && !m_frameBuffer.empty()) {
+        m_frameBuffer.copyTo(frame);
+        m_hasNewFrame = false;
+        return true;
+    }
+
+    return false;
 }
 
 // 工厂函数

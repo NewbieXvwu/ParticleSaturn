@@ -4,9 +4,11 @@
 // 其他平台: 使用 OpenCV
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <opencv2/opencv.hpp>
 
 // 摄像头捕获接口
@@ -26,6 +28,10 @@ class ICameraCapture {
     // 获取最新帧 (非阻塞，返回是否有新帧)
     virtual bool getLatestFrame(cv::Mat& frame) = 0;
 
+    // 等待新帧 (阻塞，带超时)
+    // 返回: true = 获取到新帧, false = 超时或错误
+    virtual bool waitForFrame(cv::Mat& frame, int timeout_ms) = 0;
+
     // 获取帧宽度
     virtual int getWidth() const = 0;
 
@@ -33,7 +39,8 @@ class ICameraCapture {
     virtual int getHeight() const = 0;
 };
 
-// OpenCV 实现 (跨平台 fallback)
+// OpenCV 异步实现 (跨平台 fallback)
+// 使用专用读帧线程实现事件驱动语义
 class OpenCVCapture : public ICameraCapture {
   public:
     OpenCVCapture();
@@ -43,15 +50,26 @@ class OpenCVCapture : public ICameraCapture {
     void close() override;
     bool isOpened() const override;
     bool getLatestFrame(cv::Mat& frame) override;
+    bool waitForFrame(cv::Mat& frame, int timeout_ms) override;
 
     int getWidth() const override { return m_width; }
 
     int getHeight() const override { return m_height; }
 
   private:
-    cv::VideoCapture m_cap;
-    int              m_width  = 0;
-    int              m_height = 0;
+    void readerLoop();
+
+    cv::VideoCapture        m_cap;
+    int                     m_width  = 0;
+    int                     m_height = 0;
+
+    // 异步读帧线程
+    std::thread             m_readerThread;
+    std::atomic<bool>       m_running{false};
+    std::mutex              m_frameMutex;
+    std::condition_variable m_frameCV;
+    cv::Mat                 m_frameBuffer;
+    std::atomic<bool>       m_hasNewFrame{false};
 };
 
 #ifdef _WIN32
@@ -70,6 +88,7 @@ class DirectShowCapture : public ICameraCapture {
     void close() override;
     bool isOpened() const override;
     bool getLatestFrame(cv::Mat& frame) override;
+    bool waitForFrame(cv::Mat& frame, int timeout_ms) override;
 
     int getWidth() const override { return m_width; }
 
@@ -77,13 +96,14 @@ class DirectShowCapture : public ICameraCapture {
 
   private:
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
-    int                   m_width    = 0;
-    int                   m_height   = 0;
-    std::atomic<bool>     m_opened   = false;
-    std::atomic<bool>     m_hasFrame = false;
-    std::mutex            m_frameMutex;
-    cv::Mat               m_frameBuffer;
+    std::unique_ptr<Impl>   m_impl;
+    int                     m_width    = 0;
+    int                     m_height   = 0;
+    std::atomic<bool>       m_opened   = false;
+    std::atomic<bool>       m_hasFrame = false;
+    std::mutex              m_frameMutex;
+    std::condition_variable m_frameCV;
+    cv::Mat                 m_frameBuffer;
 };
 #endif
 
