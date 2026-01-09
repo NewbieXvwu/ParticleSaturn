@@ -60,3 +60,37 @@ index 6be8f7691..11f133bec 100644
      ImGuiWindow* window = GetCurrentWindow();
      if (window->SkipItems)
          return false;
+@@ -8790,13 +8810,16 @@ int ImGui::PlotEx(ImGuiPlotType plot_type, const char* label, float (*values_get
+             const int v_idx = (int)(t * item_count);
+             IM_ASSERT(v_idx >= 0 && v_idx < values_count);
+ 
++            idx_hovered = v_idx;
++
++#ifndef IMGUI_DISABLE_PLOT_TOOLTIPS
+             const float v0 = values_getter(data, (v_idx + values_offset) % values_count);
+             const float v1 = values_getter(data, (v_idx + 1 + values_offset) % values_count);
+             if (plot_type == ImGuiPlotType_Lines)
+                 SetTooltip("%d: %8.4g\n%d: %8.4g", v_idx, v0, v_idx + 1, v1);
+             else if (plot_type == ImGuiPlotType_Histogram)
+                 SetTooltip("%d: %8.4g", v_idx, v0);
+-            idx_hovered = v_idx;
++#endif
+         }
+ 
+         const float t_step = 1.0f / (float)res_w;
+diff --git a/imconfig.h b/imconfig.h
+index c6d9b8d5f..6c0cee19d 100644
+--- a/imconfig.h
++++ b/imconfig.h
+@@ -37,6 +37,11 @@
+ //#define IMGUI_DISABLE_DEMO_WINDOWS                        // Disable demo windows: ShowDemoWindow()/ShowStyleEditor() will be empty.
+ //#define IMGUI_DISABLE_DEBUG_TOOLS                         // Disable metrics/debugger and other debug tools: ShowMetricsWindow(), ShowDebugLogWindow() and ShowIDStackToolWindow() will be empty.
+ 
++//---- ParticleSaturn custom options
++// Disable ImGui::PlotLines()/PlotHistogram() built-in hover tooltip (SetTooltip in PlotEx).
++// This keeps your own custom tooltip while preventing the default "idx: value" lines.
++#define IMGUI_DISABLE_PLOT_TOOLTIPS
++
+ //---- Don't implement some functions to reduce linkage requirements.
+ //#define IMGUI_DISABLE_WIN32_DEFAULT_CLIPBOARD_FUNCTIONS   // [Win32] Don't implement default clipboard handler. Won't use and link with OpenClipboard/GetClipboardData/CloseClipboard etc. (user32.lib/.a, kernel32.lib/.a)
+ //#define IMGUI_ENABLE_WIN32_DEFAULT_IME_FUNCTIONS          // [Win32] [Default with Visual Studio] Implement default IME handler (require imm32.lib/.a, auto-link for Visual Studio, -limm32 on command-line for MinGW)
