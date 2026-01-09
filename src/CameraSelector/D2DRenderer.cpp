@@ -555,13 +555,15 @@ void D2DRenderer::DrawAnimatedCheckbox(const D2D1_RECT_F& rect,
     float stateLayer = hoverVal * theme.stateLayerHover + pressVal * theme.stateLayerPressed;
     bgColor = ApplyStateLayer(bgColor, theme.ripple, stateLayer);
 
-    // 绘制背景（别用 checkProgress 做“有/无边框”的硬切换：弹簧会在 1.0 附近来回抖，
-    // 你就会看到边框出现/消失导致的“尺寸跳动”。用连续的 alpha 淡出解决边界情况。）
+    // 绘制背景（别用 checkProgress 做"有/无边框"的硬切换：弹簧会在 1.0 附近来回抖，
+    // 你就会看到边框出现/消失导致的"尺寸跳动"。用连续的 alpha 淡出解决边界情况。）
     float borderAlpha = 1.0f - checkProgress;
     if (borderAlpha > 0.001f) {
-        D2D1_COLOR_F borderColor = BlendColors(theme.cardBorder, theme.accent, checkProgress);
+        // 边框颜色：cardBorder 和 textSecondary 混合，既不太淡也不太刻意
+        D2D1_COLOR_F baseBorder = BlendColors(theme.cardBorder, theme.textSecondary, 0.4f);
+        D2D1_COLOR_F borderColor = BlendColors(baseBorder, theme.accent, checkProgress);
         borderColor.a *= borderAlpha;
-        DrawRoundedRect(scaledRect, radius * scale, bgColor, &borderColor, 1.5f);
+        DrawRoundedRect(scaledRect, radius * scale, bgColor, &borderColor, 1.75f);
     } else {
         DrawRoundedRect(scaledRect, radius * scale, bgColor, nullptr);
     }
