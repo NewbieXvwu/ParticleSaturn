@@ -15,11 +15,12 @@ namespace CameraSelector {
 // 如果只有一个摄像头，直接返回 0，不显示对话框
 //
 // parentHwnd: 父窗口句柄，关闭父窗口时会自动关闭此对话框
+// forceShow: 强制显示对话框，无视"记住选择"和摄像头数量（调试用）
 // 行为说明：
-// - 会将“上一次确认的摄像头”保存到注册表，下次打开会默认选中它（没有则默认 0）
-// - 点击“取消”/按 Esc/关闭窗口：不会中断流程，而是回退使用“上一次确认的摄像头”（没有则默认 0）
-// - 勾选“记住我的选择”：下次调用将不会弹窗，直接返回上一次确认的摄像头（若有效）
-int ShowCameraSelectorDialog(HWND parentHwnd = nullptr, HINSTANCE hInstance = nullptr);
+// - 会将"上一次确认的摄像头"保存到注册表，下次打开会默认选中它（没有则默认 0）
+// - 点击"取消"/按 Esc/关闭窗口：不会中断流程，而是回退使用"上一次确认的摄像头"（没有则默认 0）
+// - 勾选"记住我的选择"：下次调用将不会弹窗，直接返回上一次确认的摄像头（若有效）
+int ShowCameraSelectorDialog(HWND parentHwnd = nullptr, HINSTANCE hInstance = nullptr, bool forceShow = false);
 
 // 清除保存的摄像头选择
 // 同时清除“记住我的选择”开关

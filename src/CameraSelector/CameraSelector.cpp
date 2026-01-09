@@ -13,6 +13,22 @@
 
 namespace CameraSelector {
 
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+#ifndef DWMWA_SYSTEMBACKDROP_TYPE
+#define DWMWA_SYSTEMBACKDROP_TYPE 38
+#endif
+
+static constexpr DWORD kCornerPrefRound         = 2;
+static constexpr int   kBackdropMainWindow      = 2;
+static constexpr int   kBackdropTransientWindow = 3;
+
 // 注册表路径
 static const wchar_t* REGISTRY_KEY = L"SOFTWARE\\ParticleSaturn";
 static const wchar_t* REGISTRY_VALUE = L"SelectedCamera";
@@ -77,40 +93,115 @@ struct DialogState {
 
 // 检测系统深色模式
 static bool IsSystemDarkMode() {
+    auto IsColorDark = [](COLORREF c) -> bool {
+        // Perceived luminance (sRGB-ish). We just need a stable heuristic for legacy OSes.
+        const double r = static_cast<double>(GetRValue(c)) / 255.0;
+        const double g = static_cast<double>(GetGValue(c)) / 255.0;
+        const double b = static_cast<double>(GetBValue(c)) / 255.0;
+        const double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luminance < 0.5;
+    };
+
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER,
                       L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                       0, KEY_READ, &hKey) == ERROR_SUCCESS) {
         DWORD value = 1;
-        DWORD size = sizeof(value);
-        RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
-                         reinterpret_cast<BYTE*>(&value), &size);
+        DWORD size  = sizeof(value);
+        if (RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
+                             reinterpret_cast<BYTE*>(&value), &size) == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            return value == 0;
+        }
         RegCloseKey(hKey);
-        return value == 0;
     }
-    return true;  // 默认深色
+
+    // Win7 / no-personalize-key fallback: infer from system window background color.
+    // Win7 has no global "apps dark mode", so defaulting to dark makes the UI look mismatched.
+    return IsColorDark(GetSysColor(COLOR_WINDOW));
 }
 
-// 应用 Windows 11 风格
-static void ApplyModernStyle(HWND hwnd, bool darkMode) {
-    // 圆角窗口 (Windows 11)
-    enum DWM_WINDOW_CORNER_PREFERENCE { DWMWCP_DEFAULT = 0, DWMWCP_DONOTROUND = 1, DWMWCP_ROUND = 2, DWMWCP_ROUNDSMALL = 3 };
-    DWORD cornerPref = DWMWCP_ROUND;
-    DwmSetWindowAttribute(hwnd, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &cornerPref, sizeof(cornerPref));
-
-    // 深色模式标题栏
+static void TrySetTitleBarDarkMode(HWND hwnd, bool darkMode) {
     BOOL useDark = darkMode ? TRUE : FALSE;
-    DwmSetWindowAttribute(hwnd, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &useDark, sizeof(useDark));
+    HRESULT hr   = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
+    if (FAILED(hr)) {
+        (void)DwmSetWindowAttribute(hwnd, 19, &useDark, sizeof(useDark));
+    }
+}
 
-    // Mica 背景 (Windows 11 22H2+)
-    enum DWM_SYSTEMBACKDROP_TYPE { DWMSBT_AUTO = 0, DWMSBT_NONE = 1, DWMSBT_MAINWINDOW = 2, DWMSBT_TRANSIENTWINDOW = 3, DWMSBT_TABBEDWINDOW = 4 };
-    DWORD backdrop = DWMSBT_MAINWINDOW;
-    DwmSetWindowAttribute(hwnd, 38 /*DWMWA_SYSTEMBACKDROP_TYPE*/, &backdrop, sizeof(backdrop));
+static void TrySetRoundedCorners(HWND hwnd) {
+    DWORD cornerPref = kCornerPrefRound;
+    (void)DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPref, sizeof(cornerPref));
+}
+
+static void ExtendDwmFrameToClient(HWND hwnd) {
+    MARGINS margins = {-1, -1, -1, -1};
+    (void)DwmExtendFrameIntoClientArea(hwnd, &margins);
+}
+
+static HRESULT SetSystemBackdrop(HWND hwnd, int backdropType) {
+    ExtendDwmFrameToClient(hwnd);
+
+    return DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+}
+
+static bool TryEnableAeroBlur(HWND hwnd) {
+    BOOL compositionEnabled = FALSE;
+    HRESULT hr              = DwmIsCompositionEnabled(&compositionEnabled);
+    if (FAILED(hr) || !compositionEnabled) {
+        return false;
+    }
+
+    ExtendDwmFrameToClient(hwnd);
+
+    DWM_BLURBEHIND bb = {};
+    bb.dwFlags        = DWM_BB_ENABLE;
+    bb.fEnable        = TRUE;
+    hr                = DwmEnableBlurBehindWindow(hwnd, &bb);
+    return SUCCEEDED(hr);
+}
+
+static void ApplyBackdropStyle(HWND hwnd, bool darkMode) {
+    TrySetTitleBarDarkMode(hwnd, darkMode);
+    TrySetRoundedCorners(hwnd);
+
+    HRESULT hr = SetSystemBackdrop(hwnd, kBackdropMainWindow);
+    if (SUCCEEDED(hr)) {
+        std::cout << "[CameraSelector] Backdrop: Mica (DWMSBT_MAINWINDOW)" << std::endl;
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+        return;
+    }
+    std::cout << "[CameraSelector] Backdrop: Mica unsupported (0x" << std::hex << hr << std::dec << ")" << std::endl;
+
+    hr = SetSystemBackdrop(hwnd, kBackdropTransientWindow);
+    if (SUCCEEDED(hr)) {
+        std::cout << "[CameraSelector] Backdrop: Acrylic (DWMSBT_TRANSIENTWINDOW)" << std::endl;
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+        return;
+    }
+    std::cout << "[CameraSelector] Backdrop: Acrylic unsupported (0x" << std::hex << hr << std::dec << ")" << std::endl;
+
+    if (TryEnableAeroBlur(hwnd)) {
+        std::cout << "[CameraSelector] Backdrop: Aero blur (DwmEnableBlurBehindWindow)" << std::endl;
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+        return;
+    }
+
+    std::cout << "[CameraSelector] Backdrop: None (unsupported)" << std::endl;
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
 }
 
 // 计算窗口布局
 static void CalculateLayout(DialogState& state) {
     int cameraCount = static_cast<int>(state.cameras.size());
+
+    // 处理没有摄像头的情况
+    if (cameraCount == 0) {
+        state.windowWidth = CARD_WIDTH + 2 * CARD_SPACING;
+        state.windowHeight = TITLE_HEIGHT + BOTTOM_PADDING + CARD_SPACING;
+        return;
+    }
+
     int cols = (cameraCount <= 2) ? cameraCount : 2;
     int rows = (cameraCount + cols - 1) / cols;
 
@@ -121,6 +212,9 @@ static void CalculateLayout(DialogState& state) {
 // 获取卡片矩形
 static D2D1_RECT_F GetCardRect(const DialogState& state, int index) {
     int cameraCount = static_cast<int>(state.cameras.size());
+    if (cameraCount == 0) {
+        return D2D1::RectF(0, 0, 0, 0);
+    }
     int cols = (cameraCount <= 2) ? cameraCount : 2;
 
     int col = index % cols;
@@ -348,6 +442,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
             return 0;
         }
+
+        case WM_ERASEBKGND:
+            return 1;
 
         case WM_PAINT: {
             if (state) {
@@ -597,7 +694,7 @@ void ClearSavedCameraChoice() {
     }
 }
 
-int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance) {
+int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance, bool forceShow) {
     // 初始化 COM
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool comInitialized = SUCCEEDED(hr);
@@ -605,13 +702,13 @@ int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance) {
     // 枚举摄像头
     std::vector<CameraInfo> cameras = EnumerateCameras();
 
-    if (cameras.empty()) {
+    if (cameras.empty() && !forceShow) {
         std::cerr << "[CameraSelector] No cameras found" << std::endl;
         if (comInitialized) CoUninitialize();
         return -1;
     }
 
-    if (cameras.size() == 1) {
+    if (cameras.size() == 1 && !forceShow) {
         std::cout << "[CameraSelector] Only one camera, auto-selecting" << std::endl;
         if (comInitialized) CoUninitialize();
         return 0;
@@ -622,8 +719,8 @@ int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance) {
     bool savedChoiceValid = savedChoice >= 0 && savedChoice < static_cast<int>(cameras.size());
     int  fallbackChoice = savedChoiceValid ? savedChoice : 0;
 
-    // 如果用户勾选“记住我的选择”，且保存的索引仍有效，则不弹窗，直接返回
-    if (savedChoiceValid && GetSkipCameraSelectorDialog()) {
+    // 如果用户勾选"记住我的选择"，且保存的索引仍有效，则不弹窗，直接返回
+    if (!forceShow && savedChoiceValid && GetSkipCameraSelectorDialog()) {
         std::cout << "[CameraSelector] Skipping dialog (remember choice): " << savedChoice << std::endl;
         if (comInitialized) CoUninitialize();
         return savedChoice;
@@ -690,7 +787,7 @@ int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance) {
     }
 
     // 应用现代风格
-    ApplyModernStyle(state.hwnd, state.isDarkMode);
+    ApplyBackdropStyle(state.hwnd, state.isDarkMode);
 
     // 初始化 D2D
     if (!state.renderer.Initialize(state.hwnd)) {
