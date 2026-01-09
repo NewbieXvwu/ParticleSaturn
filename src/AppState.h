@@ -61,6 +61,9 @@ struct AppState {
     struct {
         std::string version;
         std::string renderer;
+        int         major               = 0;
+        int         minor               = 0;
+        bool        persistentMapping   = false; // OpenGL 4.4+ 特性
     } gl;
 
     // 初始化默认值

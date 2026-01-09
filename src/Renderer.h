@@ -70,7 +70,8 @@ inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc
 
 // 初始化 Uniform 缓存
 inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, unsigned int pStar,
-                             unsigned int pPlanet, unsigned int pUI, unsigned int pBlur, unsigned int pQuad) {
+                             unsigned int pPlanet, unsigned int pUI, unsigned int pBlur, unsigned int pQuad,
+                             bool usePersistentMapping = true) {
     uc.comp_uDt            = glGetUniformLocation(pComp, "uDt");
     uc.comp_uHandScale     = glGetUniformLocation(pComp, "uHandScale");
     uc.comp_uHandHas       = glGetUniformLocation(pComp, "uHandHas");
@@ -98,16 +99,24 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.pl_uFBMTex      = glGetUniformLocation(pPlanet, "uFBMTex");
     uc.pl_uPlanetCount = glGetUniformLocation(pPlanet, "uPlanetCount");
 
-    // 创建行星 UBO (OpenGL 4.4: 使用 Persistent Mapped Buffer 消除 CPU-GPU 同步)
+    // 创建行星 UBO
     glGenBuffers(1, &uc.pl_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
-    // glBufferStorage 创建不可变存储，支持持久映射
-    GLbitfield storageFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-    glBufferStorage(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, storageFlags);
-    // 持久映射: 指针在程序生命周期内有效，无需 unmap
-    uc.pl_ubo_mapped =
-        (PlanetInstance*)glMapBufferRange(GL_UNIFORM_BUFFER, 0, 8 * sizeof(PlanetInstance),
-                                          GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+
+    if (usePersistentMapping) {
+        // OpenGL 4.4+: 使用 Persistent Mapped Buffer 消除 CPU-GPU 同步
+        // glBufferStorage 创建不可变存储，支持持久映射
+        GLbitfield storageFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+        glBufferStorage(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, storageFlags);
+        // 持久映射: 指针在程序生命周期内有效，无需 unmap
+        uc.pl_ubo_mapped =
+            (PlanetInstance*)glMapBufferRange(GL_UNIFORM_BUFFER, 0, 8 * sizeof(PlanetInstance),
+                                              GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+    } else {
+        // OpenGL 4.3 fallback: 使用传统 glBufferData，每帧用 glBufferSubData 更新
+        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, GL_DYNAMIC_DRAW);
+        uc.pl_ubo_mapped = nullptr; // 不使用持久映射
+    }
     // 绑定到 binding point 0
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uc.pl_ubo);
 
