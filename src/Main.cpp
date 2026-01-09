@@ -953,57 +953,6 @@ int main() {
                 // 为标题栏预留空间
                 MD3::WindowTitleBarSpace();
 
-                // ========== 状态条（始终可见）==========
-                {
-                    float contentWidth = ImGui::GetContentRegionAvail().x;
-                    float statusHeight = 28 * appState.ui.dpiScale;
-
-                    // 背景
-                    ImVec2 statusPos = ImGui::GetCursorScreenPos();
-                    ImU32 statusBg = appState.ui.isDarkMode ? IM_COL32(40, 40, 50, 200) : IM_COL32(230, 230, 240, 200);
-                    dl->AddRectFilled(statusPos, ImVec2(statusPos.x + contentWidth, statusPos.y + statusHeight),
-                                     statusBg, 6.0f);
-
-                    ImGui::BeginGroup();
-                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4 * appState.ui.dpiScale);
-
-                    // FPS 指示器（带颜色）
-                    ImVec4 fpsColor;
-                    if (currentFps >= 50.0f) {
-                        fpsColor = ImVec4(0.3f, 1.0f, 0.3f, 1.0f); // 绿色
-                    } else if (currentFps >= 30.0f) {
-                        fpsColor = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
-                    } else {
-                        fpsColor = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
-                    }
-                    ImGui::SameLine(8 * appState.ui.dpiScale);
-                    ImGui::TextColored(fpsColor, "%.0f FPS", currentFps);
-
-                    // 分隔符
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("|");
-
-                    // 粒子数
-                    ImGui::SameLine();
-                    ImGui::Text("%u", appState.render.activeParticleCount);
-
-                    // 分隔符
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("|");
-
-                    // 手势状态
-                    ImGui::SameLine();
-                    if (handState.hasHand) {
-                        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "%s", str.statusBarHand);
-                    } else {
-                        ImGui::TextDisabled("%s", str.statusBarNoHand);
-                    }
-
-                    ImGui::EndGroup();
-                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + statusHeight - 4 * appState.ui.dpiScale);
-                    ImGui::Dummy(ImVec2(0, 5));
-                }
-
                 if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
                     // 两列布局的辅助 lambda
                     auto TwoColumnText = [](const char* label, const char* fmt, ...) {
@@ -1042,27 +991,34 @@ int main() {
                         ImGui::EndTable();
                     }
 
-                    // FPS 历史曲线
+                    // FPS 历史曲线（低频采样，避免高刷屏幕上更新太快）
                     ImGui::Dummy(ImVec2(0, 5));
-                    ImGui::Text("%s", str.fpsHistory);
-                    const float* fpsHistory = fpsCalculator.GetFPSHistory();
-                    int historySize = fpsCalculator.GetHistorySize();
+                    const float* displayHistory = fpsCalculator.GetDisplayHistory();
+                    int historySize = fpsCalculator.GetDisplayHistorySize();
 
                     // 重新排列数据以便从左到右显示时间顺序
                     float orderedHistory[60];
-                    int currentIdx = fpsCalculator.GetCurrentIndex();
+                    int currentIdx = fpsCalculator.GetDisplayHistoryIndex();
                     for (int i = 0; i < historySize; i++) {
-                        orderedHistory[i] = fpsHistory[(currentIdx + i) % historySize];
+                        orderedHistory[i] = displayHistory[(currentIdx + i) % historySize];
                     }
 
+                    // 使用无overlay的PlotLines，悬浮时显示简单tooltip
+                    ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
+                    ImVec2 plotPos = ImGui::GetCursorScreenPos();
                     ImGui::PlotLines("##FPSHistory", orderedHistory, historySize, 0, nullptr,
-                                    0.0f, 120.0f, ImVec2(ImGui::GetContentRegionAvail().x, 50));
-
-                    // Min/Avg/Max
-                    ImGui::TextDisabled("%s: %.0f  %s: %.0f  %s: %.0f",
-                        str.fpsMin, fpsCalculator.GetMinFPS(),
-                        str.fpsAvg, currentFps,
-                        str.fpsMax, fpsCalculator.GetMaxFPS());
+                                    0.0f, 240.0f, plotSize);
+                    // 自定义tooltip（只显示FPS值）
+                    if (ImGui::IsItemHovered()) {
+                        ImVec2 mousePos = ImGui::GetIO().MousePos;
+                        float relX = (mousePos.x - plotPos.x) / plotSize.x;
+                        int idx = (int)(relX * historySize);
+                        if (idx >= 0 && idx < historySize) {
+                            ImGui::BeginTooltip();
+                            ImGui::Text("%.0f FPS", orderedHistory[idx]);
+                            ImGui::EndTooltip();
+                        }
+                    }
 
                     ImGui::Dummy(ImVec2(0, 5));
 
@@ -1070,26 +1026,16 @@ int main() {
                     MD3::Toggle(str.lodLock, &appState.lod.locked);
                     if (appState.lod.locked) {
                         ImGui::Indent(10);
-                        // 手动调整粒子数
-                        int particleCount = (int)appState.render.activeParticleCount;
-                        if (ImGui::SliderInt("##Particles", &particleCount, MIN_PARTICLES, MAX_PARTICLES)) {
-                            appState.render.activeParticleCount = (unsigned int)particleCount;
+                        // 手动调整粒子数（使用MD3::Slider）
+                        float particleCountFloat = (float)appState.render.activeParticleCount;
+                        if (MD3::Slider("##Particles", &particleCountFloat, (float)MIN_PARTICLES, (float)MAX_PARTICLES, "%.0f")) {
+                            appState.render.activeParticleCount = (unsigned int)particleCountFloat;
                             glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
                             glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.activeParticleCount);
                         }
                         // 手动调整像素比例
                         MD3::Slider("##PixelRatio", &appState.render.pixelRatio, 0.5f, 1.0f, "%.2f");
                         ImGui::Unindent(10);
-                    } else {
-                        // 显示上次 LOD 决策
-                        const char* decisionStr = str.lodStable;
-                        switch (appState.lod.lastDecision) {
-                            case 1: decisionStr = str.lodDecreaseParticles; break;
-                            case 2: decisionStr = str.lodDecreasePixelRatio; break;
-                            case 3: decisionStr = str.lodIncreasePixelRatio; break;
-                            case 4: decisionStr = str.lodIncreaseParticles; break;
-                        }
-                        ImGui::TextDisabled("%s: %s", str.lodLastDecision, decisionStr);
                     }
 
                     ImGui::Dummy(ImVec2(0, 5));
@@ -1159,12 +1105,35 @@ int main() {
                             // 错误信息（如果有）
                             if (readyStatus == -1) {
                                 int errCode = GetTrackerLastError();
-                                const char* errMsg = GetTrackerLastErrorMessage();
+                                const char* localizedMsg;
+                                switch (errCode) {
+                                    case HANDTRACKER_ERROR_PALM_MODEL:
+                                        localizedMsg = str.palmModelLoadFailed;
+                                        break;
+                                    case HANDTRACKER_ERROR_HAND_MODEL:
+                                        localizedMsg = str.handModelLoadFailed;
+                                        break;
+                                    case HANDTRACKER_ERROR_CAMERA_OPEN:
+                                        localizedMsg = str.cameraInitFailed;
+                                        break;
+                                    case HANDTRACKER_ERROR_CAMERA_IN_USE:
+                                        localizedMsg = str.cameraInUse;
+                                        break;
+                                    case HANDTRACKER_ERROR_NO_CAMERA:
+                                        localizedMsg = str.cameraNotFound;
+                                        break;
+                                    case HANDTRACKER_ERROR_THREAD:
+                                        localizedMsg = str.unexpectedError;
+                                        break;
+                                    default:
+                                        localizedMsg = str.trackerFailed;
+                                        break;
+                                }
                                 ImGui::TableNextRow();
                                 ImGui::TableNextColumn();
                                 ImGui::TextDisabled("%s", str.trackerError);
                                 ImGui::TableNextColumn();
-                                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", errMsg ? errMsg : "Unknown");
+                                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s", localizedMsg);
                             }
 
                             // 摄像头信息
@@ -1255,11 +1224,14 @@ int main() {
                     MD3::Slider("##Sensitivity", &appState.handParams.sensitivity, 0.1f, 3.0f, "%.2f");
 
                     MD3::Toggle(str.invertX, &appState.handParams.invertX);
-                    ImGui::SameLine();
+                    ImGui::SameLine(0, 20); // 增加间距
                     MD3::Toggle(str.invertY, &appState.handParams.invertY);
 
-                    ImGui::Text("%s (%s):", str.handLostDelay, str.frames);
-                    ImGui::SliderInt("##HandLostDelay", &appState.handParams.handLostDelay, 1, 30);
+                    ImGui::Text("%s:", str.handLostDelay);
+                    float handLostDelayFloat = (float)appState.handParams.handLostDelay;
+                    if (MD3::Slider("##HandLostDelay", &handLostDelayFloat, 1.0f, 30.0f, "%.0f")) {
+                        appState.handParams.handLostDelay = (int)handLostDelayFloat;
+                    }
 
                     if (MD3::TonalButton(str.resetDefaults)) {
                         appState.handParams.sensitivity = 1.0f;
@@ -1351,20 +1323,100 @@ int main() {
                     static char logSearchBuffer[128] = "";
                     static int logLevelFilter = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
-                    // 第一行：级别过滤和搜索
-                    ImGui::SetNextItemWidth(80 * appState.ui.dpiScale);
+                    // 第一行：级别过滤、搜索和暂停按钮
+                    float dpi = appState.ui.dpiScale;
+                    float buttonSize = 32 * dpi; // 暂停按钮大小
+
+                    ImGui::SetNextItemWidth(80 * dpi);
                     const char* levelLabels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
                     MD3::Combo("##LogLevel", &logLevelFilter, levelLabels, 4);
 
                     ImGui::SameLine();
-                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 80 * appState.ui.dpiScale);
+                    // 搜索栏宽度 = 可用宽度 - 暂停按钮 - 间距
+                    float searchWidth = ImGui::GetContentRegionAvail().x - buttonSize - ImGui::GetStyle().ItemSpacing.x;
+                    ImGui::SetNextItemWidth(searchWidth);
+                    // 使用 MD3 风格的 FramePadding 让输入框高度匹配（和Combo一致：10, 8）
+                    float inputHeight = 36 * dpi; // 和MD3 Combo高度一致
+                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12 * dpi, 8 * dpi));
+                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 20.0f * dpi);
                     ImGui::InputTextWithHint("##LogSearch", str.logSearch, logSearchBuffer, sizeof(logSearchBuffer));
+                    ImGui::PopStyleVar(2);
 
+                    // 右键粘贴菜单
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * dpi, 6.0f * dpi));
+                    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+                    if (ImGui::BeginPopupContextItem("##LogSearchContext")) {
+                        const char* clipText = ImGui::GetClipboardText();
+                        bool canPaste = (clipText && clipText[0] != '\0');
+                        if (MD3::MenuItem(str.paste, canPaste, 36.0f * dpi)) {
+                            // 追加粘贴内容到搜索栏
+                            size_t currentLen = strlen(logSearchBuffer);
+                            size_t clipLen = strlen(clipText);
+                            size_t maxAppend = sizeof(logSearchBuffer) - 1 - currentLen;
+                            if (clipLen > maxAppend) clipLen = maxAppend;
+                            if (clipLen > 0) {
+                                memcpy(logSearchBuffer + currentLen, clipText, clipLen);
+                                logSearchBuffer[currentLen + clipLen] = '\0';
+                            }
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::PopStyleVar(2);
+
+                    // 暂停/继续按钮（MD3风格按钮+图标）
                     ImGui::SameLine();
                     bool isPaused = DebugLog::Instance().IsPaused();
-                    if (MD3::TonalButton(isPaused ? str.logResume : str.logPause)) {
+                    float buttonSize = 32 * dpi;
+
+                    // 使用InvisibleButton作为基础，然后绘制MD3风格背景和图标
+                    ImVec2 btnPos = ImGui::GetCursorScreenPos();
+                    ImGui::PushID("LogPauseBtn");
+
+                    // 绘制按钮背景
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    bool btnHovered = ImGui::IsMouseHoveringRect(btnPos, ImVec2(btnPos.x + buttonSize, btnPos.y + buttonSize));
+                    bool btnClicked = btnHovered && ImGui::IsMouseClicked(0);
+
+                    // MD3 Tonal Button 风格背景
+                    ImU32 bgColor = btnHovered
+                        ? IM_COL32(120, 120, 140, 80)
+                        : IM_COL32(100, 100, 120, 50);
+                    drawList->AddRectFilled(btnPos, ImVec2(btnPos.x + buttonSize, btnPos.y + buttonSize),
+                                           bgColor, 8.0f * dpi);
+
+                    // 绘制图标
+                    float cx = btnPos.x + buttonSize * 0.5f;
+                    float cy = btnPos.y + buttonSize * 0.5f;
+                    ImU32 iconColor = isPaused ? IM_COL32(100, 200, 100, 255) : IM_COL32(220, 220, 220, 255);
+
+                    if (isPaused) {
+                        // 播放三角形 ▶ (参考MD3 SVG: 空心三角形)
+                        float s = buttonSize * 0.3f;
+                        ImVec2 p1(cx - s * 0.4f, cy - s);
+                        ImVec2 p2(cx - s * 0.4f, cy + s);
+                        ImVec2 p3(cx + s * 0.8f, cy);
+                        drawList->AddTriangleFilled(p1, p2, p3, iconColor);
+                    } else {
+                        // 暂停两条竖线 ⏸
+                        float barW = buttonSize * 0.1f;
+                        float barH = buttonSize * 0.4f;
+                        float gap = buttonSize * 0.12f;
+                        drawList->AddRectFilled(
+                            ImVec2(cx - gap - barW, cy - barH),
+                            ImVec2(cx - gap, cy + barH),
+                            iconColor, 2.0f * dpi);
+                        drawList->AddRectFilled(
+                            ImVec2(cx + gap, cy - barH),
+                            ImVec2(cx + gap + barW, cy + barH),
+                            iconColor, 2.0f * dpi);
+                    }
+
+                    // 处理点击
+                    ImGui::InvisibleButton("##btn", ImVec2(buttonSize, buttonSize));
+                    if (btnClicked) {
                         DebugLog::Instance().SetPaused(!isPaused);
                     }
+                    ImGui::PopID();
 
                     // 第二行：清空和复制按钮
                     if (MD3::TonalButton(str.clearLog)) {
@@ -1379,41 +1431,6 @@ int main() {
                     // 日志列表（带过滤和搜索）
                     DebugLog::Instance().Draw(logSearchBuffer, logLevelFilter);
                     MD3::EndCollapsingHeader();
-                }
-
-                // 一键诊断信息按钮
-                ImGui::Spacing();
-                if (MD3::TonalButton(str.copyDiagnostics)) {
-                    // 生成诊断信息
-                    std::string diag;
-                    diag += "=== ParticleSaturn Diagnostics ===\n";
-                    diag += "Version: " + std::string(i18n::GetVersion()) + "\n\n";
-
-                    diag += "[System]\n";
-                    diag += "OpenGL: " + std::to_string(appState.gl.major) + "." + std::to_string(appState.gl.minor) + "\n";
-                    diag += "Renderer: " + appState.gl.renderer + "\n";
-                    diag += "Resolution: " + std::to_string(appState.window.width) + "x" + std::to_string(appState.window.height) + "\n\n";
-
-                    diag += "[Performance]\n";
-                    diag += "FPS: " + std::to_string((int)currentFps) + "\n";
-                    diag += "Particles: " + std::to_string(appState.render.activeParticleCount) + "/" + std::to_string(MAX_PARTICLES) + "\n";
-                    diag += "Pixel Ratio: " + std::to_string(appState.render.pixelRatio) + "\n";
-                    diag += "VSync: " + std::to_string(appState.render.vsyncMode) + "\n\n";
-
-                    diag += "[Hand Tracking]\n";
-                    int trackerStatus = IsTrackerReady();
-                    diag += "Status: " + std::string(trackerStatus == 1 ? "Ready" : trackerStatus == -1 ? "Failed" : "Initializing") + "\n";
-                    if (trackerStatus == -1) {
-                        diag += "Error: " + std::string(GetTrackerLastErrorMessage() ? GetTrackerLastErrorMessage() : "Unknown") + "\n";
-                    }
-                    diag += "Hand Detected: " + std::string(handState.hasHand ? "Yes" : "No") + "\n";
-                    diag += "SIMD: " + std::string(GetTrackerSIMDImplementation()) + "\n\n";
-
-                    diag += "[Recent Logs]\n";
-                    diag += DebugLog::Instance().GetAllText();
-
-                    ImGui::SetClipboardText(diag.c_str());
-                    std::cout << "[Main] " << str.diagnosticsCopied << std::endl;
                 }
 
                 // Crash Analyzer button

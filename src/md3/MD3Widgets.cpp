@@ -410,25 +410,37 @@ bool Slider(const char* label, float* v, float min, float max, const char* forma
     dl->AddCircleFilled(ImVec2(thumbX, trackY), currentThumbRadius, ColorToU32(thumbColor));
 
     // 绘制数值标签（悬停时显示）
-    if (hoverT > 0.5f) {
+    // 使用 hovered/active 状态直接判断，避免弹簧动画过冲导致闪烁
+    static std::unordered_map<ImGuiID, bool> s_labelVisible;
+    bool& labelVisible = s_labelVisible[id];
+
+    // 迟滞逻辑：上升时需要 > 0.6，下降时需要 < 0.4
+    if (hoverT > 0.6f) labelVisible = true;
+    if (hoverT < 0.4f) labelVisible = false;
+
+    if (labelVisible && hoverT > 0.01f) {
         char valueText[32];
         snprintf(valueText, sizeof(valueText), format, *v);
         ImVec2 valueSize = CalcTextSize(valueText);
 
-        float labelY = trackY - currentThumbRadius - 8.0f * dpi - valueSize.y;
+        // 固定位置，避免动画导致的抖动
+        float labelY = trackY - thumbRadius - 8.0f * dpi - valueSize.y;
         float labelX = thumbX - valueSize.x * 0.5f;
+
+        // 使用 hoverT 控制透明度，但有最小值防止闪烁
+        float alpha = std::min((hoverT - 0.4f) * 3.33f, 1.0f); // 0.4-0.7 映射到 0-1
 
         // 标签背景
         float  labelPadding = 4.0f * dpi;
         ImVec4 labelBgColor = colors.inverseSurface;
-        labelBgColor.w      = (hoverT - 0.5f) * 2.0f;
+        labelBgColor.w      = alpha;
         dl->AddRectFilled(ImVec2(labelX - labelPadding, labelY - labelPadding),
                           ImVec2(labelX + valueSize.x + labelPadding, labelY + valueSize.y + labelPadding),
                           ColorToU32(labelBgColor), 4.0f * dpi);
 
         // 标签文本
         ImVec4 labelTextColor = colors.inverseOnSurface;
-        labelTextColor.w      = (hoverT - 0.5f) * 2.0f;
+        labelTextColor.w      = alpha;
         dl->AddText(ImVec2(labelX, labelY), ColorToU32(labelTextColor), valueText);
     }
 
