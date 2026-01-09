@@ -1072,7 +1072,7 @@ int main() {
                         ImGui::Indent(10);
                         // 手动调整粒子数
                         int particleCount = (int)appState.render.activeParticleCount;
-                        if (MD3::Slider("##Particles", &particleCount, MIN_PARTICLES, MAX_PARTICLES)) {
+                        if (ImGui::SliderInt("##Particles", &particleCount, MIN_PARTICLES, MAX_PARTICLES)) {
                             appState.render.activeParticleCount = (unsigned int)particleCount;
                             glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
                             glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.activeParticleCount);
@@ -1259,7 +1259,7 @@ int main() {
                     MD3::Toggle(str.invertY, &appState.handParams.invertY);
 
                     ImGui::Text("%s (%s):", str.handLostDelay, str.frames);
-                    MD3::Slider("##HandLostDelay", &appState.handParams.handLostDelay, 1, 30);
+                    ImGui::SliderInt("##HandLostDelay", &appState.handParams.handLostDelay, 1, 30);
 
                     if (MD3::TonalButton(str.resetDefaults)) {
                         appState.handParams.sensitivity = 1.0f;
