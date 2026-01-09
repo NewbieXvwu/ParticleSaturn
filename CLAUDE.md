@@ -4,6 +4,10 @@
 - 重定向 stderr 时必须使用 `2>/dev/null`，禁止使用 `2>NUL`（会创建名为 NUL 的文件）
 - 同理，stdout 重定向使用 `>/dev/null` 而不是 `>NUL`
 
+# Coding Notes
+
+- 剪贴板复制中文：必须用 `CF_UNICODETEXT` + `MultiByteToWideChar(CP_UTF8, ...)`，不能用 `CF_TEXT`
+
 # Workflow: Claude implements, Codex reviews
 
 - 你是代码实现者：负责写完整代码、改文件、修复问题。
