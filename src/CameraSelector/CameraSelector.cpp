@@ -667,6 +667,18 @@ static bool GetSkipCameraSelectorDialog() {
     return false;
 }
 
+// 父窗口子类化：用于检测父窗口关闭请求
+static WNDPROC s_originalParentWndProc = nullptr;
+static HWND s_cameraSelectorHwnd = nullptr;
+
+static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_CLOSE && s_cameraSelectorHwnd && IsWindow(s_cameraSelectorHwnd)) {
+        // 父窗口要关闭，先关闭摄像头选择窗口
+        PostMessageW(s_cameraSelectorHwnd, WM_CLOSE, 0, 0);
+    }
+    return CallWindowProcW(s_originalParentWndProc, hwnd, msg, wParam, lParam);
+}
+
 // 公开 API 实现
 
 int GetSavedCameraChoice() {
@@ -810,6 +822,13 @@ int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance, bool forceSho
     // 设置刷新定时器 (30fps)
     SetTimer(state.hwnd, 1, 33, nullptr);
 
+    // 子类化父窗口以检测关闭请求
+    if (parentHwnd) {
+        s_cameraSelectorHwnd = state.hwnd;
+        s_originalParentWndProc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(parentHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ParentSubclassProc)));
+    }
+
     // 显示窗口
     ShowWindow(state.hwnd, SW_SHOW);
     UpdateWindow(state.hwnd);
@@ -819,6 +838,13 @@ int ShowCameraSelectorDialog(HWND parentHwnd, HINSTANCE hInstance, bool forceSho
     while (GetMessageW(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
+    }
+
+    // 恢复父窗口的原始窗口过程
+    if (parentHwnd && s_originalParentWndProc) {
+        SetWindowLongPtrW(parentHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(s_originalParentWndProc));
+        s_originalParentWndProc = nullptr;
+        s_cameraSelectorHwnd = nullptr;
     }
 
     // 清理
