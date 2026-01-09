@@ -13,10 +13,31 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout main repository
         uses: actions/checkout@v4
+
+      - name: Cache submodules
+        id: cache-submodules
+        uses: actions/cache@v4
         with:
-          submodules: recursive
+          path: |
+            HandTracker/libs/opencv
+            HandTracker/libs/tensorflow
+            libs/imgui
+          key: submodules-${{ hashFiles('.gitmodules') }}
+
+      - name: Initialize submodules (cache miss)
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
+        run: |
+          git submodule update --init --recursive --depth 1
+        shell: bash
+
+      - name: Verify submodules (cache hit)
+        if: steps.cache-submodules.outputs.cache-hit == 'true'
+        run: |
+          # Ensure .git directories are properly linked
+          git submodule update --init --recursive --depth 1 2>/dev/null || true
+        shell: bash
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
