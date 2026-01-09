@@ -1003,12 +1003,11 @@ int main() {
                         orderedHistory[i] = displayHistory[(currentIdx + i) % historySize];
                     }
 
-                    // 使用无overlay和tooltip的PlotLines
+                    // 使用无overlay的PlotLines
                     ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
                     ImVec2 plotPos = ImGui::GetCursorScreenPos();
                     ImGui::PlotLines("##FPSHistory", orderedHistory, historySize, 0, nullptr,
-                                    0.0f, 240.0f, plotSize, sizeof(float), 0,
-                                    ImGuiPlotFlags_NoTooltip);
+                                    0.0f, 240.0f, plotSize, sizeof(float));
                     // 自定义tooltip（只显示FPS值）
                     if (ImGui::IsItemHovered()) {
                         ImVec2 mousePos = ImGui::GetIO().MousePos;
