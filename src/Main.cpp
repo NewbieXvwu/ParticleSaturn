@@ -1003,11 +1003,12 @@ int main() {
                         orderedHistory[i] = displayHistory[(currentIdx + i) % historySize];
                     }
 
-                    // 使用无overlay的PlotLines，悬浮时显示简单tooltip
+                    // 使用无overlay和tooltip的PlotLines
                     ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
                     ImVec2 plotPos = ImGui::GetCursorScreenPos();
                     ImGui::PlotLines("##FPSHistory", orderedHistory, historySize, 0, nullptr,
-                                    0.0f, 240.0f, plotSize);
+                                    0.0f, 240.0f, plotSize, sizeof(float), 0,
+                                    ImGuiPlotFlags_NoTooltip);
                     // 自定义tooltip（只显示FPS值）
                     if (ImGui::IsItemHovered()) {
                         ImVec2 mousePos = ImGui::GetIO().MousePos;
@@ -1386,27 +1387,33 @@ int main() {
                     // 绘制图标
                     float cx = btnPos.x + buttonSize * 0.5f;
                     float cy = btnPos.y + buttonSize * 0.5f;
-                    ImU32 iconColor = isPaused ? IM_COL32(100, 200, 100, 255) : IM_COL32(220, 220, 220, 255);
+                    ImU32 iconColor = IM_COL32(220, 220, 220, 255); // #e3e3e3
 
                     if (isPaused) {
-                        // 播放三角形 ▶ (参考MD3 SVG: 空心三角形)
-                        float s = buttonSize * 0.3f;
-                        ImVec2 p1(cx - s * 0.4f, cy - s);
-                        ImVec2 p2(cx - s * 0.4f, cy + s);
-                        ImVec2 p3(cx + s * 0.8f, cy);
+                        // 播放三角形 ▶ (参考MD3 SVG: 填充三角形)
+                        // SVG path: M320-200v-560l440 280-440 280Z
+                        // 转换为本地坐标系，三角形偏右
+                        float triangleSize = buttonSize * 0.5f;
+                        float offsetX = buttonSize * 0.05f; // 稍微偏右居中
+                        ImVec2 p1(cx - triangleSize * 0.3f + offsetX, cy - triangleSize * 0.5f);
+                        ImVec2 p2(cx - triangleSize * 0.3f + offsetX, cy + triangleSize * 0.5f);
+                        ImVec2 p3(cx + triangleSize * 0.7f + offsetX, cy);
                         drawList->AddTriangleFilled(p1, p2, p3, iconColor);
                     } else {
-                        // 暂停两条竖线 ⏸
-                        float barW = buttonSize * 0.1f;
-                        float barH = buttonSize * 0.4f;
-                        float gap = buttonSize * 0.12f;
+                        // 暂停两条竖线 ⏸ (参考MD3 SVG: 两条竖线)
+                        // SVG path: M360-320h80v-320h-80v320Zm160 0h80v-320h-80v320Z
+                        float barWidth = buttonSize * 0.22f;
+                        float barHeight = buttonSize * 0.5f;
+                        float gap = buttonSize * 0.15f;
+                        // 左竖线
                         drawList->AddRectFilled(
-                            ImVec2(cx - gap - barW, cy - barH),
-                            ImVec2(cx - gap, cy + barH),
+                            ImVec2(cx - gap - barWidth, cy - barHeight * 0.5f),
+                            ImVec2(cx - gap, cy + barHeight * 0.5f),
                             iconColor, 2.0f * dpi);
+                        // 右竖线
                         drawList->AddRectFilled(
-                            ImVec2(cx + gap, cy - barH),
-                            ImVec2(cx + gap + barW, cy + barH),
+                            ImVec2(cx + gap, cy - barHeight * 0.5f),
+                            ImVec2(cx + gap + barWidth, cy + barHeight * 0.5f),
                             iconColor, 2.0f * dpi);
                     }
 
