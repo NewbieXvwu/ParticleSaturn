@@ -31,6 +31,9 @@ Release/
 *.log
 *.tlog/
 
+# VS 临时中间目录（按项目 GUID 生成）
+Particle.*
+
 # 临时文件
 *.tmp
 *~
@@ -42,6 +45,11 @@ Release/
 
 # vcpkg
 vcpkg_installed/
+
+# CMake out-of-source builds
+build_diligent/
+build/
+out/
 
 # TFLite build artifacts
 HandTracker/libs/tensorflow/tflite_build/
