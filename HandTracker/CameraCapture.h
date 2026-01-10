@@ -8,8 +8,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <opencv2/opencv.hpp>
+#include <thread>
 
 // 摄像头捕获接口
 class ICameraCapture {
@@ -59,9 +59,9 @@ class OpenCVCapture : public ICameraCapture {
   private:
     void readerLoop();
 
-    cv::VideoCapture        m_cap;
-    int                     m_width  = 0;
-    int                     m_height = 0;
+    cv::VideoCapture m_cap;
+    int              m_width  = 0;
+    int              m_height = 0;
 
     // 异步读帧线程
     std::thread             m_readerThread;

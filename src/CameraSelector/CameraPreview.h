@@ -4,12 +4,13 @@
 
 #ifdef _WIN32
 
-#include "D2DRenderer.h"
-#include <dshow.h>
-#include <vector>
-#include <mutex>
 #include <atomic>
+#include <dshow.h>
 #include <memory>
+#include <mutex>
+#include <vector>
+
+#include "D2DRenderer.h"
 
 #pragma comment(lib, "strmiids.lib")
 
@@ -17,22 +18,22 @@
 // GUID 声明 (定义在 CameraPreview.cpp 中)
 extern const CLSID CLSID_SampleGrabber;
 extern const CLSID CLSID_NullRenderer;
-extern const IID IID_ISampleGrabber;
-extern const IID IID_ISampleGrabberCB;
+extern const IID   IID_ISampleGrabber;
+extern const IID   IID_ISampleGrabberCB;
 
 interface ISampleGrabberCB : public IUnknown {
-    virtual HRESULT STDMETHODCALLTYPE SampleCB(double SampleTime, IMediaSample* pSample) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SampleCB(double SampleTime, IMediaSample* pSample)         = 0;
     virtual HRESULT STDMETHODCALLTYPE BufferCB(double SampleTime, BYTE* pBuffer, long BufferLen) = 0;
 };
 
 interface ISampleGrabber : public IUnknown {
-    virtual HRESULT STDMETHODCALLTYPE SetOneShot(BOOL OneShot) = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetMediaType(const AM_MEDIA_TYPE* pType) = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetConnectedMediaType(AM_MEDIA_TYPE* pType) = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetBufferSamples(BOOL BufferThem) = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetCurrentBuffer(long* pBufferSize, long* pBuffer) = 0;
-    virtual HRESULT STDMETHODCALLTYPE GetCurrentSample(IMediaSample** ppSample) = 0;
-    virtual HRESULT STDMETHODCALLTYPE SetCallback(ISampleGrabberCB* pCallback, long WhichMethodToCallback) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetOneShot(BOOL OneShot)                                              = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetMediaType(const AM_MEDIA_TYPE* pType)                              = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetConnectedMediaType(AM_MEDIA_TYPE * pType)                          = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetBufferSamples(BOOL BufferThem)                                     = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCurrentBuffer(long* pBufferSize, long* pBuffer)                    = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCurrentSample(IMediaSample * *ppSample)                            = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetCallback(ISampleGrabberCB * pCallback, long WhichMethodToCallback) = 0;
 };
 
 namespace CameraSelector {
@@ -44,7 +45,7 @@ class PreviewGrabberCallback;
 class CameraPreviewInstance {
     friend class PreviewGrabberCallback;
 
-public:
+  public:
     CameraPreviewInstance();
     ~CameraPreviewInstance();
 
@@ -63,25 +64,26 @@ public:
 
     // 获取帧尺寸
     int GetWidth() const { return m_width; }
+
     int GetHeight() const { return m_height; }
 
-private:
+  private:
     void OnFrame(const BYTE* data, int size, int width, int height);
 
-    IGraphBuilder*       m_graphBuilder  = nullptr;
+    IGraphBuilder*         m_graphBuilder   = nullptr;
     ICaptureGraphBuilder2* m_captureBuilder = nullptr;
-    IMediaControl*       m_mediaControl  = nullptr;
-    IBaseFilter*         m_sourceFilter  = nullptr;
-    IBaseFilter*         m_grabberFilter = nullptr;
-    IBaseFilter*         m_nullRenderer  = nullptr;
-    ISampleGrabber*      m_sampleGrabber = nullptr;
+    IMediaControl*         m_mediaControl   = nullptr;
+    IBaseFilter*           m_sourceFilter   = nullptr;
+    IBaseFilter*           m_grabberFilter  = nullptr;
+    IBaseFilter*           m_nullRenderer   = nullptr;
+    ISampleGrabber*        m_sampleGrabber  = nullptr;
 
     PreviewGrabberCallback* m_callback = nullptr;
 
-    std::mutex           m_frameMutex;
-    std::vector<BYTE>    m_frameBuffer;
-    std::atomic<bool>    m_hasNewFrame{false};
-    std::atomic<bool>    m_running{false};
+    std::mutex        m_frameMutex;
+    std::vector<BYTE> m_frameBuffer;
+    std::atomic<bool> m_hasNewFrame{false};
+    std::atomic<bool> m_running{false};
 
     int m_width  = 0;
     int m_height = 0;
@@ -89,13 +91,12 @@ private:
 
 // 多摄像头预览管理器
 class CameraPreviewManager {
-public:
+  public:
     CameraPreviewManager();
     ~CameraPreviewManager();
 
     // 初始化所有摄像头预览
-    bool Initialize(const std::vector<int>& cameraIndices,
-                    int width = 640, int height = 480, int fps = 30);
+    bool Initialize(const std::vector<int>& cameraIndices, int width = 640, int height = 480, int fps = 30);
 
     // 停止所有预览
     void StopAll();
@@ -106,7 +107,7 @@ public:
     // 获取预览数量
     size_t GetCount() const { return m_previews.size(); }
 
-private:
+  private:
     std::vector<std::unique_ptr<CameraPreviewInstance>> m_previews;
 };
 

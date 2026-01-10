@@ -83,9 +83,7 @@ inline float EaseOutCubic(float t) {
 inline float CatmullRom(float p0, float p1, float p2, float p3, float t) {
     float t2 = t * t;
     float t3 = t2 * t;
-    return 0.5f * ((2.0f * p1) +
-                   (-p0 + p2) * t +
-                   (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+    return 0.5f * ((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
                    (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
 }
 
@@ -137,12 +135,12 @@ template <int N = 60> class RingBufferFPS {
 
         // 每 50ms 更新一次显示历史（约 20Hz）
         if (historyAccumTime >= 0.05f) {
-            float avgFps = historyAccumFps / historyAccumCount;
+            float avgFps                        = historyAccumFps / historyAccumCount;
             displayHistory[displayHistoryIndex] = avgFps;
-            displayHistoryIndex = (displayHistoryIndex + 1) % DISPLAY_HISTORY_SIZE;
+            displayHistoryIndex                 = (displayHistoryIndex + 1) % DISPLAY_HISTORY_SIZE;
             // 保留超出部分的时间，确保精确的更新频率
             historyAccumTime -= 0.05f;
-            historyAccumFps = 0.0f;
+            historyAccumFps   = 0.0f;
             historyAccumCount = 0;
             // 重置滚动动画（保留本帧的进度）
             scrollAnimTime = historyAccumTime;
@@ -170,7 +168,9 @@ template <int N = 60> class RingBufferFPS {
 
     // 获取显示用 FPS 历史（低频采样，用于曲线图）
     const float* GetDisplayHistory() const { return displayHistory; }
+
     int GetDisplayHistorySize() const { return DISPLAY_HISTORY_SIZE; }
+
     int GetDisplayHistoryIndex() const { return displayHistoryIndex; }
 
     // 获取滚动动画进度 (0 = 刚更新，1 = 即将更新)
@@ -192,11 +192,11 @@ template <int N = 60> class RingBufferFPS {
 
     // 显示用历史（低频采样）
     static const int DISPLAY_HISTORY_SIZE = 60;
-    float displayHistory[DISPLAY_HISTORY_SIZE];
-    int   displayHistoryIndex = 0;
-    float historyAccumTime = 0.0f;
-    float historyAccumFps = 0.0f;
-    int   historyAccumCount = 0;
+    float            displayHistory[DISPLAY_HISTORY_SIZE];
+    int              displayHistoryIndex = 0;
+    float            historyAccumTime    = 0.0f;
+    float            historyAccumFps     = 0.0f;
+    int              historyAccumCount   = 0;
 
     // 滚动动画状态
     float scrollAnimTime = 0.0f;

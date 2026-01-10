@@ -4,8 +4,8 @@ namespace {
 
 using GetSystemTimePreciseAsFileTimeFn = VOID(WINAPI*)(LPFILETIME);
 
-static INIT_ONCE                     g_init_once = INIT_ONCE_STATIC_INIT;
-static GetSystemTimePreciseAsFileTimeFn g_resolved = nullptr;
+static INIT_ONCE                        g_init_once = INIT_ONCE_STATIC_INIT;
+static GetSystemTimePreciseAsFileTimeFn g_resolved  = nullptr;
 
 BOOL WINAPI InitOnceResolvePreciseTime(PINIT_ONCE, PVOID, PVOID*) {
     HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -13,8 +13,8 @@ BOOL WINAPI InitOnceResolvePreciseTime(PINIT_ONCE, PVOID, PVOID*) {
         return TRUE;
     }
 
-    g_resolved = reinterpret_cast<GetSystemTimePreciseAsFileTimeFn>(
-        GetProcAddress(kernel32, "GetSystemTimePreciseAsFileTime"));
+    g_resolved =
+        reinterpret_cast<GetSystemTimePreciseAsFileTimeFn>(GetProcAddress(kernel32, "GetSystemTimePreciseAsFileTime"));
     return TRUE;
 }
 

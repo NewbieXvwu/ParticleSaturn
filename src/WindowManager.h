@@ -39,8 +39,8 @@ namespace WindowManager {
 
 #ifdef _WIN32
 inline bool IsDwmCompositionEnabled() {
-    BOOL enabled = FALSE;
-    HRESULT hr   = DwmIsCompositionEnabled(&enabled);
+    BOOL    enabled = FALSE;
+    HRESULT hr      = DwmIsCompositionEnabled(&enabled);
     return SUCCEEDED(hr) && enabled;
 }
 
@@ -68,9 +68,9 @@ inline bool EnableAeroBlur(HWND hwnd) {
 // 检测系统是否使用深色模式
 inline bool IsSystemDarkMode() {
     auto IsColorDark = [](COLORREF c) -> bool {
-        const double r = static_cast<double>(GetRValue(c)) / 255.0;
-        const double g = static_cast<double>(GetGValue(c)) / 255.0;
-        const double b = static_cast<double>(GetBValue(c)) / 255.0;
+        const double r         = static_cast<double>(GetRValue(c)) / 255.0;
+        const double g         = static_cast<double>(GetGValue(c)) / 255.0;
+        const double b         = static_cast<double>(GetBValue(c)) / 255.0;
         const double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         return luminance < 0.5;
     };
@@ -178,7 +178,7 @@ inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
         state.backdrop.useTransparent = false;
         std::cout << "[DWM] Backdrop: Solid Black" << std::endl;
     } else if (mode == 1) {
-        bool ok                    = EnableAeroBlur(hwnd);
+        bool ok                       = EnableAeroBlur(hwnd);
         state.backdrop.useTransparent = true;
         std::cout << "[DWM] Backdrop: Aero " << (ok ? "OK" : "FAILED") << std::endl;
     } else {

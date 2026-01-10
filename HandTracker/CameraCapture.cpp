@@ -485,8 +485,8 @@ void OpenCVCapture::close() {
     if (m_cap.isOpened()) {
         m_cap.release();
     }
-    m_width  = 0;
-    m_height = 0;
+    m_width       = 0;
+    m_height      = 0;
     m_hasNewFrame = false;
 
     // 唤醒可能在等待的线程

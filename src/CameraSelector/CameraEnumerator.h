@@ -4,18 +4,18 @@
 
 #ifdef _WIN32
 
+#include <dshow.h>
 #include <string>
 #include <vector>
-#include <dshow.h>
 
 #pragma comment(lib, "strmiids.lib")
 
 namespace CameraSelector {
 
 struct CameraInfo {
-    int          index;       // 摄像头索引
-    std::wstring name;        // 设备名称
-    std::wstring devicePath;  // 设备路径 (用于唯一标识)
+    int          index;      // 摄像头索引
+    std::wstring name;       // 设备名称
+    std::wstring devicePath; // 设备路径 (用于唯一标识)
 };
 
 // 枚举系统中所有可用的摄像头

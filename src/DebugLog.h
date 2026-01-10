@@ -12,7 +12,11 @@
 #include "md3/MD3.h"
 
 // 日志级别
-enum class LogLevel { Info, Warn, Error };
+enum class LogLevel {
+    Info,
+    Warn,
+    Error
+};
 
 // 日志条目
 struct LogEntry {
@@ -60,9 +64,15 @@ class DebugLog {
 
             // 级别过滤: 0=全部, 1=Info, 2=Warn, 3=Error
             if (levelFilter > 0) {
-                if (levelFilter == 1 && entry.level != LogLevel::Info) continue;
-                if (levelFilter == 2 && entry.level != LogLevel::Warn) continue;
-                if (levelFilter == 3 && entry.level != LogLevel::Error) continue;
+                if (levelFilter == 1 && entry.level != LogLevel::Info) {
+                    continue;
+                }
+                if (levelFilter == 2 && entry.level != LogLevel::Warn) {
+                    continue;
+                }
+                if (levelFilter == 3 && entry.level != LogLevel::Error) {
+                    continue;
+                }
             }
 
             // 搜索过滤
@@ -75,23 +85,23 @@ class DebugLog {
             // 根据级别设置颜色
             ImVec4 color;
             switch (entry.level) {
-                case LogLevel::Warn:
-                    color = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
-                    break;
-                case LogLevel::Error:
-                    color = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
-                    break;
-                default:
-                    color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // 默认颜色
-                    break;
+            case LogLevel::Warn:
+                color = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
+                break;
+            case LogLevel::Error:
+                color = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
+                break;
+            default:
+                color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // 默认颜色
+                break;
             }
 
             ImGui::PushStyleColor(ImGuiCol_Text, color);
 
             // 高亮搜索关键字
             if (searchFilter && searchFilter[0] != '\0') {
-                const std::string& text = entry.message;
-                size_t             pos  = 0;
+                const std::string& text      = entry.message;
+                size_t             pos       = 0;
                 size_t             searchLen = strlen(searchFilter);
                 size_t             lastPos   = 0;
 
@@ -152,9 +162,15 @@ class DebugLog {
         for (const auto& entry : m_entries) {
             // 级别过滤
             if (levelFilter > 0) {
-                if (levelFilter == 1 && entry.level != LogLevel::Info) continue;
-                if (levelFilter == 2 && entry.level != LogLevel::Warn) continue;
-                if (levelFilter == 3 && entry.level != LogLevel::Error) continue;
+                if (levelFilter == 1 && entry.level != LogLevel::Info) {
+                    continue;
+                }
+                if (levelFilter == 2 && entry.level != LogLevel::Warn) {
+                    continue;
+                }
+                if (levelFilter == 3 && entry.level != LogLevel::Error) {
+                    continue;
+                }
             }
             // 搜索过滤
             if (searchFilter && searchFilter[0] != '\0') {
@@ -168,6 +184,7 @@ class DebugLog {
     }
 
     void SetPaused(bool paused) { m_paused = paused; }
+
     bool IsPaused() const { return m_paused; }
 
   private:

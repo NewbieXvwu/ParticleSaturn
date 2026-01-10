@@ -412,11 +412,15 @@ bool Slider(const char* label, float* v, float min, float max, const char* forma
     // 绘制数值标签（悬停时显示）
     // 使用 hovered/active 状态直接判断，避免弹簧动画过冲导致闪烁
     static std::unordered_map<ImGuiID, bool> s_labelVisible;
-    bool& labelVisible = s_labelVisible[id];
+    bool&                                    labelVisible = s_labelVisible[id];
 
     // 迟滞逻辑：上升时需要 > 0.6，下降时需要 < 0.4
-    if (hoverT > 0.6f) labelVisible = true;
-    if (hoverT < 0.4f) labelVisible = false;
+    if (hoverT > 0.6f) {
+        labelVisible = true;
+    }
+    if (hoverT < 0.4f) {
+        labelVisible = false;
+    }
 
     if (labelVisible && hoverT > 0.01f) {
         char valueText[32];
@@ -923,9 +927,9 @@ bool MenuItem(const char* label, bool enabled, float height_override) {
         width = CalcTextSize(label).x + paddingX * 2.0f;
     }
 
-    bool clicked = InvisibleButton(label, ImVec2(width, height));
-    bool hovered = IsItemHovered();
-    ImGuiID id   = GetItemID();
+    bool    clicked = InvisibleButton(label, ImVec2(width, height));
+    bool    hovered = IsItemHovered();
+    ImGuiID id      = GetItemID();
 
     // 获取或创建动画状态
     auto  it    = ctx.selectableStates.find(id);
@@ -1659,16 +1663,17 @@ void HandleSmoothScroll(float scrollSpeed) {
     }
 
     // 如果某帧卡顿把弹簧积分搞成 NaN/Inf，这里必须立刻自愈：否则之后任何 wheel/target 运算都是 NaN，窗口就"死"了。
-    if (!std::isfinite(currentScrollY) || !std::isfinite(state.lastAppliedScrollY) || !std::isfinite(state.scrollY.value) ||
-        !std::isfinite(state.scrollY.target) || !std::isfinite(state.scrollY.velocity)) {
-        state.scrollY.value     = std::isfinite(currentScrollY) ? currentScrollY : 0.0f;
-        state.scrollY.target    = state.scrollY.value;
-        state.scrollY.velocity  = 0.0f;
+    if (!std::isfinite(currentScrollY) || !std::isfinite(state.lastAppliedScrollY) ||
+        !std::isfinite(state.scrollY.value) || !std::isfinite(state.scrollY.target) ||
+        !std::isfinite(state.scrollY.velocity)) {
+        state.scrollY.value      = std::isfinite(currentScrollY) ? currentScrollY : 0.0f;
+        state.scrollY.target     = state.scrollY.value;
+        state.scrollY.velocity   = 0.0f;
         state.lastAppliedScrollY = state.scrollY.value;
     }
 
-    const ImGuiIO& io = g.IO;
-    float wheel = io.MouseWheel;
+    const ImGuiIO& io    = g.IO;
+    float          wheel = io.MouseWheel;
     if (!std::isfinite(wheel)) {
         wheel = 0.0f;
     }
