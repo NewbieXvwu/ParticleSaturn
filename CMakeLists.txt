@@ -65,3 +65,8 @@ target_compile_definitions(ParticleSaturn.Diligent PRIVATE
     _UNICODE
     NOMINMAX
 )
+
+if(MSVC)
+    # Ensure UTF-8 source decoding so non-ASCII literals in app code compile reliably.
+    target_compile_options(ParticleSaturn.Diligent PRIVATE /utf-8)
+endif()
