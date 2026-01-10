@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Provide a minimal <atlbase.h> shim so DiligentCore can build on VS installs
+# that don't include the ATL workload (D3D12 + DXC paths rely on CComPtr).
+include_directories(BEFORE "${CMAKE_SOURCE_DIR}/shims/atl")
+
 # Build only what we need from DiligentCore for now (Vulkan + D3D12).
 set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(DILIGENT_NO_DIRECT3D11 ON CACHE BOOL "" FORCE)
