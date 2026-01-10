@@ -992,30 +992,146 @@ int main() {
                     }
 
                     // FPS 历史曲线（低频采样，避免高刷屏幕上更新太快）
+                    // 使用自定义绘制实现 Catmull-Rom 平滑曲线 + 滚动动画
                     ImGui::Dummy(ImVec2(0, 5));
                     const float* displayHistory = fpsCalculator.GetDisplayHistory();
                     int historySize = fpsCalculator.GetDisplayHistorySize();
-
-                    // 重新排列数据以便从左到右显示时间顺序
-                    float orderedHistory[60];
                     int currentIdx = fpsCalculator.GetDisplayHistoryIndex();
-                    for (int i = 0; i < historySize; i++) {
-                        orderedHistory[i] = displayHistory[(currentIdx + i) % historySize];
+
+                    // 获取滚动动画进度 (0~1)
+                    float scrollProgress = fpsCalculator.GetScrollProgress();
+
+                    // 辅助函数：获取环形缓冲区中的值（带边界处理）
+                    auto getValue = [&](int logicalIdx) -> float {
+                        // logicalIdx: 0 = 最旧, historySize-1 = 最新
+                        int actualIdx = (currentIdx + logicalIdx) % historySize;
+                        return displayHistory[actualIdx];
+                    };
+
+                    // 计算目标 Y 轴范围（根据当前数据自适应）
+                    float dataMin = getValue(0);
+                    float dataMax = getValue(0);
+                    for (int i = 1; i < historySize; i++) {
+                        float v = getValue(i);
+                        if (v < dataMin) dataMin = v;
+                        if (v > dataMax) dataMax = v;
                     }
 
-                    // 使用无overlay的PlotLines
+                    // 设置最小显示范围（放大上限），防止稳定时过度放大
+                    const float MIN_DISPLAY_RANGE = 30.0f;
+                    float dataRange = dataMax - dataMin;
+                    if (dataRange < MIN_DISPLAY_RANGE) {
+                        float center = (dataMax + dataMin) * 0.5f;
+                        dataMin = center - MIN_DISPLAY_RANGE * 0.5f;
+                        dataMax = center + MIN_DISPLAY_RANGE * 0.5f;
+                    }
+
+                    // 添加 10% 的边距
+                    float margin = (dataMax - dataMin) * 0.1f;
+                    float targetMinVal = dataMin - margin;
+                    float targetMaxVal = dataMax + margin;
+                    if (targetMinVal < 0.0f) targetMinVal = 0.0f;
+
+                    // Y 轴范围平滑动画（使用静态变量保持状态）
+                    static float animMinVal = 60.0f;
+                    static float animMaxVal = 120.0f;
+                    const float animSpeed = 8.0f; // 动画速度
+                    float dt = ImGui::GetIO().DeltaTime;
+                    animMinVal += (targetMinVal - animMinVal) * (1.0f - std::exp(-animSpeed * dt));
+                    animMaxVal += (targetMaxVal - animMaxVal) * (1.0f - std::exp(-animSpeed * dt));
+                    // 接近目标时直接到达，避免无限逼近
+                    if (std::abs(targetMinVal - animMinVal) < 0.1f) animMinVal = targetMinVal;
+                    if (std::abs(targetMaxVal - animMaxVal) < 0.1f) animMaxVal = targetMaxVal;
+
+                    float minVal = animMinVal;
+                    float maxVal = animMaxVal;
+                    float valRange = maxVal - minVal;
+                    if (valRange < 1.0f) valRange = 1.0f;
+
+                    // 绘图区域设置（全宽，Y轴刻度作为overlay）
                     ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
                     ImVec2 plotPos = ImGui::GetCursorScreenPos();
-                    ImGui::PlotLines("##FPSHistory", orderedHistory, historySize, 0, nullptr,
-                                    0.0f, 240.0f, plotSize, sizeof(float));
-                    // 自定义tooltip（只显示FPS值）
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+                    // 背景
+                    ImU32 bgColor = ImGui::GetColorU32(ImGuiCol_FrameBg);
+                    ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
+                    ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
+                    drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
+
+                    // 添加裁剪区域，防止曲线超出边界
+                    drawList->PushClipRect(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), true);
+
+                    // 辅助函数：将逻辑索引和 FPS 值转换为屏幕坐标
+                    auto toScreen = [&](float logicalX, float val) -> ImVec2 {
+                        float adjustedX = logicalX - scrollProgress;
+                        float x = plotPos.x + (adjustedX / (float)(historySize - 1)) * plotSize.x;
+                        float clampedVal = val < minVal ? minVal : (val > maxVal ? maxVal : val);
+                        float y = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
+                        return ImVec2(x, y);
+                    };
+
+                    // 使用 Catmull-Rom 插值绘制平滑曲线
+                    const int subdivisions = 4;
+                    ImVector<ImVec2> points;
+                    points.reserve((historySize - 1) * subdivisions + 1);
+
+                    for (int i = 0; i < historySize - 1; i++) {
+                        float p0 = getValue(i > 0 ? i - 1 : 0);
+                        float p1 = getValue(i);
+                        float p2 = getValue(i + 1);
+                        float p3 = getValue(i + 2 < historySize ? i + 2 : historySize - 1);
+
+                        for (int j = 0; j < subdivisions; j++) {
+                            float t = (float)j / subdivisions;
+                            float val = CatmullRom(p0, p1, p2, p3, t);
+                            float logicalX = (float)i + t;
+                            ImVec2 pt = toScreen(logicalX, val);
+
+                            if (pt.x >= plotPos.x - 5 && pt.x <= plotPos.x + plotSize.x + 5) {
+                                points.push_back(pt);
+                            }
+                        }
+                    }
+                    // 添加最后一个点
+                    {
+                        float lastVal = getValue(historySize - 1);
+                        ImVec2 lastPt = toScreen((float)(historySize - 1), lastVal);
+                        if (lastPt.x >= plotPos.x - 5 && lastPt.x <= plotPos.x + plotSize.x + 5) {
+                            points.push_back(lastPt);
+                        }
+                    }
+
+                    // 绘制曲线
+                    if (points.Size >= 2) {
+                        drawList->AddPolyline(points.Data, points.Size, lineColor, ImDrawFlags_None, 1.5f);
+                    }
+
+                    // 恢复裁剪区域
+                    drawList->PopClipRect();
+
+                    // Y 轴刻度作为 overlay（绘制在曲线之上）
+                    char maxLabel[16], minLabel[16];
+                    snprintf(maxLabel, sizeof(maxLabel), "%.0f", maxVal);
+                    snprintf(minLabel, sizeof(minLabel), "%.0f", minVal);
+                    // 顶部刻度（左上角，带一点内边距）
+                    drawList->AddText(ImVec2(plotPos.x + 3, plotPos.y + 1), axisColor, maxLabel);
+                    // 底部刻度（左下角）
+                    drawList->AddText(ImVec2(plotPos.x + 3, plotPos.y + plotSize.y - 13), axisColor, minLabel);
+
+                    // 占位符以确保布局正确
+                    ImGui::Dummy(plotSize);
+
+                    // 自定义 tooltip
                     if (ImGui::IsItemHovered()) {
                         ImVec2 mousePos = ImGui::GetIO().MousePos;
                         float relX = (mousePos.x - plotPos.x) / plotSize.x;
-                        int idx = (int)(relX * historySize);
+                        float logicalX = relX * (float)(historySize - 1) + scrollProgress;
+                        int idx = (int)(logicalX + 0.5f);
                         if (idx >= 0 && idx < historySize) {
+                            float fpsVal = getValue(idx);
                             ImGui::BeginTooltip();
-                            ImGui::Text("%.0f FPS", orderedHistory[idx]);
+                            ImGui::Text("%.0f FPS", fpsVal);
                             ImGui::EndTooltip();
                         }
                     }
