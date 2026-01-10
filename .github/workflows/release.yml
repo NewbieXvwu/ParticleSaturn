@@ -25,6 +25,8 @@ jobs:
             HandTracker/libs/tensorflow
             libs/imgui
           key: submodules-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            submodules-
 
       - name: Initialize submodules (cache miss)
         if: steps.cache-submodules.outputs.cache-hit != 'true'
@@ -65,6 +67,8 @@ jobs:
             HandTracker/libs/tensorflow/tflite_build/MinSizeRel
             HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build
           key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}
+          restore-keys: |
+            tflite-vs2022-static-
 
       - name: Apply TFLite patch
         if: steps.cache-tflite.outputs.cache-hit != 'true'
@@ -81,6 +85,8 @@ jobs:
         with:
           path: HandTracker/libs/opencv/build/install
           key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
+          restore-keys: |
+            opencv-4130-vs2022-static-
 
       - name: Build OpenCV
         if: steps.cache-opencv.outputs.cache-hit != 'true'
