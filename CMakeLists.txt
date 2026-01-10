@@ -19,6 +19,26 @@ set(SPIRV_WERROR OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(libs/DiligentCore)
 
+if(MSVC)
+    # DiligentCore's SPIRV-Tools submodule enables /WX unconditionally.
+    # Newer MSVC emits warnings like C5232 (C++20), which then break the build.
+    # We only neutralize /WX for SPIRV-Tools targets to keep the rest of the build strict.
+    foreach(_t IN ITEMS
+        SPIRV-Tools-static
+        SPIRV-Tools-shared
+        SPIRV-Tools-opt
+        SPIRV-Tools-link
+        SPIRV-Tools-lint
+        SPIRV-Tools-diff
+        SPIRV-Tools-reduce
+        SPIRV-Tools-fuzz
+    )
+        if(TARGET ${_t})
+            target_compile_options(${_t} PRIVATE /WX-)
+        endif()
+    endforeach()
+endif()
+
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
