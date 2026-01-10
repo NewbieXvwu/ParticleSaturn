@@ -22,12 +22,71 @@
 #include "WindowManager.h"
 #include "md3/MD3.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdarg>
+
+#include "generated/LogControlIcons.h"
 
 // 初始窗口尺寸常量
 const unsigned int INIT_WIDTH  = 1920;
 const unsigned int INIT_HEIGHT = 1080;
+
+namespace {
+
+static GLuint CreateTextureRGBA8(int w, int h, const unsigned char* rgba) {
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+static GLuint CreateTextureFromAlphaMask(int px, const uint8_t* alpha, uint32_t rgb) {
+    if (!alpha || px <= 0) {
+        return 0;
+    }
+    unsigned char r = (unsigned char)((rgb >> 16) & 0xFF);
+    unsigned char g = (unsigned char)((rgb >> 8) & 0xFF);
+    unsigned char b = (unsigned char)(rgb & 0xFF);
+
+    std::vector<unsigned char> rgba((size_t)px * (size_t)px * 4u, 0);
+    for (int i = 0; i < px * px; i++) {
+        rgba[(size_t)i * 4u + 0u] = r;
+        rgba[(size_t)i * 4u + 1u] = g;
+        rgba[(size_t)i * 4u + 2u] = b;
+        rgba[(size_t)i * 4u + 3u] = alpha[i];
+    }
+
+    return CreateTextureRGBA8(px, px, rgba.data());
+}
+
+static GLuint GetOrCreateBakedLogIconTexture(bool pausedState /* true=resume icon, false=pause icon */) {
+    static GLuint s_pauseTex  = 0;
+    static GLuint s_resumeTex = 0;
+
+    if (!pausedState) {
+        if (s_pauseTex == 0) {
+            s_pauseTex = CreateTextureFromAlphaMask(GeneratedIcons::kLogIconPx, GeneratedIcons::kLogPauseAlpha,
+                                                    GeneratedIcons::kLogIconRgb);
+        }
+        return s_pauseTex;
+    }
+
+    if (s_resumeTex == 0) {
+        s_resumeTex = CreateTextureFromAlphaMask(GeneratedIcons::kLogIconPx, GeneratedIcons::kLogResumeAlpha,
+                                                 GeneratedIcons::kLogIconRgb);
+    }
+    return s_resumeTex;
+}
+
+} // namespace
 
 // File drop callback for crash analyzer
 void DropCallback(GLFWwindow* window, int count, const char** paths) {
@@ -1440,22 +1499,44 @@ int main() {
                     static int logLevelFilter = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
                     // 第一行：级别过滤、搜索和暂停按钮
-                    float dpi = appState.ui.dpiScale;
-                    float buttonSize = 32 * dpi; // 暂停按钮大小
+                    float dpi           = appState.ui.dpiScale;
+                    float controlHeight = 40.0f * dpi; // MD3 标准控件高度（与 MD3::Combo 一致）
+                    float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
 
                     ImGui::SetNextItemWidth(80 * dpi);
                     const char* levelLabels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
                     MD3::Combo("##LogLevel", &logLevelFilter, levelLabels, 4);
 
                     ImGui::SameLine();
-                    // 搜索栏宽度 = 可用宽度 - 暂停按钮 - 间距
-                    float searchWidth = ImGui::GetContentRegionAvail().x - buttonSize - ImGui::GetStyle().ItemSpacing.x;
+                    // 搜索栏宽度 = 可用宽度 - 暂停按钮 - 间距 - 右侧留白
+                    float itemSpacingX   = ImGui::GetStyle().ItemSpacing.x;
+                    float rightMargin    = 12.0f * dpi; // 让暂停按钮不要贴右边界
+                    float minSearchWidth = 120.0f * dpi;
+                    float contentAvailX  = ImGui::GetContentRegionAvail().x;
+
+                    float searchWidth = contentAvailX - buttonSize - itemSpacingX - rightMargin;
+                    if (searchWidth < minSearchWidth) {
+                        // 空间不足时优先保证输入框可用：取消右侧留白，避免宽度过小导致裁剪/交互异常
+                        searchWidth = contentAvailX - buttonSize - itemSpacingX;
+                    }
+                    if (searchWidth < 1.0f) searchWidth = 1.0f;
+
                     ImGui::SetNextItemWidth(searchWidth);
-                    // 使用 MD3 风格的 FramePadding 让输入框高度匹配（和Combo一致：10, 8）
-                    float inputHeight = 36 * dpi; // 和MD3 Combo高度一致
-                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12 * dpi, 8 * dpi));
-                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 20.0f * dpi);
+
+                    // InputText 走 ImGui 自带绘制：通过 FramePadding 精确对齐 MD3 的 40dp 高度，并用圆角裁剪避免文字“顶出”圆角区域
+                    float padY = (controlHeight - ImGui::GetFontSize()) * 0.5f;
+                    if (padY < 0.0f) padY = 0.0f;
+
+                    float inputRounding = controlHeight * 0.5f;
+                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * dpi, padY));
+                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, inputRounding);
+
+                    ImVec2 inputPos  = ImGui::GetCursorScreenPos();
+                    ImVec2 inputSize = ImVec2(searchWidth, controlHeight);
+                    MD3::PushRoundedClipRect(inputPos, ImVec2(inputPos.x + inputSize.x, inputPos.y + inputSize.y), inputRounding);
                     ImGui::InputTextWithHint("##LogSearch", str.logSearch, logSearchBuffer, sizeof(logSearchBuffer));
+                    MD3::PopRoundedClipRect();
+
                     ImGui::PopStyleVar(2);
 
                     // 右键粘贴菜单
@@ -1483,60 +1564,59 @@ int main() {
                     ImGui::SameLine();
                     bool isPaused = DebugLog::Instance().IsPaused();
 
-                    // 使用InvisibleButton作为基础，然后绘制MD3风格背景和图标
-                    ImVec2 btnPos = ImGui::GetCursorScreenPos();
+                    // 用 InvisibleButton 做交互热区，然后自绘 MD3 风格底 + 图标
                     ImGui::PushID("LogPauseBtn");
-
-                    // 绘制按钮背景
-                    ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    bool btnHovered = ImGui::IsMouseHoveringRect(btnPos, ImVec2(btnPos.x + buttonSize, btnPos.y + buttonSize));
-                    bool btnClicked = btnHovered && ImGui::IsMouseClicked(0);
-
-                    // MD3 Tonal Button 风格背景
-                    ImU32 bgColor = btnHovered
-                        ? IM_COL32(120, 120, 140, 80)
-                        : IM_COL32(100, 100, 120, 50);
-                    drawList->AddRectFilled(btnPos, ImVec2(btnPos.x + buttonSize, btnPos.y + buttonSize),
-                                           bgColor, 8.0f * dpi);
-
-                    // 绘制图标
-                    float cx = btnPos.x + buttonSize * 0.5f;
-                    float cy = btnPos.y + buttonSize * 0.5f;
-                    ImU32 iconColor = IM_COL32(220, 220, 220, 255); // #e3e3e3
-
-                    if (isPaused) {
-                        // 播放三角形 ▶ (参考MD3 SVG: 填充三角形)
-                        // SVG path: M320-200v-560l440 280-440 280Z
-                        // 转换为本地坐标系，三角形偏右
-                        float triangleSize = buttonSize * 0.5f;
-                        float offsetX = buttonSize * 0.05f; // 稍微偏右居中
-                        ImVec2 p1(cx - triangleSize * 0.3f + offsetX, cy - triangleSize * 0.5f);
-                        ImVec2 p2(cx - triangleSize * 0.3f + offsetX, cy + triangleSize * 0.5f);
-                        ImVec2 p3(cx + triangleSize * 0.7f + offsetX, cy);
-                        drawList->AddTriangleFilled(p1, p2, p3, iconColor);
-                    } else {
-                        // 暂停两条竖线 ⏸ (参考MD3 SVG: 两条竖线)
-                        // SVG path: M360-320h80v-320h-80v320Zm160 0h80v-320h-80v320Z
-                        float barWidth = buttonSize * 0.22f;
-                        float barHeight = buttonSize * 0.5f;
-                        float gap = buttonSize * 0.15f;
-                        // 左竖线
-                        drawList->AddRectFilled(
-                            ImVec2(cx - gap - barWidth, cy - barHeight * 0.5f),
-                            ImVec2(cx - gap, cy + barHeight * 0.5f),
-                            iconColor, 2.0f * dpi);
-                        // 右竖线
-                        drawList->AddRectFilled(
-                            ImVec2(cx + gap, cy - barHeight * 0.5f),
-                            ImVec2(cx + gap + barWidth, cy + barHeight * 0.5f),
-                            iconColor, 2.0f * dpi);
-                    }
-
-                    // 处理点击
                     ImGui::InvisibleButton("##btn", ImVec2(buttonSize, buttonSize));
-                    if (btnClicked) {
+
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    ImVec2      btnMin   = ImGui::GetItemRectMin();
+                    ImVec2      btnMax   = ImGui::GetItemRectMax();
+                    bool        hovered  = ImGui::IsItemHovered();
+                    bool        held     = ImGui::IsItemActive();
+                    bool        clicked  = ImGui::IsItemClicked(0);
+
+                    const MD3::MD3ColorScheme colors = MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
+                    float                     rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
+
+                    if (clicked) {
+                        MD3::TriggerRippleForCurrentItem(ImGui::GetItemID(), rounding);
                         DebugLog::Instance().SetPaused(!isPaused);
                     }
+
+                    if (hovered) {
+                        ImGui::SetTooltip("%s", isPaused ? str.logResume : str.logPause);
+                    }
+
+                    // 轻微阴影（更接近 MD3 elevation）
+                    {
+                        ImVec4 shadow = colors.shadow;
+                        shadow.w      = 0.18f;
+                        ImVec2 sMin(btnMin.x, btnMin.y + 1.0f * dpi);
+                        ImVec2 sMax(btnMax.x, btnMax.y + 1.0f * dpi);
+                        drawList->AddRectFilled(sMin, sMax, MD3::ColorToU32(shadow), rounding);
+                    }
+
+                    // 底色 + 状态层
+                    ImVec4 bgColor = colors.surfaceContainerHigh;
+                    if (hovered || held) {
+                        float alpha = held ? colors.stateLayerPressed : colors.stateLayerHover;
+                        bgColor     = MD3::ApplyStateLayer(bgColor, colors.onSurface, alpha);
+                    }
+                    drawList->AddRectFilled(btnMin, btnMax, MD3::ColorToU32(bgColor), rounding);
+
+                    // 图标：使用离线烘焙的 alpha 掩码（由原 SVG 转换得到），运行时只上传一次纹理
+                    float cx = (btnMin.x + btnMax.x) * 0.5f;
+                    float cy = (btnMin.y + btnMax.y) * 0.5f;
+
+                    float  drawIconPx = 24.0f * dpi;
+                    GLuint texId      = GetOrCreateBakedLogIconTexture(isPaused);
+                    if (texId != 0) {
+                        ImVec2 iconMin(cx - drawIconPx * 0.5f, cy - drawIconPx * 0.5f);
+                        ImVec2 iconMax(cx + drawIconPx * 0.5f, cy + drawIconPx * 0.5f);
+                        drawList->AddImage((ImTextureID)(uintptr_t)texId, iconMin, iconMax, ImVec2(0, 0), ImVec2(1, 1),
+                                           IM_COL32_WHITE);
+                    }
+
                     ImGui::PopID();
 
                     // 第二行：清空和复制按钮
