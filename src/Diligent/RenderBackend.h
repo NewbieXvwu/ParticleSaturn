@@ -15,4 +15,3 @@ struct SurfaceSize {
 };
 
 } // namespace ParticleSaturn::Render
-

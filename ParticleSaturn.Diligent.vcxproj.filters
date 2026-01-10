@@ -1,27 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="src_diligent">
+    <Filter Include="src\\Diligent">
       <UniqueIdentifier>{B9B01E8E-9B7C-4E9E-B8B8-7C0A8B0E4D74}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="src_diligent\main.cpp">
-      <Filter>src_diligent</Filter>
+    <None Include="src\Diligent\Main.cpp">
+      <Filter>src\\Diligent</Filter>
     </None>
-    <None Include="src_diligent\DiligentBackend.cpp">
-      <Filter>src_diligent</Filter>
+    <None Include="src\Diligent\DiligentBackend.cpp">
+      <Filter>src\\Diligent</Filter>
     </None>
-    <None Include="src_diligent\DiligentBackend.h">
-      <Filter>src_diligent</Filter>
+    <None Include="src\Diligent\DiligentBackend.h">
+      <Filter>src\\Diligent</Filter>
     </None>
-    <None Include="src_diligent\RenderBackend.h">
-      <Filter>src_diligent</Filter>
+    <None Include="src\Diligent\RenderBackend.h">
+      <Filter>src\\Diligent</Filter>
     </None>
-    <None Include="src_diligent\SuperResolution.h">
-      <Filter>src_diligent</Filter>
+    <None Include="src\Diligent\SuperResolution.h">
+      <Filter>src\\Diligent</Filter>
     </None>
     <None Include="CMakeLists.txt" />
   </ItemGroup>
 </Project>
-

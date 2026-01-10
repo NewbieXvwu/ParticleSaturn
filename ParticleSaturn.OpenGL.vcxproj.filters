@@ -19,13 +19,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\pch.cpp">
+    <ClCompile Include="src\OpenGL\pch.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\Main.cpp">
+    <ClCompile Include="src\OpenGL\Main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\Renderer.cpp">
+    <ClCompile Include="src\OpenGL\Renderer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="libs\imgui\imgui.cpp">
@@ -40,36 +40,36 @@
     <ClCompile Include="libs\imgui\imgui_widgets.cpp">
       <Filter>libs\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="libs\imgui\imgui_impl_glfw.cpp">
+    <ClCompile Include="libs\imgui\backends\imgui_impl_glfw.cpp">
       <Filter>libs\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="libs\imgui\imgui_impl_opengl3.cpp">
+    <ClCompile Include="libs\imgui\backends\imgui_impl_opengl3.cpp">
       <Filter>libs\imgui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\pch.h">
+    <ClInclude Include="src\OpenGL\pch.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\Utils.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\Shaders.h">
+    <ClInclude Include="src\OpenGL\Shaders.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\DebugLog.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\Renderer.h">
+    <ClInclude Include="src\OpenGL\Renderer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\ParticleSystem.h">
+    <ClInclude Include="src\OpenGL\ParticleSystem.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowManager.h">
+    <ClInclude Include="src\OpenGL\WindowManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\UIManager.h">
+    <ClInclude Include="src\OpenGL\UIManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Resource.h">

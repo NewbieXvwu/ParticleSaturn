@@ -90,11 +90,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="src_diligent\main.cpp" />
-    <None Include="src_diligent\DiligentBackend.cpp" />
-    <None Include="src_diligent\DiligentBackend.h" />
-    <None Include="src_diligent\RenderBackend.h" />
-    <None Include="src_diligent\SuperResolution.h" />
+    <None Include="src\Diligent\Main.cpp" />
+    <None Include="src\Diligent\DiligentBackend.cpp" />
+    <None Include="src\Diligent\DiligentBackend.h" />
+    <None Include="src\Diligent\RenderBackend.h" />
+    <None Include="src\Diligent\SuperResolution.h" />
     <None Include="CMakeLists.txt" />
   </ItemGroup>
 

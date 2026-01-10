@@ -103,4 +103,3 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         backend.RenderFrame();
     }
 }
-

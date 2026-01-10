@@ -17,12 +17,13 @@ set(DILIGENT_NO_ARCHIVER ON CACHE BOOL "" FORCE)
 add_subdirectory(libs/DiligentCore)
 
 add_executable(ParticleSaturn.Diligent WIN32
-    src_diligent/main.cpp
-    src_diligent/DiligentBackend.cpp
+    src/Diligent/Main.cpp
+    src/Diligent/DiligentBackend.cpp
 )
 
 target_include_directories(ParticleSaturn.Diligent PRIVATE
-    src_diligent
+    src/Diligent
+    src
 )
 
 # Link both backends so a single build can switch at runtime.

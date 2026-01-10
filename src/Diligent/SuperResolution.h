@@ -25,4 +25,3 @@ class ISuperResolution {
 };
 
 } // namespace ParticleSaturn::Render
-
