@@ -14,6 +14,9 @@ set(DILIGENT_NO_METAL ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_ARCHIVER ON CACHE BOOL "" FORCE)
 
+# SPIRV-Tools enables /WX by default, which breaks with newer MSVC warnings (e.g. C5232).
+set(SPIRV_WERROR OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(libs/DiligentCore)
 
 add_executable(ParticleSaturn.Diligent WIN32
