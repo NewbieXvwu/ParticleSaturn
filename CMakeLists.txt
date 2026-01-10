@@ -6,9 +6,21 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Provide a minimal <atlbase.h> shim so DiligentCore can build on VS installs
-# that don't include the ATL workload (D3D12 + DXC paths rely on CComPtr).
-include_directories(BEFORE "${CMAKE_SOURCE_DIR}/shims/atl")
+# Provide a minimal ATL shim (CComPtr) only when needed.
+#
+# Rationale:
+# - DiligentCore uses <atlbase.h>/<atlcomcli.h> for CComPtr on Win32.
+# - On dev machines with ATL installed, we should prefer the real headers.
+# - On CI/minimal VS installs, the shim can be enabled as a fallback.
+option(PARTICLESATURN_FORCE_ATL_SHIM "Force using the local ATL shim headers" OFF)
+
+include(CheckIncludeFileCXX)
+check_include_file_cxx(atlbase.h PARTICLESATURN_HAS_ATLBASE_H)
+check_include_file_cxx(atlcomcli.h PARTICLESATURN_HAS_ATLCOMCLI_H)
+
+if(PARTICLESATURN_FORCE_ATL_SHIM OR NOT (PARTICLESATURN_HAS_ATLBASE_H AND PARTICLESATURN_HAS_ATLCOMCLI_H))
+    include_directories(BEFORE "${CMAKE_SOURCE_DIR}/shims/atl")
+endif()
 
 # Build only what we need from DiligentCore for now (Vulkan + D3D12).
 set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
