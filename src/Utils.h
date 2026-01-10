@@ -71,6 +71,24 @@ inline float Lerp(float a, float b, float f) {
     return a + f * (b - a);
 }
 
+// 缓动函数：ease-out cubic (快速开始，缓慢结束)
+inline float EaseOutCubic(float t) {
+    t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); // clamp
+    return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+}
+
+// Catmull-Rom 样条插值
+// 给定4个控制点 p0, p1, p2, p3，计算 p1 到 p2 之间 t 位置的值
+// t ∈ [0, 1]，t=0 时返回 p1，t=1 时返回 p2
+inline float CatmullRom(float p0, float p1, float p2, float p3, float t) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5f * ((2.0f * p1) +
+                   (-p0 + p2) * t +
+                   (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+}
+
 inline glm::vec3 HexToRGB(int hex) {
     return glm::vec3(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f);
 }
@@ -122,9 +140,15 @@ template <int N = 60> class RingBufferFPS {
             float avgFps = historyAccumFps / historyAccumCount;
             displayHistory[displayHistoryIndex] = avgFps;
             displayHistoryIndex = (displayHistoryIndex + 1) % DISPLAY_HISTORY_SIZE;
-            historyAccumTime = 0.0f;
+            // 保留超出部分的时间，确保精确的更新频率
+            historyAccumTime -= 0.05f;
             historyAccumFps = 0.0f;
             historyAccumCount = 0;
+            // 重置滚动动画（保留本帧的进度）
+            scrollAnimTime = historyAccumTime;
+        } else {
+            // 仅在非更新帧累加动画时间
+            scrollAnimTime += dt;
         }
     }
 
@@ -149,6 +173,17 @@ template <int N = 60> class RingBufferFPS {
     int GetDisplayHistorySize() const { return DISPLAY_HISTORY_SIZE; }
     int GetDisplayHistoryIndex() const { return displayHistoryIndex; }
 
+    // 获取滚动动画进度 (0 = 刚更新，1 = 即将更新)
+    // 使用 ease-out 缓动，让动画开始快结束慢
+    float GetScrollProgress() const {
+        // 50ms 更新周期
+        float t = scrollAnimTime / 0.05f;
+        return EaseOutCubic(t < 1.0f ? t : 1.0f);
+    }
+
+    // 获取更新周期（秒）
+    static constexpr float GetUpdateInterval() { return 0.05f; }
+
   private:
     float frameTimes[N];
     float sum   = N * (1.0f / 60.0f); // 初始假设 60 FPS
@@ -162,6 +197,9 @@ template <int N = 60> class RingBufferFPS {
     float historyAccumTime = 0.0f;
     float historyAccumFps = 0.0f;
     int   historyAccumCount = 0;
+
+    // 滚动动画状态
+    float scrollAnimTime = 0.0f;
 };
 
 // 异步手部追踪器 (优化: 将手部追踪从主线程解耦，消除阻塞)
