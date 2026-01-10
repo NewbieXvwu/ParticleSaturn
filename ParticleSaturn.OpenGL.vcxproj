@@ -26,7 +26,7 @@
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{a32e3ffe-6917-4502-bebc-6abe7bf3d177}</ProjectGuid>
-    <RootNamespace>ParticleSaturn</RootNamespace>
+    <RootNamespace>ParticleSaturnOpenGL</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <OpenCVRuntime Condition="'$(OpenCVRuntime)'==''">vc18</OpenCVRuntime>
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
