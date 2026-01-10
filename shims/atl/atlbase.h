@@ -13,6 +13,7 @@
 
 #include <Unknwn.h> // IUnknown
 #include <guiddef.h>
+#include <memory>
 #include <utility>
 
 template <class T>
@@ -50,7 +51,7 @@ public:
 
     CComPtr& operator=(const CComPtr& other) noexcept
     {
-        if (this != &other)
+        if (this != std::addressof(other))
         {
             InternalRelease();
             p = other.p;
@@ -61,7 +62,7 @@ public:
 
     CComPtr& operator=(CComPtr&& other) noexcept
     {
-        if (this != &other)
+        if (this != std::addressof(other))
         {
             InternalRelease();
             p       = other.p;
