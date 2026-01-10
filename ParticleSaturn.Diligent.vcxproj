@@ -94,46 +94,46 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|Win32'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">
     <DiligentBuildDir>$(ProjectDir)build_diligent\$(Platform)</DiligentBuildDir>
-    <NMakeBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>cmake -S "$(ProjectDir)" -B "$(DiligentBuildDir)" -A $(CMakeArch) &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean &amp;&amp; cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target ParticleSaturn.Diligent</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>cmake --build "$(DiligentBuildDir)" --config $(DiligentBuildConfig) --target clean</NMakeCleanCommandLine>
-    <NMakeOutput>$(DiligentBuildDir)\$(DiligentBuildConfig)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(DiligentBuildDir)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(DiligentBuildDir)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
 
   <ItemGroup>
