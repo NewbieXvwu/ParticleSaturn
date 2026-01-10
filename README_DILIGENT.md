@@ -24,6 +24,7 @@
 ### Visual Studio（解决方案）
 
 - 项目：`ParticleSaturn.Diligent`
+- 推荐打开：`ParticleSaturn.sln`（传统 `.sln`）
 - 默认构建目录：`build_diligent\<Platform>\`
 - 可执行文件：`build_diligent\<Platform>\ParticleSaturn.Diligent.exe`
 
