@@ -16,6 +16,9 @@ if "%SRC%"=="" goto :usage
 if "%BDIR%"=="" goto :usage
 if "%CFG%"=="" goto :usage
 
+if not exist "%BDIR%" mkdir "%BDIR%"
+> "%BDIR%\\_build_invoked.txt" echo %DATE% %TIME% %ACTION% %CFG%
+
 if /i "%ACTION%"=="clean" goto :do_clean
 if /i "%ACTION%"=="build" goto :do_build
 if /i "%ACTION%"=="rebuild" goto :do_rebuild
@@ -45,4 +48,3 @@ exit /b %errorlevel%
 if not exist "%BDIR%\\CMakeCache.txt" exit /b 0
 cmake --build "%BDIR%" --target clean
 exit /b %errorlevel%
-
