@@ -7,6 +7,10 @@
 #include "Resource.h"
 #endif
 
+#include <algorithm>
+#include <cmath>
+#include <cstdarg>
+
 #include "AppState.h"
 #include "CameraSelector/CameraSelector.h"
 #include "CrashAnalyzer.h"
@@ -20,13 +24,8 @@
 #include "UIManager.h"
 #include "Utils.h"
 #include "WindowManager.h"
-#include "md3/MD3.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdarg>
-
 #include "generated/LogControlIcons.h"
+#include "md3/MD3.h"
 
 // 初始窗口尺寸常量
 const unsigned int INIT_WIDTH  = 1920;
@@ -127,10 +126,10 @@ int main() {
     int initialClientW = (int)INIT_WIDTH;
     int initialClientH = (int)INIT_HEIGHT;
 
-    int         workX    = 0;
-    int         workY    = 0;
-    int         workW    = 0;
-    int         workH    = 0;
+    int          workX   = 0;
+    int          workY   = 0;
+    int          workW   = 0;
+    int          workH   = 0;
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     if (monitor) {
 #if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 3)
@@ -163,8 +162,8 @@ int main() {
 
     // 创建窗口: 优先尝试 OpenGL 4.6 以获取持久映射支持, 失败则回退到 4.3
     // 某些驱动 (AMD/Intel) 只返回请求的版本而非设备支持的最高版本
-    GLFWwindow* window = nullptr;
-    const int glVersionsToTry[][2] = {{4, 6}, {4, 5}, {4, 4}, {4, 3}};
+    GLFWwindow* window               = nullptr;
+    const int   glVersionsToTry[][2] = {{4, 6}, {4, 5}, {4, 4}, {4, 3}};
     for (const auto& ver : glVersionsToTry) {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, ver[0]);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, ver[1]);
@@ -365,8 +364,8 @@ int main() {
     }
     if (!handTrackerCheckDone) {
         // 摄像头选择：如果有多个摄像头，弹出选择对话框
-        HWND mainHwnd = glfwGetWin32Window(window);
-        int selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd);
+        HWND mainHwnd       = glfwGetWin32Window(window);
+        int  selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd);
         if (selectedCamera < 0) {
             // 用户取消，回退到默认摄像头 0
             std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
@@ -375,19 +374,21 @@ int main() {
         {
             if (!InitTracker(selectedCamera, nullptr)) {
                 std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
-                ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed, "InitTracker() returned false - thread creation failed");
+                ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                          "InitTracker() returned false - thread creation failed");
                 handTrackerCheckDone = true;
             } else {
                 handTrackerStarted = true;
-                std::cout << "[Main] HandTracker thread started with camera " << selectedCamera << " (async initialization)" << std::endl;
+                std::cout << "[Main] HandTracker thread started with camera " << selectedCamera
+                          << " (async initialization)" << std::endl;
             }
         }
     }
 #else
     std::cout << "[Main] Initializing HandTracker (async)..." << std::endl;
     // 摄像头选择：如果有多个摄像头，弹出选择对话框
-    HWND mainHwnd = glfwGetWin32Window(window);
-    int selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd);
+    HWND mainHwnd       = glfwGetWin32Window(window);
+    int  selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd);
     if (selectedCamera < 0) {
         // 用户取消，回退到默认摄像头 0
         std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
@@ -401,7 +402,8 @@ int main() {
             handTrackerCheckDone = true;
         } else {
             handTrackerStarted = true;
-            std::cout << "[Main] HandTracker thread started with camera " << selectedCamera << " (async initialization)" << std::endl;
+            std::cout << "[Main] HandTracker thread started with camera " << selectedCamera << " (async initialization)"
+                      << std::endl;
         }
     }
 #endif
@@ -682,12 +684,12 @@ int main() {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 0.95f);
                     appState.render.activeParticleCount = std::max(appState.render.activeParticleCount, MIN_PARTICLES);
                     particleCountChanged                = true;
-                    appState.lod.lastDecision = 1; // 降低粒子数
+                    appState.lod.lastDecision           = 1; // 降低粒子数
                 } else if (appState.render.pixelRatio > 0.7f) {
                     appState.render.pixelRatio -= 0.03f;
                     appState.render.pixelRatio = std::max(appState.render.pixelRatio, 0.7f);
                     pixelRatioChanged          = true;
-                    appState.lod.lastDecision = 2; // 降低像素比例
+                    appState.lod.lastDecision  = 2; // 降低像素比例
                 }
             } else if (smoothedFps > 57.0f) {
                 // 更保守的提质策略: 1.05 替代 1.1
@@ -695,12 +697,12 @@ int main() {
                     appState.render.pixelRatio += 0.03f;
                     appState.render.pixelRatio = std::min(appState.render.pixelRatio, 1.0f);
                     pixelRatioChanged          = true;
-                    appState.lod.lastDecision = 3; // 提高像素比例
+                    appState.lod.lastDecision  = 3; // 提高像素比例
                 } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
                     appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
                     appState.render.activeParticleCount = std::min(appState.render.activeParticleCount, MAX_PARTICLES);
                     particleCountChanged                = true;
-                    appState.lod.lastDecision = 4; // 提高粒子数
+                    appState.lod.lastDecision           = 4; // 提高粒子数
                 }
             } else {
                 appState.lod.lastDecision = 0; // 稳定
@@ -1045,7 +1047,7 @@ int main() {
                         TwoColumnText(str.pixelRatio, "%.2f", appState.render.pixelRatio);
                         TwoColumnText(str.resolution, "%u x %u", appState.window.width, appState.window.height);
                         TwoColumnText(str.openglVersion, "%d.%d%s", appState.gl.major, appState.gl.minor,
-                                     appState.gl.persistentMapping ? "" : " (compat)");
+                                      appState.gl.persistentMapping ? "" : " (compat)");
 
                         ImGui::EndTable();
                     }
@@ -1054,8 +1056,8 @@ int main() {
                     // 使用自定义绘制实现 Catmull-Rom 平滑曲线 + 滚动动画
                     ImGui::Dummy(ImVec2(0, 5));
                     const float* displayHistory = fpsCalculator.GetDisplayHistory();
-                    int historySize = fpsCalculator.GetDisplayHistorySize();
-                    int currentIdx = fpsCalculator.GetDisplayHistoryIndex();
+                    int          historySize    = fpsCalculator.GetDisplayHistorySize();
+                    int          currentIdx     = fpsCalculator.GetDisplayHistoryIndex();
 
                     // 获取滚动动画进度 (0~1)
                     float scrollProgress = fpsCalculator.GetScrollProgress();
@@ -1072,48 +1074,60 @@ int main() {
                     float dataMax = getValue(0);
                     for (int i = 1; i < historySize; i++) {
                         float v = getValue(i);
-                        if (v < dataMin) dataMin = v;
-                        if (v > dataMax) dataMax = v;
+                        if (v < dataMin) {
+                            dataMin = v;
+                        }
+                        if (v > dataMax) {
+                            dataMax = v;
+                        }
                     }
 
                     // 设置最小显示范围（放大上限），防止稳定时过度放大
                     const float MIN_DISPLAY_RANGE = 30.0f;
-                    float dataRange = dataMax - dataMin;
+                    float       dataRange         = dataMax - dataMin;
                     if (dataRange < MIN_DISPLAY_RANGE) {
                         float center = (dataMax + dataMin) * 0.5f;
-                        dataMin = center - MIN_DISPLAY_RANGE * 0.5f;
-                        dataMax = center + MIN_DISPLAY_RANGE * 0.5f;
+                        dataMin      = center - MIN_DISPLAY_RANGE * 0.5f;
+                        dataMax      = center + MIN_DISPLAY_RANGE * 0.5f;
                     }
 
                     // 添加 10% 的边距
-                    float margin = (dataMax - dataMin) * 0.1f;
+                    float margin       = (dataMax - dataMin) * 0.1f;
                     float targetMinVal = dataMin - margin;
                     float targetMaxVal = dataMax + margin;
-                    if (targetMinVal < 0.0f) targetMinVal = 0.0f;
+                    if (targetMinVal < 0.0f) {
+                        targetMinVal = 0.0f;
+                    }
 
                     // Y 轴范围平滑动画（使用静态变量保持状态）
                     static float animMinVal = 60.0f;
                     static float animMaxVal = 120.0f;
-                    const float animSpeed = 8.0f; // 动画速度
-                    float dt = ImGui::GetIO().DeltaTime;
+                    const float  animSpeed  = 8.0f; // 动画速度
+                    float        dt         = ImGui::GetIO().DeltaTime;
                     animMinVal += (targetMinVal - animMinVal) * (1.0f - std::exp(-animSpeed * dt));
                     animMaxVal += (targetMaxVal - animMaxVal) * (1.0f - std::exp(-animSpeed * dt));
                     // 接近目标时直接到达，避免无限逼近
-                    if (std::abs(targetMinVal - animMinVal) < 0.1f) animMinVal = targetMinVal;
-                    if (std::abs(targetMaxVal - animMaxVal) < 0.1f) animMaxVal = targetMaxVal;
+                    if (std::abs(targetMinVal - animMinVal) < 0.1f) {
+                        animMinVal = targetMinVal;
+                    }
+                    if (std::abs(targetMaxVal - animMaxVal) < 0.1f) {
+                        animMaxVal = targetMaxVal;
+                    }
 
-                    float minVal = animMinVal;
-                    float maxVal = animMaxVal;
+                    float minVal   = animMinVal;
+                    float maxVal   = animMaxVal;
                     float valRange = maxVal - minVal;
-                    if (valRange < 1.0f) valRange = 1.0f;
+                    if (valRange < 1.0f) {
+                        valRange = 1.0f;
+                    }
 
                     // 绘图区域设置（全宽，Y轴刻度作为overlay）
-                    ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
-                    ImVec2 plotPos = ImGui::GetCursorScreenPos();
+                    ImVec2      plotSize(ImGui::GetContentRegionAvail().x, 50);
+                    ImVec2      plotPos  = ImGui::GetCursorScreenPos();
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
                     // 背景
-                    ImU32 bgColor = ImGui::GetColorU32(ImGuiCol_FrameBg);
+                    ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
                     ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
                     ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
                     drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
@@ -1123,15 +1137,15 @@ int main() {
 
                     // 辅助函数：将逻辑索引和 FPS 值转换为屏幕坐标
                     auto toScreen = [&](float logicalX, float val) -> ImVec2 {
-                        float adjustedX = logicalX - scrollProgress;
-                        float x = plotPos.x + (adjustedX / (float)(historySize - 1)) * plotSize.x;
+                        float adjustedX  = logicalX - scrollProgress;
+                        float x          = plotPos.x + (adjustedX / (float)(historySize - 1)) * plotSize.x;
                         float clampedVal = val < minVal ? minVal : (val > maxVal ? maxVal : val);
-                        float y = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
+                        float y          = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
                         return ImVec2(x, y);
                     };
 
                     // 使用 Catmull-Rom 插值绘制平滑曲线
-                    const int subdivisions = 4;
+                    const int        subdivisions = 4;
                     ImVector<ImVec2> points;
                     points.reserve((historySize - 1) * subdivisions + 1);
 
@@ -1142,10 +1156,10 @@ int main() {
                         float p3 = getValue(i + 2 < historySize ? i + 2 : historySize - 1);
 
                         for (int j = 0; j < subdivisions; j++) {
-                            float t = (float)j / subdivisions;
-                            float val = CatmullRom(p0, p1, p2, p3, t);
-                            float logicalX = (float)i + t;
-                            ImVec2 pt = toScreen(logicalX, val);
+                            float  t        = (float)j / subdivisions;
+                            float  val      = CatmullRom(p0, p1, p2, p3, t);
+                            float  logicalX = (float)i + t;
+                            ImVec2 pt       = toScreen(logicalX, val);
 
                             if (pt.x >= plotPos.x - 5 && pt.x <= plotPos.x + plotSize.x + 5) {
                                 points.push_back(pt);
@@ -1154,8 +1168,8 @@ int main() {
                     }
                     // 添加最后一个点
                     {
-                        float lastVal = getValue(historySize - 1);
-                        ImVec2 lastPt = toScreen((float)(historySize - 1), lastVal);
+                        float  lastVal = getValue(historySize - 1);
+                        ImVec2 lastPt  = toScreen((float)(historySize - 1), lastVal);
                         if (lastPt.x >= plotPos.x - 5 && lastPt.x <= plotPos.x + plotSize.x + 5) {
                             points.push_back(lastPt);
                         }
@@ -1184,9 +1198,9 @@ int main() {
                     // 自定义 tooltip
                     if (ImGui::IsItemHovered()) {
                         ImVec2 mousePos = ImGui::GetIO().MousePos;
-                        float relX = (mousePos.x - plotPos.x) / plotSize.x;
-                        float logicalX = relX * (float)(historySize - 1) + scrollProgress;
-                        int idx = (int)(logicalX + 0.5f);
+                        float  relX     = (mousePos.x - plotPos.x) / plotSize.x;
+                        float  logicalX = relX * (float)(historySize - 1) + scrollProgress;
+                        int    idx      = (int)(logicalX + 0.5f);
                         if (idx >= 0 && idx < historySize) {
                             float fpsVal = getValue(idx);
                             ImGui::BeginTooltip();
@@ -1203,10 +1217,12 @@ int main() {
                         ImGui::Indent(10);
                         // 手动调整粒子数（使用MD3::Slider）
                         float particleCountFloat = (float)appState.render.activeParticleCount;
-                        if (MD3::Slider("##Particles", &particleCountFloat, (float)MIN_PARTICLES, (float)MAX_PARTICLES, "%.0f")) {
+                        if (MD3::Slider("##Particles", &particleCountFloat, (float)MIN_PARTICLES, (float)MAX_PARTICLES,
+                                        "%.0f")) {
                             appState.render.activeParticleCount = (unsigned int)particleCountFloat;
                             glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
-                            glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.activeParticleCount);
+                            glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int),
+                                            &appState.render.activeParticleCount);
                         }
                         // 手动调整像素比例
                         MD3::Slider("##PixelRatio", &appState.render.pixelRatio, 0.5f, 1.0f, "%.2f");
@@ -1248,26 +1264,27 @@ int main() {
                 if (MD3::BeginCollapsingHeader(str.sectionHandTracking, true)) {
                     // ========== 追踪器状态卡 ==========
                     {
-                        int readyStatus = IsTrackerReady();
+                        int         readyStatus = IsTrackerReady();
                         const char* statusText;
-                        ImVec4 statusColor;
+                        ImVec4      statusColor;
 
                         if (!handTrackerStarted) {
-                            statusText = str.trackerInitializing;
+                            statusText  = str.trackerInitializing;
                             statusColor = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
                         } else if (readyStatus == 1) {
-                            statusText = str.trackerReady;
+                            statusText  = str.trackerReady;
                             statusColor = ImVec4(0.3f, 1.0f, 0.3f, 1.0f); // 绿色
                         } else if (readyStatus == -1) {
-                            statusText = str.trackerFailed;
+                            statusText  = str.trackerFailed;
                             statusColor = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
                         } else {
-                            statusText = str.trackerInitializing;
+                            statusText  = str.trackerInitializing;
                             statusColor = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
                         }
 
                         if (ImGui::BeginTable("TrackerStatusTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.ui.dpiScale);
+                            ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed,
+                                                    100 * appState.ui.dpiScale);
                             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                             // 追踪器状态
@@ -1279,30 +1296,30 @@ int main() {
 
                             // 错误信息（如果有）
                             if (readyStatus == -1) {
-                                int errCode = GetTrackerLastError();
+                                int         errCode = GetTrackerLastError();
                                 const char* localizedMsg;
                                 switch (errCode) {
-                                    case HANDTRACKER_ERROR_PALM_MODEL:
-                                        localizedMsg = str.palmModelLoadFailed;
-                                        break;
-                                    case HANDTRACKER_ERROR_HAND_MODEL:
-                                        localizedMsg = str.handModelLoadFailed;
-                                        break;
-                                    case HANDTRACKER_ERROR_CAMERA_OPEN:
-                                        localizedMsg = str.cameraInitFailed;
-                                        break;
-                                    case HANDTRACKER_ERROR_CAMERA_IN_USE:
-                                        localizedMsg = str.cameraInUse;
-                                        break;
-                                    case HANDTRACKER_ERROR_NO_CAMERA:
-                                        localizedMsg = str.cameraNotFound;
-                                        break;
-                                    case HANDTRACKER_ERROR_THREAD:
-                                        localizedMsg = str.unexpectedError;
-                                        break;
-                                    default:
-                                        localizedMsg = str.trackerFailed;
-                                        break;
+                                case HANDTRACKER_ERROR_PALM_MODEL:
+                                    localizedMsg = str.palmModelLoadFailed;
+                                    break;
+                                case HANDTRACKER_ERROR_HAND_MODEL:
+                                    localizedMsg = str.handModelLoadFailed;
+                                    break;
+                                case HANDTRACKER_ERROR_CAMERA_OPEN:
+                                    localizedMsg = str.cameraInitFailed;
+                                    break;
+                                case HANDTRACKER_ERROR_CAMERA_IN_USE:
+                                    localizedMsg = str.cameraInUse;
+                                    break;
+                                case HANDTRACKER_ERROR_NO_CAMERA:
+                                    localizedMsg = str.cameraNotFound;
+                                    break;
+                                case HANDTRACKER_ERROR_THREAD:
+                                    localizedMsg = str.unexpectedError;
+                                    break;
+                                default:
+                                    localizedMsg = str.trackerFailed;
+                                    break;
                                 }
                                 ImGui::TableNextRow();
                                 ImGui::TableNextColumn();
@@ -1409,9 +1426,9 @@ int main() {
                     }
 
                     if (MD3::TonalButton(str.resetDefaults)) {
-                        appState.handParams.sensitivity = 1.0f;
-                        appState.handParams.invertX = false;
-                        appState.handParams.invertY = false;
+                        appState.handParams.sensitivity   = 1.0f;
+                        appState.handParams.invertX       = false;
+                        appState.handParams.invertY       = false;
                         appState.handParams.handLostDelay = 10;
                     }
 
@@ -1441,19 +1458,19 @@ int main() {
 
                 if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
 #ifdef _WIN32
-                    HWND hwnd = glfwGetWin32Window(window);
+                    HWND hwnd             = glfwGetWin32Window(window);
                     auto GetBackdropLabel = [&](int mode) -> const char* {
                         switch (mode) {
-                            case 0:
-                                return str.backdropSolid;
-                            case 1:
-                                return str.backdropAero;
-                            case 2:
-                                return str.backdropAcrylic;
-                            case 3:
-                                return str.backdropMica;
-                            default:
-                                return str.statusUnknown;
+                        case 0:
+                            return str.backdropSolid;
+                        case 1:
+                            return str.backdropAero;
+                        case 2:
+                            return str.backdropAcrylic;
+                        case 3:
+                            return str.backdropMica;
+                        default:
+                            return str.statusUnknown;
                         }
                     };
 
@@ -1496,15 +1513,16 @@ int main() {
                 if (MD3::BeginCollapsingHeader(str.sectionLog, true)) {
                     // 静态变量用于日志过滤
                     static char logSearchBuffer[128] = "";
-                    static int logLevelFilter = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
+                    static int  logLevelFilter       = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
                     // 第一行：级别过滤、搜索和暂停按钮
                     float dpi           = appState.ui.dpiScale;
-                    float controlHeight = 40.0f * dpi; // MD3 标准控件高度（与 MD3::Combo 一致）
+                    float controlHeight = 40.0f * dpi;   // MD3 标准控件高度（与 MD3::Combo 一致）
                     float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
 
                     ImGui::SetNextItemWidth(80 * dpi);
-                    const char* levelLabels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
+                    const char* levelLabels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn,
+                                                 str.logLevelError};
                     MD3::Combo("##LogLevel", &logLevelFilter, levelLabels, 4);
 
                     ImGui::SameLine();
@@ -1519,13 +1537,18 @@ int main() {
                         // 空间不足时优先保证输入框可用：取消右侧留白，避免宽度过小导致裁剪/交互异常
                         searchWidth = contentAvailX - buttonSize - itemSpacingX;
                     }
-                    if (searchWidth < 1.0f) searchWidth = 1.0f;
+                    if (searchWidth < 1.0f) {
+                        searchWidth = 1.0f;
+                    }
 
                     ImGui::SetNextItemWidth(searchWidth);
 
-                    // InputText 走 ImGui 自带绘制：通过 FramePadding 精确对齐 MD3 的 40dp 高度，并用圆角裁剪避免文字“顶出”圆角区域
+                    // InputText 走 ImGui 自带绘制：通过 FramePadding 精确对齐 MD3 的 40dp
+                    // 高度，并用圆角裁剪避免文字“顶出”圆角区域
                     float padY = (controlHeight - ImGui::GetFontSize()) * 0.5f;
-                    if (padY < 0.0f) padY = 0.0f;
+                    if (padY < 0.0f) {
+                        padY = 0.0f;
+                    }
 
                     float inputRounding = controlHeight * 0.5f;
                     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * dpi, padY));
@@ -1533,7 +1556,8 @@ int main() {
 
                     ImVec2 inputPos  = ImGui::GetCursorScreenPos();
                     ImVec2 inputSize = ImVec2(searchWidth, controlHeight);
-                    MD3::PushRoundedClipRect(inputPos, ImVec2(inputPos.x + inputSize.x, inputPos.y + inputSize.y), inputRounding);
+                    MD3::PushRoundedClipRect(inputPos, ImVec2(inputPos.x + inputSize.x, inputPos.y + inputSize.y),
+                                             inputRounding);
                     ImGui::InputTextWithHint("##LogSearch", str.logSearch, logSearchBuffer, sizeof(logSearchBuffer));
                     MD3::PopRoundedClipRect();
 
@@ -1544,13 +1568,15 @@ int main() {
                     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
                     if (ImGui::BeginPopupContextItem("##LogSearchContext")) {
                         const char* clipText = ImGui::GetClipboardText();
-                        bool canPaste = (clipText && clipText[0] != '\0');
+                        bool        canPaste = (clipText && clipText[0] != '\0');
                         if (MD3::MenuItem(str.paste, canPaste, 36.0f * dpi)) {
                             // 追加粘贴内容到搜索栏
                             size_t currentLen = strlen(logSearchBuffer);
-                            size_t clipLen = strlen(clipText);
-                            size_t maxAppend = sizeof(logSearchBuffer) - 1 - currentLen;
-                            if (clipLen > maxAppend) clipLen = maxAppend;
+                            size_t clipLen    = strlen(clipText);
+                            size_t maxAppend  = sizeof(logSearchBuffer) - 1 - currentLen;
+                            if (clipLen > maxAppend) {
+                                clipLen = maxAppend;
+                            }
                             if (clipLen > 0) {
                                 memcpy(logSearchBuffer + currentLen, clipText, clipLen);
                                 logSearchBuffer[currentLen + clipLen] = '\0';
@@ -1575,8 +1601,9 @@ int main() {
                     bool        held     = ImGui::IsItemActive();
                     bool        clicked  = ImGui::IsItemClicked(0);
 
-                    const MD3::MD3ColorScheme colors = MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
-                    float                     rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
+                    const MD3::MD3ColorScheme colors =
+                        MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
+                    float rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
 
                     if (clicked) {
                         MD3::TriggerRippleForCurrentItem(ImGui::GetItemID(), rounding);
@@ -1625,7 +1652,8 @@ int main() {
                     }
                     ImGui::SameLine();
                     if (MD3::TonalButton(str.copyAllLog)) {
-                        std::string filteredText = DebugLog::Instance().GetFilteredText(logSearchBuffer, logLevelFilter);
+                        std::string filteredText =
+                            DebugLog::Instance().GetFilteredText(logSearchBuffer, logLevelFilter);
                         ImGui::SetClipboardText(filteredText.c_str());
                     }
 
@@ -1638,10 +1666,11 @@ int main() {
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
-                float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+                float buttonWidth  = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
                 float buttonHeight = 48 * appState.ui.dpiScale;
                 if (MD3::FilledButton(str.cameraSelectorButton, ImVec2(buttonWidth, buttonHeight))) {
-                    CameraSelector::ShowCameraSelectorDialog(glfwGetWin32Window(window), GetModuleHandle(nullptr), true);
+                    CameraSelector::ShowCameraSelectorDialog(glfwGetWin32Window(window), GetModuleHandle(nullptr),
+                                                             true);
                 }
                 ImGui::SameLine();
                 if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(buttonWidth, buttonHeight))) {

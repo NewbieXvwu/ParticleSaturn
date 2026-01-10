@@ -15,8 +15,8 @@ BOOL WINAPI InitOnceResolvePreciseTime(PINIT_ONCE, PVOID, PVOID*) {
         return TRUE;
     }
 
-    g_resolved = reinterpret_cast<GetSystemTimePreciseAsFileTimeFn>(
-        GetProcAddress(kernel32, "GetSystemTimePreciseAsFileTime"));
+    g_resolved =
+        reinterpret_cast<GetSystemTimePreciseAsFileTimeFn>(GetProcAddress(kernel32, "GetSystemTimePreciseAsFileTime"));
     return TRUE;
 }
 

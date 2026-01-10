@@ -51,9 +51,9 @@ struct SpringAnimator {
 
         // 将大 dt 切成小步，避免高刚度参数下积分不稳定。
         constexpr float kMaxStep = 1.0f / 120.0f;
-        int steps = (dt > kMaxStep) ? (int)(dt / kMaxStep) + 1 : 1;
-        steps = std::min(steps, 64);
-        float stepDt = dt / (float)steps;
+        int             steps    = (dt > kMaxStep) ? (int)(dt / kMaxStep) + 1 : 1;
+        steps                    = std::min(steps, 64);
+        float stepDt             = dt / (float)steps;
 
         for (int i = 0; i < steps; i++) {
             float force  = stiffness * (target - value);

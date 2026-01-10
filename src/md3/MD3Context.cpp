@@ -428,7 +428,7 @@ void DrawRipples() {
         return;
     }
 
-    const ImGuiIO& io = ImGui::GetIO();
+    const ImGuiIO& io       = ImGui::GetIO();
     const float    fbScaleX = (io.DisplayFramebufferScale.x > 0.0f) ? io.DisplayFramebufferScale.x : 1.0f;
     const float    fbScaleY = (io.DisplayFramebufferScale.y > 0.0f) ? io.DisplayFramebufferScale.y : 1.0f;
     const float    fbScaleR = std::max(fbScaleX, fbScaleY);
@@ -512,7 +512,7 @@ struct RoundedClipBeginData {
 };
 
 struct RoundedClipEndData {
-    int ref;
+    int  ref;
     bool disable;
 };
 
@@ -580,7 +580,7 @@ void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float r
     s_roundedClipStack.push_back(prevRef);
     s_roundedClipRef = newRef;
 
-    auto* begin = static_cast<RoundedClipBeginData*>(ImGui::MemAlloc(sizeof(RoundedClipBeginData)));
+    auto* begin    = static_cast<RoundedClipBeginData*>(ImGui::MemAlloc(sizeof(RoundedClipBeginData)));
     begin->prevRef = prevRef;
     begin->newRef  = newRef;
     dl->AddCallback(RoundedClipBeginCallback, begin);
@@ -588,7 +588,7 @@ void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float r
     ImVec4 dummy(1.0f, 1.0f, 1.0f, 1.0f);
     dl->AddRectFilled(clip_min, clip_max, ColorToU32(dummy), rounding);
 
-    auto* end = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
+    auto* end    = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
     end->ref     = newRef;
     end->disable = false;
     dl->AddCallback(RoundedClipEndCallback, end);

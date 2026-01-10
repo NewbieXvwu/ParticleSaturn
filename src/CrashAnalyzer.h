@@ -4,8 +4,8 @@
 
 #include <Windows.h>
 
-#include <commdlg.h>
 #include <algorithm>
+#include <commdlg.h>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -478,10 +478,10 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         {
             ImGuiStyle& style = ImGui::GetStyle();
 
-            float width  = ImGui::GetContentRegionAvail().x;
-            float height = 200.0f;
-            ImVec2 pos   = ImGui::GetCursorScreenPos();
-            ImVec2 size  = ImVec2(width, height);
+            float  width  = ImGui::GetContentRegionAvail().x;
+            float  height = 200.0f;
+            ImVec2 pos    = ImGui::GetCursorScreenPos();
+            ImVec2 size   = ImVec2(width, height);
 
             // 使用适当的圆角和内边距
             float rounding = style.FrameRounding > 0.0f ? style.FrameRounding : 8.0f * dpi;
@@ -495,7 +495,7 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             pos = ImGui::GetCursorScreenPos();
 
             // 裁剪区域在左右两侧内缩，防止滚动时文本超出圆角
-            float clipInset = rounding * 0.3f;
+            float  clipInset = rounding * 0.3f;
             ImVec2 clipMin(pos.x + clipInset, pos.y);
             ImVec2 clipMax(pos.x + size.x - clipInset, pos.y + size.y);
             MD3::PushRoundedClipRect(clipMin, clipMax, rounding - clipInset);

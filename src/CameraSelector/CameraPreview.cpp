@@ -1,4 +1,5 @@
 #include "CameraPreview.h"
+
 #include "CameraEnumerator.h"
 
 #ifdef _WIN32
@@ -19,7 +20,7 @@ namespace CameraSelector {
 
 // Sample Grabber 回调实现
 class PreviewGrabberCallback : public ISampleGrabberCB {
-public:
+  public:
     PreviewGrabberCallback(CameraPreviewInstance* owner) : m_owner(owner), m_refCount(1) {}
 
     // IUnknown
@@ -33,9 +34,7 @@ public:
         return E_NOINTERFACE;
     }
 
-    STDMETHODIMP_(ULONG) AddRef() override {
-        return InterlockedIncrement(&m_refCount);
-    }
+    STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&m_refCount); }
 
     STDMETHODIMP_(ULONG) Release() override {
         ULONG count = InterlockedDecrement(&m_refCount);
@@ -46,30 +45,32 @@ public:
     }
 
     // ISampleGrabberCB
-    STDMETHODIMP SampleCB(double time, IMediaSample* sample) override {
-        return E_NOTIMPL;
-    }
+    STDMETHODIMP SampleCB(double time, IMediaSample* sample) override { return E_NOTIMPL; }
 
     STDMETHODIMP BufferCB(double time, BYTE* buffer, long size) override {
         if (m_owner && buffer && size > 0) {
             AM_MEDIA_TYPE mt;
             if (SUCCEEDED(m_owner->m_sampleGrabber->GetConnectedMediaType(&mt))) {
                 if (mt.formattype == FORMAT_VideoInfo) {
-                    VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*)mt.pbFormat;
-                    int width = vih->bmiHeader.biWidth;
-                    int height = abs(vih->bmiHeader.biHeight);
+                    VIDEOINFOHEADER* vih    = (VIDEOINFOHEADER*)mt.pbFormat;
+                    int              width  = vih->bmiHeader.biWidth;
+                    int              height = abs(vih->bmiHeader.biHeight);
                     m_owner->OnFrame(buffer, size, width, height);
                 }
-                if (mt.cbFormat > 0) CoTaskMemFree(mt.pbFormat);
-                if (mt.pUnk) mt.pUnk->Release();
+                if (mt.cbFormat > 0) {
+                    CoTaskMemFree(mt.pbFormat);
+                }
+                if (mt.pUnk) {
+                    mt.pUnk->Release();
+                }
             }
         }
         return S_OK;
     }
 
-private:
+  private:
     CameraPreviewInstance* m_owner;
-    LONG m_refCount;
+    LONG                   m_refCount;
 };
 
 // CameraPreviewInstance 实现
@@ -88,16 +89,15 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
     HRESULT hr;
 
     // 创建 Filter Graph
-    hr = CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER,
-                          IID_IGraphBuilder, (void**)&m_graphBuilder);
+    hr = CoCreateInstance(CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&m_graphBuilder);
     if (FAILED(hr)) {
         std::cerr << "[CameraPreview] Failed to create filter graph" << std::endl;
         return false;
     }
 
     // 创建 Capture Graph Builder
-    hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, nullptr, CLSCTX_INPROC_SERVER,
-                          IID_ICaptureGraphBuilder2, (void**)&m_captureBuilder);
+    hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, nullptr, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2,
+                          (void**)&m_captureBuilder);
     if (FAILED(hr)) {
         std::cerr << "[CameraPreview] Failed to create capture builder" << std::endl;
         Stop();
@@ -108,15 +108,14 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
 
     // 获取指定索引的摄像头
     ICreateDevEnum* devEnum = nullptr;
-    hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
-                          IID_ICreateDevEnum, (void**)&devEnum);
+    hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**)&devEnum);
     if (FAILED(hr)) {
         Stop();
         return false;
     }
 
     IEnumMoniker* enumMoniker = nullptr;
-    hr = devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumMoniker, 0);
+    hr                        = devEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumMoniker, 0);
     devEnum->Release();
 
     if (hr != S_OK || !enumMoniker) {
@@ -124,8 +123,8 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
         return false;
     }
 
-    IMoniker* moniker = nullptr;
-    int currentIndex = 0;
+    IMoniker* moniker      = nullptr;
+    int       currentIndex = 0;
     while (enumMoniker->Next(1, &moniker, nullptr) == S_OK) {
         if (currentIndex == cameraIndex) {
             hr = moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, (void**)&m_sourceFilter);
@@ -152,29 +151,33 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
 
     // 设置视频格式
     IAMStreamConfig* streamConfig = nullptr;
-    hr = m_captureBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video,
-                                          m_sourceFilter, IID_IAMStreamConfig, (void**)&streamConfig);
+    hr = m_captureBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, m_sourceFilter, IID_IAMStreamConfig,
+                                         (void**)&streamConfig);
     if (SUCCEEDED(hr) && streamConfig) {
         AM_MEDIA_TYPE* pmt = nullptr;
-        hr = streamConfig->GetFormat(&pmt);
+        hr                 = streamConfig->GetFormat(&pmt);
         if (SUCCEEDED(hr) && pmt) {
             if (pmt->formattype == FORMAT_VideoInfo) {
-                VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*)pmt->pbFormat;
-                vih->bmiHeader.biWidth = width;
+                VIDEOINFOHEADER* vih    = (VIDEOINFOHEADER*)pmt->pbFormat;
+                vih->bmiHeader.biWidth  = width;
                 vih->bmiHeader.biHeight = height;
-                vih->AvgTimePerFrame = 10000000LL / fps;  // 100ns units
+                vih->AvgTimePerFrame    = 10000000LL / fps; // 100ns units
                 streamConfig->SetFormat(pmt);
             }
-            if (pmt->cbFormat > 0) CoTaskMemFree(pmt->pbFormat);
-            if (pmt->pUnk) pmt->pUnk->Release();
+            if (pmt->cbFormat > 0) {
+                CoTaskMemFree(pmt->pbFormat);
+            }
+            if (pmt->pUnk) {
+                pmt->pUnk->Release();
+            }
             CoTaskMemFree(pmt);
         }
         streamConfig->Release();
     }
 
     // 创建 Sample Grabber
-    hr = CoCreateInstance(CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER,
-                          IID_IBaseFilter, (void**)&m_grabberFilter);
+    hr =
+        CoCreateInstance(CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&m_grabberFilter);
     if (FAILED(hr)) {
         Stop();
         return false;
@@ -196,14 +199,13 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
     AM_MEDIA_TYPE mt;
     ZeroMemory(&mt, sizeof(mt));
     mt.majortype = MEDIATYPE_Video;
-    mt.subtype = MEDIASUBTYPE_RGB24;
+    mt.subtype   = MEDIASUBTYPE_RGB24;
     m_sampleGrabber->SetMediaType(&mt);
     m_sampleGrabber->SetBufferSamples(FALSE);
     m_sampleGrabber->SetOneShot(FALSE);
 
     // 创建 Null Renderer
-    hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER,
-                          IID_IBaseFilter, (void**)&m_nullRenderer);
+    hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&m_nullRenderer);
     if (FAILED(hr)) {
         Stop();
         return false;
@@ -216,11 +218,10 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
     }
 
     // 连接: Source -> Grabber -> Null Renderer
-    hr = m_captureBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video,
-                                         m_sourceFilter, m_grabberFilter, m_nullRenderer);
+    hr = m_captureBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, m_sourceFilter, m_grabberFilter,
+                                        m_nullRenderer);
     if (FAILED(hr)) {
-        std::cerr << "[CameraPreview] Failed to render stream: 0x"
-                  << std::hex << hr << std::dec << std::endl;
+        std::cerr << "[CameraPreview] Failed to render stream: 0x" << std::hex << hr << std::dec << std::endl;
         Stop();
         return false;
     }
@@ -230,18 +231,22 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
     hr = m_sampleGrabber->GetConnectedMediaType(&connectedMt);
     if (SUCCEEDED(hr) && connectedMt.formattype == FORMAT_VideoInfo) {
         VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*)connectedMt.pbFormat;
-        m_width = vih->bmiHeader.biWidth;
-        m_height = abs(vih->bmiHeader.biHeight);
-        if (connectedMt.cbFormat > 0) CoTaskMemFree(connectedMt.pbFormat);
-        if (connectedMt.pUnk) connectedMt.pUnk->Release();
+        m_width              = vih->bmiHeader.biWidth;
+        m_height             = abs(vih->bmiHeader.biHeight);
+        if (connectedMt.cbFormat > 0) {
+            CoTaskMemFree(connectedMt.pbFormat);
+        }
+        if (connectedMt.pUnk) {
+            connectedMt.pUnk->Release();
+        }
     } else {
-        m_width = width;
+        m_width  = width;
         m_height = height;
     }
 
     // 设置回调
     m_callback = new PreviewGrabberCallback(this);
-    m_sampleGrabber->SetCallback(m_callback, 1);  // 1 = BufferCB
+    m_sampleGrabber->SetCallback(m_callback, 1); // 1 = BufferCB
 
     // 获取媒体控制
     hr = m_graphBuilder->QueryInterface(IID_IMediaControl, (void**)&m_mediaControl);
@@ -253,15 +258,14 @@ bool CameraPreviewInstance::Start(int cameraIndex, int width, int height, int fp
     // 开始捕获
     hr = m_mediaControl->Run();
     if (FAILED(hr)) {
-        std::cerr << "[CameraPreview] Failed to start capture: 0x"
-                  << std::hex << hr << std::dec << std::endl;
+        std::cerr << "[CameraPreview] Failed to start capture: 0x" << std::hex << hr << std::dec << std::endl;
         Stop();
         return false;
     }
 
     m_running = true;
-    std::cout << "[CameraPreview] Started camera " << cameraIndex
-              << " (" << m_width << "x" << m_height << ")" << std::endl;
+    std::cout << "[CameraPreview] Started camera " << cameraIndex << " (" << m_width << "x" << m_height << ")"
+              << std::endl;
     return true;
 }
 
@@ -319,33 +323,39 @@ void CameraPreviewInstance::OnFrame(const BYTE* data, int size, int width, int h
 
     // RGB24 -> BGRA 转换 (DirectShow 输出是倒置的 BGR)
     int expectedSize = width * height * 3;
-    if (size < expectedSize) return;
+    if (size < expectedSize) {
+        return;
+    }
 
     m_frameBuffer.resize(width * height * 4);
 
     // DirectShow 输出的图像是上下颠倒的，需要翻转
     for (int y = 0; y < height; y++) {
         const BYTE* srcRow = data + (height - 1 - y) * width * 3;
-        BYTE* dstRow = m_frameBuffer.data() + y * width * 4;
+        BYTE*       dstRow = m_frameBuffer.data() + y * width * 4;
 
         for (int x = 0; x < width; x++) {
-            dstRow[x * 4 + 0] = srcRow[x * 3 + 0];  // B
-            dstRow[x * 4 + 1] = srcRow[x * 3 + 1];  // G
-            dstRow[x * 4 + 2] = srcRow[x * 3 + 2];  // R
-            dstRow[x * 4 + 3] = 255;                 // A
+            dstRow[x * 4 + 0] = srcRow[x * 3 + 0]; // B
+            dstRow[x * 4 + 1] = srcRow[x * 3 + 1]; // G
+            dstRow[x * 4 + 2] = srcRow[x * 3 + 2]; // R
+            dstRow[x * 4 + 3] = 255;               // A
         }
     }
 
-    m_width = width;
-    m_height = height;
+    m_width       = width;
+    m_height      = height;
     m_hasNewFrame = true;
 }
 
 ID2D1Bitmap* CameraPreviewInstance::GetLatestBitmap(D2DRenderer& renderer) {
-    if (!m_hasNewFrame) return nullptr;
+    if (!m_hasNewFrame) {
+        return nullptr;
+    }
 
     std::lock_guard<std::mutex> lock(m_frameMutex);
-    if (m_frameBuffer.empty()) return nullptr;
+    if (m_frameBuffer.empty()) {
+        return nullptr;
+    }
 
     m_hasNewFrame = false;
     return renderer.CreateBitmapFromPixels(m_frameBuffer.data(), m_width, m_height);
@@ -359,8 +369,7 @@ CameraPreviewManager::~CameraPreviewManager() {
     StopAll();
 }
 
-bool CameraPreviewManager::Initialize(const std::vector<int>& cameraIndices,
-                                       int width, int height, int fps) {
+bool CameraPreviewManager::Initialize(const std::vector<int>& cameraIndices, int width, int height, int fps) {
     StopAll();
 
     for (int idx : cameraIndices) {
