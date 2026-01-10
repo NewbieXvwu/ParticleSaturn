@@ -12,6 +12,7 @@
 // Note: This is NOT a full ATL replacement.
 
 #include <Unknwn.h> // IUnknown
+#include <guiddef.h>
 #include <utility>
 
 template <class T>
@@ -115,6 +116,19 @@ public:
     // ATL exposes the raw pointer as a public member named 'p'.
     // DiligentCore relies on this in a few places (e.g. passing pLog.p).
     T* p = nullptr;
+
+    template <class Q>
+    HRESULT QueryInterface(Q** pp) const noexcept
+    {
+        if (pp == nullptr)
+            return E_POINTER;
+
+        *pp = nullptr;
+        if (p == nullptr)
+            return E_NOINTERFACE;
+
+        return p->QueryInterface(__uuidof(Q), reinterpret_cast<void**>(pp));
+    }
 
 private:
     void InternalAddRef() noexcept
