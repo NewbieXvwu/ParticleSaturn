@@ -473,6 +473,8 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
         ImGui::Text("%s", str.crashReport);
         ImGui::Separator();
 
+        float dpi = MD3::GetContext().dpiScale;
+
         {
             ImGuiStyle& style = ImGui::GetStyle();
 
@@ -481,14 +483,30 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             ImVec2 pos   = ImGui::GetCursorScreenPos();
             ImVec2 size  = ImVec2(width, height);
 
-            MD3::PushRoundedClipRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), style.FrameRounding);
+            // 使用适当的圆角和内边距
+            float rounding = style.FrameRounding > 0.0f ? style.FrameRounding : 8.0f * dpi;
+            // 内边距：水平方向略大于圆角半径的一半，防止文本触及圆角
+            float padX = rounding * 0.5f + 2.0f * dpi;
+            float padY = 4.0f * dpi;
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padX, padY));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, rounding);
+
+            // 更新位置（因为样式可能影响布局）
+            pos = ImGui::GetCursorScreenPos();
+
+            // 裁剪区域在左右两侧内缩，防止滚动时文本超出圆角
+            float clipInset = rounding * 0.3f;
+            ImVec2 clipMin(pos.x + clipInset, pos.y);
+            ImVec2 clipMax(pos.x + size.x - clipInset, pos.y + size.y);
+            MD3::PushRoundedClipRect(clipMin, clipMax, rounding - clipInset);
             ImGui::InputTextMultiline("##ReportInput", g_state.reportInput, sizeof(g_state.reportInput), size,
                                       ImGuiInputTextFlags_AllowTabInput);
             MD3::PopRoundedClipRect();
+
+            ImGui::PopStyleVar(2);
         }
 
         // Right-click context menu for paste
-        float dpi = MD3::GetContext().dpiScale;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * dpi, 6.0f * dpi));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
         if (ImGui::BeginPopupContextItem("##ReportInputContext")) {
