@@ -25,21 +25,21 @@ public:
     CComPtr(std::nullptr_t) noexcept {}
 
     explicit CComPtr(T* ptr) noexcept :
-        m_Ptr{ptr}
+        p{ptr}
     {
         InternalAddRef();
     }
 
     CComPtr(const CComPtr& other) noexcept :
-        m_Ptr{other.m_Ptr}
+        p{other.p}
     {
         InternalAddRef();
     }
 
     CComPtr(CComPtr&& other) noexcept :
-        m_Ptr{other.m_Ptr}
+        p{other.p}
     {
-        other.m_Ptr = nullptr;
+        other.p = nullptr;
     }
 
     ~CComPtr()
@@ -52,7 +52,7 @@ public:
         if (this != &other)
         {
             InternalRelease();
-            m_Ptr = other.m_Ptr;
+            p = other.p;
             InternalAddRef();
         }
         return *this;
@@ -63,18 +63,18 @@ public:
         if (this != &other)
         {
             InternalRelease();
-            m_Ptr       = other.m_Ptr;
-            other.m_Ptr = nullptr;
+            p       = other.p;
+            other.p = nullptr;
         }
         return *this;
     }
 
     CComPtr& operator=(T* ptr) noexcept
     {
-        if (m_Ptr != ptr)
+        if (p != ptr)
         {
             InternalRelease();
-            m_Ptr = ptr;
+            p = ptr;
             InternalAddRef();
         }
         return *this;
@@ -88,46 +88,47 @@ public:
     void Attach(T* ptr) noexcept
     {
         InternalRelease();
-        m_Ptr = ptr;
+        p = ptr;
     }
 
     T* Detach() noexcept
     {
-        T* ptr = m_Ptr;
-        m_Ptr  = nullptr;
+        T* ptr = p;
+        p      = nullptr;
         return ptr;
     }
 
-    T* Get() const noexcept { return m_Ptr; }
+    T* Get() const noexcept { return p; }
 
-    operator T*() const noexcept { return m_Ptr; }
+    operator T*() const noexcept { return p; }
 
-    T* operator->() const noexcept { return m_Ptr; }
+    T* operator->() const noexcept { return p; }
 
     T** operator&() noexcept
     {
         // ATL's CComPtr asserts that the pointer is null before returning &p.
         // To keep common patterns working, we proactively release to avoid leaks.
         InternalRelease();
-        return &m_Ptr;
+        return &p;
     }
+
+    // ATL exposes the raw pointer as a public member named 'p'.
+    // DiligentCore relies on this in a few places (e.g. passing pLog.p).
+    T* p = nullptr;
 
 private:
     void InternalAddRef() noexcept
     {
-        if (m_Ptr != nullptr)
-            m_Ptr->AddRef();
+        if (p != nullptr)
+            p->AddRef();
     }
 
     void InternalRelease() noexcept
     {
-        if (m_Ptr != nullptr)
+        if (p != nullptr)
         {
-            m_Ptr->Release();
-            m_Ptr = nullptr;
+            p->Release();
+            p = nullptr;
         }
     }
-
-    T* m_Ptr = nullptr;
 };
-
