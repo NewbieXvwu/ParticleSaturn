@@ -34,6 +34,11 @@ ParticleSaturn::Render::SurfaceSize GetClientSize(HWND hwnd) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto* backend = reinterpret_cast<ParticleSaturn::Render::DiligentBackend*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
+    // 转发消息给 ImGui
+    if (backend != nullptr && backend->HandleWin32Message(hwnd, msg, wParam, lParam)) {
+        return 0; // ImGui 已处理此消息
+    }
+
     switch (msg) {
         case WM_SIZE: {
             if (backend != nullptr && wParam != SIZE_MINIMIZED) {
@@ -85,7 +90,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     const auto surface = GetClientSize(hwnd);
     if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface)) {
-        MessageBoxW(hwnd, L"初始化 Diligent 失败。请确认 D3D12/Vulkan 环境可用。", kWindowTitle, MB_ICONERROR | MB_OK);
+        std::wstring msg = L"初始化 Diligent 失败。\n\n";
+        const auto&  err = backend.GetLastError();
+        if (!err.empty()) {
+            msg += L"原因：";
+            msg += err;
+            msg += L"\n\n";
+        }
+        msg += L"请确认 D3D12/Vulkan 环境可用。";
+        MessageBoxW(hwnd, msg.c_str(), kWindowTitle, MB_ICONERROR | MB_OK);
         return -2;
     }
 

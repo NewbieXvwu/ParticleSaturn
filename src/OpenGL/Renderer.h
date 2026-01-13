@@ -2,8 +2,6 @@
 
 // 渲染器 - OpenGL 渲染工具、FBO 管理、着色器编译
 
-#include "Utils.h" // 需要 PlanetInstance 定义
-
 // M_PI 可能未定义 (MSVC 需要 _USE_MATH_DEFINES 在 <cmath> 之前)
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -44,11 +42,7 @@ struct UniformCache {
     GLint sat_proj, sat_view, sat_model, sat_uTime, sat_uScale, sat_uPixelRatio, sat_uDensityComp, sat_uScreenHeight,
         sat_uNoiseTexture;
     GLint star_proj, star_view, star_model, star_uTime;
-    // 行星着色器 (实例化渲染)
-    GLint           pl_p, pl_v, pl_ld, pl_uFBMTex, pl_uPlanetCount;
-    GLuint          pl_ubo;        // 行星 UBO
-    PlanetInstance* pl_ubo_mapped; // Persistent mapped buffer 指针 (OpenGL 4.4+)
-    GLint           ui_proj, ui_uColor, ui_uTransform;
+    GLint ui_proj, ui_uColor, ui_uTransform;
     // 模糊着色器 (Kawase Blur)
     GLint blur_uTexture, blur_uTexelSize, blur_uOffset;
     // 全屏四边形着色器
@@ -59,7 +53,6 @@ namespace Renderer {
 
 // 声明 (实现在 Renderer.cpp)
 unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc);
-unsigned int GenerateFBMTextureImpl(int width, int height);
 bool         CheckShaderCompileStatus(unsigned int shader, const char* type);
 bool         CheckProgramLinkStatus(unsigned int program);
 
@@ -70,8 +63,7 @@ inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc
 
 // 初始化 Uniform 缓存
 inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, unsigned int pStar,
-                             unsigned int pPlanet, unsigned int pUI, unsigned int pBlur, unsigned int pQuad,
-                             bool usePersistentMapping = true) {
+                             unsigned int pUI, unsigned int pBlur, unsigned int pQuad) {
     uc.comp_uDt            = glGetUniformLocation(pComp, "uDt");
     uc.comp_uHandScale     = glGetUniformLocation(pComp, "uHandScale");
     uc.comp_uHandHas       = glGetUniformLocation(pComp, "uHandHas");
@@ -91,34 +83,6 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.star_view  = glGetUniformLocation(pStar, "view");
     uc.star_model = glGetUniformLocation(pStar, "model");
     uc.star_uTime = glGetUniformLocation(pStar, "uTime");
-
-    // 行星着色器 (实例化渲染)
-    uc.pl_p            = glGetUniformLocation(pPlanet, "p");
-    uc.pl_v            = glGetUniformLocation(pPlanet, "v");
-    uc.pl_ld           = glGetUniformLocation(pPlanet, "ld");
-    uc.pl_uFBMTex      = glGetUniformLocation(pPlanet, "uFBMTex");
-    uc.pl_uPlanetCount = glGetUniformLocation(pPlanet, "uPlanetCount");
-
-    // 创建行星 UBO
-    glGenBuffers(1, &uc.pl_ubo);
-    glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
-
-    if (usePersistentMapping) {
-        // OpenGL 4.4+: 使用 Persistent Mapped Buffer 消除 CPU-GPU 同步
-        // glBufferStorage 创建不可变存储，支持持久映射
-        GLbitfield storageFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-        glBufferStorage(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, storageFlags);
-        // 持久映射: 指针在程序生命周期内有效，无需 unmap
-        uc.pl_ubo_mapped =
-            (PlanetInstance*)glMapBufferRange(GL_UNIFORM_BUFFER, 0, 8 * sizeof(PlanetInstance),
-                                              GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
-    } else {
-        // OpenGL 4.3 fallback: 使用传统 glBufferData，每帧用 glBufferSubData 更新
-        glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(PlanetInstance), nullptr, GL_DYNAMIC_DRAW);
-        uc.pl_ubo_mapped = nullptr; // 不使用持久映射
-    }
-    // 绑定到 binding point 0
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uc.pl_ubo);
 
     uc.ui_proj       = glGetUniformLocation(pUI, "projection");
     uc.ui_uColor     = glGetUniformLocation(pUI, "uColor");
@@ -245,134 +209,6 @@ inline void AddDigitGeometry(std::vector<float>& verts, float x, float y, float 
     }
 }
 
-// 创建球体网格
-inline void CreateSphere(unsigned int& vao, unsigned int& indexCount, float radius) {
-    std::vector<float>        data;
-    std::vector<unsigned int> indices;
-    int                       X = 64, Y = 64;
-    const float               PI = (float)M_PI;
-
-    for (int y = 0; y <= Y; y++) {
-        for (int x = 0; x <= X; x++) {
-            float xS = (float)x / X, yS = (float)y / Y;
-            float xP = cos(xS * 2 * PI) * sin(yS * PI);
-            float yP = cos(yS * PI);
-            float zP = sin(xS * 2 * PI) * sin(yS * PI);
-            data.insert(data.end(), {xP * radius, yP * radius, zP * radius, xP, yP, zP, xS, yS});
-        }
-    }
-
-    for (int y = 0; y < Y; y++) {
-        for (int x = 0; x < X; x++) {
-            indices.insert(indices.end(), {(unsigned)((y + 1) * (X + 1) + x), (unsigned)(y * (X + 1) + x),
-                                           (unsigned)(y * (X + 1) + x + 1), (unsigned)((y + 1) * (X + 1) + x),
-                                           (unsigned)(y * (X + 1) + x + 1), (unsigned)((y + 1) * (X + 1) + x + 1)});
-        }
-    }
-
-    indexCount = (unsigned int)indices.size();
-    unsigned int vbo, ebo;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &ebo);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, data.size() * 4, data.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * 4, indices.data(), GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, 0, 32, (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, 0, 32, (void*)12);
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, 0, 32, (void*)24);
-}
-
-// 优化: 缓存的球体网格 (避免重复创建)
-// 使用单位球体，通过 model matrix 缩放到所需大小
-struct CachedSphere {
-    GLuint       vao         = 0;
-    GLuint       vbo         = 0;
-    GLuint       ebo         = 0;
-    unsigned int indexCount  = 0;
-    bool         initialized = false;
-
-    void Init(int segments = 64) {
-        if (initialized) {
-            return;
-        }
-
-        std::vector<float>        data;
-        std::vector<unsigned int> indices;
-        const float               PI = (float)M_PI;
-
-        // 生成单位球体顶点
-        for (int y = 0; y <= segments; y++) {
-            for (int x = 0; x <= segments; x++) {
-                float xS = (float)x / segments;
-                float yS = (float)y / segments;
-                float xP = cos(xS * 2 * PI) * sin(yS * PI);
-                float yP = cos(yS * PI);
-                float zP = sin(xS * 2 * PI) * sin(yS * PI);
-                // pos(3) + normal(3) + uv(2) = 8 floats
-                data.insert(data.end(), {xP, yP, zP, xP, yP, zP, xS, yS});
-            }
-        }
-
-        // 生成索引
-        for (int y = 0; y < segments; y++) {
-            for (int x = 0; x < segments; x++) {
-                unsigned int tl = y * (segments + 1) + x;
-                unsigned int tr = tl + 1;
-                unsigned int bl = (y + 1) * (segments + 1) + x;
-                unsigned int br = bl + 1;
-                indices.insert(indices.end(), {bl, tl, tr, bl, tr, br});
-            }
-        }
-
-        indexCount = (unsigned int)indices.size();
-
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glGenBuffers(1, &ebo);
-
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), data.data(), GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-        // pos
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);
-        // normal
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 32, (void*)12);
-        // uv
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, (void*)24);
-
-        glBindVertexArray(0);
-        initialized = true;
-    }
-
-    void Draw() const {
-        if (!initialized) {
-            return;
-        }
-        glBindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-    }
-
-    void DrawInstanced(int count) const {
-        if (!initialized) {
-            return;
-        }
-        glBindVertexArray(vao);
-        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0, count);
-    }
-};
-
 // 生成噪声纹理
 inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
     std::vector<unsigned char>         data(width * height * 3);
@@ -392,11 +228,6 @@ inline unsigned int GenerateNoiseTexture(int width = 256, int height = 256) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     return tex;
-}
-
-// 生成 FBM 噪声纹理 (用于行星表面) - 转发到实现
-inline unsigned int GenerateFBMTexture(int width = 512, int height = 512) {
-    return GenerateFBMTextureImpl(width, height);
 }
 
 } // namespace Renderer

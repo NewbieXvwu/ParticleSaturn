@@ -1,8 +1,10 @@
 # Environment Notes
 
 - 运行环境是 Git Bash (MSYS2)，不是 Windows CMD
-- 重定向 stderr 时必须使用 `2>/dev/null`，禁止使用 `2>NUL`（会创建名为 NUL 的文件）
-- 同理，stdout 重定向使用 `>/dev/null` 而不是 `>NUL`
+- **严禁使用 Windows 风格的空设备重定向**：
+  - ❌ `2>NUL` / `>NUL` / `2>nul` / `>nul` — 会创建名为 NUL 的垃圾文件
+  - ✅ `2>/dev/null` / `>/dev/null` — 正确的 Unix 风格
+  - 这条规则适用于所有 Bash 命令，无一例外
 
 # Coding Notes
 

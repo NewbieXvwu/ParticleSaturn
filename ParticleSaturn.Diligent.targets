@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Custom targets for ParticleSaturn.Diligent that bypasses cmd.exe AutoRun interference.
+  This uses a custom DirectExec task to directly launch processes without going through cmd.exe,
+  which is necessary because Clink's AutoRun registry setting interferes with MSBuild's Exec task.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- Define the DirectExec task using MSBuild inline task -->
+  <UsingTask TaskName="DirectExec" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Executable ParameterType="System.String" Required="true" />
+      <Arguments ParameterType="System.String" />
+      <WorkingDirectory ParameterType="System.String" />
+      <ExitCode ParameterType="System.Int32" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.Diagnostics" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+          var psi = new ProcessStartInfo();
+          psi.FileName = Executable;
+          psi.Arguments = Arguments ?? "";
+          psi.WorkingDirectory = string.IsNullOrEmpty(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
+          psi.UseShellExecute = false;
+          psi.RedirectStandardOutput = true;
+          psi.RedirectStandardError = true;
+          psi.CreateNoWindow = true;
+
+          // Regex to detect compiler error lines (MSVC style: file(line): error CXXXX: message)
+          var errorRegex = new Regex(@"^(.+?)\((\d+)\):\s*(error|fatal error)\s+\w+:\s*(.*)$", RegexOptions.IgnoreCase);
+          // Regex to detect ninja/cmake FAILED lines
+          var failedRegex = new Regex(@"^FAILED:", RegexOptions.IgnoreCase);
+
+          using (var process = new Process())
+          {
+              process.StartInfo = psi;
+
+              process.OutputDataReceived += (sender, e) => {
+                  if (e.Data != null)
+                  {
+                      var match = errorRegex.Match(e.Data);
+                      if (match.Success)
+                      {
+                          int line;
+                          int.TryParse(match.Groups[2].Value, out line);
+                          Log.LogError(null, null, null, match.Groups[1].Value, line, 0, 0, 0, match.Groups[4].Value);
+                      }
+                      else
+                      {
+                          Log.LogMessage(MessageImportance.High, e.Data);
+                      }
+                  }
+              };
+              process.ErrorDataReceived += (sender, e) => {
+                  if (e.Data != null)
+                  {
+                      var match = errorRegex.Match(e.Data);
+                      if (match.Success)
+                      {
+                          int line;
+                          int.TryParse(match.Groups[2].Value, out line);
+                          Log.LogError(null, null, null, match.Groups[1].Value, line, 0, 0, 0, match.Groups[4].Value);
+                      }
+                      else
+                      {
+                          Log.LogMessage(MessageImportance.High, e.Data);
+                      }
+                  }
+              };
+
+              process.Start();
+              process.BeginOutputReadLine();
+              process.BeginErrorReadLine();
+              process.WaitForExit();
+              ExitCode = process.ExitCode;
+          }
+
+          return ExitCode == 0;
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Properties for the build scripts -->
+  <PropertyGroup>
+    <BuildScriptPath>$(ProjectDir)scripts\build_diligent.ps1</BuildScriptPath>
+    <BuildDir>$(ProjectDir)bin_diligent\$(Platform)</BuildDir>
+    <!-- Mark that we're using DirectExec to prevent default Exec from running -->
+    <UseDirectExec>true</UseDirectExec>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Enable faster iteration build mode only in the dedicated FastRelease config. -->
+    <FastBuildArg Condition="'$(ParticleSaturnFastBuild)'=='true'">-FastBuild</FastBuildArg>
+  </PropertyGroup>
+
+  <!-- Override the Build target completely -->
+  <Target Name="Build" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
+    <DirectExec
+      Executable="powershell.exe"
+      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action build -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      WorkingDirectory="$(ProjectDir)">
+      <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
+    </DirectExec>
+    <Error Text="Build failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+  </Target>
+
+  <!-- Override CoreClean target -->
+  <Target Name="CoreClean" DependsOnTargets="PrepareForNMakeBuild">
+    <DirectExec
+      Executable="powershell.exe"
+      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action clean -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      WorkingDirectory="$(ProjectDir)">
+      <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
+    </DirectExec>
+  </Target>
+
+  <!-- Override Rebuild target -->
+  <Target Name="Rebuild" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
+    <DirectExec
+      Executable="powershell.exe"
+      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action rebuild -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      WorkingDirectory="$(ProjectDir)">
+      <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
+    </DirectExec>
+    <Error Text="Rebuild failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+  </Target>
+
+</Project>

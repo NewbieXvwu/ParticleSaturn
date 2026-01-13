@@ -416,19 +416,17 @@ int main() {
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
     unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
     unsigned int pStar   = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
-    unsigned int pPlanet = Renderer::CreateProgram(Shaders::VertexPlanet, Shaders::FragmentPlanet);
     unsigned int pUI     = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
     unsigned int pQuad   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
     unsigned int pBlur   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
 
     // 检查核心着色器是否编译成功
-    if (!pSaturn || !pStar || !pPlanet || !pUI || !pQuad || !pBlur) {
+    if (!pSaturn || !pStar || !pUI || !pQuad || !pBlur) {
         std::cerr << "[Main] Fatal: Core shader compilation failed" << std::endl;
         std::ostringstream details;
         details << "Shader compilation status:\n"
                 << "  pSaturn: " << (pSaturn ? "OK" : "FAILED") << "\n"
                 << "  pStar:   " << (pStar ? "OK" : "FAILED") << "\n"
-                << "  pPlanet: " << (pPlanet ? "OK" : "FAILED") << "\n"
                 << "  pUI:     " << (pUI ? "OK" : "FAILED") << "\n"
                 << "  pQuad:   " << (pQuad ? "OK" : "FAILED") << "\n"
                 << "  pBlur:   " << (pBlur ? "OK" : "FAILED") << "\n\n"
@@ -555,17 +553,6 @@ int main() {
     unsigned int vaoStars, vboStars;
     ParticleSystem::CreateStars(vaoStars, vboStars);
 
-    // 创建行星网格
-    unsigned int vaoPlanet, idxPlanet;
-    Renderer::CreateSphere(vaoPlanet, idxPlanet, 1.0f);
-
-    // 生成 FBM 噪声纹理 (预计算替代程序化噪声)
-    unsigned int fbmTexture = Renderer::GenerateFBMTexture();
-
-    // 使用预定义的行星常量数据
-    const auto& planets     = PlanetConstants::kPlanets;
-    const int   planetCount = PlanetConstants::kPlanetCount;
-
     // 预生成数字几何 (FPS 显示优化)
     Renderer::PrebuiltDigits prebuiltDigits;
     prebuiltDigits.Init();
@@ -576,7 +563,7 @@ int main() {
 
     // 初始化 Uniform 缓存
     UniformCache uc;
-    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pPlanet, pUI, pBlur, pQuad, appState.gl.persistentMapping);
+    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pUI, pBlur, pQuad);
 
     // 投影和视图矩阵
     glm::mat4 proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
@@ -726,23 +713,31 @@ int main() {
         // 动画逻辑
         float targetScale, targetRotX, targetRotY;
         if (!handState.hasHand) {
-            autoTime += 0.005f;
+            // 改为与帧率无关：保持“当前 180fps 下”的播放速度。
+            // 旧版：autoTime 每帧 +0.005 -> 180fps 等价每秒 +0.9
+            const float fixedRate = 0.005f * 180.0f;
+            autoTime += dt * fixedRate;
             targetScale       = 1.0f + sin(autoTime) * 0.2f;
             targetRotX        = 0.4f + sin(autoTime * 0.3f) * 0.15f;
             targetRotY        = 0.0f;
-            float lerpFactor  = 0.08f;
-            currentAnim.scale = Lerp(currentAnim.scale, targetScale, lerpFactor);
-            currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
-            currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
+
+            // 旧版：每帧 lerpFactor=0.08；转换成 dt 下的等效 alpha，参考帧率取 180fps。
+            const float perFrameAlpha = 0.08f;
+            const float alpha         = 1.0f - powf(1.0f - perFrameAlpha, dt * 180.0f);
+
+            currentAnim.scale = Lerp(currentAnim.scale, targetScale, alpha);
+            currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, alpha);
+            currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, alpha);
         } else {
             targetScale = handState.scale;
             targetRotX  = -0.6f + handState.rotY * 1.6f;
             targetRotY  = (handState.rotX - 0.5f) * 2.0f;
             // 使用插值平滑过渡，避免 30fps 摄像头数据在 90fps 渲染时的跳变
-            float lerpFactor  = 0.25f;
-            currentAnim.scale = Lerp(currentAnim.scale, targetScale, lerpFactor);
-            currentAnim.rotX  = Lerp(currentAnim.rotX, targetRotX, lerpFactor);
-            currentAnim.rotY  = Lerp(currentAnim.rotY, targetRotY, lerpFactor);
+            const float perFrameAlpha = 0.25f;
+            const float alpha         = 1.0f - powf(1.0f - perFrameAlpha, dt * 180.0f);
+            currentAnim.scale         = Lerp(currentAnim.scale, targetScale, alpha);
+            currentAnim.rotX          = Lerp(currentAnim.rotX, targetRotX, alpha);
+            currentAnim.rotY          = Lerp(currentAnim.rotY, targetRotY, alpha);
         }
 
         // 计算粒子物理 (双缓冲: 从当前缓冲读取，写入另一个缓冲)
@@ -800,56 +795,6 @@ int main() {
         // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
         glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
         glDrawArraysIndirect(GL_POINTS, nullptr);
-
-        // 渲染行星 (实例化渲染优化 - 单次 draw call)
-        glDepthMask(GL_TRUE);
-        glEnable(GL_DEPTH_TEST);
-        glUseProgram(pPlanet);
-        glUniformMatrix4fv(uc.pl_p, 1, 0, &proj[0][0]);
-        glUniformMatrix4fv(uc.pl_v, 1, 0, &view[0][0]);
-        glUniform3f(uc.pl_ld, 1, .5, 1);
-        glUniform1i(uc.pl_uPlanetCount, planetCount);
-        // 绑定预计算的 FBM 噪声纹理
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, fbmTexture);
-        glUniform1i(uc.pl_uFBMTex, 0);
-
-        // 更新行星 UBO 数据
-        glm::mat4 orbitRot = glm::rotate(glm::mat4(1.f), t * 0.02f, glm::vec3(0, 1, 0));
-        float     selfRot  = t * 0.1f;
-
-        // 临时缓冲区用于 fallback 路径
-        PlanetInstance planetData[8];
-
-        for (int i = 0; i < planetCount; i++) {
-            const PlanetData& p = planets[i];
-            glm::mat4         m = orbitRot;
-            m                   = glm::translate(m, p.pos);
-            m                   = glm::rotate(m, selfRot, glm::vec3(0, 1, 0));
-            m                   = glm::scale(m, glm::vec3(p.radius));
-
-            if (uc.pl_ubo_mapped) {
-                // OpenGL 4.4+: 直接写入 persistent mapped buffer (无 CPU-GPU 同步开销)
-                uc.pl_ubo_mapped[i].modelMatrix = m;
-                uc.pl_ubo_mapped[i].color1      = glm::vec4(p.color1, p.noiseScale);
-                uc.pl_ubo_mapped[i].color2      = glm::vec4(p.color2, p.atmosphere);
-            } else {
-                // OpenGL 4.3 fallback: 写入临时缓冲区
-                planetData[i].modelMatrix = m;
-                planetData[i].color1      = glm::vec4(p.color1, p.noiseScale);
-                planetData[i].color2      = glm::vec4(p.color2, p.atmosphere);
-            }
-        }
-
-        // OpenGL 4.3 fallback: 使用 glBufferSubData 上传数据
-        if (!uc.pl_ubo_mapped) {
-            glBindBuffer(GL_UNIFORM_BUFFER, uc.pl_ubo);
-            glBufferSubData(GL_UNIFORM_BUFFER, 0, planetCount * sizeof(PlanetInstance), planetData);
-        }
-
-        // 渲染所有行星 (4.4+: GL_MAP_COHERENT_BIT 保证自动同步)
-        glBindVertexArray(vaoPlanet);
-        glDrawElementsInstanced(GL_TRIANGLES, idxPlanet, GL_UNSIGNED_INT, 0, planetCount);
 
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);

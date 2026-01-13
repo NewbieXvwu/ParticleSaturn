@@ -17,12 +17,20 @@
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="FastRelease|Win32">
+      <Configuration>FastRelease</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release_Static|x64">
       <Configuration>Release_Static</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="FastRelease|x64">
+      <Configuration>FastRelease</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
@@ -41,6 +49,11 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|Win32'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -55,6 +68,11 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -73,6 +91,10 @@
   <!-- Map solution configs to a CMake multi-config output folder -->
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
     <DiligentBuildConfig>Debug</DiligentBuildConfig>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='FastRelease'">
+    <DiligentBuildConfig>Release</DiligentBuildConfig>
+    <ParticleSaturnFastBuild>true</ParticleSaturnFastBuild>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <DiligentBuildConfig>Release</DiligentBuildConfig>
@@ -93,41 +115,53 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|Win32'">
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|Win32'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|x64'">
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">
-    <NMakeBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" build "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" rebuild "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>call "$(ProjectDir)scripts\build_diligent_nmake.cmd" clean "$(ProjectDir)." "$(ProjectDir)build_diligent\$(Platform)" "$(DiligentBuildConfig)"</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)build_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
   </PropertyGroup>
 
   <ItemGroup>
@@ -140,6 +174,8 @@
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!-- Import custom targets to bypass cmd.exe AutoRun interference -->
+  <Import Project="$(ProjectDir)ParticleSaturn.Diligent.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
