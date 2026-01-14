@@ -173,6 +173,12 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 深度模板状态
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
+    // 资源布局
+    ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}};
+    psoCI.PSODesc.ResourceLayout.Variables    = vars;
+    psoCI.PSODesc.ResourceLayout.NumVariables = 1;
+
     RefCntAutoPtr<IPipelineState> pPSO;
     device->CreateGraphicsPipelineState(psoCI, &pPSO);
     if (!pPSO) {
@@ -181,11 +187,6 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     }
 
     ctx.diligent.ripplePSO = pPSO.Detach();
-
-    // 创建 SRB
-    RefCntAutoPtr<IShaderResourceBinding> pSRB;
-    ctx.diligent.ripplePSO->CreateShaderResourceBinding(&pSRB, true);
-    ctx.diligent.rippleSRB = pSRB.Detach();
 
     // 创建 Constants buffer
     BufferDesc cbDesc;
@@ -198,6 +199,20 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     RefCntAutoPtr<IBuffer> pCB;
     device->CreateBuffer(cbDesc, nullptr, &pCB);
     ctx.diligent.rippleConstants = pCB.Detach();
+
+    // 创建 SRB
+    RefCntAutoPtr<IShaderResourceBinding> pSRB;
+    ctx.diligent.ripplePSO->CreateShaderResourceBinding(&pSRB, true);
+
+    // 绑定 Constants buffer 到 DYNAMIC 变量
+    if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE_VERTEX, "Constants")) {
+        pVar->Set(ctx.diligent.rippleConstants);
+    }
+    if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE_PIXEL, "Constants")) {
+        pVar->Set(ctx.diligent.rippleConstants);
+    }
+
+    ctx.diligent.rippleSRB = pSRB.Detach();
 
     // 创建全屏四边形 VB
     float      quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
@@ -420,8 +435,8 @@ void BeginFrame(float dt) {
 }
 
 void EndFrame() {
-    // Diligent 版本不需要渲染 Ripple shader
-    // Ripple 效果可以用 ImGui DrawList 实现（如果需要）
+    // 渲染所有活跃的 Ripple 效果
+    DrawRipples();
 }
 
 void SetDarkMode(bool dark) {

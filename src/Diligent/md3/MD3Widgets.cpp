@@ -1237,10 +1237,11 @@ void EndCollapsingHeader() {
         dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
                           ImDrawFlags_RoundCornersBottom);
 
-        // 内容区域边框
+        // 内容区域边框 - 使用 AddRect 绘制完整圆角边框
         ImVec4 borderColor = colors.outlineVariant;
         borderColor.w *= 0.5f;
 
+        // 绘制左、右、底边框（排除顶部，因为顶部与 Header 相连）
         // 左边框
         dl->AddLine(ImVec2(contentBoxMin.x, contentBoxMin.y), ImVec2(contentBoxMin.x, contentBoxMax.y - cornerRadius),
                     ColorToU32(borderColor), borderWidth);
@@ -1250,6 +1251,17 @@ void EndCollapsingHeader() {
         // 底部边框
         dl->AddLine(ImVec2(contentBoxMin.x + cornerRadius, contentBoxMax.y),
                     ImVec2(contentBoxMax.x - cornerRadius, contentBoxMax.y), ColorToU32(borderColor), borderWidth);
+
+        // 绘制底部圆角弧线
+        ImU32  borderColorU32 = ColorToU32(borderColor);
+        ImVec2 blCenter(contentBoxMin.x + cornerRadius, contentBoxMax.y - cornerRadius); // 左下圆角中心
+        ImVec2 brCenter(contentBoxMax.x - cornerRadius, contentBoxMax.y - cornerRadius); // 右下圆角中心
+        // 左下圆角（从 180° 到 270°，即 π 到 1.5π）
+        dl->PathArcTo(blCenter, cornerRadius, IM_PI, IM_PI * 1.5f, 8);
+        dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
+        // 右下圆角（从 270° 到 360°，即 1.5π 到 2π）
+        dl->PathArcTo(brCenter, cornerRadius, IM_PI * 1.5f, IM_PI * 2.0f, 8);
+        dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
     }
 
     // 合并 channels

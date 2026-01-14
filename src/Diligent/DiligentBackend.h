@@ -105,6 +105,12 @@ class DiligentBackend final {
     float                  fpsHistorySampleTimer_    = 0.0f;
     static constexpr float kFpsHistorySampleInterval = 0.1f; // 100ms 采样一次
 
+    // FPS 曲线动画
+    float fpsGraphAnimMinVal_   = 0.0f;   // Y 轴最小值动画
+    float fpsGraphAnimMaxVal_   = 120.0f; // Y 轴最大值动画
+    float fpsGraphScrollOffset_ = 0.0f;   // 水平滚动偏移（用于动画）
+    bool  fpsGraphFirstFrame_   = true;   // 首帧标记
+
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         starPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> starSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                starVB_;
@@ -144,6 +150,26 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegConstants_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegVB_[10]; // 每个数字一个 VB
     uint32_t                                                  sevenSegVertexCount_[10]{};
+
+    // 窗口背景模糊
+    bool CreateBlurPSO();
+    bool CreateBlurRenderTargets(SurfaceSize size);
+    void RenderBlur();
+
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         blurPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> blurSRB1_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> blurSRB2_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                blurConstants_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     blurRT1_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurRTV1_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurSRV1_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     blurRT2_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurRTV2_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurSRV2_;
+
+    SurfaceSize blurRTSize_{};
 
     // ImGui integration
     std::unique_ptr<UI::ImGuiDiligent> imgui_;

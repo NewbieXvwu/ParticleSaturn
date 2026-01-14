@@ -204,9 +204,7 @@ struct SliderAnimState {
     SpringAnimator hoverState;
 
     SliderAnimState()
-        : thumbScale(1.0f, 400.0f, 25.0f),
-          activeTrack(0.0f, 800.0f, 45.0f),
-          hoverState(0.0f, 500.0f, 30.0f) {}
+        : thumbScale(1.0f, 400.0f, 25.0f), activeTrack(0.0f, 800.0f, 45.0f), hoverState(0.0f, 500.0f, 30.0f) {}
 };
 
 struct CardAnimState {
@@ -223,9 +221,7 @@ struct ComboAnimState {
     float          lastContentHeight = 0.0f;
 
     ComboAnimState()
-        : hoverState(0.0f, 500.0f, 30.0f),
-          openState(0.0f, 800.0f, 40.0f),
-          arrowRotation(0.0f, 800.0f, 40.0f) {}
+        : hoverState(0.0f, 500.0f, 30.0f), openState(0.0f, 800.0f, 40.0f), arrowRotation(0.0f, 800.0f, 40.0f) {}
 };
 
 struct SelectableAnimState {
@@ -366,6 +362,9 @@ struct DiligentRenderContext {
     Diligent::IPipelineState* stencilWritePSO = nullptr;
     Diligent::IPipelineState* stencilTestPSO  = nullptr;
 
+    // 窗口背景模糊纹理
+    ImTextureID blurTexture = 0;
+
     bool initialized = false;
 };
 
@@ -444,28 +443,28 @@ void ApplyImGuiStyle();
 // MD3 控件
 //=============================================================================
 
-bool Toggle(const char* label, bool* v);
-bool FilledButton(const char* label, ImVec2 size = {0, 0});
-bool TonalButton(const char* label, ImVec2 size = {0, 0});
-bool OutlinedButton(const char* label, ImVec2 size = {0, 0});
-bool TextButton(const char* label);
-bool Button(const char* label, ImVec2 size = {0, 0});
-bool Slider(const char* label, float* v, float min, float max, const char* format = "%.1f");
-bool BeginCard(const char* id, ImVec2 size = {0, 0}, int elevation = 1);
-void EndCard();
-bool BeginCombo(const char* label, const char* preview_value);
-void EndCombo();
-bool Selectable(const char* label, bool selected);
-bool Combo(const char* label, int* current_item, const char* const items[], int items_count);
-bool BeginCollapsingHeader(const char* label, bool default_open = false);
-void EndCollapsingHeader();
-bool BeginWindow(const char* title, bool* p_open = nullptr, int flags = 0);
-void EndWindow();
+bool  Toggle(const char* label, bool* v);
+bool  FilledButton(const char* label, ImVec2 size = {0, 0});
+bool  TonalButton(const char* label, ImVec2 size = {0, 0});
+bool  OutlinedButton(const char* label, ImVec2 size = {0, 0});
+bool  TextButton(const char* label);
+bool  Button(const char* label, ImVec2 size = {0, 0});
+bool  Slider(const char* label, float* v, float min, float max, const char* format = "%.1f");
+bool  BeginCard(const char* id, ImVec2 size = {0, 0}, int elevation = 1);
+void  EndCard();
+bool  BeginCombo(const char* label, const char* preview_value);
+void  EndCombo();
+bool  Selectable(const char* label, bool selected);
+bool  Combo(const char* label, int* current_item, const char* const items[], int items_count);
+bool  BeginCollapsingHeader(const char* label, bool default_open = false);
+void  EndCollapsingHeader();
+bool  BeginWindow(const char* title, bool* p_open = nullptr, int flags = 0);
+void  EndWindow();
 float WindowTitleBarSpace();
-void WindowTitleBar(const char* title, bool* p_open = nullptr);
-void WindowScrollbar(float titleBarHeight = 0.0f);
-void WindowResize(float minWidth = 200.0f, float minHeight = 100.0f);
-void HandleSmoothScroll(float scrollSpeed = 90.0f);
+void  WindowTitleBar(const char* title, bool* p_open = nullptr);
+void  WindowScrollbar(float titleBarHeight = 0.0f);
+void  WindowResize(float minWidth = 200.0f, float minHeight = 100.0f);
+void  HandleSmoothScroll(float scrollSpeed = 90.0f);
 
 // MenuItem（用于右键菜单等弹出菜单）
 bool MenuItem(const char* label, bool enabled = true, float height_override = 0.0f);
@@ -496,15 +495,15 @@ void DrawRipplesDiligent();
 // 工具函数
 //=============================================================================
 
-ImVec4 BlendColors(const ImVec4& base, const ImVec4& overlay, float alpha);
-ImVec4 ApplyStateLayer(const ImVec4& base, const ImVec4& stateColor, float stateAlpha);
+ImVec4       BlendColors(const ImVec4& base, const ImVec4& overlay, float alpha);
+ImVec4       ApplyStateLayer(const ImVec4& base, const ImVec4& stateColor, float stateAlpha);
 unsigned int ColorToU32(const ImVec4& color);
-ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
+ImVec4       HexToColor(unsigned int hex, float alpha = 1.0f);
 
 // 绘制带圆角的图片（解决模糊背景黑边问题）
 // 注意：Diligent 版本使用 ImTextureID（可以是 ITextureView* 指针）
-void AddImageRounded(ImDrawList* dl, ImTextureID tex_id, const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
+void AddImageRounded(ImDrawList* dl, ImTextureID tex_id, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min,
+                     const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
 
 } // namespace MD3
 
