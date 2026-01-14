@@ -3,16 +3,15 @@
 
 #include "ImGuiDiligent.h"
 
-#include "imgui.h"
-#include "backends/imgui_impl_win32.h"
-
 #include <windows.h>
 
-#include "RenderDevice.h"
-#include "DeviceContext.h"
-#include "SwapChain.h"
-
 #include <cstring>
+
+#include "DeviceContext.h"
+#include "RenderDevice.h"
+#include "SwapChain.h"
+#include "backends/imgui_impl_win32.h"
+#include "imgui.h"
 
 using namespace Diligent;
 
@@ -110,13 +109,13 @@ void main()
 )";
 
 RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char* name, SHADER_TYPE type,
-                                               const char* source, SHADER_SOURCE_LANGUAGE lang) {
+                                              const char* source, SHADER_SOURCE_LANGUAGE lang) {
     ShaderCreateInfo sci;
-    sci.SourceLanguage = lang;
+    sci.SourceLanguage  = lang;
     sci.Desc.ShaderType = type;
-    sci.Desc.Name = name;
-    sci.Source = source;
-    sci.EntryPoint = "main";
+    sci.Desc.Name       = name;
+    sci.Source          = source;
+    sci.EntryPoint      = "main";
 
     RefCntAutoPtr<IShader> shader;
     device->CreateShader(sci, &shader);
@@ -124,6 +123,17 @@ RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char*
 }
 
 } // namespace
+
+// 全局 ImGuiDiligent 实例指针（供 MD3 回调使用）
+static ImGuiDiligent* g_imguiDiligentInstance = nullptr;
+
+ImGuiDiligent* GetImGuiDiligentInstance() {
+    return g_imguiDiligentInstance;
+}
+
+void SetImGuiDiligentInstance(ImGuiDiligent* instance) {
+    g_imguiDiligentInstance = instance;
+}
 
 ImGuiDiligent::~ImGuiDiligent() {
     Shutdown();
@@ -137,9 +147,9 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
         return false;
     }
 
-    hwnd_ = hwnd;
+    hwnd_    = hwnd;
     backend_ = backend;
-    device_ = device;
+    device_  = device;
 
     // 创建 ImGui 上下文
     IMGUI_CHECKVERSION();
@@ -155,13 +165,19 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
     }
 
     // 创建 Diligent 渲染资源
-    if (!CreatePipelineState(device, swapChain)) {
+    if (!CreatePipelineStates(device, swapChain)) {
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
         return false;
     }
 
     if (!CreateFontTexture(device)) {
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        return false;
+    }
+
+    if (!CreateDepthStencilBuffer(device, swapChain)) {
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
         return false;
@@ -178,6 +194,9 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
     io.BackendRendererName = "imgui_impl_diligent";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
 
+    // 设置全局实例（供 MD3 回调使用）
+    g_imguiDiligentInstance = this;
+
     initialized_ = true;
     return true;
 }
@@ -187,13 +206,24 @@ void ImGuiDiligent::Shutdown() {
         return;
     }
 
+    // 清除全局实例
+    if (g_imguiDiligentInstance == this) {
+        g_imguiDiligentInstance = nullptr;
+    }
+
     pso_.Release();
+    psoStencilWrite_.Release();
+    psoStencilTest_.Release();
     srb_.Release();
+    srbStencilWrite_.Release();
+    srbStencilTest_.Release();
     vertexBuffer_.Release();
     indexBuffer_.Release();
     constantBuffer_.Release();
     fontTexture_.Release();
     fontSRV_.Release();
+    depthStencilTexture_.Release();
+    dsv_.Release();
     device_.Release();
 
     ImGui_ImplWin32_Shutdown();
@@ -241,7 +271,7 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
 
         if (vtxMapped != nullptr && idxMapped != nullptr) {
             ImDrawVert* vtxDst = static_cast<ImDrawVert*>(vtxMapped);
-            ImDrawIdx* idxDst = static_cast<ImDrawIdx*>(idxMapped);
+            ImDrawIdx*  idxDst = static_cast<ImDrawIdx*>(idxMapped);
 
             for (int n = 0; n < drawData->CmdListsCount; n++) {
                 const ImDrawList* cmdList = drawData->CmdLists[n];
@@ -281,13 +311,49 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
         }
     }
 
-    // 设置渲染目标
-    context->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    // 设置渲染目标（包含 DepthStencil）
+    // 检查 DSV 尺寸是否匹配，如果不匹配则重新创建
+    auto displayWidth  = static_cast<unsigned int>(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+    auto displayHeight = static_cast<unsigned int>(drawData->DisplaySize.y * drawData->FramebufferScale.y);
+    if (dsv_ != nullptr && (cachedWidth_ != displayWidth || cachedHeight_ != displayHeight)) {
+        // 需要重新创建 DSV
+        TextureDesc dsDesc{};
+        dsDesc.Name      = "ImGui DepthStencil";
+        dsDesc.Type      = RESOURCE_DIM_TEX_2D;
+        dsDesc.Width     = displayWidth;
+        dsDesc.Height    = displayHeight;
+        dsDesc.MipLevels = 1;
+        dsDesc.Format    = TEX_FORMAT_D24_UNORM_S8_UINT;
+        dsDesc.BindFlags = BIND_DEPTH_STENCIL;
+        dsDesc.Usage     = USAGE_DEFAULT;
+
+        depthStencilTexture_.Release();
+        dsv_.Release();
+
+        device_->CreateTexture(dsDesc, nullptr, &depthStencilTexture_);
+        if (depthStencilTexture_ != nullptr) {
+            dsv_          = depthStencilTexture_->GetDefaultView(TEXTURE_VIEW_DEPTH_STENCIL);
+            cachedWidth_  = displayWidth;
+            cachedHeight_ = displayHeight;
+        }
+    }
+
+    ITextureView* dsvPtr = dsv_.RawPtr();
+    context->SetRenderTargets(1, &rtv, dsvPtr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    // 清除 Stencil 缓冲
+    if (dsvPtr != nullptr) {
+        context->ClearDepthStencil(dsvPtr, CLEAR_STENCIL_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
+
+    // 保存当前上下文供回调使用
+    currentContext_ = context;
+    currentRTV_     = rtv;
 
     // 设置视口
     Viewport vp{};
-    vp.Width = drawData->DisplaySize.x * drawData->FramebufferScale.x;
-    vp.Height = drawData->DisplaySize.y * drawData->FramebufferScale.y;
+    vp.Width    = drawData->DisplaySize.x * drawData->FramebufferScale.x;
+    vp.Height   = drawData->DisplaySize.y * drawData->FramebufferScale.y;
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     context->SetViewports(1, &vp, static_cast<Uint32>(vp.Width), static_cast<Uint32>(vp.Height));
@@ -297,16 +363,17 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
     context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 绑定顶点和索引缓冲
-    IBuffer* vbs[] = {vertexBuffer_};
-    Uint64 offsets[] = {0};
-    context->SetVertexBuffers(0, 1, vbs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, SET_VERTEX_BUFFERS_FLAG_RESET);
+    IBuffer* vbs[]     = {vertexBuffer_};
+    Uint64   offsets[] = {0};
+    context->SetVertexBuffers(0, 1, vbs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                              SET_VERTEX_BUFFERS_FLAG_RESET);
     context->SetIndexBuffer(indexBuffer_, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 渲染命令列表
-    int globalVtxOffset = 0;
-    int globalIdxOffset = 0;
-    ImVec2 clipOff = drawData->DisplayPos;
-    ImVec2 clipScale = drawData->FramebufferScale;
+    int    globalVtxOffset = 0;
+    int    globalIdxOffset = 0;
+    ImVec2 clipOff         = drawData->DisplayPos;
+    ImVec2 clipScale       = drawData->FramebufferScale;
 
     // 跟踪当前绑定的纹理，避免重复绑定
     ITextureView* currentTexture = nullptr;
@@ -319,10 +386,16 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
             if (pcmd->UserCallback != nullptr) {
                 if (pcmd->UserCallback == ImDrawCallback_ResetRenderState) {
                     // 重置渲染状态
+                    stencilMode_ = StencilMode::Disabled;
                     context->SetPipelineState(pso_);
+                    context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
                     currentTexture = nullptr; // 强制下次重新绑定纹理
                 } else {
+                    // 执行用户回调
                     pcmd->UserCallback(cmdList, pcmd);
+                    // 回调可能改变了 Stencil 模式，应用当前模式
+                    ApplyStencilMode(context);
+                    currentTexture = nullptr; // 强制重新绑定
                 }
             } else {
                 // 计算裁剪矩形
@@ -344,43 +417,53 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                 // 只有纹理变化时才重新绑定
                 if (texView != currentTexture) {
                     currentTexture = texView;
-                    if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+                    // 根据当前 Stencil 模式选择正确的 SRB
+                    IShaderResourceBinding* currentSrb = srb_.RawPtr();
+                    if (stencilMode_ == StencilMode::WriteIncr || stencilMode_ == StencilMode::WriteDecr) {
+                        currentSrb = srbStencilWrite_.RawPtr();
+                    } else if (stencilMode_ == StencilMode::TestEqual) {
+                        currentSrb = srbStencilTest_.RawPtr();
+                    }
+                    if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
                         var->Set(texView);
                     }
-                    context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+                    context->CommitShaderResources(currentSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
                 }
 
                 // 设置裁剪矩形
                 Rect scissor{};
-                scissor.left = static_cast<Int32>(clipMin.x);
-                scissor.top = static_cast<Int32>(clipMin.y);
-                scissor.right = static_cast<Int32>(clipMax.x);
+                scissor.left   = static_cast<Int32>(clipMin.x);
+                scissor.top    = static_cast<Int32>(clipMin.y);
+                scissor.right  = static_cast<Int32>(clipMax.x);
                 scissor.bottom = static_cast<Int32>(clipMax.y);
                 context->SetScissorRects(1, &scissor, static_cast<Uint32>(vp.Width), static_cast<Uint32>(vp.Height));
 
                 // 绘制
                 DrawIndexedAttribs drawAttribs{};
-                drawAttribs.NumIndices = pcmd->ElemCount;
-                drawAttribs.IndexType = sizeof(ImDrawIdx) == 2 ? VT_UINT16 : VT_UINT32;
+                drawAttribs.NumIndices         = pcmd->ElemCount;
+                drawAttribs.IndexType          = sizeof(ImDrawIdx) == 2 ? VT_UINT16 : VT_UINT32;
                 drawAttribs.FirstIndexLocation = pcmd->IdxOffset + globalIdxOffset;
-                drawAttribs.BaseVertex = pcmd->VtxOffset + globalVtxOffset;
-                drawAttribs.Flags = DRAW_FLAG_VERIFY_ALL;
+                drawAttribs.BaseVertex         = pcmd->VtxOffset + globalVtxOffset;
+                drawAttribs.Flags              = DRAW_FLAG_VERIFY_ALL;
                 context->DrawIndexed(drawAttribs);
             }
         }
         globalIdxOffset += cmdList->IdxBuffer.Size;
         globalVtxOffset += cmdList->VtxBuffer.Size;
     }
+
+    // 清理当前上下文指针和重置 Stencil 模式
+    currentContext_ = nullptr;
+    currentRTV_     = nullptr;
+    stencilMode_    = StencilMode::Disabled;
 }
 
-bool ImGuiDiligent::CreatePipelineState(IRenderDevice* device, ISwapChain* swapChain) {
+bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swapChain) {
     const bool isVulkan = (backend_ == Render::Backend::Vulkan);
-    const auto lang = isVulkan ? SHADER_SOURCE_LANGUAGE_GLSL : SHADER_SOURCE_LANGUAGE_HLSL;
+    const auto lang     = isVulkan ? SHADER_SOURCE_LANGUAGE_GLSL : SHADER_SOURCE_LANGUAGE_HLSL;
 
-    auto vs = CreateShaderFromSource(device, "ImGui VS", SHADER_TYPE_VERTEX,
-                                      isVulkan ? kGlslVS : kHlslVS, lang);
-    auto ps = CreateShaderFromSource(device, "ImGui PS", SHADER_TYPE_PIXEL,
-                                      isVulkan ? kGlslPS : kHlslPS, lang);
+    auto vs = CreateShaderFromSource(device, "ImGui VS", SHADER_TYPE_VERTEX, isVulkan ? kGlslVS : kHlslVS, lang);
+    auto ps = CreateShaderFromSource(device, "ImGui PS", SHADER_TYPE_PIXEL, isVulkan ? kGlslPS : kHlslPS, lang);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -388,10 +471,10 @@ bool ImGuiDiligent::CreatePipelineState(IRenderDevice* device, ISwapChain* swapC
     // 创建常量缓冲
     {
         BufferDesc cbDesc{};
-        cbDesc.Name = "ImGui Constants";
-        cbDesc.Size = sizeof(ImGuiConstants);
-        cbDesc.Usage = USAGE_DYNAMIC;
-        cbDesc.BindFlags = BIND_UNIFORM_BUFFER;
+        cbDesc.Name           = "ImGui Constants";
+        cbDesc.Size           = sizeof(ImGuiConstants);
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
         cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
 
         device->CreateBuffer(cbDesc, nullptr, &constantBuffer_);
@@ -400,88 +483,202 @@ bool ImGuiDiligent::CreatePipelineState(IRenderDevice* device, ISwapChain* swapC
         }
     }
 
-    GraphicsPipelineStateCreateInfo psoCI{};
-    psoCI.PSODesc.Name = "ImGui PSO";
-    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
-
     const auto& scDesc = swapChain->GetDesc();
-    psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = scDesc.ColorBufferFormat;
-    psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN;
-    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    // 光栅化设置
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
-    psoCI.GraphicsPipeline.RasterizerDesc.ScissorEnable = True;
-
-    // 深度设置
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
-
-    // Alpha 混合设置（与 imgui_impl_dx12 一致）
-    auto& rt0 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    rt0.BlendEnable = True;
-    rt0.SrcBlend = BLEND_FACTOR_SRC_ALPHA;
-    rt0.DestBlend = BLEND_FACTOR_INV_SRC_ALPHA;
-    rt0.BlendOp = BLEND_OPERATION_ADD;
-    rt0.SrcBlendAlpha = BLEND_FACTOR_ONE;
-    rt0.DestBlendAlpha = BLEND_FACTOR_INV_SRC_ALPHA;
-    rt0.BlendOpAlpha = BLEND_OPERATION_ADD;
-    rt0.RenderTargetWriteMask = COLOR_MASK_ALL;
 
     // 顶点输入布局（ImDrawVert: pos, uv, col）
     LayoutElement layoutElems[] = {
         {0, 0, 2, VT_FLOAT32, False, offsetof(ImDrawVert, pos)},
         {1, 0, 2, VT_FLOAT32, False, offsetof(ImDrawVert, uv)},
-        {2, 0, 4, VT_UINT8,   True,  offsetof(ImDrawVert, col)},
+        {2, 0, 4, VT_UINT8, True, offsetof(ImDrawVert, col)},
     };
-    psoCI.GraphicsPipeline.InputLayout.NumElements = _countof(layoutElems);
-    psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
 
     // 资源变量
     ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
     };
-    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
-    psoCI.PSODesc.ResourceLayout.Variables = vars;
 
     // 采样器
     SamplerDesc sampDesc{};
     sampDesc.MinFilter = FILTER_TYPE_LINEAR;
     sampDesc.MagFilter = FILTER_TYPE_LINEAR;
     sampDesc.MipFilter = FILTER_TYPE_LINEAR;
-    sampDesc.AddressU = TEXTURE_ADDRESS_CLAMP;
-    sampDesc.AddressV = TEXTURE_ADDRESS_CLAMP;
-    sampDesc.AddressW = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressU  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
     ImmutableSamplerDesc imtblSamplers[] = {
         {SHADER_TYPE_PIXEL, "g_Texture", sampDesc},
     };
-    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
-    psoCI.PSODesc.ResourceLayout.ImmutableSamplers = imtblSamplers;
 
-    psoCI.pVS = vs;
-    psoCI.pPS = ps;
+    // ========== PSO 1: 普通渲染（无 Stencil）==========
+    {
+        GraphicsPipelineStateCreateInfo psoCI{};
+        psoCI.PSODesc.Name         = "ImGui PSO";
+        psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    device->CreateGraphicsPipelineState(psoCI, &pso_);
-    if (pso_ == nullptr) {
-        return false;
+        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.RasterizerDesc.ScissorEnable = True;
+
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable   = False;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilEnable = False;
+
+        auto& rt0                 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+        rt0.BlendEnable           = True;
+        rt0.SrcBlend              = BLEND_FACTOR_SRC_ALPHA;
+        rt0.DestBlend             = BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOp               = BLEND_OPERATION_ADD;
+        rt0.SrcBlendAlpha         = BLEND_FACTOR_ONE;
+        rt0.DestBlendAlpha        = BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha          = BLEND_OPERATION_ADD;
+        rt0.RenderTargetWriteMask = COLOR_MASK_ALL;
+
+        psoCI.GraphicsPipeline.InputLayout.NumElements    = _countof(layoutElems);
+        psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
+
+        psoCI.PSODesc.ResourceLayout.NumVariables         = _countof(vars);
+        psoCI.PSODesc.ResourceLayout.Variables            = vars;
+        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
+        psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
+
+        psoCI.pVS = vs;
+        psoCI.pPS = ps;
+
+        device->CreateGraphicsPipelineState(psoCI, &pso_);
+        if (pso_ == nullptr) {
+            return false;
+        }
+
+        if (auto* var = pso_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants"); var != nullptr) {
+            var->Set(constantBuffer_);
+        }
+        pso_->CreateShaderResourceBinding(&srb_, true);
     }
 
-    // 绑定常量缓冲
-    if (auto* var = pso_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants"); var != nullptr) {
-        var->Set(constantBuffer_);
+    // ========== PSO 2: Stencil 写入（禁止颜色写入）==========
+    {
+        GraphicsPipelineStateCreateInfo psoCI{};
+        psoCI.PSODesc.Name         = "ImGui PSO StencilWrite";
+        psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
+
+        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.RasterizerDesc.ScissorEnable = True;
+
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable      = False;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilEnable    = True;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilReadMask  = 0xFF;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilWriteMask = 0xFF;
+        // Front face: 总是通过，替换 Stencil 值
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFunc        = COMPARISON_FUNC_ALWAYS;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilPassOp      = STENCIL_OP_REPLACE;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFailOp      = STENCIL_OP_KEEP;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilDepthFailOp = STENCIL_OP_KEEP;
+        // Back face 同样设置
+        psoCI.GraphicsPipeline.DepthStencilDesc.BackFace = psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace;
+
+        // 禁止颜色写入
+        auto& rt0                 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+        rt0.BlendEnable           = False;
+        rt0.RenderTargetWriteMask = COLOR_MASK_NONE;
+
+        psoCI.GraphicsPipeline.InputLayout.NumElements    = _countof(layoutElems);
+        psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
+
+        psoCI.PSODesc.ResourceLayout.NumVariables         = _countof(vars);
+        psoCI.PSODesc.ResourceLayout.Variables            = vars;
+        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
+        psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
+
+        psoCI.pVS = vs;
+        psoCI.pPS = ps;
+
+        device->CreateGraphicsPipelineState(psoCI, &psoStencilWrite_);
+        if (psoStencilWrite_ == nullptr) {
+            return false;
+        }
+
+        if (auto* var = psoStencilWrite_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants"); var != nullptr) {
+            var->Set(constantBuffer_);
+        }
+        psoStencilWrite_->CreateShaderResourceBinding(&srbStencilWrite_, true);
     }
 
-    pso_->CreateShaderResourceBinding(&srb_, true);
-    return srb_ != nullptr;
+    // ========== PSO 3: Stencil 测试（相等时通过）==========
+    {
+        GraphicsPipelineStateCreateInfo psoCI{};
+        psoCI.PSODesc.Name         = "ImGui PSO StencilTest";
+        psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
+
+        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.RasterizerDesc.ScissorEnable = True;
+
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable      = False;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilEnable    = True;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilReadMask  = 0xFF;
+        psoCI.GraphicsPipeline.DepthStencilDesc.StencilWriteMask = 0x00; // 不写入 Stencil
+        // Front face: 相等时通过
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFunc        = COMPARISON_FUNC_EQUAL;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilPassOp      = STENCIL_OP_KEEP;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFailOp      = STENCIL_OP_KEEP;
+        psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilDepthFailOp = STENCIL_OP_KEEP;
+        psoCI.GraphicsPipeline.DepthStencilDesc.BackFace = psoCI.GraphicsPipeline.DepthStencilDesc.FrontFace;
+
+        // 正常混合
+        auto& rt0                 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+        rt0.BlendEnable           = True;
+        rt0.SrcBlend              = BLEND_FACTOR_SRC_ALPHA;
+        rt0.DestBlend             = BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOp               = BLEND_OPERATION_ADD;
+        rt0.SrcBlendAlpha         = BLEND_FACTOR_ONE;
+        rt0.DestBlendAlpha        = BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha          = BLEND_OPERATION_ADD;
+        rt0.RenderTargetWriteMask = COLOR_MASK_ALL;
+
+        psoCI.GraphicsPipeline.InputLayout.NumElements    = _countof(layoutElems);
+        psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
+
+        psoCI.PSODesc.ResourceLayout.NumVariables         = _countof(vars);
+        psoCI.PSODesc.ResourceLayout.Variables            = vars;
+        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
+        psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
+
+        psoCI.pVS = vs;
+        psoCI.pPS = ps;
+
+        device->CreateGraphicsPipelineState(psoCI, &psoStencilTest_);
+        if (psoStencilTest_ == nullptr) {
+            return false;
+        }
+
+        if (auto* var = psoStencilTest_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants"); var != nullptr) {
+            var->Set(constantBuffer_);
+        }
+        psoStencilTest_->CreateShaderResourceBinding(&srbStencilTest_, true);
+    }
+
+    return srb_ != nullptr && srbStencilWrite_ != nullptr && srbStencilTest_ != nullptr;
 }
 
 bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     ImGuiIO& io = ImGui::GetIO();
 
     unsigned char* pixels = nullptr;
-    int width = 0;
-    int height = 0;
+    int            width  = 0;
+    int            height = 0;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
     if (pixels == nullptr || width <= 0 || height <= 0) {
@@ -490,22 +687,22 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
 
     // 创建纹理
     TextureDesc texDesc{};
-    texDesc.Name = "ImGui Font Texture";
-    texDesc.Type = RESOURCE_DIM_TEX_2D;
-    texDesc.Width = static_cast<Uint32>(width);
-    texDesc.Height = static_cast<Uint32>(height);
+    texDesc.Name      = "ImGui Font Texture";
+    texDesc.Type      = RESOURCE_DIM_TEX_2D;
+    texDesc.Width     = static_cast<Uint32>(width);
+    texDesc.Height    = static_cast<Uint32>(height);
     texDesc.MipLevels = 1;
-    texDesc.Format = TEX_FORMAT_RGBA8_UNORM;
+    texDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
     texDesc.BindFlags = BIND_SHADER_RESOURCE;
-    texDesc.Usage = USAGE_IMMUTABLE;
+    texDesc.Usage     = USAGE_IMMUTABLE;
 
     TextureSubResData subResData{};
-    subResData.pData = pixels;
+    subResData.pData  = pixels;
     subResData.Stride = static_cast<Uint32>(width * 4);
 
     TextureData texData{};
     texData.NumSubresources = 1;
-    texData.pSubResources = &subResData;
+    texData.pSubResources   = &subResData;
 
     device->CreateTexture(texDesc, &texData, &fontTexture_);
     if (fontTexture_ == nullptr) {
@@ -532,10 +729,10 @@ bool ImGuiDiligent::CreateBuffers(IRenderDevice* device, int vertexCount, int in
     // 顶点缓冲
     {
         BufferDesc vbDesc{};
-        vbDesc.Name = "ImGui Vertex Buffer";
-        vbDesc.Size = static_cast<Uint32>(vertexCount * sizeof(ImDrawVert));
-        vbDesc.Usage = USAGE_DYNAMIC;
-        vbDesc.BindFlags = BIND_VERTEX_BUFFER;
+        vbDesc.Name           = "ImGui Vertex Buffer";
+        vbDesc.Size           = static_cast<Uint32>(vertexCount * sizeof(ImDrawVert));
+        vbDesc.Usage          = USAGE_DYNAMIC;
+        vbDesc.BindFlags      = BIND_VERTEX_BUFFER;
         vbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
 
         vertexBuffer_.Release();
@@ -549,10 +746,10 @@ bool ImGuiDiligent::CreateBuffers(IRenderDevice* device, int vertexCount, int in
     // 索引缓冲
     {
         BufferDesc ibDesc{};
-        ibDesc.Name = "ImGui Index Buffer";
-        ibDesc.Size = static_cast<Uint32>(indexCount * sizeof(ImDrawIdx));
-        ibDesc.Usage = USAGE_DYNAMIC;
-        ibDesc.BindFlags = BIND_INDEX_BUFFER;
+        ibDesc.Name           = "ImGui Index Buffer";
+        ibDesc.Size           = static_cast<Uint32>(indexCount * sizeof(ImDrawIdx));
+        ibDesc.Usage          = USAGE_DYNAMIC;
+        ibDesc.BindFlags      = BIND_INDEX_BUFFER;
         ibDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
 
         indexBuffer_.Release();
@@ -564,6 +761,64 @@ bool ImGuiDiligent::CreateBuffers(IRenderDevice* device, int vertexCount, int in
     }
 
     return true;
+}
+
+bool ImGuiDiligent::CreateDepthStencilBuffer(IRenderDevice* device, ISwapChain* swapChain) {
+    const auto& scDesc = swapChain->GetDesc();
+
+    cachedWidth_  = scDesc.Width;
+    cachedHeight_ = scDesc.Height;
+
+    TextureDesc dsDesc{};
+    dsDesc.Name      = "ImGui DepthStencil";
+    dsDesc.Type      = RESOURCE_DIM_TEX_2D;
+    dsDesc.Width     = scDesc.Width;
+    dsDesc.Height    = scDesc.Height;
+    dsDesc.MipLevels = 1;
+    dsDesc.Format    = TEX_FORMAT_D24_UNORM_S8_UINT;
+    dsDesc.BindFlags = BIND_DEPTH_STENCIL;
+    dsDesc.Usage     = USAGE_DEFAULT;
+
+    depthStencilTexture_.Release();
+    dsv_.Release();
+
+    device->CreateTexture(dsDesc, nullptr, &depthStencilTexture_);
+    if (depthStencilTexture_ == nullptr) {
+        return false;
+    }
+
+    dsv_ = depthStencilTexture_->GetDefaultView(TEXTURE_VIEW_DEPTH_STENCIL);
+    return dsv_ != nullptr;
+}
+
+void ImGuiDiligent::SetStencilMode(StencilMode mode, int stencilRef) {
+    stencilMode_ = mode;
+    stencilRef_  = stencilRef;
+}
+
+void ImGuiDiligent::ApplyStencilMode(IDeviceContext* context) {
+    IShaderResourceBinding* currentSrb = nullptr;
+    IPipelineState*         currentPso = nullptr;
+
+    switch (stencilMode_) {
+    case StencilMode::WriteIncr:
+    case StencilMode::WriteDecr:
+        currentPso = psoStencilWrite_;
+        currentSrb = srbStencilWrite_;
+        break;
+    case StencilMode::TestEqual:
+        currentPso = psoStencilTest_;
+        currentSrb = srbStencilTest_;
+        break;
+    case StencilMode::Disabled:
+    default:
+        currentPso = pso_;
+        currentSrb = srb_;
+        break;
+    }
+
+    context->SetPipelineState(currentPso);
+    context->SetStencilRef(static_cast<Uint32>(stencilRef_));
 }
 
 } // namespace ParticleSaturn::UI

@@ -4,17 +4,17 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include "MD3.h"
+#include <cmath>
+#include <iostream>
 
+#include "../ImGuiDiligent.h"
 #include "Buffer.h"
 #include "DeviceContext.h"
+#include "MD3.h"
 #include "PipelineState.h"
 #include "RefCntAutoPtr.hpp"
 #include "RenderDevice.h"
 #include "ShaderResourceBinding.h"
-
-#include <cmath>
-#include <iostream>
 
 namespace MD3 {
 
@@ -111,11 +111,11 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
 
     // 创建 Vertex Shader
     ShaderCreateInfo shaderCI;
-    shaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+    shaderCI.SourceLanguage  = SHADER_SOURCE_LANGUAGE_HLSL;
     shaderCI.Desc.ShaderType = SHADER_TYPE_VERTEX;
-    shaderCI.Desc.Name = "MD3 Ripple VS";
-    shaderCI.Source = RippleVS;
-    shaderCI.EntryPoint = "main";
+    shaderCI.Desc.Name       = "MD3 Ripple VS";
+    shaderCI.Source          = RippleVS;
+    shaderCI.EntryPoint      = "main";
 
     RefCntAutoPtr<IShader> pVS;
     device->CreateShader(shaderCI, &pVS);
@@ -126,8 +126,8 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
 
     // 创建 Pixel Shader
     shaderCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
-    shaderCI.Desc.Name = "MD3 Ripple PS";
-    shaderCI.Source = RipplePS;
+    shaderCI.Desc.Name       = "MD3 Ripple PS";
+    shaderCI.Source          = RipplePS;
 
     RefCntAutoPtr<IShader> pPS;
     device->CreateShader(shaderCI, &pPS);
@@ -139,33 +139,33 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 创建 PSO
     GraphicsPipelineStateCreateInfo psoCI;
     psoCI.PSODesc.Name = "MD3 Ripple PSO";
-    psoCI.pVS = pVS;
-    psoCI.pPS = pPS;
+    psoCI.pVS          = pVS;
+    psoCI.pPS          = pPS;
 
     // 输入布局
     LayoutElement layoutElems[] = {
         {0, 0, 2, VT_FLOAT32, False} // Position
     };
     psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
-    psoCI.GraphicsPipeline.InputLayout.NumElements = 1;
+    psoCI.GraphicsPipeline.InputLayout.NumElements    = 1;
 
     // 图元类型
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
 
     // 渲染目标格式（与 swap chain 一致）
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM_SRGB;
-    psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_D32_FLOAT;
+    psoCI.GraphicsPipeline.RTVFormats[0]    = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_D32_FLOAT;
 
     // 混合状态（alpha blending）
-    auto& RT0 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    RT0.BlendEnable = True;
-    RT0.SrcBlend = BLEND_FACTOR_SRC_ALPHA;
-    RT0.DestBlend = BLEND_FACTOR_INV_SRC_ALPHA;
-    RT0.BlendOp = BLEND_OPERATION_ADD;
-    RT0.SrcBlendAlpha = BLEND_FACTOR_ONE;
+    auto& RT0          = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    RT0.BlendEnable    = True;
+    RT0.SrcBlend       = BLEND_FACTOR_SRC_ALPHA;
+    RT0.DestBlend      = BLEND_FACTOR_INV_SRC_ALPHA;
+    RT0.BlendOp        = BLEND_OPERATION_ADD;
+    RT0.SrcBlendAlpha  = BLEND_FACTOR_ONE;
     RT0.DestBlendAlpha = BLEND_FACTOR_INV_SRC_ALPHA;
-    RT0.BlendOpAlpha = BLEND_OPERATION_ADD;
+    RT0.BlendOpAlpha   = BLEND_OPERATION_ADD;
 
     // 光栅化状态
     psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
@@ -189,10 +189,10 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
 
     // 创建 Constants buffer
     BufferDesc cbDesc;
-    cbDesc.Name = "MD3 Ripple Constants";
-    cbDesc.Size = 64; // 足够存储所有 uniform
-    cbDesc.Usage = USAGE_DYNAMIC;
-    cbDesc.BindFlags = BIND_UNIFORM_BUFFER;
+    cbDesc.Name           = "MD3 Ripple Constants";
+    cbDesc.Size           = 64; // 足够存储所有 uniform
+    cbDesc.Usage          = USAGE_DYNAMIC;
+    cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
     cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
 
     RefCntAutoPtr<IBuffer> pCB;
@@ -200,15 +200,15 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     ctx.diligent.rippleConstants = pCB.Detach();
 
     // 创建全屏四边形 VB
-    float quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
+    float      quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
     BufferDesc vbDesc;
-    vbDesc.Name = "MD3 Ripple VB";
-    vbDesc.Size = sizeof(quadVerts);
+    vbDesc.Name      = "MD3 Ripple VB";
+    vbDesc.Size      = sizeof(quadVerts);
     vbDesc.BindFlags = BIND_VERTEX_BUFFER;
-    vbDesc.Usage = USAGE_IMMUTABLE;
+    vbDesc.Usage     = USAGE_IMMUTABLE;
 
     BufferData vbData;
-    vbData.pData = quadVerts;
+    vbData.pData    = quadVerts;
     vbData.DataSize = sizeof(quadVerts);
 
     RefCntAutoPtr<IBuffer> pVB;
@@ -233,7 +233,7 @@ void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, fl
     ctx.deltaTime   = 0.0f;
 
     // 保存 Diligent 设备引用
-    ctx.diligent.device = device;
+    ctx.diligent.device  = device;
     ctx.diligent.context = context;
 
     // 创建 Ripple 渲染资源
@@ -269,8 +269,8 @@ void Shutdown() {
         ctx.diligent.rippleVB->Release();
         ctx.diligent.rippleVB = nullptr;
     }
-    ctx.diligent.device = nullptr;
-    ctx.diligent.context = nullptr;
+    ctx.diligent.device      = nullptr;
+    ctx.diligent.context     = nullptr;
     ctx.diligent.initialized = false;
 
     // 清理 Ripple 状态
@@ -463,12 +463,12 @@ void ApplyImGuiStyle() {
     style.TabRounding       = 12.0f * dpi;
 
     // 间距设置
-    style.WindowPadding     = ImVec2(20.0f * dpi, 20.0f * dpi);
-    style.FramePadding      = ImVec2(10.0f * dpi, 6.0f * dpi);
-    style.ItemSpacing       = ImVec2(10.0f * dpi, 12.0f * dpi);
-    style.ItemInnerSpacing  = ImVec2(8.0f * dpi, 6.0f * dpi);
-    style.ScrollbarSize     = 12.0f * dpi;
-    style.GrabMinSize       = 12.0f * dpi;
+    style.WindowPadding    = ImVec2(20.0f * dpi, 20.0f * dpi);
+    style.FramePadding     = ImVec2(10.0f * dpi, 6.0f * dpi);
+    style.ItemSpacing      = ImVec2(10.0f * dpi, 12.0f * dpi);
+    style.ItemInnerSpacing = ImVec2(8.0f * dpi, 6.0f * dpi);
+    style.ScrollbarSize    = 12.0f * dpi;
+    style.GrabMinSize      = 12.0f * dpi;
 
     // 边框
     style.WindowBorderSize = 0.0f;
@@ -478,18 +478,18 @@ void ApplyImGuiStyle() {
 
     // 应用 MD3 颜色到 ImGui 样式
     // 窗口背景 - 设置为透明，让自定义绘制的模糊背景显示
-    ImVec4 windowBg = colors.surface;
-    windowBg.w      = 0.0f; // 完全透明，背景由自定义绘制处理
+    ImVec4 windowBg               = colors.surface;
+    windowBg.w                    = 0.0f; // 完全透明，背景由自定义绘制处理
     imguiColor[ImGuiCol_WindowBg] = windowBg;
 
     // 子窗口/Card 背景
-    ImVec4 childBg = colors.surfaceContainerLow;
-    childBg.w      = 0.50f;
+    ImVec4 childBg               = colors.surfaceContainerLow;
+    childBg.w                    = 0.50f;
     imguiColor[ImGuiCol_ChildBg] = childBg;
 
     // Popup 背景
-    ImVec4 popupBg = colors.surfaceContainer;
-    popupBg.w      = 0.98f;
+    ImVec4 popupBg               = colors.surfaceContainer;
+    popupBg.w                    = 0.98f;
     imguiColor[ImGuiCol_PopupBg] = popupBg;
 
     // 边框
@@ -512,14 +512,17 @@ void ApplyImGuiStyle() {
     imguiColor[ImGuiCol_ScrollbarGrabActive]  = colors.onSurface;
 
     // Frame 控件（Input、Combo 等）
-    imguiColor[ImGuiCol_FrameBg]        = colors.surfaceContainerHighest;
-    imguiColor[ImGuiCol_FrameBgHovered] = ApplyStateLayer(colors.surfaceContainerHighest, colors.onSurface, colors.stateLayerHover);
-    imguiColor[ImGuiCol_FrameBgActive]  = ApplyStateLayer(colors.surfaceContainerHighest, colors.onSurface, colors.stateLayerPressed);
+    imguiColor[ImGuiCol_FrameBg] = colors.surfaceContainerHighest;
+    imguiColor[ImGuiCol_FrameBgHovered] =
+        ApplyStateLayer(colors.surfaceContainerHighest, colors.onSurface, colors.stateLayerHover);
+    imguiColor[ImGuiCol_FrameBgActive] =
+        ApplyStateLayer(colors.surfaceContainerHighest, colors.onSurface, colors.stateLayerPressed);
 
     // 按钮
-    imguiColor[ImGuiCol_Button]        = colors.surfaceContainerHigh;
-    imguiColor[ImGuiCol_ButtonHovered] = ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerHover);
-    imguiColor[ImGuiCol_ButtonActive]  = colors.primary;
+    imguiColor[ImGuiCol_Button] = colors.surfaceContainerHigh;
+    imguiColor[ImGuiCol_ButtonHovered] =
+        ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerHover);
+    imguiColor[ImGuiCol_ButtonActive] = colors.primary;
 
     // 复选框/滑块
     imguiColor[ImGuiCol_CheckMark]        = colors.primary;
@@ -527,9 +530,11 @@ void ApplyImGuiStyle() {
     imguiColor[ImGuiCol_SliderGrabActive] = colors.primary;
 
     // Header（CollapsingHeader、TreeNode 等）
-    imguiColor[ImGuiCol_Header]        = colors.surfaceContainerHigh;
-    imguiColor[ImGuiCol_HeaderHovered] = ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerHover);
-    imguiColor[ImGuiCol_HeaderActive]  = ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerPressed);
+    imguiColor[ImGuiCol_Header] = colors.surfaceContainerHigh;
+    imguiColor[ImGuiCol_HeaderHovered] =
+        ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerHover);
+    imguiColor[ImGuiCol_HeaderActive] =
+        ApplyStateLayer(colors.surfaceContainerHigh, colors.onSurface, colors.stateLayerPressed);
 
     // 分隔符
     imguiColor[ImGuiCol_Separator]        = colors.outlineVariant;
@@ -542,12 +547,13 @@ void ApplyImGuiStyle() {
     imguiColor[ImGuiCol_ResizeGripActive]  = colors.primary;
 
     // Tab
-    imguiColor[ImGuiCol_Tab]                = colors.surfaceContainerHigh;
-    imguiColor[ImGuiCol_TabHovered]         = ApplyStateLayer(colors.surfaceContainerHigh, colors.primary, colors.stateLayerHover);
-    imguiColor[ImGuiCol_TabSelected]        = colors.secondaryContainer;
-    imguiColor[ImGuiCol_TabSelectedOverline]= colors.primary;
-    imguiColor[ImGuiCol_TabDimmed]          = colors.surfaceContainer;
-    imguiColor[ImGuiCol_TabDimmedSelected]  = colors.surfaceContainerHigh;
+    imguiColor[ImGuiCol_Tab] = colors.surfaceContainerHigh;
+    imguiColor[ImGuiCol_TabHovered] =
+        ApplyStateLayer(colors.surfaceContainerHigh, colors.primary, colors.stateLayerHover);
+    imguiColor[ImGuiCol_TabSelected]         = colors.secondaryContainer;
+    imguiColor[ImGuiCol_TabSelectedOverline] = colors.primary;
+    imguiColor[ImGuiCol_TabDimmed]           = colors.surfaceContainer;
+    imguiColor[ImGuiCol_TabDimmedSelected]   = colors.surfaceContainerHigh;
 
     // 表格
     imguiColor[ImGuiCol_TableHeaderBg]     = colors.surfaceContainerHigh;
@@ -557,16 +563,16 @@ void ApplyImGuiStyle() {
     imguiColor[ImGuiCol_TableRowBgAlt]     = ApplyStateLayer(colors.surface, colors.onSurface, 0.02f);
 
     // 其他
-    imguiColor[ImGuiCol_PlotLines]          = colors.primary;
-    imguiColor[ImGuiCol_PlotLinesHovered]   = colors.tertiary;
-    imguiColor[ImGuiCol_PlotHistogram]      = colors.primary;
-    imguiColor[ImGuiCol_PlotHistogramHovered] = colors.tertiary;
-    imguiColor[ImGuiCol_TextSelectedBg]     = ApplyStateLayer(colors.surface, colors.primary, 0.35f);
-    imguiColor[ImGuiCol_DragDropTarget]     = colors.primary;
-    imguiColor[ImGuiCol_NavHighlight]       = colors.primary;
+    imguiColor[ImGuiCol_PlotLines]             = colors.primary;
+    imguiColor[ImGuiCol_PlotLinesHovered]      = colors.tertiary;
+    imguiColor[ImGuiCol_PlotHistogram]         = colors.primary;
+    imguiColor[ImGuiCol_PlotHistogramHovered]  = colors.tertiary;
+    imguiColor[ImGuiCol_TextSelectedBg]        = ApplyStateLayer(colors.surface, colors.primary, 0.35f);
+    imguiColor[ImGuiCol_DragDropTarget]        = colors.primary;
+    imguiColor[ImGuiCol_NavHighlight]          = colors.primary;
     imguiColor[ImGuiCol_NavWindowingHighlight] = colors.primary;
-    imguiColor[ImGuiCol_NavWindowingDimBg]  = ImVec4(0, 0, 0, 0.20f);
-    imguiColor[ImGuiCol_ModalWindowDimBg]   = ImVec4(0, 0, 0, 0.35f);
+    imguiColor[ImGuiCol_NavWindowingDimBg]     = ImVec4(0, 0, 0, 0.20f);
+    imguiColor[ImGuiCol_ModalWindowDimBg]      = ImVec4(0, 0, 0, 0.35f);
 }
 
 //=============================================================================
@@ -574,40 +580,24 @@ void ApplyImGuiStyle() {
 //=============================================================================
 
 ImVec4 BlendColors(const ImVec4& base, const ImVec4& overlay, float alpha) {
-    return ImVec4(
-        base.x + (overlay.x - base.x) * alpha,
-        base.y + (overlay.y - base.y) * alpha,
-        base.z + (overlay.z - base.z) * alpha,
-        base.w + (overlay.w - base.w) * alpha
-    );
+    return ImVec4(base.x + (overlay.x - base.x) * alpha, base.y + (overlay.y - base.y) * alpha,
+                  base.z + (overlay.z - base.z) * alpha, base.w + (overlay.w - base.w) * alpha);
 }
 
 ImVec4 ApplyStateLayer(const ImVec4& base, const ImVec4& stateColor, float stateAlpha) {
     // 正确的状态层混合：在基础颜色上叠加半透明状态颜色
-    return ImVec4(
-        base.x * (1.0f - stateAlpha) + stateColor.x * stateAlpha,
-        base.y * (1.0f - stateAlpha) + stateColor.y * stateAlpha,
-        base.z * (1.0f - stateAlpha) + stateColor.z * stateAlpha,
-        base.w
-    );
+    return ImVec4(base.x * (1.0f - stateAlpha) + stateColor.x * stateAlpha,
+                  base.y * (1.0f - stateAlpha) + stateColor.y * stateAlpha,
+                  base.z * (1.0f - stateAlpha) + stateColor.z * stateAlpha, base.w);
 }
 
 unsigned int ColorToU32(const ImVec4& color) {
-    return IM_COL32(
-        (int)(color.x * 255.0f + 0.5f),
-        (int)(color.y * 255.0f + 0.5f),
-        (int)(color.z * 255.0f + 0.5f),
-        (int)(color.w * 255.0f + 0.5f)
-    );
+    return IM_COL32((int)(color.x * 255.0f + 0.5f), (int)(color.y * 255.0f + 0.5f), (int)(color.z * 255.0f + 0.5f),
+                    (int)(color.w * 255.0f + 0.5f));
 }
 
 ImVec4 HexToColor(unsigned int hex, float alpha) {
-    return ImVec4(
-        ((hex >> 16) & 0xFF) / 255.0f,
-        ((hex >> 8) & 0xFF) / 255.0f,
-        (hex & 0xFF) / 255.0f,
-        alpha
-    );
+    return ImVec4(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f, alpha);
 }
 
 //=============================================================================
@@ -739,10 +729,75 @@ void DrawRipplesDiligent() {
 }
 
 //=============================================================================
-// 圆角裁剪（使用 ImGui ClipRect 近似）
+// 圆角裁剪（使用 Diligent Stencil 实现）
 //=============================================================================
 
-static std::vector<ImVec4> s_roundedClipStack;
+// Stencil 裁剪栈信息
+struct RoundedClipInfo {
+    ImVec4 rect;       // 裁剪矩形 (x1, y1, x2, y2)
+    float  rounding;   // 圆角半径
+    int    stencilRef; // Stencil 参考值
+};
+
+static std::vector<RoundedClipInfo> s_roundedClipStack;
+static int                          s_stencilRefCounter = 0;
+
+// Stencil 写入回调：绘制圆角矩形到 Stencil 缓冲
+static void RoundedClipBeginCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+    using namespace ParticleSaturn::UI;
+
+    auto* imgui = GetImGuiDiligentInstance();
+    if (imgui == nullptr) {
+        return;
+    }
+
+    // 从 UserCallbackData 获取裁剪信息
+    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
+    if (clipInfo == nullptr) {
+        return;
+    }
+
+    // 设置 Stencil 写入模式
+    imgui->SetStencilMode(StencilMode::WriteIncr, clipInfo->stencilRef);
+}
+
+// Stencil 测试回调：启用 Stencil 测试
+static void RoundedClipTestCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+    using namespace ParticleSaturn::UI;
+
+    auto* imgui = GetImGuiDiligentInstance();
+    if (imgui == nullptr) {
+        return;
+    }
+
+    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
+    if (clipInfo == nullptr) {
+        return;
+    }
+
+    // 设置 Stencil 测试模式
+    imgui->SetStencilMode(StencilMode::TestEqual, clipInfo->stencilRef);
+}
+
+// 恢复正常渲染回调
+static void RoundedClipEndCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+    using namespace ParticleSaturn::UI;
+
+    auto* imgui = GetImGuiDiligentInstance();
+    if (imgui == nullptr) {
+        return;
+    }
+
+    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
+    int   newRef   = (clipInfo != nullptr && !s_roundedClipStack.empty()) ? s_roundedClipStack.back().stencilRef : 0;
+
+    // 恢复到上一层的 Stencil 测试（或禁用）
+    if (newRef > 0) {
+        imgui->SetStencilMode(StencilMode::TestEqual, newRef);
+    } else {
+        imgui->SetStencilMode(StencilMode::Disabled, 0);
+    }
+}
 
 void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float rounding) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -750,12 +805,27 @@ void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float r
         return;
     }
 
-    // 保存当前裁剪区域
-    s_roundedClipStack.push_back(ImVec4(clip_min.x, clip_min.y, clip_max.x, clip_max.y));
+    // 增加 Stencil 参考值
+    s_stencilRefCounter++;
 
-    // ImGui 只支持矩形裁剪，这里先用矩形近似
-    // TODO: 使用 Diligent Stencil 实现真正的圆角裁剪
+    // 保存裁剪信息
+    RoundedClipInfo clipInfo;
+    clipInfo.rect       = ImVec4(clip_min.x, clip_min.y, clip_max.x, clip_max.y);
+    clipInfo.rounding   = rounding;
+    clipInfo.stencilRef = s_stencilRefCounter;
+    s_roundedClipStack.push_back(clipInfo);
+
+    // 设置矩形裁剪（作为基础裁剪）
     dl->PushClipRect(clip_min, clip_max, true);
+
+    // 添加回调：开始 Stencil 写入
+    dl->AddCallback(RoundedClipBeginCallback, &s_roundedClipStack.back());
+
+    // 绘制圆角矩形到 Stencil（使用白色，实际颜色不重要因为不写入颜色缓冲）
+    dl->AddRectFilled(clip_min, clip_max, IM_COL32_WHITE, rounding);
+
+    // 添加回调：切换到 Stencil 测试模式
+    dl->AddCallback(RoundedClipTestCallback, &s_roundedClipStack.back());
 }
 
 void PopRoundedClipRect() {
@@ -764,9 +834,18 @@ void PopRoundedClipRect() {
         return;
     }
 
-    if (!s_roundedClipStack.empty()) {
-        s_roundedClipStack.pop_back();
+    if (s_roundedClipStack.empty()) {
+        return;
     }
+
+    // 添加回调：恢复 Stencil 状态
+    dl->AddCallback(RoundedClipEndCallback, &s_roundedClipStack.back());
+
+    // 弹出裁剪信息
+    s_roundedClipStack.pop_back();
+
+    // 更新 Stencil 参考值计数
+    s_stencilRefCounter = s_roundedClipStack.empty() ? 0 : s_roundedClipStack.back().stencilRef;
 
     dl->PopClipRect();
 }
@@ -775,8 +854,8 @@ void PopRoundedClipRect() {
 // AddImageRounded 实现
 //=============================================================================
 
-void AddImageRounded(ImDrawList* dl, ImTextureID tex_id, const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
+void AddImageRounded(ImDrawList* dl, ImTextureID tex_id, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min,
+                     const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
     if ((col & IM_COL32_A_MASK) == 0 || rounding < 0.5f) {
         // 无透明度或无圆角，直接使用普通 AddImage
         dl->AddImage(tex_id, p_min, p_max, uv_min, uv_max, col);
