@@ -1,21 +1,21 @@
 #pragma once
 
-#include "RenderBackend.h"
-
-#include "DeviceContext.h"
-#include "Buffer.h"
-#include "BufferView.h"
-#include "PipelineState.h"
-#include "RefCntAutoPtr.hpp"
-#include "RenderDevice.h"
-#include "SwapChain.h"
-#include "ShaderResourceBinding.h"
-#include "Texture.h"
-
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
+
+#include "../AppState.h"
+#include "Buffer.h"
+#include "BufferView.h"
+#include "DeviceContext.h"
+#include "PipelineState.h"
+#include "RefCntAutoPtr.hpp"
+#include "RenderBackend.h"
+#include "RenderDevice.h"
+#include "ShaderResourceBinding.h"
+#include "SwapChain.h"
+#include "Texture.h"
 
 struct HWND__;
 using HWND = HWND__*;
@@ -36,7 +36,7 @@ class DiligentBackend final {
     DiligentBackend(DiligentBackend&&)                 = delete;
     DiligentBackend& operator=(DiligentBackend&&)      = delete;
 
-    bool Init(Backend backend, HWND hwnd, SurfaceSize initialSize);
+    bool Init(Backend backend, HWND hwnd, SurfaceSize initialSize, AppState* state);
     void Shutdown();
 
     void Resize(SurfaceSize newSize);
@@ -46,11 +46,14 @@ class DiligentBackend final {
     bool HandleWin32Message(HWND hwnd, unsigned int msg, unsigned long long wParam, long long lParam);
 
     Backend GetBackend() const { return backend_; }
-    bool    IsInitialized() const { return swapChain_ != nullptr; }
+
+    bool IsInitialized() const { return swapChain_ != nullptr; }
+
     const std::wstring& GetLastError() const { return lastError_; }
 
   private:
     void SetLastError(const wchar_t* msg) { lastError_ = (msg != nullptr) ? msg : L""; }
+
     bool CreateFullscreenQuadPSO();
     bool CreateOffscreenRenderTarget(SurfaceSize size);
     bool CreateStarfieldPSO();
@@ -68,92 +71,84 @@ class DiligentBackend final {
     void SimulateParticles(float dt, float handScale, float handHas);
     void RenderSevenSegmentFPS();
 
-    Backend backend_ = Backend::D3D12;
-    SurfaceSize surfaceSize_{};
+    Backend      backend_ = Backend::D3D12;
+    SurfaceSize  surfaceSize_{};
     std::wstring lastError_;
 
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice>  device_;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediateContext_;
     Diligent::RefCntAutoPtr<Diligent::ISwapChain>     swapChain_;
 
-    Diligent::RefCntAutoPtr<Diligent::IPipelineState> fullscreenQuadPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         fullscreenQuadPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> fullscreenQuadSRB_;
 
-    std::chrono::steady_clock::time_point startTime_ = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point startTime_    = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point lastAnimTime_ = std::chrono::steady_clock::time_point{};
-    float                                animAutoTime_  = 0.0f;
-    float                                animScale_     = 1.0f;
-    float                                animRotX_      = 0.4f;
-    float                                animRotY_      = 0.0f;
+    float                                 animAutoTime_ = 0.0f;
+    float                                 animScale_    = 1.0f;
+    float                                 animRotX_     = 0.4f;
+    float                                 animRotY_     = 0.0f;
 
     // FPS 计算（简单移动平均）
-    static constexpr int kFpsSampleCount = 60;
-    float                fpsSamples_[kFpsSampleCount]{};
-    int                  fpsSampleIndex_ = 0;
-    float                currentFps_     = 60.0f;
+    static constexpr int                  kFpsSampleCount = 60;
+    float                                 fpsSamples_[kFpsSampleCount]{};
+    int                                   fpsSampleIndex_ = 0;
+    float                                 currentFps_     = 60.0f;
     std::chrono::steady_clock::time_point lastFrameTime_{};
 
     // FPS 历史曲线（低频采样）
-    static constexpr int kFpsHistorySize = 60;
-    float                fpsHistory_[kFpsHistorySize]{};
-    int                  fpsHistoryIndex_ = 0;
-    float                fpsHistorySampleTimer_ = 0.0f;
+    static constexpr int   kFpsHistorySize = 60;
+    float                  fpsHistory_[kFpsHistorySize]{};
+    int                    fpsHistoryIndex_          = 0;
+    float                  fpsHistorySampleTimer_    = 0.0f;
     static constexpr float kFpsHistorySampleInterval = 0.1f; // 100ms 采样一次
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         starPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> starSRB_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               starVB_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               starConstants_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                starVB_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                starConstants_;
     uint32_t                                                  starCount_ = 0;
 
-    static constexpr uint32_t                                 kParticleBufferCount = 3;
-    uint32_t                                                  particleRenderIdx_  = 0;
-    uint32_t                                                  particleReadIdx_    = 0;
-    uint32_t                                                  particleWriteIdx_   = 1;
-    uint32_t                                                  particleCount_      = 0;
+    static constexpr uint32_t kParticleBufferCount = 3;
+    uint32_t                  particleRenderIdx_   = 0;
+    uint32_t                  particleReadIdx_     = 0;
+    uint32_t                  particleWriteIdx_    = 1;
+    uint32_t                  particleCount_       = 0;
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particlePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleSRB_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               particleConstants_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               particleIndirectArgs_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleConstants_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleIndirectArgs_;
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleComputePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleComputeSRB_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               particleComputeConstants_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleComputeConstants_;
 
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               particleBuffers_[kParticleBufferCount];
-    Diligent::RefCntAutoPtr<Diligent::IBufferView>           particleSRVs_[kParticleBufferCount];
-    Diligent::RefCntAutoPtr<Diligent::IBufferView>           particleUAVs_[kParticleBufferCount];
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>     particleBuffers_[kParticleBufferCount];
+    Diligent::RefCntAutoPtr<Diligent::IBufferView> particleSRVs_[kParticleBufferCount];
+    Diligent::RefCntAutoPtr<Diligent::IBufferView> particleUAVs_[kParticleBufferCount];
 
     Diligent::RefCntAutoPtr<Diligent::ITexture>     offscreenColor_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> offscreenRTV_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> offscreenSRV_;
 
     // Bloom constants for fullscreen quad
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>               bloomConstants_;
-    float                                                     bloomStrength_ = 0.5f;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
+    float                                      bloomStrength_ = 0.5f;
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> sevenSegSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegConstants_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegVB_[10];  // 每个数字一个 VB
-    uint32_t                                                   sevenSegVertexCount_[10]{};
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegVB_[10]; // 每个数字一个 VB
+    uint32_t                                                  sevenSegVertexCount_[10]{};
 
     // ImGui integration
     std::unique_ptr<UI::ImGuiDiligent> imgui_;
-    HWND hwnd_ = nullptr;
+    HWND                               hwnd_ = nullptr;
 
-    // UI 状态
-    bool isDarkMode_ = true;       // 暗色模式
-    bool isFullscreen_ = false;    // 全屏模式
-    int  vsyncMode_ = 1;           // VSync 模式: 0=Off, 1=On
-
-    // 窗口模式下的位置和大小（用于全屏切换）
-    int windowedX_ = 100;
-    int windowedY_ = 100;
-    int windowedW_ = 1280;
-    int windowedH_ = 720;
+    // 全局应用状态（由外部传入，生命周期由调用方管理）
+    AppState* appState_ = nullptr;
 };
 
 } // namespace ParticleSaturn::Render

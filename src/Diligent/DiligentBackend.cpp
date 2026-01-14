@@ -1,19 +1,4 @@
 #include "DiligentBackend.h"
-#include "ImGuiDiligent.h"
-
-#include "imgui.h"
-
-#include "md3/MD3.h"
-
-#include "NativeWindow.h"
-
-#include "GraphicsTypes.h"
-#include "InputLayout.h"
-#include "Sampler.h"
-
-#include "EngineFactoryD3D12.h"
-
-#include "EngineFactoryVk.h"
 
 #include <cmath>
 #include <cstdarg>
@@ -21,6 +6,16 @@
 #include <ctime>
 #include <random>
 #include <vector>
+
+#include "EngineFactoryD3D12.h"
+#include "EngineFactoryVk.h"
+#include "GraphicsTypes.h"
+#include "ImGuiDiligent.h"
+#include "InputLayout.h"
+#include "NativeWindow.h"
+#include "Sampler.h"
+#include "imgui.h"
+#include "md3/MD3.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -57,21 +52,25 @@ uint32_t ComputeStarCountForResolution(uint32_t width, uint32_t height) {
     const double scale    = (baseArea > 0.0) ? (area / baseArea) : 1.0;
 
     double countD = static_cast<double>(kStarDensityBaseCount) * scale;
-    if (countD < static_cast<double>(kStarDensityMinCount)) countD = static_cast<double>(kStarDensityMinCount);
-    if (countD > static_cast<double>(kStarDensityMaxCount)) countD = static_cast<double>(kStarDensityMaxCount);
+    if (countD < static_cast<double>(kStarDensityMinCount)) {
+        countD = static_cast<double>(kStarDensityMinCount);
+    }
+    if (countD > static_cast<double>(kStarDensityMaxCount)) {
+        countD = static_cast<double>(kStarDensityMaxCount);
+    }
 
     // 四舍五入，保证 1920x1080 下刚好是 50000。
     return static_cast<uint32_t>(countD + 0.5);
 }
 
 struct ShaderSources {
-    const char* Vertex   = nullptr;
-    const char* Fragment = nullptr;
+    const char*            Vertex   = nullptr;
+    const char*            Fragment = nullptr;
     SHADER_SOURCE_LANGUAGE Language = SHADER_SOURCE_LANGUAGE_DEFAULT;
 };
 
 struct ComputeShaderSource {
-    const char* Source = nullptr;
+    const char*            Source   = nullptr;
     SHADER_SOURCE_LANGUAGE Language = SHADER_SOURCE_LANGUAGE_DEFAULT;
 };
 
@@ -1148,11 +1147,8 @@ void main()
     return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
 }
 
-RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device,
-                                              const char*    name,
-                                              SHADER_TYPE    type,
-                                              const char*    source,
-                                              SHADER_SOURCE_LANGUAGE language) {
+RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char* name, SHADER_TYPE type,
+                                              const char* source, SHADER_SOURCE_LANGUAGE language) {
     ShaderCreateInfo shaderCI{};
     shaderCI.Desc.Name       = name;
     shaderCI.Desc.ShaderType = type;
@@ -1173,11 +1169,11 @@ struct StarInstance {
 };
 
 struct SaturnParticle {
-    float    Pos[4]  = {0.0f, 0.0f, 0.0f, 1.0f}; // xyz + scale
-    uint32_t Color   = 0xFFFFFFFFu;              // RGBA8 packed
-    float    Speed   = 0.0f;
-    float    IsRing  = 0.0f;
-    float    Pad     = 0.0f;
+    float    Pos[4] = {0.0f, 0.0f, 0.0f, 1.0f}; // xyz + scale
+    uint32_t Color  = 0xFFFFFFFFu;              // RGBA8 packed
+    float    Speed  = 0.0f;
+    float    IsRing = 0.0f;
+    float    Pad    = 0.0f;
 };
 
 struct Mat4Rows {
@@ -1195,9 +1191,13 @@ struct Vec3 {
     float z = 0;
 };
 
-Vec3 Sub(Vec3 a, Vec3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+Vec3 Sub(Vec3 a, Vec3 b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
 
-float Dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+float Dot(Vec3 a, Vec3 b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
 
 Vec3 Cross(Vec3 a, Vec3 b) {
     return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
@@ -1244,7 +1244,7 @@ Mat4Rows LookAtRH(Vec3 eye, Vec3 center, Vec3 up) {
 Mat4Rows PerspectiveRH_OpenGL(float fovyRad, float aspect, float zNear, float zFar) {
     // OpenGL 风格的 RH 投影矩阵（clip.w = -view.z），主要用于正确的 x/y 投影与深度相关点大小。
     const float f = 1.0f / std::tan(fovyRad * 0.5f);
-    Mat4Rows m{};
+    Mat4Rows    m{};
     m.Row[0][0] = f / aspect;
     m.Row[0][1] = 0.0f;
     m.Row[0][2] = 0.0f;
@@ -1389,13 +1389,15 @@ struct StarConstants {
 };
 
 struct ParticleComputeConstants {
-    float    Dt           = 0.0f;
-    float    HandScale    = 1.0f;
-    float    HandHas      = 0.0f;
+    float    Dt            = 0.0f;
+    float    HandScale     = 1.0f;
+    float    HandHas       = 0.0f;
     uint32_t ParticleCount = 0u;
 };
 
-constexpr float HexToFloat(uint32_t v) { return static_cast<float>(v) / 255.0f; }
+constexpr float HexToFloat(uint32_t v) {
+    return static_cast<float>(v) / 255.0f;
+}
 
 void HexToRGB(uint32_t rgb, float outColor[3]) {
     outColor[0] = HexToFloat((rgb >> 16) & 0xFF);
@@ -1404,7 +1406,7 @@ void HexToRGB(uint32_t rgb, float outColor[3]) {
 }
 
 float Random01(uint32_t& state) {
-    state = state * 747796405u + 2891336453u;
+    state           = state * 747796405u + 2891336453u;
     uint32_t result = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     result          = (result >> 22u) ^ result;
     return static_cast<float>(result) / 4294967295.0f;
@@ -1412,8 +1414,12 @@ float Random01(uint32_t& state) {
 
 uint32_t PackRGBA8(float r, float g, float b, float a) {
     auto clamp01 = [](float x) {
-        if (x < 0.0f) return 0.0f;
-        if (x > 1.0f) return 1.0f;
+        if (x < 0.0f) {
+            return 0.0f;
+        }
+        if (x > 1.0f) {
+            return 1.0f;
+        }
         return x;
     };
     const uint32_t ur = static_cast<uint32_t>(clamp01(r) * 255.0f);
@@ -1445,7 +1451,7 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
         SaturnParticle p{};
         float          alpha = 1.0f;
         Vec3           colRGB{1, 1, 1};
-        float          speed = 0.0f;
+        float          speed  = 0.0f;
         float          isRing = 0.0f;
 
         if (typeRnd < 0.25f) {
@@ -1457,13 +1463,16 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
             p.Pos[1] = R * std::cos(ph) * 0.9f;
             p.Pos[2] = R * std::sin(ph) * std::sin(th);
 
-            const float lat   = (p.Pos[1] / 0.9f / R + 1.0f) * 0.5f;
-            const int   idxInt = static_cast<int>(lat * 4.0f + std::cos(lat * 40.0f) * 0.8f + std::cos(lat * 15.0f) * 0.4f);
-            int         ci     = idxInt - (idxInt / 4) * 4;
-            if (ci < 0) ci = 0;
+            const float lat = (p.Pos[1] / 0.9f / R + 1.0f) * 0.5f;
+            const int   idxInt =
+                static_cast<int>(lat * 4.0f + std::cos(lat * 40.0f) * 0.8f + std::cos(lat * 15.0f) * 0.4f);
+            int ci = idxInt - (idxInt / 4) * 4;
+            if (ci < 0) {
+                ci = 0;
+            }
 
             const Vec3 cols[4] = {HexToRGB(0xE3DAC5), HexToRGB(0xC9A070), HexToRGB(0xE3DAC5), HexToRGB(0xB08D55)};
-            colRGB = cols[ci];
+            colRGB             = cols[ci];
 
             p.Pos[3] = 1.0f + Random01(rngState) * 0.8f;
             alpha    = 0.8f;
@@ -1471,7 +1480,7 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
             isRing   = 0.0f;
         } else {
             // --- 土星环粒子 ---
-            const float z = Random01(rngState);
+            const float z   = Random01(rngState);
             float       rad = 0.0f;
             Vec3        c{1, 1, 1};
             float       s = 1.0f;
@@ -1488,7 +1497,9 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
                 c             = Mix(HexToRGB(0xCDBFA0), HexToRGB(0xDCCBBA), t);
                 s             = 0.8f + Random01(rngState) * 0.6f;
                 o             = 0.85f;
-                if (std::sin(rad * 2.0f) > 0.8f) o *= 1.2f;
+                if (std::sin(rad * 2.0f) > 0.8f) {
+                    o *= 1.2f;
+                }
             } else if (z < 0.69f) {
                 rad = R * (1.95f + Random01(rngState) * 0.075f);
                 c   = HexToRGB(0x050505);
@@ -1499,7 +1510,9 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
                 c   = HexToRGB(0x989085);
                 s   = 0.7f;
                 o   = 0.6f;
-                if (rad > R * 2.2f && rad < R * 2.21f) o = 0.1f;
+                if (rad > R * 2.2f && rad < R * 2.21f) {
+                    o = 0.1f;
+                }
             } else {
                 rad = R * (2.32f + Random01(rngState) * 0.02f);
                 c   = HexToRGB(0xAFAFA0);
@@ -1508,13 +1521,13 @@ std::vector<SaturnParticle> InitSaturnParticlesCPU(uint32_t maxParticles, uint32
             }
 
             const float th = Random01(rngState) * 6.28318f;
-            p.Pos[0] = rad * std::cos(th);
-            p.Pos[2] = rad * std::sin(th);
+            p.Pos[0]       = rad * std::cos(th);
+            p.Pos[2]       = rad * std::sin(th);
 
             const float heightRange = (rad > R * 2.3f) ? 0.4f : 0.15f;
-            p.Pos[1] = (Random01(rngState) - 0.5f) * heightRange;
+            p.Pos[1]                = (Random01(rngState) - 0.5f) * heightRange;
 
-            colRGB = c;
+            colRGB   = c;
             p.Pos[3] = s;
             alpha    = o;
             speed    = 8.0f / std::sqrt(rad);
@@ -1619,8 +1632,9 @@ void main()
 
 } // namespace
 
-bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize) {
-    backend_ = backend;
+bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, AppState* state) {
+    backend_  = backend;
+    appState_ = state;
     SetLastError(nullptr);
 
     if (hwnd == nullptr || initialSize.Width == 0 || initialSize.Height == 0) {
@@ -1674,20 +1688,24 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize) 
     // 后续渲染/点精灵的像素尺寸换算依赖“真实 RT 尺寸”，这里优先以 SwapChainDesc 为准。
     const auto& scFinalDesc = swapChain_->GetDesc();
     surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
-    startTime_   = std::chrono::steady_clock::now();
-    lastAnimTime_ = std::chrono::steady_clock::time_point{};
-    animAutoTime_ = 0.0f;
-    animScale_    = 1.0f;
-    animRotX_     = 0.4f;
-    animRotY_     = 0.0f;
+    startTime_              = std::chrono::steady_clock::now();
+    lastAnimTime_           = std::chrono::steady_clock::time_point{};
+    animAutoTime_           = 0.0f;
+    animScale_              = 1.0f;
+    animRotX_               = 0.4f;
+    animRotY_               = 0.0f;
 
     if (!CreateFullscreenQuadPSO()) {
-        if (lastError_.empty()) SetLastError(L"CreateFullscreenQuadPSO() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateFullscreenQuadPSO() 失败。");
+        }
         return false;
     }
 
     if (!CreateOffscreenRenderTarget(surfaceSize_)) {
-        if (lastError_.empty()) SetLastError(L"CreateOffscreenRenderTarget() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateOffscreenRenderTarget() 失败。");
+        }
         return false;
     }
     UpdateFullscreenQuadBindings();
@@ -1696,44 +1714,60 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize) 
     // 星空密度与分辨率无关：以 OpenGL 版在 1920x1080 下的密度（5 万）为基准，按像素面积等比缩放星星数量。
     const uint32_t desiredStarCount = ComputeStarCountForResolution(surfaceSize_.Width, surfaceSize_.Height);
     if (!CreateStarfieldBuffers(desiredStarCount)) {
-        if (lastError_.empty()) SetLastError(L"CreateStarfieldBuffers() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateStarfieldBuffers() 失败。");
+        }
         return false;
     }
     if (!CreateStarfieldPSO()) {
-        if (lastError_.empty()) SetLastError(L"CreateStarfieldPSO() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateStarfieldPSO() 失败。");
+        }
         return false;
     }
 
     // 阶段 3（第 1 步）：粒子数据通路（先 CPU 复刻初始化，后续再接 compute 三缓冲轮转）。
     // 复刻 OpenGL 旧版默认粒子规模：120 万（视觉遮蔽/密度/“不透光感”强相关）。
     if (!CreateParticleBuffers(1200000)) {
-        if (lastError_.empty()) SetLastError(L"CreateParticleBuffers() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateParticleBuffers() 失败。");
+        }
         return false;
     }
     if (!CreateParticlePSO()) {
-        if (lastError_.empty()) SetLastError(L"CreateParticlePSO() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateParticlePSO() 失败。");
+        }
         return false;
     }
     if (!CreateParticleComputePSO()) {
-        if (lastError_.empty()) SetLastError(L"CreateParticleComputePSO() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateParticleComputePSO() 失败。");
+        }
         return false;
     }
 
     // 阶段 5：七段数码管 FPS 显示
     if (!CreateSevenSegmentPSO()) {
-        if (lastError_.empty()) SetLastError(L"CreateSevenSegmentPSO() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateSevenSegmentPSO() 失败。");
+        }
         return false;
     }
     if (!CreateSevenSegmentBuffers()) {
-        if (lastError_.empty()) SetLastError(L"CreateSevenSegmentBuffers() 失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"CreateSevenSegmentBuffers() 失败。");
+        }
         return false;
     }
 
     // 阶段 5：ImGui 初始化
-    hwnd_ = hwnd;
+    hwnd_  = hwnd;
     imgui_ = std::make_unique<UI::ImGuiDiligent>();
     if (!imgui_->Init(hwnd, backend, device_, swapChain_)) {
-        if (lastError_.empty()) SetLastError(L"ImGui 初始化失败。");
+        if (lastError_.empty()) {
+            SetLastError(L"ImGui 初始化失败。");
+        }
         return false;
     }
 
@@ -1774,9 +1808,15 @@ void DiligentBackend::Shutdown() {
     particleComputeSRB_.Release();
     particleComputeConstants_.Release();
     particleComputePSO_.Release();
-    for (auto& v : particleUAVs_) v.Release();
-    for (auto& v : particleSRVs_) v.Release();
-    for (auto& b : particleBuffers_) b.Release();
+    for (auto& v : particleUAVs_) {
+        v.Release();
+    }
+    for (auto& v : particleSRVs_) {
+        v.Release();
+    }
+    for (auto& b : particleBuffers_) {
+        b.Release();
+    }
     particleCount_ = 0;
 
     swapChain_.Release();
@@ -1825,8 +1865,10 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
         return false;
     }
 
-    const auto vs = CreateShaderFromSource(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
-    const auto ps = CreateShaderFromSource(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+    const auto vs =
+        CreateShaderFromSource(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+    const auto ps =
+        CreateShaderFromSource(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -1842,16 +1884,16 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     // 当前阶段的离屏 RT 不带深度；PSO 也不绑定 DSV。
     psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN;
 
-    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
     // 离屏合成：采样 HDR 纹理 + Bloom 纹理并做 tone mapping。
     // g_Texture 和 g_BloomTexture 使用 DYNAMIC 以便每帧可以更换（Resize 后需要更新）
     const ShaderResourceVariableDesc vars[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture",      SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         {SHADER_TYPE_PIXEL, "g_BloomTexture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {SHADER_TYPE_PIXEL, "BloomCB",        SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "BloomCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
     psoCI.PSODesc.ResourceLayout.Variables    = vars;
@@ -1866,7 +1908,7 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 
     // 让 HLSL 侧的 g_Texture_sampler / g_BloomTexture_sampler 使用同一个不可变采样器。
     const ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture",      sampDesc},
+        {SHADER_TYPE_PIXEL, "g_Texture", sampDesc},
         {SHADER_TYPE_PIXEL, "g_BloomTexture", sampDesc},
     };
     psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
@@ -1914,7 +1956,7 @@ bool DiligentBackend::CreateStarfieldBuffers(uint32_t starCount) {
         return false;
     }
 
-    std::mt19937 gen{1337u};
+    std::mt19937                          gen{1337u};
     std::uniform_real_distribution<float> rnd01(0.0f, 1.0f);
 
     const uint32_t kPalette[] = {0xE3DAC5u, 0xC9A070u, 0xE3DAC5u, 0xB08D55u};
@@ -1990,8 +2032,10 @@ bool DiligentBackend::CreateStarfieldPSO() {
         return false;
     }
 
-    const auto vs = CreateShaderFromSource(device_, "Starfield VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
-    const auto ps = CreateShaderFromSource(device_, "Starfield PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+    const auto vs =
+        CreateShaderFromSource(device_, "Starfield VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+    const auto ps =
+        CreateShaderFromSource(device_, "Starfield PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -2000,24 +2044,24 @@ bool DiligentBackend::CreateStarfieldPSO() {
     psoCI.PSODesc.Name         = "Starfield PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    const auto& scDesc = swapChain_->GetDesc();
+    const auto& scDesc                      = swapChain_->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
     (void)scDesc;
-    psoCI.GraphicsPipeline.RTVFormats[0]    = kOffscreenColorFormat;
-    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN;
+    psoCI.GraphicsPipeline.RTVFormats[0]     = kOffscreenColorFormat;
+    psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_UNKNOWN;
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
-    auto& blendRT = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    blendRT.BlendEnable   = True;
-    blendRT.SrcBlend      = BLEND_FACTOR_SRC_ALPHA;
-    blendRT.DestBlend     = BLEND_FACTOR_ONE;
-    blendRT.BlendOp       = BLEND_OPERATION_ADD;
-    blendRT.SrcBlendAlpha = BLEND_FACTOR_ONE;
+    auto& blendRT          = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    blendRT.BlendEnable    = True;
+    blendRT.SrcBlend       = BLEND_FACTOR_SRC_ALPHA;
+    blendRT.DestBlend      = BLEND_FACTOR_ONE;
+    blendRT.BlendOp        = BLEND_OPERATION_ADD;
+    blendRT.SrcBlendAlpha  = BLEND_FACTOR_ONE;
     blendRT.DestBlendAlpha = BLEND_FACTOR_ONE;
-    blendRT.BlendOpAlpha  = BLEND_OPERATION_ADD;
+    blendRT.BlendOpAlpha   = BLEND_OPERATION_ADD;
 
     const LayoutElement layoutElems[] = {
         LayoutElement{0, 0, 3, VT_FLOAT32, False, LAYOUT_ELEMENT_AUTO_OFFSET, LAYOUT_ELEMENT_AUTO_STRIDE,
@@ -2035,7 +2079,7 @@ bool DiligentBackend::CreateStarfieldPSO() {
     // 常量缓冲设为静态变量：每帧只更新 buffer 内容。
     const ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_VERTEX, "StarConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
-        {SHADER_TYPE_PIXEL,  "StarConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "StarConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
     psoCI.PSODesc.ResourceLayout.Variables    = vars;
@@ -2077,7 +2121,7 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
 
     // OpenGL 版在 ComputeInitSaturn 里用 time(0) 作为随机种子（uSeed）。
     // Diligent 版这里也对齐：避免环过于“统计学完美对称”，导致即使在公转也很难被肉眼感知。
-    const uint32_t seed = static_cast<uint32_t>(std::time(nullptr));
+    const uint32_t seed         = static_cast<uint32_t>(std::time(nullptr));
     const auto     cpuParticles = InitSaturnParticlesCPU(maxParticles, seed);
     if (cpuParticles.empty()) {
         SetLastError(L"CreateParticleBuffers: CPU 初始化粒子数组为空。");
@@ -2088,11 +2132,11 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
 
     for (uint32_t i = 0; i < kParticleBufferCount; ++i) {
         BufferDesc bufDesc{};
-        bufDesc.Name             = "Saturn Particles";
-        bufDesc.Size             = bufferSize;
-        bufDesc.BindFlags        = BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
-        bufDesc.Usage            = USAGE_DEFAULT;
-        bufDesc.Mode             = BUFFER_MODE_STRUCTURED;
+        bufDesc.Name              = "Saturn Particles";
+        bufDesc.Size              = bufferSize;
+        bufDesc.BindFlags         = BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
+        bufDesc.Usage             = USAGE_DEFAULT;
+        bufDesc.Mode              = BUFFER_MODE_STRUCTURED;
         bufDesc.ElementByteStride = sizeof(SaturnParticle);
 
         BufferData initData{};
@@ -2157,9 +2201,9 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
         uint32_t args[4] = {6u, maxParticles, 0u, 0u};
 
         BufferDesc bufDesc{};
-        bufDesc.Name           = "Particle Indirect Draw Args";
-        bufDesc.Size           = sizeof(args);
-        bufDesc.BindFlags      = BIND_INDIRECT_DRAW_ARGS;
+        bufDesc.Name      = "Particle Indirect Draw Args";
+        bufDesc.Size      = sizeof(args);
+        bufDesc.BindFlags = BIND_INDIRECT_DRAW_ARGS;
         // 注意：Indirect args 必须是 GPU 可读的缓冲；不要用可映射的动态缓冲（部分后端会直接创建失败）。
         // 后续如果要做动态 LOD，需要更新 args 时，用 IDeviceContext::UpdateBuffer() 写入即可。
         bufDesc.Usage          = USAGE_DEFAULT;
@@ -2199,8 +2243,10 @@ bool DiligentBackend::CreateParticlePSO() {
         return false;
     }
 
-    const auto vs = CreateShaderFromSource(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
-    const auto ps = CreateShaderFromSource(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+    const auto vs =
+        CreateShaderFromSource(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+    const auto ps =
+        CreateShaderFromSource(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -2209,29 +2255,29 @@ bool DiligentBackend::CreateParticlePSO() {
     psoCI.PSODesc.Name         = "SaturnParticle PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    const auto& scDesc = swapChain_->GetDesc();
+    const auto& scDesc                      = swapChain_->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
     (void)scDesc;
-    psoCI.GraphicsPipeline.RTVFormats[0]    = kOffscreenColorFormat;
-    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN;
-    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.RTVFormats[0]                = kOffscreenColorFormat;
+    psoCI.GraphicsPipeline.DSVFormat                    = TEX_FORMAT_UNKNOWN;
+    psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
-    auto& blendRT = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    blendRT.BlendEnable   = True;
-    blendRT.SrcBlend      = BLEND_FACTOR_SRC_ALPHA;
-    blendRT.DestBlend     = BLEND_FACTOR_ONE;
-    blendRT.BlendOp       = BLEND_OPERATION_ADD;
-    blendRT.SrcBlendAlpha = BLEND_FACTOR_ONE;
+    auto& blendRT          = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    blendRT.BlendEnable    = True;
+    blendRT.SrcBlend       = BLEND_FACTOR_SRC_ALPHA;
+    blendRT.DestBlend      = BLEND_FACTOR_ONE;
+    blendRT.BlendOp        = BLEND_OPERATION_ADD;
+    blendRT.SrcBlendAlpha  = BLEND_FACTOR_ONE;
     blendRT.DestBlendAlpha = BLEND_FACTOR_ONE;
-    blendRT.BlendOpAlpha  = BLEND_OPERATION_ADD;
+    blendRT.BlendOpAlpha   = BLEND_OPERATION_ADD;
 
     const ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_VERTEX, "ParticleConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
-        {SHADER_TYPE_PIXEL,  "ParticleConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "ParticleConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
         // g_Particles 需要每帧更换（三缓冲轮转），必须使用 DYNAMIC 类型
-        {SHADER_TYPE_VERTEX, "g_Particles",       SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_VERTEX, "g_Particles", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
     };
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
     psoCI.PSODesc.ResourceLayout.Variables    = vars;
@@ -2245,7 +2291,8 @@ bool DiligentBackend::CreateParticlePSO() {
         return false;
     }
 
-    if (auto* varVS = particlePSO_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "ParticleConstants"); varVS != nullptr) {
+    if (auto* varVS = particlePSO_->GetStaticVariableByName(SHADER_TYPE_VERTEX, "ParticleConstants");
+        varVS != nullptr) {
         varVS->Set(particleConstants_);
     } else {
         return false;
@@ -2274,7 +2321,8 @@ bool DiligentBackend::CreateParticleComputePSO() {
         return false;
     }
 
-    const auto cs = CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language);
+    const auto cs =
+        CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language);
     if (cs == nullptr) {
         OutputDebugStringA("[CreateParticleComputePSO] Compute shader compilation failed\n");
         return false;
@@ -2290,8 +2338,8 @@ bool DiligentBackend::CreateParticleComputePSO() {
     // - ComputeConstants: binding=2 (STATIC)
     // 注意：MUTABLE 只能在 SRB 创建后设置一次，DYNAMIC 才能每帧更新！
     const ShaderResourceVariableDesc vars[] = {
-        {SHADER_TYPE_COMPUTE, "g_ParticlesIn",    SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {SHADER_TYPE_COMPUTE, "g_ParticlesOut",   SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_COMPUTE, "g_ParticlesIn", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_COMPUTE, "g_ParticlesOut", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         {SHADER_TYPE_COMPUTE, "ComputeConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
@@ -2307,7 +2355,8 @@ bool DiligentBackend::CreateParticleComputePSO() {
         return false;
     }
 
-    if (auto* var = particleComputePSO_->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "ComputeConstants"); var != nullptr) {
+    if (auto* var = particleComputePSO_->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "ComputeConstants");
+        var != nullptr) {
         var->Set(particleComputeConstants_);
     } else {
         OutputDebugStringA("[CreateParticleComputePSO] GetStaticVariableByName(ComputeConstants) returned nullptr\n");
@@ -2365,7 +2414,7 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
         return false;
     }
 
-    const bool isVulkan = (backend_ == Backend::Vulkan);
+    const bool  isVulkan = (backend_ == Backend::Vulkan);
     const char* vsSource = isVulkan ? kSevenSegGlslVS : kSevenSegHlslVS;
     const char* psSource = isVulkan ? kSevenSegGlslPS : kSevenSegHlslPS;
     const auto  lang     = isVulkan ? SHADER_SOURCE_LANGUAGE_GLSL : SHADER_SOURCE_LANGUAGE_HLSL;
@@ -2373,62 +2422,66 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
     RefCntAutoPtr<IShader> vs, ps;
     {
         ShaderCreateInfo sci{};
-        sci.SourceLanguage = lang;
+        sci.SourceLanguage  = lang;
         sci.Desc.ShaderType = SHADER_TYPE_VERTEX;
-        sci.Desc.Name = "SevenSegment VS";
-        sci.EntryPoint = "main";
-        sci.Source = vsSource;
+        sci.Desc.Name       = "SevenSegment VS";
+        sci.EntryPoint      = "main";
+        sci.Source          = vsSource;
         device_->CreateShader(sci, &vs);
-        if (vs == nullptr) return false;
+        if (vs == nullptr) {
+            return false;
+        }
     }
     {
         ShaderCreateInfo sci{};
-        sci.SourceLanguage = lang;
+        sci.SourceLanguage  = lang;
         sci.Desc.ShaderType = SHADER_TYPE_PIXEL;
-        sci.Desc.Name = "SevenSegment PS";
-        sci.EntryPoint = "main";
-        sci.Source = psSource;
+        sci.Desc.Name       = "SevenSegment PS";
+        sci.EntryPoint      = "main";
+        sci.Source          = psSource;
         device_->CreateShader(sci, &ps);
-        if (ps == nullptr) return false;
+        if (ps == nullptr) {
+            return false;
+        }
     }
 
     GraphicsPipelineStateCreateInfo psoCI{};
-    psoCI.PSODesc.Name = "SevenSegment PSO";
+    psoCI.PSODesc.Name         = "SevenSegment PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
     // 顶点输入：float2 位置
     LayoutElement layoutElems[] = {
         {0, 0, 2, VT_FLOAT32, False},
     };
-    psoCI.GraphicsPipeline.InputLayout.NumElements = 1;
+    psoCI.GraphicsPipeline.InputLayout.NumElements    = 1;
     psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElems;
-    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_LINE_LIST;
+    psoCI.GraphicsPipeline.PrimitiveTopology          = PRIMITIVE_TOPOLOGY_LINE_LIST;
 
     // 渲染目标格式
-    const auto& scDesc = swapChain_->GetDesc();
+    const auto& scDesc                      = swapChain_->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = scDesc.ColorBufferFormat;
-    psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN; // 不使用深度
+    psoCI.GraphicsPipeline.RTVFormats[0]    = scDesc.ColorBufferFormat;
+    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN; // 不使用深度
 
     // Alpha 混合（线条不透明，但保持一致性）
-    auto& rt0 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    rt0.BlendEnable = True;
-    rt0.SrcBlend = BLEND_FACTOR_SRC_ALPHA;
-    rt0.DestBlend = BLEND_FACTOR_INV_SRC_ALPHA;
-    rt0.BlendOp = BLEND_OPERATION_ADD;
-    rt0.SrcBlendAlpha = BLEND_FACTOR_ONE;
-    rt0.DestBlendAlpha = BLEND_FACTOR_INV_SRC_ALPHA;
-    rt0.BlendOpAlpha = BLEND_OPERATION_ADD;
+    auto& rt0                 = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    rt0.BlendEnable           = True;
+    rt0.SrcBlend              = BLEND_FACTOR_SRC_ALPHA;
+    rt0.DestBlend             = BLEND_FACTOR_INV_SRC_ALPHA;
+    rt0.BlendOp               = BLEND_OPERATION_ADD;
+    rt0.SrcBlendAlpha         = BLEND_FACTOR_ONE;
+    rt0.DestBlendAlpha        = BLEND_FACTOR_INV_SRC_ALPHA;
+    rt0.BlendOpAlpha          = BLEND_OPERATION_ADD;
     rt0.RenderTargetWriteMask = COLOR_MASK_ALL;
 
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
     // 资源布局
     const ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_VERTEX, "SevenSegCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
-    psoCI.PSODesc.ResourceLayout.Variables = vars;
+    psoCI.PSODesc.ResourceLayout.Variables    = vars;
     psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
 
     psoCI.pVS = vs;
@@ -2441,10 +2494,10 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
 
     // 创建常量缓冲
     BufferDesc cbDesc{};
-    cbDesc.Name = "SevenSegment Constants";
-    cbDesc.Size = 64 + 16 + 16; // mat4 + vec4 + vec4 (padding to 16-byte alignment)
-    cbDesc.Usage = USAGE_DYNAMIC;
-    cbDesc.BindFlags = BIND_UNIFORM_BUFFER;
+    cbDesc.Name           = "SevenSegment Constants";
+    cbDesc.Size           = 64 + 16 + 16; // mat4 + vec4 + vec4 (padding to 16-byte alignment)
+    cbDesc.Usage          = USAGE_DYNAMIC;
+    cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
     cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
     device_->CreateBuffer(cbDesc, nullptr, &sevenSegConstants_);
     if (sevenSegConstants_ == nullptr) {
@@ -2471,31 +2524,45 @@ bool DiligentBackend::CreateSevenSegmentBuffers() {
 
     for (int num = 0; num < 10; ++num) {
         std::vector<float> verts;
-        auto addLine = [&](int i1, int i2) {
+        auto               addLine = [&](int i1, int i2) {
             verts.push_back(p[i1][0]);
             verts.push_back(p[i1][1]);
             verts.push_back(p[i2][0]);
             verts.push_back(p[i2][1]);
         };
 
-        if (kDigits[num][0]) addLine(0, 1); // top
-        if (kDigits[num][1]) addLine(1, 2); // top-right
-        if (kDigits[num][2]) addLine(2, 3); // bottom-right
-        if (kDigits[num][3]) addLine(3, 4); // bottom
-        if (kDigits[num][4]) addLine(4, 5); // bottom-left
-        if (kDigits[num][5]) addLine(5, 0); // top-left
-        if (kDigits[num][6]) addLine(5, 2); // middle
+        if (kDigits[num][0]) {
+            addLine(0, 1); // top
+        }
+        if (kDigits[num][1]) {
+            addLine(1, 2); // top-right
+        }
+        if (kDigits[num][2]) {
+            addLine(2, 3); // bottom-right
+        }
+        if (kDigits[num][3]) {
+            addLine(3, 4); // bottom
+        }
+        if (kDigits[num][4]) {
+            addLine(4, 5); // bottom-left
+        }
+        if (kDigits[num][5]) {
+            addLine(5, 0); // top-left
+        }
+        if (kDigits[num][6]) {
+            addLine(5, 2); // middle
+        }
 
         sevenSegVertexCount_[num] = static_cast<uint32_t>(verts.size() / 2);
 
         BufferDesc vbDesc{};
-        vbDesc.Name = "SevenSegment VB";
-        vbDesc.Size = verts.size() * sizeof(float);
-        vbDesc.Usage = USAGE_IMMUTABLE;
+        vbDesc.Name      = "SevenSegment VB";
+        vbDesc.Size      = verts.size() * sizeof(float);
+        vbDesc.Usage     = USAGE_IMMUTABLE;
         vbDesc.BindFlags = BIND_VERTEX_BUFFER;
 
         BufferData initData{};
-        initData.pData = verts.data();
+        initData.pData    = verts.data();
         initData.DataSize = vbDesc.Size;
 
         sevenSegVB_[num].Release();
@@ -2515,7 +2582,8 @@ void DiligentBackend::UpdateFullscreenQuadBindings() {
 }
 
 void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas) {
-    if (immediateContext_ == nullptr || particleComputePSO_ == nullptr || particleComputeSRB_ == nullptr || particleComputeConstants_ == nullptr) {
+    if (immediateContext_ == nullptr || particleComputePSO_ == nullptr || particleComputeSRB_ == nullptr ||
+        particleComputeConstants_ == nullptr) {
         OutputDebugStringA("[SimulateParticles] Early return: nullptr check failed\n");
         return;
     }
@@ -2542,7 +2610,7 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
         PVoid mapped = nullptr;
         immediateContext_->MapBuffer(particleComputeConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
         if (mapped != nullptr) {
-            auto* cb = static_cast<ParticleComputeConstants*>(mapped);
+            auto* cb          = static_cast<ParticleComputeConstants*>(mapped);
             cb->Dt            = dt;
             cb->HandScale     = handScale;
             cb->HandHas       = handHas;
@@ -2558,7 +2626,8 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
         return;
     }
 
-    if (auto* varOut = particleComputeSRB_->GetVariableByName(SHADER_TYPE_COMPUTE, "g_ParticlesOut"); varOut != nullptr) {
+    if (auto* varOut = particleComputeSRB_->GetVariableByName(SHADER_TYPE_COMPUTE, "g_ParticlesOut");
+        varOut != nullptr) {
         varOut->Set(particleUAVs_[particleWriteIdx_]);
     } else {
         return;
@@ -2616,7 +2685,7 @@ void DiligentBackend::RenderClear() {
 
     // 设置视口（Diligent 需要显式设置）
     const auto& scDesc = swapChain_->GetDesc();
-    Viewport vp{};
+    Viewport    vp{};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
     vp.Width    = static_cast<float>(scDesc.Width);
@@ -2630,7 +2699,8 @@ void DiligentBackend::RenderClear() {
     immediateContext_->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     if (pDSV != nullptr) {
-        immediateContext_->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0,
+                                             RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     }
 }
 
@@ -2712,7 +2782,7 @@ void DiligentBackend::RenderOffscreen() {
 
         immediateContext_->SetPipelineState(starPSO_);
 
-        IBuffer* pVBs[] = {starVB_};
+        IBuffer* pVBs[]    = {starVB_};
         Uint64   offsets[] = {0};
         immediateContext_->SetVertexBuffers(0, 1, pVBs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                             SET_VERTEX_BUFFERS_FLAG_RESET);
@@ -2722,7 +2792,7 @@ void DiligentBackend::RenderOffscreen() {
         DrawAttribs starsDraw{};
         starsDraw.NumVertices  = 6;
         starsDraw.NumInstances = starCount_;
-        starsDraw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        starsDraw.Flags        = DRAW_FLAG_VERIFY_ALL;
         immediateContext_->Draw(starsDraw);
     }
 
@@ -2739,8 +2809,12 @@ void DiligentBackend::RenderOffscreen() {
             dt = std::chrono::duration<float>(now - lastAnimTime_).count();
         }
         lastAnimTime_ = now;
-        if (dt < 0.0f) dt = 0.0f;
-        if (dt > 0.2f) dt = 0.2f;
+        if (dt < 0.0f) {
+            dt = 0.0f;
+        }
+        if (dt > 0.2f) {
+            dt = 0.2f;
+        }
 
         animAutoTime_ += dt * (0.005f * 180.0f);
 
@@ -2749,9 +2823,9 @@ void DiligentBackend::RenderOffscreen() {
         const float targetRotY  = 0.0f;
 
         const float alpha = 1.0f - std::pow(1.0f - 0.08f, dt * 180.0f);
-        animScale_ = animScale_ + (targetScale - animScale_) * alpha;
-        animRotX_  = animRotX_ + (targetRotX - animRotX_) * alpha;
-        animRotY_  = animRotY_ + (targetRotY - animRotY_) * alpha;
+        animScale_        = animScale_ + (targetScale - animScale_) * alpha;
+        animRotX_         = animRotX_ + (targetRotX - animRotX_) * alpha;
+        animRotY_         = animRotY_ + (targetRotY - animRotY_) * alpha;
 
         // 阶段 3（第 2 步）：接入 GPU ComputeSaturn（物理模拟）并用三缓冲轮转避免读写冲突。
         // 当前没有手势追踪，uHandHas=0。
@@ -2769,10 +2843,10 @@ void DiligentBackend::RenderOffscreen() {
                 const Mat4Rows proj = PerspectiveRH_OpenGL(1.047f, aspect, 1.0f, 10000.0f);
 
                 // 复刻 OpenGL 的角度逻辑：mSat = Rx(rotX) * Ry(rotY) * Rz(0.466)
-                const float uScale   = animScale_;
-                const float rotX     = animRotX_;
-                const float rotY     = animRotY_;
-                const float rotZ     = 0.466f;
+                const float uScale = animScale_;
+                const float rotX   = animRotX_;
+                const float rotY   = animRotY_;
+                const float rotZ   = 0.466f;
 
                 const Mat4Rows model = Mul(Mul(RotationX(rotX), RotationY(rotY)), RotationZ(rotZ));
 
@@ -2801,9 +2875,9 @@ void DiligentBackend::RenderOffscreen() {
                 cb->TimeParams[0] = secsF;
 
                 // 暂时没有动态 LOD 系统，先用 pixelRatio=1，densityComp 按旧公式从粒子数推导（更接近原版观感）。
-                const float pixelRatio   = 1.0f;
-                const float ratio        = static_cast<float>(particleCount_) / 1200000.0f;
-                const float densityComp  = 0.6f / std::pow(std::max(ratio, 0.0001f), 0.7f) / std::pow(pixelRatio, 0.5f);
+                const float pixelRatio  = 1.0f;
+                const float ratio       = static_cast<float>(particleCount_) / 1200000.0f;
+                const float densityComp = 0.6f / std::pow(std::max(ratio, 0.0001f), 0.7f) / std::pow(pixelRatio, 0.5f);
 
                 cb->RenderParams[0] = uScale;
                 cb->RenderParams[1] = pixelRatio;
@@ -2831,8 +2905,8 @@ void DiligentBackend::RenderOffscreen() {
         // 复刻 OpenGL：glDrawArraysIndirect(GL_POINTS, nullptr)
         if (particleIndirectArgs_ != nullptr) {
             DrawIndirectAttribs ia{};
-            ia.pAttribsBuffer                  = particleIndirectArgs_;
-            ia.Flags                           = DRAW_FLAG_VERIFY_ALL;
+            ia.pAttribsBuffer                   = particleIndirectArgs_;
+            ia.Flags                            = DRAW_FLAG_VERIFY_ALL;
             ia.AttribsBufferStateTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
             immediateContext_->DrawIndirect(ia);
         }
@@ -2840,8 +2914,8 @@ void DiligentBackend::RenderOffscreen() {
 }
 
 void DiligentBackend::BlitOffscreenToBackBuffer() {
-    if (swapChain_ == nullptr || immediateContext_ == nullptr || fullscreenQuadPSO_ == nullptr || fullscreenQuadSRB_ == nullptr ||
-        offscreenSRV_ == nullptr) {
+    if (swapChain_ == nullptr || immediateContext_ == nullptr || fullscreenQuadPSO_ == nullptr ||
+        fullscreenQuadSRB_ == nullptr || offscreenSRV_ == nullptr) {
         return;
     }
 
@@ -2855,7 +2929,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
 
     // 设置视口（Diligent 需要显式设置）
     const auto& scDesc = swapChain_->GetDesc();
-    Viewport vp{};
+    Viewport    vp{};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
     vp.Width    = static_cast<float>(scDesc.Width);
@@ -2873,7 +2947,8 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
                 float strength;
                 float pad[3];
             };
-            auto* cb = static_cast<BloomCB*>(mapped);
+
+            auto* cb     = static_cast<BloomCB*>(mapped);
             cb->strength = 0.0f; // 不使用全局 bloom
             cb->pad[0] = cb->pad[1] = cb->pad[2] = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
@@ -2904,13 +2979,13 @@ void DiligentBackend::RenderFrame() {
     }
 
     // 计算帧时间和 FPS（移动平均）
-    const auto now = std::chrono::steady_clock::now();
-    float frameDt = 0.0f;
+    const auto now     = std::chrono::steady_clock::now();
+    float      frameDt = 0.0f;
     if (lastFrameTime_ != std::chrono::steady_clock::time_point{}) {
         frameDt = std::chrono::duration<float>(now - lastFrameTime_).count();
         if (frameDt > 0.0f && frameDt < 1.0f) {
             fpsSamples_[fpsSampleIndex_] = 1.0f / frameDt;
-            fpsSampleIndex_ = (fpsSampleIndex_ + 1) % kFpsSampleCount;
+            fpsSampleIndex_              = (fpsSampleIndex_ + 1) % kFpsSampleCount;
 
             // 计算平均 FPS
             float sum = 0.0f;
@@ -2922,9 +2997,9 @@ void DiligentBackend::RenderFrame() {
             // FPS 历史曲线采样（低频）
             fpsHistorySampleTimer_ += frameDt;
             if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
-                fpsHistorySampleTimer_ = 0.0f;
+                fpsHistorySampleTimer_        = 0.0f;
                 fpsHistory_[fpsHistoryIndex_] = currentFps_;
-                fpsHistoryIndex_ = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
+                fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
             }
         }
     }
@@ -2951,10 +3026,11 @@ void DiligentBackend::RenderFrame() {
             ImGuiStyle& style = ImGui::GetStyle();
 
             // 使用普通背景
-            auto& colors = MD3::GetContext().colors;
-            ImVec4 bgCol = colors.surfaceContainerLow;
-            bgCol.w = 0.95f;
-            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol), style.WindowRounding);
+            auto&  colors = MD3::GetContext().colors;
+            ImVec4 bgCol  = colors.surfaceContainerLow;
+            bgCol.w       = 0.95f;
+            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(bgCol),
+                              style.WindowRounding);
         }
 
         // ========== 性能区域 ==========
@@ -3009,36 +3085,44 @@ void DiligentBackend::RenderFrame() {
             for (int i = 1; i < kFpsHistorySize; i++) {
                 float v = getValue(i);
                 if (v > 0.0f) {
-                    if (v < dataMin || dataMin <= 0.0f) dataMin = v;
-                    if (v > dataMax) dataMax = v;
+                    if (v < dataMin || dataMin <= 0.0f) {
+                        dataMin = v;
+                    }
+                    if (v > dataMax) {
+                        dataMax = v;
+                    }
                 }
             }
 
             // 设置最小显示范围
             const float MIN_DISPLAY_RANGE = 30.0f;
-            float dataRange = dataMax - dataMin;
+            float       dataRange         = dataMax - dataMin;
             if (dataRange < MIN_DISPLAY_RANGE) {
                 float center = (dataMax + dataMin) * 0.5f;
-                dataMin = center - MIN_DISPLAY_RANGE * 0.5f;
-                dataMax = center + MIN_DISPLAY_RANGE * 0.5f;
+                dataMin      = center - MIN_DISPLAY_RANGE * 0.5f;
+                dataMax      = center + MIN_DISPLAY_RANGE * 0.5f;
             }
 
             // 添加边距
             float margin = (dataMax - dataMin) * 0.1f;
             float minVal = dataMin - margin;
             float maxVal = dataMax + margin;
-            if (minVal < 0.0f) minVal = 0.0f;
+            if (minVal < 0.0f) {
+                minVal = 0.0f;
+            }
 
             float valRange = maxVal - minVal;
-            if (valRange < 1.0f) valRange = 1.0f;
+            if (valRange < 1.0f) {
+                valRange = 1.0f;
+            }
 
             // 绘图区域
-            ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50);
-            ImVec2 plotPos = ImGui::GetCursorScreenPos();
+            ImVec2      plotSize(ImGui::GetContentRegionAvail().x, 50);
+            ImVec2      plotPos  = ImGui::GetCursorScreenPos();
             ImDrawList* drawList = ImGui::GetWindowDrawList();
 
             // 背景
-            ImU32 bgColor = ImGui::GetColorU32(ImGuiCol_FrameBg);
+            ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
             ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
             ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
             drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
@@ -3048,9 +3132,9 @@ void DiligentBackend::RenderFrame() {
 
             // 转换坐标
             auto toScreen = [&](float logicalX, float val) -> ImVec2 {
-                float x = plotPos.x + (logicalX / (float)(kFpsHistorySize - 1)) * plotSize.x;
+                float x          = plotPos.x + (logicalX / (float)(kFpsHistorySize - 1)) * plotSize.x;
                 float clampedVal = val < minVal ? minVal : (val > maxVal ? maxVal : val);
-                float y = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
+                float y          = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
                 return ImVec2(x, y);
             };
 
@@ -3081,8 +3165,8 @@ void DiligentBackend::RenderFrame() {
             // Tooltip
             if (ImGui::IsItemHovered()) {
                 ImVec2 mousePos = ImGui::GetIO().MousePos;
-                float relX = (mousePos.x - plotPos.x) / plotSize.x;
-                int idx = (int)(relX * (float)(kFpsHistorySize - 1) + 0.5f);
+                float  relX     = (mousePos.x - plotPos.x) / plotSize.x;
+                int    idx      = (int)(relX * (float)(kFpsHistorySize - 1) + 0.5f);
                 if (idx >= 0 && idx < kFpsHistorySize) {
                     float fpsVal = getValue(idx);
                     ImGui::BeginTooltip();
@@ -3168,24 +3252,20 @@ void DiligentBackend::RenderFrame() {
                         windowedH_ = rect.bottom - rect.top;
 
                         // 获取显示器信息
-                        HMONITOR hMonitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
-                        MONITORINFO mi = { sizeof(mi) };
+                        HMONITOR    hMonitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
+                        MONITORINFO mi       = {sizeof(mi)};
                         GetMonitorInfoW(hMonitor, &mi);
 
                         // 设置全屏
                         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-                        SetWindowPos(hwnd_, HWND_TOP,
-                                     mi.rcMonitor.left, mi.rcMonitor.top,
-                                     mi.rcMonitor.right - mi.rcMonitor.left,
-                                     mi.rcMonitor.bottom - mi.rcMonitor.top,
+                        SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                                     mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
                                      SWP_FRAMECHANGED);
                         isFullscreen_ = true;
                     } else {
                         // 恢复窗口模式
                         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-                        SetWindowPos(hwnd_, HWND_NOTOPMOST,
-                                     windowedX_, windowedY_,
-                                     windowedW_, windowedH_,
+                        SetWindowPos(hwnd_, HWND_NOTOPMOST, windowedX_, windowedY_, windowedW_, windowedH_,
                                      SWP_FRAMECHANGED);
                         isFullscreen_ = false;
                     }
@@ -3275,35 +3355,45 @@ void DiligentBackend::RenderSevenSegmentFPS() {
     // 根据帧率选择颜色（与 OpenGL 版一致）
     float colorR, colorG, colorB;
     if (currentFps_ > 50.0f) {
-        colorR = 0.3f; colorG = 1.0f; colorB = 0.3f; // 绿色
+        colorR = 0.3f;
+        colorG = 1.0f;
+        colorB = 0.3f; // 绿色
     } else if (currentFps_ > 30.0f) {
-        colorR = 1.0f; colorG = 0.6f; colorB = 0.0f; // 橙色
+        colorR = 1.0f;
+        colorG = 0.6f;
+        colorB = 0.0f; // 橙色
     } else {
-        colorR = 1.0f; colorG = 0.2f; colorB = 0.2f; // 红色
+        colorR = 1.0f;
+        colorG = 0.2f;
+        colorB = 0.2f; // 红色
     }
 
     // FPS 数字渲染参数（右上角）
-    const float numSize = 20.0f;
+    const float numSize      = 20.0f;
     const float digitSpacing = numSize + 10.0f;
-    float xCursor = static_cast<float>(surfaceSize_.Width) - 60.0f;
-    const float yPos = static_cast<float>(surfaceSize_.Height) - 40.0f;
+    float       xCursor      = static_cast<float>(surfaceSize_.Width) - 60.0f;
+    const float yPos         = static_cast<float>(surfaceSize_.Height) - 40.0f;
 
     // 获取 FPS 数字
-    int displayFps = static_cast<int>(currentFps_);
+    int  displayFps = static_cast<int>(currentFps_);
     char fpsBuffer[8];
-    int fpsLen = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
+    int  fpsLen = snprintf(fpsBuffer, sizeof(fpsBuffer), "%d", displayFps);
 
     // 从右到左渲染每个数字
     for (int i = fpsLen - 1; i >= 0; --i) {
         int digit = fpsBuffer[i] - '0';
-        if (digit < 0 || digit > 9) continue;
-        if (sevenSegVB_[digit] == nullptr || sevenSegVertexCount_[digit] == 0) continue;
+        if (digit < 0 || digit > 9) {
+            continue;
+        }
+        if (sevenSegVB_[digit] == nullptr || sevenSegVertexCount_[digit] == 0) {
+            continue;
+        }
 
         // 更新常量缓冲
         struct SevenSegCB {
             float Projection[16];
-            float Transform[4];  // x, y, scaleX, scaleY
-            float Color[4];      // r, g, b, pad
+            float Transform[4]; // x, y, scaleX, scaleY
+            float Color[4];     // r, g, b, pad
         };
 
         PVoid mapped = nullptr;
@@ -3314,12 +3404,12 @@ void DiligentBackend::RenderSevenSegmentFPS() {
             // 正交投影矩阵（列主序）
             // Diligent/D3D 使用列主序，需要转置
             std::memset(cb->Projection, 0, sizeof(cb->Projection));
-            cb->Projection[0]  = 2.0f / (R - L);          // [0][0]
-            cb->Projection[5]  = 2.0f / (T - B);          // [1][1]
-            cb->Projection[10] = 1.0f;                     // [2][2]
-            cb->Projection[12] = -(R + L) / (R - L);      // [3][0]
-            cb->Projection[13] = -(T + B) / (T - B);      // [3][1]
-            cb->Projection[15] = 1.0f;                     // [3][3]
+            cb->Projection[0]  = 2.0f / (R - L);     // [0][0]
+            cb->Projection[5]  = 2.0f / (T - B);     // [1][1]
+            cb->Projection[10] = 1.0f;               // [2][2]
+            cb->Projection[12] = -(R + L) / (R - L); // [3][0]
+            cb->Projection[13] = -(T + B) / (T - B); // [3][1]
+            cb->Projection[15] = 1.0f;               // [3][3]
 
             cb->Transform[0] = xCursor;
             cb->Transform[1] = yPos;
@@ -3337,14 +3427,15 @@ void DiligentBackend::RenderSevenSegmentFPS() {
         immediateContext_->CommitShaderResources(sevenSegSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         // 绑定顶点缓冲
-        IBuffer* pBuffs[] = {sevenSegVB_[digit]};
+        IBuffer*     pBuffs[]  = {sevenSegVB_[digit]};
         const Uint64 offsets[] = {0};
-        immediateContext_->SetVertexBuffers(0, 1, pBuffs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, SET_VERTEX_BUFFERS_FLAG_RESET);
+        immediateContext_->SetVertexBuffers(0, 1, pBuffs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
 
         // 绘制
         DrawAttribs draw{};
         draw.NumVertices = sevenSegVertexCount_[digit];
-        draw.Flags = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
         immediateContext_->Draw(draw);
 
         xCursor -= digitSpacing;

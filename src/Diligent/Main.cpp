@@ -1,9 +1,10 @@
-#include "DiligentBackend.h"
-#include "RenderBackend.h"
-
 #include <windows.h>
 
 #include <string>
+
+#include "../AppState.h"
+#include "DiligentBackend.h"
+#include "RenderBackend.h"
 
 namespace {
 
@@ -15,7 +16,8 @@ ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdL
     //   --backend=d3d12
     //   --backend=vulkan
     // 默认：D3D12（Windows 上更常见，且无需 Vulkan SDK 即可运行）。
-    if (cmdLine.find(L"--backend=vulkan") != std::wstring::npos || cmdLine.find(L"--backend=vk") != std::wstring::npos) {
+    if (cmdLine.find(L"--backend=vulkan") != std::wstring::npos ||
+        cmdLine.find(L"--backend=vk") != std::wstring::npos) {
         return ParticleSaturn::Render::Backend::Vulkan;
     }
     return ParticleSaturn::Render::Backend::D3D12;
@@ -40,19 +42,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     switch (msg) {
-        case WM_SIZE: {
-            if (backend != nullptr && wParam != SIZE_MINIMIZED) {
-                const auto w = static_cast<uint32_t>(LOWORD(lParam));
-                const auto h = static_cast<uint32_t>(HIWORD(lParam));
-                backend->Resize({w, h});
-            }
-            return 0;
+    case WM_SIZE: {
+        if (backend != nullptr && wParam != SIZE_MINIMIZED) {
+            const auto w = static_cast<uint32_t>(LOWORD(lParam));
+            const auto h = static_cast<uint32_t>(HIWORD(lParam));
+            backend->Resize({w, h});
         }
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
-        default:
-            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        return 0;
+    }
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    default:
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 }
 
@@ -86,10 +88,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     UpdateWindow(hwnd);
 
     ParticleSaturn::Render::DiligentBackend backend{};
+    ParticleSaturn::AppState                appState{};
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&backend));
 
     const auto surface = GetClientSize(hwnd);
-    if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface)) {
+    if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface, &appState)) {
         std::wstring msg = L"初始化 Diligent 失败。\n\n";
         const auto&  err = backend.GetLastError();
         if (!err.empty()) {
