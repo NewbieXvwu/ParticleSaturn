@@ -3011,12 +3011,19 @@ void DiligentBackend::RenderFrame() {
 
         // MD3 新帧
         MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
-        MD3::SetDarkMode(isDarkMode_);
+        MD3::SetDarkMode(appState_->ui.isDarkMode);
 
-        // Debug 窗口（不含 FPS 数值，FPS 使用七段数码管在右上角显示）
+        // Debug 窗口 - 使用 MD3 无标题栏样式
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(320, 400), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Debug", nullptr, ImGuiWindowFlags_NoCollapse);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(600, 800));
+        constexpr ImGuiWindowFlags kDebugWindowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
+                                                       ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
+        ImGui::Begin("Debug", nullptr, kDebugWindowFlags);
+
+        // 自定义标题栏
+        constexpr float kTitleBarHeight = 40.0f;
+        MD3::WindowTitleBar("Debug", nullptr);
 
         // 绘制窗口背景
         {
@@ -3229,7 +3236,7 @@ void DiligentBackend::RenderFrame() {
         // ========== 视觉效果区域 ==========
         if (MD3::BeginCollapsingHeader("Visuals")) {
             // 暗色模式切换 - 使用 MD3 Toggle
-            if (MD3::Toggle("Dark Mode", &isDarkMode_)) {
+            if (MD3::Toggle("Dark Mode", &appState_->ui.isDarkMode)) {
                 // 应用 MD3 主题样式
                 MD3::ApplyImGuiStyle();
             }
@@ -3240,16 +3247,16 @@ void DiligentBackend::RenderFrame() {
         // ========== 窗口区域 ==========
         if (MD3::BeginCollapsingHeader("Window")) {
             // 全屏切换按钮 - 使用 MD3 Button
-            if (MD3::TonalButton(isFullscreen_ ? "Exit Fullscreen" : "Enter Fullscreen")) {
+            if (MD3::TonalButton(appState_->window.isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen")) {
                 if (hwnd_ != nullptr) {
-                    if (!isFullscreen_) {
+                    if (!appState_->window.isFullscreen) {
                         // 保存当前窗口位置和大小
                         RECT rect;
                         GetWindowRect(hwnd_, &rect);
-                        windowedX_ = rect.left;
-                        windowedY_ = rect.top;
-                        windowedW_ = rect.right - rect.left;
-                        windowedH_ = rect.bottom - rect.top;
+                        appState_->window.windowedX = rect.left;
+                        appState_->window.windowedY = rect.top;
+                        appState_->window.windowedW = rect.right - rect.left;
+                        appState_->window.windowedH = rect.bottom - rect.top;
 
                         // 获取显示器信息
                         HMONITOR    hMonitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
@@ -3261,13 +3268,13 @@ void DiligentBackend::RenderFrame() {
                         SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
                                      mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
                                      SWP_FRAMECHANGED);
-                        isFullscreen_ = true;
+                        appState_->window.isFullscreen = true;
                     } else {
                         // 恢复窗口模式
                         SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-                        SetWindowPos(hwnd_, HWND_NOTOPMOST, windowedX_, windowedY_, windowedW_, windowedH_,
-                                     SWP_FRAMECHANGED);
-                        isFullscreen_ = false;
+                        SetWindowPos(hwnd_, HWND_NOTOPMOST, appState_->window.windowedX, appState_->window.windowedY,
+                                     appState_->window.windowedW, appState_->window.windowedH, SWP_FRAMECHANGED);
+                        appState_->window.isFullscreen = false;
                     }
                 }
             }
@@ -3277,12 +3284,12 @@ void DiligentBackend::RenderFrame() {
             // VSync 模式选择 - 使用 MD3 Combo
             ImGui::Text("VSync:");
             const char* vsyncModes[] = {"Off", "On"};
-            MD3::Combo("##VSync", &vsyncMode_, vsyncModes, 2);
+            MD3::Combo("##VSync", &appState_->render.vsyncMode, vsyncModes, 2);
 
             ImGui::Dummy(ImVec2(0, 5));
 
             // 显示状态
-            ImGui::Text("Fullscreen: %s", isFullscreen_ ? "Yes" : "No");
+            ImGui::Text("Fullscreen: %s", appState_->window.isFullscreen ? "Yes" : "No");
             ImGui::Text("Transparent: No");
             MD3::EndCollapsingHeader();
         }
@@ -3301,6 +3308,10 @@ void DiligentBackend::RenderFrame() {
             ImGui::Text("Offscreen: %u x %u", surfaceSize_.Width, surfaceSize_.Height);
             MD3::EndCollapsingHeader();
         }
+
+        // 自定义滚动条和缩放手柄
+        MD3::WindowScrollbar(kTitleBarHeight);
+        MD3::WindowResize(280.0f, 200.0f);
 
         ImGui::End();
 
@@ -3324,7 +3335,7 @@ void DiligentBackend::RenderFrame() {
         }
     }
 
-    swapChain_->Present(vsyncMode_);
+    swapChain_->Present(appState_->render.vsyncMode);
 }
 
 void DiligentBackend::RenderSevenSegmentFPS() {
