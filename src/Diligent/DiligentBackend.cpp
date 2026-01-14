@@ -1650,8 +1650,10 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     const NativeWindow window{reinterpret_cast<void*>(hwnd)};
 
     SwapChainDesc scDesc{};
-    scDesc.Width  = initialSize.Width;
-    scDesc.Height = initialSize.Height;
+    scDesc.Width             = initialSize.Width;
+    scDesc.Height            = initialSize.Height;
+    scDesc.ColorBufferFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    scDesc.BufferCount       = 3; // 三缓冲，避免 D3D12 帧等待超时
     // 阶段 1：引入深度缓冲（即便当下的全屏四边形不依赖深度测试，先把链路补齐）。
     scDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
 
@@ -1663,7 +1665,15 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
 
         EngineD3D12CreateInfo engineCI{};
+#ifdef _DEBUG
+        engineCI.EnableValidation = true;
+#endif
         factory->CreateDeviceAndContextsD3D12(engineCI, &device_, &immediateContext_);
+
+        if (device_ == nullptr || immediateContext_ == nullptr) {
+            SetLastError(L"D3D12 设备或上下文创建失败。");
+            return false;
+        }
 
         FullScreenModeDesc fsDesc{};
         factory->CreateSwapChainD3D12(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
@@ -1675,7 +1685,15 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
 
         EngineVkCreateInfo engineCI{};
+#ifdef _DEBUG
+        engineCI.EnableValidation = true;
+#endif
         factory->CreateDeviceAndContextsVk(engineCI, &device_, &immediateContext_);
+
+        if (device_ == nullptr || immediateContext_ == nullptr) {
+            SetLastError(L"Vulkan 设备或上下文创建失败。");
+            return false;
+        }
 
         factory->CreateSwapChainVk(device_, immediateContext_, scDesc, window, &swapChain_);
     }
@@ -1908,9 +1926,10 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
     // 让 HLSL 侧的 g_Texture_sampler / g_BloomTexture_sampler 使用同一个不可变采样器。
+    // 注意：D3D12 下需要使用采样器的完整名称（带 _sampler 后缀）
     const ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture", sampDesc},
-        {SHADER_TYPE_PIXEL, "g_BloomTexture", sampDesc},
+        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
+        {SHADER_TYPE_PIXEL, "g_BloomTexture_sampler", sampDesc},
     };
     psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
     psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
@@ -2220,6 +2239,15 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
             SetLastError(L"CreateParticleBuffers: CreateBuffer(Indirect Draw Args) 失败。");
             return false;
         }
+
+        // D3D12: 显式将间接参数缓冲区转换到正确的初始状态
+        StateTransitionDesc barrier{};
+        barrier.pResource      = particleIndirectArgs_;
+        barrier.OldState       = RESOURCE_STATE_UNKNOWN;
+        barrier.NewState       = RESOURCE_STATE_INDIRECT_ARGUMENT;
+        barrier.TransitionType = STATE_TRANSITION_TYPE_IMMEDIATE;
+        barrier.Flags          = STATE_TRANSITION_FLAG_UPDATE_STATE;
+        immediateContext_->TransitionResourceStates(1, &barrier);
     }
 
     particleCount_ = maxParticles;
@@ -2706,9 +2734,11 @@ void DiligentBackend::RenderClear() {
 }
 
 void DiligentBackend::RenderOffscreen() {
-    if (swapChain_ == nullptr || immediateContext_ == nullptr || offscreenRTV_ == nullptr) {
+    if (immediateContext_ == nullptr) {
         return;
     }
+
+    OutputDebugStringA("  RenderOffscreen: Setup RT start\n");
 
     ITextureView* pRTV = offscreenRTV_;
     immediateContext_->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -3017,9 +3047,9 @@ void DiligentBackend::RenderFrame() {
         // Debug 窗口 - 使用 MD3 无标题栏样式
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(320, 400), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(600, 800));
-        constexpr ImGuiWindowFlags kDebugWindowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
-                                                       ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
+        ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(1200, 1200));
+        constexpr ImGuiWindowFlags kDebugWindowFlags =
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse;
         ImGui::Begin("Debug", nullptr, kDebugWindowFlags);
 
         // 自定义标题栏
@@ -3061,14 +3091,15 @@ void DiligentBackend::RenderFrame() {
                 ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                // FPS（带颜色）
+                // FPS（带颜色）- 使用 MD3 色彩方案
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::TextDisabled("FPS");
                 ImGui::TableNextColumn();
-                ImVec4 fpsColor = (currentFps_ >= 50.0f) ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
-                                : (currentFps_ >= 30.0f) ? ImVec4(1.0f, 0.8f, 0.0f, 1.0f)
-                                                         : ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+                auto&  fpsColors = MD3::GetContext().colors;
+                ImVec4 fpsColor  = (currentFps_ >= 50.0f) ? fpsColors.primary
+                                 : (currentFps_ >= 30.0f) ? fpsColors.tertiary
+                                                          : fpsColors.error;
                 ImGui::TextColored(fpsColor, "%.1f", currentFps_);
 
                 TwoColumnText("Particles", "%u", particleCount_);
@@ -3130,9 +3161,10 @@ void DiligentBackend::RenderFrame() {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
 
             // 背景
+            auto& colors    = MD3::GetContext().colors;
             ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
-            ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
-            ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
+            ImU32 lineColor = ImGui::GetColorU32(colors.primary);
+            ImU32 axisColor = ImGui::GetColorU32(colors.onSurfaceVariant);
             drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
 
             // 裁剪区域
@@ -3146,17 +3178,51 @@ void DiligentBackend::RenderFrame() {
                 return ImVec2(x, y);
             };
 
-            // 绘制曲线（简单折线）
-            ImVector<ImVec2> points;
-            points.reserve(kFpsHistorySize);
+            // 绘制曲线（Catmull-Rom 样条插值）
+            ImVector<ImVec2> dataPoints;
+            dataPoints.reserve(kFpsHistorySize);
             for (int i = 0; i < kFpsHistorySize; i++) {
                 float val = getValue(i);
                 if (val > 0.0f) {
-                    points.push_back(toScreen((float)i, val));
+                    dataPoints.push_back(toScreen((float)i, val));
                 }
             }
-            if (points.Size >= 2) {
-                drawList->AddPolyline(points.Data, points.Size, lineColor, ImDrawFlags_None, 1.5f);
+
+            if (dataPoints.Size >= 2) {
+                // Catmull-Rom 样条插值生成平滑曲线
+                ImVector<ImVec2> smoothPoints;
+                const int        kSegmentsPerSpan = 8; // 每两个数据点之间插入的段数
+                smoothPoints.reserve(dataPoints.Size * kSegmentsPerSpan);
+
+                for (int i = 0; i < dataPoints.Size - 1; i++) {
+                    // 获取控制点 p0, p1, p2, p3
+                    ImVec2 p0 = (i > 0) ? dataPoints[i - 1] : dataPoints[i];
+                    ImVec2 p1 = dataPoints[i];
+                    ImVec2 p2 = dataPoints[i + 1];
+                    ImVec2 p3 = (i + 2 < dataPoints.Size) ? dataPoints[i + 2] : dataPoints[i + 1];
+
+                    // Catmull-Rom 插值
+                    for (int s = 0; s < kSegmentsPerSpan; s++) {
+                        float t  = (float)s / (float)kSegmentsPerSpan;
+                        float t2 = t * t;
+                        float t3 = t2 * t;
+
+                        // Catmull-Rom 基函数
+                        float b0 = -0.5f * t3 + t2 - 0.5f * t;
+                        float b1 = 1.5f * t3 - 2.5f * t2 + 1.0f;
+                        float b2 = -1.5f * t3 + 2.0f * t2 + 0.5f * t;
+                        float b3 = 0.5f * t3 - 0.5f * t2;
+
+                        ImVec2 pt;
+                        pt.x = b0 * p0.x + b1 * p1.x + b2 * p2.x + b3 * p3.x;
+                        pt.y = b0 * p0.y + b1 * p1.y + b2 * p2.y + b3 * p3.y;
+                        smoothPoints.push_back(pt);
+                    }
+                }
+                // 添加最后一个点
+                smoothPoints.push_back(dataPoints[dataPoints.Size - 1]);
+
+                drawList->AddPolyline(smoothPoints.Data, smoothPoints.Size, lineColor, ImDrawFlags_None, 2.0f);
             }
 
             drawList->PopClipRect();
@@ -3367,6 +3433,9 @@ void DiligentBackend::RenderFrame() {
             MD3::EndCollapsingHeader();
         }
 
+        // 处理平滑滚动（必须在 WindowScrollbar 之前调用）
+        MD3::HandleSmoothScroll(90.0f);
+
         // 自定义滚动条和缩放手柄
         MD3::WindowScrollbar(kTitleBarHeight);
         MD3::WindowResize(280.0f, 200.0f);
@@ -3378,8 +3447,13 @@ void DiligentBackend::RenderFrame() {
     }
 
     // 先清屏 SwapChain（确保深度缓冲/RT 链路始终一致），再走离屏渲染 + 拷贝。
+    // 1. Clear
     RenderClear();
+
+    // 2. Offscreen Rendering (Compute + Stars + Particles)
     RenderOffscreen();
+
+    // 3. Blit to Backbuffer
     BlitOffscreenToBackBuffer();
 
     // 渲染七段数码管 FPS（在 BlitOffscreenToBackBuffer 之后）
@@ -3393,7 +3467,15 @@ void DiligentBackend::RenderFrame() {
         }
     }
 
-    swapChain_->Present(appState_->render.vsyncMode);
+    // 7. Present
+    immediateContext_->Flush();
+
+    // D3D12: Adaptive VSync (-1) 可能与帧等待对象冲突，使用标准 VSync
+    int vsync = appState_->render.vsyncMode;
+    if (vsync < 0) {
+        vsync = 1;
+    }
+    swapChain_->Present(static_cast<Uint32>(vsync));
 }
 
 void DiligentBackend::RenderSevenSegmentFPS() {

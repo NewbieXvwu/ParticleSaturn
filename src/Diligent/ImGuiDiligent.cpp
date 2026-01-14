@@ -506,8 +506,9 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
     sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
+    // 采样器 - D3D12 下需要使用采样器的完整名称（带 _sampler 后缀）
     ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture", sampDesc},
+        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
     };
 
     // ========== PSO 1: 普通渲染（无 Stencil）==========
@@ -675,6 +676,59 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
 
 bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     ImGuiIO& io = ImGui::GetIO();
+
+    // 获取 DPI 缩放（从窗口句柄获取）
+    float dpiScale = 1.0f;
+    if (hwnd_) {
+        HDC hdc = GetDC(hwnd_);
+        if (hdc) {
+            int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+            dpiScale = static_cast<float>(dpiX) / 96.0f;
+            ReleaseDC(hwnd_, hdc);
+        }
+    }
+
+    // 加载自定义字体
+    float fontSize = 16.0f * dpiScale;
+
+    ImFontConfig fontConfig;
+    fontConfig.OversampleH = 2;
+    fontConfig.OversampleV = 2;
+
+    // 英文字体优先级：Cascadia Code → Cascadia Mono → Consolas → Arial
+    const char* englishFonts[] = {"C:\\Windows\\Fonts\\CascadiaCode.ttf", "C:\\Windows\\Fonts\\CascadiaMono.ttf",
+                                  "C:\\Windows\\Fonts\\consola.ttf", "C:\\Windows\\Fonts\\arial.ttf"};
+
+    ImFont* mainFont = nullptr;
+    for (const char* fontPath : englishFonts) {
+        if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
+            mainFont = io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &fontConfig);
+            if (mainFont) {
+                break;
+            }
+        }
+    }
+
+    // 如果没有找到任何字体，使用默认字体
+    if (!mainFont) {
+        mainFont = io.Fonts->AddFontDefault();
+    }
+
+    // 中文字体（MergeMode）：Deng.ttf → msyhl.ttc → msyh.ttc → simhei.ttf
+    const char* chineseFonts[] = {"C:\\Windows\\Fonts\\Deng.ttf", "C:\\Windows\\Fonts\\msyhl.ttc",
+                                  "C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\simhei.ttf"};
+
+    ImFontConfig chineseConfig;
+    chineseConfig.MergeMode   = true;
+    chineseConfig.OversampleH = 2;
+    chineseConfig.OversampleV = 2;
+
+    for (const char* fontPath : chineseFonts) {
+        if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
+            io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig, io.Fonts->GetGlyphRangesChineseFull());
+            break;
+        }
+    }
 
     unsigned char* pixels = nullptr;
     int            width  = 0;
