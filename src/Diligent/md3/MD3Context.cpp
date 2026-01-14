@@ -733,73 +733,84 @@ void DrawRipplesDiligent() {
 
 //=============================================================================
 // 圆角裁剪（使用 Diligent Stencil 实现）
+// 参考 OpenGL 版本，使用 ImGui::MemAlloc/MemFree 管理回调数据生命周期
 //=============================================================================
 
-// Stencil 裁剪栈信息
-struct RoundedClipInfo {
-    ImVec4 rect;       // 裁剪矩形 (x1, y1, x2, y2)
-    float  rounding;   // 圆角半径
-    int    stencilRef; // Stencil 参考值
+// Stencil 参考值栈（只存储 int，不存储指针）
+static std::vector<int> s_roundedClipStack;
+static int              s_roundedClipRef = 0;
+
+// 回调数据结构（使用 ImGui::MemAlloc 分配，回调中释放）
+struct RoundedClipBeginData {
+    int prevRef; // 之前的 Stencil 参考值
+    int newRef;  // 新的 Stencil 参考值
 };
 
-static std::vector<RoundedClipInfo> s_roundedClipStack;
-static int                          s_stencilRefCounter = 0;
+struct RoundedClipEndData {
+    int  ref;     // 要恢复的 Stencil 参考值
+    bool disable; // 是否完全禁用 Stencil
+};
 
-// Stencil 写入回调：绘制圆角矩形到 Stencil 缓冲
+// Stencil 写入回调：设置 Stencil 写入模式
 static void RoundedClipBeginCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     using namespace ParticleSaturn::UI;
 
+    auto* data = static_cast<RoundedClipBeginData*>(cmd->UserCallbackData);
+    if (data == nullptr) {
+        return;
+    }
+
     auto* imgui = GetImGuiDiligentInstance();
-    if (imgui == nullptr) {
-        return;
+    if (imgui != nullptr) {
+        // 设置 Stencil 写入模式（递增）
+        imgui->SetStencilMode(StencilMode::WriteIncr, data->newRef);
     }
 
-    // 从 UserCallbackData 获取裁剪信息
-    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
-    if (clipInfo == nullptr) {
-        return;
-    }
-
-    // 设置 Stencil 写入模式
-    imgui->SetStencilMode(StencilMode::WriteIncr, clipInfo->stencilRef);
+    // 释放回调数据
+    ImGui::MemFree(data);
 }
 
-// Stencil 测试回调：启用 Stencil 测试
+// Stencil 测试回调：切换到 Stencil 测试模式
 static void RoundedClipTestCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     using namespace ParticleSaturn::UI;
 
+    auto* data = static_cast<RoundedClipBeginData*>(cmd->UserCallbackData);
+    if (data == nullptr) {
+        return;
+    }
+
     auto* imgui = GetImGuiDiligentInstance();
-    if (imgui == nullptr) {
-        return;
+    if (imgui != nullptr) {
+        // 设置 Stencil 测试模式
+        imgui->SetStencilMode(StencilMode::TestEqual, data->newRef);
     }
 
-    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
-    if (clipInfo == nullptr) {
-        return;
-    }
-
-    // 设置 Stencil 测试模式
-    imgui->SetStencilMode(StencilMode::TestEqual, clipInfo->stencilRef);
+    // 释放回调数据
+    ImGui::MemFree(data);
 }
 
-// 恢复正常渲染回调
+// 恢复 Stencil 状态回调
 static void RoundedClipEndCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     using namespace ParticleSaturn::UI;
 
-    auto* imgui = GetImGuiDiligentInstance();
-    if (imgui == nullptr) {
+    auto* data = static_cast<RoundedClipEndData*>(cmd->UserCallbackData);
+    if (data == nullptr) {
         return;
     }
 
-    auto* clipInfo = static_cast<RoundedClipInfo*>(cmd->UserCallbackData);
-    int   newRef   = (clipInfo != nullptr && !s_roundedClipStack.empty()) ? s_roundedClipStack.back().stencilRef : 0;
-
-    // 恢复到上一层的 Stencil 测试（或禁用）
-    if (newRef > 0) {
-        imgui->SetStencilMode(StencilMode::TestEqual, newRef);
-    } else {
-        imgui->SetStencilMode(StencilMode::Disabled, 0);
+    auto* imgui = GetImGuiDiligentInstance();
+    if (imgui != nullptr) {
+        if (data->disable) {
+            // 完全禁用 Stencil
+            imgui->SetStencilMode(StencilMode::Disabled, 0);
+        } else {
+            // 恢复到上一层的 Stencil 测试
+            imgui->SetStencilMode(StencilMode::TestEqual, data->ref);
+        }
     }
+
+    // 释放回调数据
+    ImGui::MemFree(data);
 }
 
 void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float rounding) {
@@ -808,27 +819,38 @@ void PushRoundedClipRect(const ImVec2& clip_min, const ImVec2& clip_max, float r
         return;
     }
 
-    // 增加 Stencil 参考值
-    s_stencilRefCounter++;
+    // 保存当前参考值，递增新参考值
+    int prevRef = s_roundedClipRef;
+    s_roundedClipRef++;
+    int newRef = s_roundedClipRef;
 
-    // 保存裁剪信息
-    RoundedClipInfo clipInfo;
-    clipInfo.rect       = ImVec4(clip_min.x, clip_min.y, clip_max.x, clip_max.y);
-    clipInfo.rounding   = rounding;
-    clipInfo.stencilRef = s_stencilRefCounter;
-    s_roundedClipStack.push_back(clipInfo);
+    // 压入栈
+    s_roundedClipStack.push_back(newRef);
 
     // 设置矩形裁剪（作为基础裁剪）
     dl->PushClipRect(clip_min, clip_max, true);
 
+    // 分配回调数据（Begin）
+    auto* beginData    = static_cast<RoundedClipBeginData*>(ImGui::MemAlloc(sizeof(RoundedClipBeginData)));
+    beginData->prevRef = prevRef;
+    beginData->newRef  = newRef;
+
     // 添加回调：开始 Stencil 写入
-    dl->AddCallback(RoundedClipBeginCallback, &s_roundedClipStack.back());
+    dl->AddCallback(RoundedClipBeginCallback, beginData);
 
     // 绘制圆角矩形到 Stencil（使用白色，实际颜色不重要因为不写入颜色缓冲）
     dl->AddRectFilled(clip_min, clip_max, IM_COL32_WHITE, rounding);
 
+    // 添加重置渲染状态回调（确保 PSO 正确切换）
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+    // 分配回调数据（Test）
+    auto* testData    = static_cast<RoundedClipBeginData*>(ImGui::MemAlloc(sizeof(RoundedClipBeginData)));
+    testData->prevRef = prevRef;
+    testData->newRef  = newRef;
+
     // 添加回调：切换到 Stencil 测试模式
-    dl->AddCallback(RoundedClipTestCallback, &s_roundedClipStack.back());
+    dl->AddCallback(RoundedClipTestCallback, testData);
 }
 
 void PopRoundedClipRect() {
@@ -841,14 +863,26 @@ void PopRoundedClipRect() {
         return;
     }
 
-    // 添加回调：恢复 Stencil 状态
-    dl->AddCallback(RoundedClipEndCallback, &s_roundedClipStack.back());
-
-    // 弹出裁剪信息
+    // 弹出当前层
     s_roundedClipStack.pop_back();
 
-    // 更新 Stencil 参考值计数
-    s_stencilRefCounter = s_roundedClipStack.empty() ? 0 : s_roundedClipStack.back().stencilRef;
+    // 计算恢复的参考值
+    int  restoreRef = s_roundedClipStack.empty() ? 0 : s_roundedClipStack.back();
+    bool disable    = (restoreRef == 0);
+
+    // 更新当前参考值
+    s_roundedClipRef = restoreRef;
+
+    // 分配回调数据（End）
+    auto* endData    = static_cast<RoundedClipEndData*>(ImGui::MemAlloc(sizeof(RoundedClipEndData)));
+    endData->ref     = restoreRef;
+    endData->disable = disable;
+
+    // 添加回调：恢复 Stencil 状态
+    dl->AddCallback(RoundedClipEndCallback, endData);
+
+    // 添加重置渲染状态回调
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 
     dl->PopClipRect();
 }
