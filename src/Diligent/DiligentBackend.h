@@ -51,6 +51,8 @@ class DiligentBackend final {
 
     const std::wstring& GetLastError() const { return lastError_; }
 
+    AppState* GetAppState() const { return appState_; }
+
   private:
     void SetLastError(const wchar_t* msg) { lastError_ = (msg != nullptr) ? msg : L""; }
 

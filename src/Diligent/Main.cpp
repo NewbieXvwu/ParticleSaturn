@@ -42,6 +42,83 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     switch (msg) {
+    case WM_KEYDOWN: {
+        if (backend != nullptr) {
+            auto* state = backend->GetAppState();
+            if (state != nullptr) {
+                switch (wParam) {
+                case VK_F3:
+                    // 防抖：只在按下时触发一次
+                    if (!state->input.keyF3_pressed) {
+                        state->input.keyF3_pressed = true;
+                        state->ui.showDebugWindow  = !state->ui.showDebugWindow;
+                    }
+                    break;
+                case VK_F11:
+                    if (!state->input.keyF11_pressed) {
+                        state->input.keyF11_pressed = true;
+                        // 切换全屏
+                        state->window.isFullscreen = !state->window.isFullscreen;
+                        if (state->window.isFullscreen) {
+                            // 保存窗口位置
+                            RECT wr;
+                            GetWindowRect(hwnd, &wr);
+                            state->window.windowedX = wr.left;
+                            state->window.windowedY = wr.top;
+                            state->window.windowedW = wr.right - wr.left;
+                            state->window.windowedH = wr.bottom - wr.top;
+                            // 进入全屏
+                            HMONITOR    hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                            MONITORINFO mi   = {sizeof(mi)};
+                            GetMonitorInfoW(hMon, &mi);
+                            SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+                            SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                                         mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
+                                         SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                        } else {
+                            // 退出全屏
+                            SetWindowLongPtrW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+                            SetWindowPos(hwnd, nullptr, state->window.windowedX, state->window.windowedY,
+                                         state->window.windowedW, state->window.windowedH,
+                                         SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+                        }
+                    }
+                    break;
+                case 'B':
+                    if (!state->input.keyB_pressed) {
+                        state->input.keyB_pressed = true;
+                        // 循环切换背景
+                        state->backdrop.backdropIndex = (state->backdrop.backdropIndex + 1) %
+                                                        static_cast<int>(state->backdrop.availableBackdrops.size());
+                    }
+                    break;
+                case VK_ESCAPE:
+                    PostQuitMessage(0);
+                    return 0;
+                }
+            }
+        }
+        return 0;
+    }
+    case WM_KEYUP: {
+        if (backend != nullptr) {
+            auto* state = backend->GetAppState();
+            if (state != nullptr) {
+                switch (wParam) {
+                case VK_F3:
+                    state->input.keyF3_pressed = false;
+                    break;
+                case VK_F11:
+                    state->input.keyF11_pressed = false;
+                    break;
+                case 'B':
+                    state->input.keyB_pressed = false;
+                    break;
+                }
+            }
+        }
+        return 0;
+    }
     case WM_SIZE: {
         if (backend != nullptr && wParam != SIZE_MINIMIZED) {
             const auto w = static_cast<uint32_t>(LOWORD(lParam));
