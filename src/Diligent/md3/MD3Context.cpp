@@ -232,6 +232,9 @@ void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, fl
     ctx.currentTime = 0.0f;
     ctx.deltaTime   = 0.0f;
 
+    // 设置 ImGui 圆形细分精度，减少描边断裂
+    ImGui::GetStyle().CircleTessellationMaxError = 0.1f; // 默认是 0.3f，更小 = 更多段数
+
     // 保存 Diligent 设备引用
     ctx.diligent.device  = device;
     ctx.diligent.context = context;
