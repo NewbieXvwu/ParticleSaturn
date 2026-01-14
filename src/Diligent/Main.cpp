@@ -165,7 +165,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     UpdateWindow(hwnd);
 
     ParticleSaturn::Render::DiligentBackend backend{};
-    ParticleSaturn::AppState                appState{};
+    AppState                                appState{};
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&backend));
 
     const auto surface = GetClientSize(hwnd);

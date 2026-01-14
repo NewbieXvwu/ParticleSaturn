@@ -7,6 +7,7 @@
 #include <random>
 #include <vector>
 
+#include "../DebugLog.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
@@ -3306,6 +3307,63 @@ void DiligentBackend::RenderFrame() {
             ImGui::TextDisabled("Debug Info:");
             ImGui::Text("Star Count: %u", starCount_);
             ImGui::Text("Offscreen: %u x %u", surfaceSize_.Width, surfaceSize_.Height);
+            MD3::EndCollapsingHeader();
+        }
+
+        // ========== LOD 控制区域 ==========
+        if (MD3::BeginCollapsingHeader("LOD Control")) {
+            // 锁定 LOD 开关
+            MD3::Toggle("Lock LOD", &appState_->lod.locked);
+
+            ImGui::Dummy(ImVec2(0, 5));
+
+            // 粒子数量滑块
+            ImGui::Text("Particle Count:");
+            float particleCount = static_cast<float>(appState_->render.activeParticleCount);
+            if (MD3::Slider("##ParticleCount", &particleCount, 1000.0f, 500000.0f, "%.0f")) {
+                appState_->render.activeParticleCount = static_cast<uint32_t>(particleCount);
+            }
+
+            ImGui::Dummy(ImVec2(0, 5));
+
+            // 像素比例滑块
+            ImGui::Text("Pixel Ratio:");
+            MD3::Slider("##PixelRatio", &appState_->render.pixelRatio, 0.25f, 2.0f, "%.2f");
+
+            ImGui::Dummy(ImVec2(0, 5));
+
+            // 密度补偿
+            ImGui::Text("Density Compensation:");
+            MD3::Slider("##DensityComp", &appState_->render.densityComp, 0.0f, 2.0f, "%.2f");
+
+            MD3::EndCollapsingHeader();
+        }
+
+        // ========== 日志区域 ==========
+        if (MD3::BeginCollapsingHeader("Log")) {
+            // 日志面板
+            static char searchFilter[128] = "";
+            static int  levelFilter       = 0; // 0=All, 1=Info, 2=Warn, 3=Error
+
+            ImGui::Text("Search:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputText("##LogSearch", searchFilter, sizeof(searchFilter));
+
+            const char* levels[] = {"All", "Info", "Warn", "Error"};
+            ImGui::Text("Level:");
+            ImGui::SameLine();
+            MD3::Combo("##LogLevel", &levelFilter, levels, 4);
+
+            ImGui::Dummy(ImVec2(0, 5));
+
+            // 绘制日志
+            DebugLog::Instance().Draw(searchFilter, levelFilter);
+
+            if (MD3::TextButton("Clear Log")) {
+                DebugLog::Instance().Clear();
+            }
+
             MD3::EndCollapsingHeader();
         }
 
