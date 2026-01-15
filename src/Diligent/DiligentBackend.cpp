@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
+#include <algorithm>
 #include <random>
 #include <vector>
 
@@ -43,6 +44,18 @@ static constexpr TEXTURE_FORMAT kOffscreenColorFormat = TEX_FORMAT_R11G11B10_FLO
 // - 在低 pixelRatio 时绘制数量降到 60%（OpenGL：pixelRatio < 0.85）
 static constexpr uint32_t kStarCountBase = 50000u;
 static constexpr float    kStarLodRatio  = 0.6f;
+
+static constexpr uint32_t kParticleCountMax = 1200000u;
+static constexpr uint32_t kParticleCountMin = 200000u;
+static constexpr float    kDensityCompBase  = 0.6f;
+
+float ComputeDensityComp(uint32_t particleCount, float pixelRatio) {
+    const float pr = (pixelRatio > 0.0f) ? pixelRatio : 1.0f;
+    const float ratio =
+        (kParticleCountMax > 0) ? (static_cast<float>(particleCount) / static_cast<float>(kParticleCountMax)) : 1.0f;
+    const float safeRatio = std::max(ratio, 0.0001f);
+    return kDensityCompBase / std::pow(safeRatio, 0.7f) / std::pow(pr, 0.5f);
+}
 
 struct ShaderSources {
     const char*            Vertex   = nullptr;
@@ -1739,11 +1752,26 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 
     // 阶段 3（第 1 步）：粒子数据通路（先 CPU 复刻初始化，后续再接 compute 三缓冲轮转）。
     // 复刻 OpenGL 旧版默认粒子规模：120 万（视觉遮蔽/密度/“不透光感”强相关）。
-    if (!CreateParticleBuffers(1200000)) {
+    if (!CreateParticleBuffers(kParticleCountMax)) {
         if (lastError_.empty()) {
             SetLastError(L"CreateParticleBuffers() 失败。");
         }
         return false;
+    }
+    if (appState_ != nullptr) {
+        if (appState_->render.activeParticleCount == 0) {
+            appState_->render.activeParticleCount = particleCount_;
+        }
+        if (appState_->render.pixelRatio <= 0.0f) {
+            appState_->render.pixelRatio = 1.0f;
+        }
+        if (!lastLodBasisValid_) {
+            lastLodParticleCount_ = appState_->render.activeParticleCount;
+            lastLodPixelRatio_    = appState_->render.pixelRatio;
+            lastLodBasisValid_    = true;
+        }
+        // 初始密度补偿：与 OpenGL 旧公式一致
+        appState_->render.densityComp = ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
     }
     if (!CreateParticlePSO()) {
         if (lastError_.empty()) {
@@ -2899,10 +2927,11 @@ void DiligentBackend::RenderOffscreen() {
 
                 cb->TimeParams[0] = secsF;
 
-                // 暂时没有动态 LOD 系统，先用 pixelRatio=1，densityComp 按旧公式从粒子数推导（更接近原版观感）。
-                const float pixelRatio  = 1.0f;
-                const float ratio       = static_cast<float>(particleCount_) / 1200000.0f;
-                const float densityComp = 0.6f / std::pow(std::max(ratio, 0.0001f), 0.7f) / std::pow(pixelRatio, 0.5f);
+                // 对齐 OpenGL：pixelRatio / densityComp 由动态 LOD 或 UI 控制。
+                const float pixelRatio =
+                    (appState_ != nullptr && appState_->render.pixelRatio > 0.0f) ? appState_->render.pixelRatio : 1.0f;
+                const float densityComp =
+                    (appState_ != nullptr) ? appState_->render.densityComp : ComputeDensityComp(particleCount_, pixelRatio);
 
                 cb->RenderParams[0] = uScale;
                 cb->RenderParams[1] = pixelRatio;
@@ -3040,6 +3069,114 @@ void DiligentBackend::RenderFrame() {
     }
     lastFrameTime_ = now;
 
+    // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
+    if (appState_ != nullptr && frameDt > 0.0f) {
+        const uint32_t prevBasisCount = lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
+        const float    prevBasisPR    = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
+
+        // 确保初始值合理（Diligent 入口不一定会调用 AppState::InitDefaults）
+        if (appState_->render.activeParticleCount == 0) {
+            appState_->render.activeParticleCount = (particleCount_ != 0) ? particleCount_ : kParticleCountMax;
+        }
+        if (appState_->render.pixelRatio <= 0.0f) {
+            appState_->render.pixelRatio = 1.0f;
+        }
+
+        lodUpdateTimer_ += frameDt;
+        if (lodUpdateTimer_ >= 0.5f) {
+            lodUpdateTimer_ = 0.0f;
+
+            if (!appState_->lod.locked) {
+                const float smoothedFps = currentFps_;
+
+                bool particleCountChanged = false;
+                bool pixelRatioChanged    = false;
+
+                // OpenGL 版阈值与步进：
+                // - 低于 38 FPS：优先降低粒子数（*0.95），降到 MIN 后再降 pixelRatio（-0.03，最低 0.7）
+                // - 高于 57 FPS：优先提高 pixelRatio（+0.03，最高 1.0），再提高粒子数（*1.05，最高 MAX）
+                if (smoothedFps < 38.0f) {
+                    if (appState_->render.activeParticleCount > kParticleCountMin) {
+                        uint32_t newCount =
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 0.95f);
+                        newCount = std::max(newCount, kParticleCountMin);
+                        if (newCount != appState_->render.activeParticleCount) {
+                            appState_->render.activeParticleCount = newCount;
+                            particleCountChanged                  = true;
+                            appState_->lod.lastDecision           = 1;
+                        }
+                    } else if (appState_->render.pixelRatio > 0.7f) {
+                        float pr = appState_->render.pixelRatio - 0.03f;
+                        pr       = std::max(pr, 0.7f);
+                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
+                            appState_->render.pixelRatio = pr;
+                            pixelRatioChanged            = true;
+                            appState_->lod.lastDecision  = 2;
+                        }
+                    }
+                } else if (smoothedFps > 57.0f) {
+                    if (appState_->render.pixelRatio < 1.0f) {
+                        float pr = appState_->render.pixelRatio + 0.03f;
+                        pr       = std::min(pr, 1.0f);
+                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
+                            appState_->render.pixelRatio = pr;
+                            pixelRatioChanged            = true;
+                            appState_->lod.lastDecision  = 3;
+                        }
+                    } else if (appState_->render.activeParticleCount < kParticleCountMax) {
+                        uint32_t newCount =
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 1.05f);
+                        newCount = std::min(newCount, kParticleCountMax);
+                        if (newCount != appState_->render.activeParticleCount) {
+                            appState_->render.activeParticleCount = newCount;
+                            particleCountChanged                  = true;
+                            appState_->lod.lastDecision           = 4;
+                        }
+                    }
+                } else {
+                    appState_->lod.lastDecision = 0;
+                }
+
+                if (particleCountChanged || pixelRatioChanged) {
+                    appState_->render.densityComp =
+                        ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
+                }
+            }
+        }
+
+        // 将 UI/LOD 的 activeParticleCount 同步到后端实际渲染/Compute（particleCount_ + Indirect Args）。
+        uint32_t desiredCount = appState_->render.activeParticleCount;
+        desiredCount          = std::max(desiredCount, 1u);
+        desiredCount          = std::min(desiredCount, kParticleCountMax);
+
+        if (desiredCount < kParticleCountMin) {
+            desiredCount = kParticleCountMin;
+        }
+
+        if (desiredCount != appState_->render.activeParticleCount) {
+            appState_->render.activeParticleCount = desiredCount;
+        }
+
+        if (desiredCount != particleCount_) {
+            particleCount_ = desiredCount;
+            if (particleIndirectArgs_ != nullptr && immediateContext_ != nullptr) {
+                // args = { NumVertices(6), NumInstances(particleCount_), StartVertex(0), FirstInstance(0) }
+                immediateContext_->UpdateBuffer(particleIndirectArgs_, sizeof(uint32_t), sizeof(uint32_t),
+                                                &particleCount_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+        }
+
+        // OpenGL 版：当粒子数或 pixelRatio 发生变化时，重新推导 densityComp（保持亮度/遮蔽观感）。
+        const bool basisChanged =
+            (!lastLodBasisValid_) || desiredCount != prevBasisCount || std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
+        if (basisChanged) {
+            appState_->render.densityComp = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
+            lastLodParticleCount_         = desiredCount;
+            lastLodPixelRatio_            = appState_->render.pixelRatio;
+            lastLodBasisValid_            = true;
+        }
+    }
+
     // ImGui 新帧
     if (imgui_) {
         imgui_->NewFrame();
@@ -3108,7 +3245,11 @@ void DiligentBackend::RenderFrame() {
                                                           : fpsColors.error;
                 ImGui::TextColored(fpsColor, "%.1f", currentFps_);
 
-                TwoColumnText("Particles", "%u", particleCount_);
+                const uint32_t uiParticleCount =
+                    (appState_ != nullptr) ? appState_->render.activeParticleCount : particleCount_;
+                const float uiPixelRatio = (appState_ != nullptr) ? appState_->render.pixelRatio : 1.0f;
+                TwoColumnText("Particles", "%u / %u", uiParticleCount, kParticleCountMax);
+                TwoColumnText("Pixel Ratio", "%.2f", uiPixelRatio);
                 TwoColumnText("Resolution", "%u x %u", surfaceSize_.Width, surfaceSize_.Height);
                 TwoColumnText("Backend", "%s", backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
 
@@ -3430,7 +3571,8 @@ void DiligentBackend::RenderFrame() {
             // 粒子数量滑块
             ImGui::Text("Particle Count:");
             float particleCount = static_cast<float>(appState_->render.activeParticleCount);
-            if (MD3::Slider("##ParticleCount", &particleCount, 1000.0f, 500000.0f, "%.0f")) {
+            if (MD3::Slider("##ParticleCount", &particleCount, static_cast<float>(kParticleCountMin),
+                            static_cast<float>(kParticleCountMax), "%.0f")) {
                 appState_->render.activeParticleCount = static_cast<uint32_t>(particleCount);
             }
 
@@ -3438,7 +3580,7 @@ void DiligentBackend::RenderFrame() {
 
             // 像素比例滑块
             ImGui::Text("Pixel Ratio:");
-            MD3::Slider("##PixelRatio", &appState_->render.pixelRatio, 0.25f, 2.0f, "%.2f");
+            MD3::Slider("##PixelRatio", &appState_->render.pixelRatio, 0.5f, 1.0f, "%.2f");
 
             ImGui::Dummy(ImVec2(0, 5));
 

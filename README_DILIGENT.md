@@ -86,6 +86,7 @@ bin_diligent\\x64\\ParticleSaturn.Diligent.exe --backend=vulkan
   - 集成 imgui_impl_win32.cpp 处理 Win32 输入
   - 实现 FPS 显示（移动平均 60 帧，颜色随帧率变化：绿 ≥50、橙 30-50、红 <30）
   - Debug 窗口显示后端类型、分辨率、Bloom 强度滑块、模糊开关
+  - 动态 LOD 对齐 OpenGL：每 0.5 秒基于平滑 FPS 自动调节 `activeParticleCount/pixelRatio`，并同步更新 `densityComp` 与 Indirect Draw 实例数；LOD 控制面板改动会实时生效
 - Vulkan 后端依赖显卡驱动提供 Vulkan 运行时（一般安装显卡驱动即可）；安装 Vulkan SDK 可让 CMake 检测与调试体验更好。
 
 ## 常见陷阱

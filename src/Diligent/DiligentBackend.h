@@ -98,6 +98,12 @@ class DiligentBackend final {
     float                                 currentFps_     = 60.0f;
     std::chrono::steady_clock::time_point lastFrameTime_{};
 
+    // 动态 LOD（对齐 OpenGL：每 0.5s 检查一次，自动调节粒子数与 pixelRatio）
+    float    lodUpdateTimer_         = 0.0f;
+    uint32_t lastLodParticleCount_   = 0;
+    float    lastLodPixelRatio_      = 0.0f;
+    bool     lastLodBasisValid_      = false;
+
     // FPS 历史曲线（低频采样）
     static constexpr int   kFpsHistorySize = 60;
     float                  fpsHistory_[kFpsHistorySize]{};
