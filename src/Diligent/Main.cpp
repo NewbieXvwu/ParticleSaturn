@@ -3,6 +3,8 @@
 #include <string>
 
 #include "../AppState.h"
+#include "../ErrorHandler.h"
+#include "../Localization.h"
 #include "DiligentBackend.h"
 #include "RenderBackend.h"
 #include "Win32WindowManager.h"
@@ -161,6 +163,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+    // 统一错误处理/崩溃捕获：尽早初始化异常处理器
+    ErrorHandler::Init();
+    ErrorHandler::SetStage(ErrorHandler::AppStage::STARTUP);
+
     const std::wstring cmdLine = GetCommandLineW();
 
     WNDCLASSEXW wc{};
@@ -170,6 +176,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     wc.hInstance     = hInstance;
     wc.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
     wc.lpszClassName = kWindowClassName;
+    ErrorHandler::SetStage(ErrorHandler::AppStage::WINDOW_INIT);
     RegisterClassExW(&wc);
 
     const DWORD style   = WS_OVERLAPPEDWINDOW;
@@ -181,6 +188,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, CW_USEDEFAULT, CW_USEDEFAULT,
                                 wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, hInstance, nullptr);
     if (hwnd == nullptr) {
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);
         return -1;
     }
 
@@ -209,23 +217,35 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     const auto surface = GetClientSize(hwnd);
     if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface, &appState)) {
-        std::wstring msg = L"初始化 Diligent 失败。\n\n";
-        const auto&  err = backend.GetLastError();
-        if (!err.empty()) {
-            msg += L"原因：";
-            msg += err;
-            msg += L"\n\n";
-        }
-        msg += L"请确认 D3D12/Vulkan 环境可用。";
-        MessageBoxW(hwnd, msg.c_str(), kWindowTitle, MB_ICONERROR | MB_OK);
+        // ShowEarlyFatalError 需要 UTF-8 字符串
+        auto WideToUtf8 = [](const std::wstring& w) -> std::string {
+            if (w.empty()) {
+                return {};
+            }
+            int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
+            if (n <= 0) {
+                return {};
+            }
+            std::string out(static_cast<size_t>(n), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), out.data(), n, nullptr, nullptr);
+            return out;
+        };
+
+        std::string details = "DiligentBackend::Init() failed\n\n";
+        details += WideToUtf8(backend.GetLastError());
+        details += "\n\nPlease confirm D3D12/Vulkan runtime is available.";
+
+        ErrorHandler::ShowEarlyFatalError(i18n::Get().unexpectedError, details.c_str());
         return -2;
     }
+    ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
 
     MSG msg{};
     while (true) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
                 backend.Shutdown();
+                ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
                 return static_cast<int>(msg.wParam);
             }
             TranslateMessage(&msg);

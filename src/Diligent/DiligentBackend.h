@@ -108,6 +108,7 @@ class DiligentBackend final {
     uint32_t lastLodParticleCount_   = 0;
     float    lastLodPixelRatio_      = 0.0f;
     bool     lastLodBasisValid_      = false;
+    int      totalFrameCount_        = 0;
 
     // FPS 历史曲线（低频采样）
     static constexpr int   kFpsHistorySize = 60;

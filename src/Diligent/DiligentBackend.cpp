@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../DebugLog.h"
+#include "../ErrorHandler.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
@@ -3759,6 +3760,13 @@ void DiligentBackend::RenderFrame() {
         }
     }
 
+    // 更新崩溃诊断状态（用于 ErrorHandler 的崩溃报告/对话框）
+    if (appState_ != nullptr) {
+        totalFrameCount_++;
+        ErrorHandler::UpdateState(totalFrameCount_, appState_->render.activeParticleCount, appState_->render.pixelRatio,
+                                  false /*handTrackingActive*/);
+    }
+
     // ImGui 新帧
     if (imgui_) {
         imgui_->NewFrame();
@@ -3766,6 +3774,9 @@ void DiligentBackend::RenderFrame() {
         // MD3 新帧
         MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
         MD3::SetDarkMode(appState_->ui.isDarkMode);
+
+        // Error dialogs（统一错误处理）
+        ErrorHandler::RenderErrorDialog(frameDt);
 
         // Debug 窗口 - 使用 MD3 无标题栏样式
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
