@@ -961,9 +961,79 @@ static void DrawRippleDiligentCallback(const ImDrawList*, const ImDrawCmd* cmd) 
 }
 
 void DrawRipplesDiligent() {
-    // 简化：始终使用 ImDrawList 路径绘制 ripple
-    // Diligent PSO 路径需要复杂的窗口上下文处理，暂时禁用
-    DrawRipples();
+    auto& ctx = GetContext();
+    if (ctx.ripples.empty()) {
+        return;
+    }
+
+    // 如果 Diligent PSO 未初始化，使用 ImDrawList 回退
+    if (!ctx.diligent.initialized || ctx.diligent.ripplePSO == nullptr) {
+        DrawRipples();
+        return;
+    }
+
+    // 使用 ForegroundDrawList - 可在任何上下文中工作
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    if (!dl) {
+        DrawRipples();
+        return;
+    }
+
+    const ImGuiIO& io       = ImGui::GetIO();
+    const float    fbScaleX = (io.DisplayFramebufferScale.x > 0.0f) ? io.DisplayFramebufferScale.x : 1.0f;
+    const float    fbScaleY = (io.DisplayFramebufferScale.y > 0.0f) ? io.DisplayFramebufferScale.y : 1.0f;
+    const float    fbScaleR = std::max(fbScaleX, fbScaleY);
+
+    for (const auto& r : ctx.ripples) {
+        if (r.alpha <= 0.001f) {
+            continue;
+        }
+
+        // 使用 FindWindowByID 获取窗口（不依赖当前窗口上下文）
+        ImGuiWindow* window = ImGui::FindWindowByID(r.windowId);
+
+        float scrollDeltaX = 0.0f;
+        float scrollDeltaY = 0.0f;
+
+        if (window) {
+            scrollDeltaX = window->Scroll.x - r.initialScrollX;
+            scrollDeltaY = window->Scroll.y - r.initialScrollY;
+        }
+
+        const float currentBoundsX = r.initialBoundsX - scrollDeltaX;
+        const float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        const float centerX = currentBoundsX + r.relCenterX;
+        const float centerY = currentBoundsY + r.relCenterY;
+
+        // 用矩形裁剪限制像素工作量
+        const ImVec2 clipMin(currentBoundsX, currentBoundsY);
+        const ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        dl->PushClipRect(clipMin, clipMax, true);
+
+        // 分配回调数据
+        auto* data         = static_cast<RippleDrawData*>(ImGui::MemAlloc(sizeof(RippleDrawData)));
+        data->centerX      = centerX * fbScaleX;
+        data->centerY      = centerY * fbScaleY;
+        data->radius       = r.radius * fbScaleR;
+        data->alpha        = r.alpha;
+        data->boundsX      = currentBoundsX * fbScaleX;
+        data->boundsY      = currentBoundsY * fbScaleY;
+        data->boundsW      = r.boundsW * fbScaleX;
+        data->boundsH      = r.boundsH * fbScaleY;
+        data->cornerRadius = r.cornerRadius * fbScaleR;
+        data->colorR       = r.colorR;
+        data->colorG       = r.colorG;
+        data->colorB       = r.colorB;
+        data->screenW      = io.DisplaySize.x * fbScaleX;
+        data->screenH      = io.DisplaySize.y * fbScaleY;
+
+        // 添加 Diligent PSO 渲染回调
+        dl->AddCallback(DrawRippleDiligentCallback, data);
+        dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+        dl->PopClipRect();
+    }
 }
 
 //=============================================================================
