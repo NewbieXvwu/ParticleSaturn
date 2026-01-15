@@ -155,6 +155,7 @@ class DiligentBackend final {
     // Bloom constants for fullscreen quad
     Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
     float                                      bloomStrength_ = 0.5f;
+    bool                                       bloomEnabled_  = true; // Bloom 开关（默认启用）
 
     // Bloom blur pipeline（低分辨率 Kawase blur）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomDownsamplePSO_;

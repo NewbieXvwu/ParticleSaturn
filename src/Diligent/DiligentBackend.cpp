@@ -3579,7 +3579,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
             };
 
             auto* cb        = static_cast<BloomCB*>(mapped);
-            cb->strength    = std::max(0.0f, bloomStrength_);
+            cb->strength    = bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f;
             cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
             cb->pad[0] = cb->pad[1] = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
@@ -4065,6 +4065,14 @@ void DiligentBackend::RenderFrame() {
             if (MD3::Toggle("Dark Mode", &appState_->ui.isDarkMode)) {
                 // 应用 MD3 主题样式
                 MD3::ApplyImGuiStyle();
+            }
+
+            // Bloom 辉光效果开关
+            MD3::Toggle("Bloom", &bloomEnabled_);
+
+            // 启用时显示强度滑块
+            if (bloomEnabled_) {
+                MD3::Slider("  Intensity", &bloomStrength_, 0.1f, 1.5f, "%.2f");
             }
 
             MD3::EndCollapsingHeader();
