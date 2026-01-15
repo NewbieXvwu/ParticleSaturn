@@ -104,24 +104,24 @@ class DiligentBackend final {
     std::chrono::steady_clock::time_point lastFrameTime_{};
 
     // 动态 LOD（对齐 OpenGL：每 0.5s 检查一次，自动调节粒子数与 pixelRatio）
-    float    lodUpdateTimer_         = 0.0f;
-    uint32_t lastLodParticleCount_   = 0;
-    float    lastLodPixelRatio_      = 0.0f;
-    bool     lastLodBasisValid_      = false;
-    int      totalFrameCount_        = 0;
+    float    lodUpdateTimer_       = 0.0f;
+    uint32_t lastLodParticleCount_ = 0;
+    float    lastLodPixelRatio_    = 0.0f;
+    bool     lastLodBasisValid_    = false;
+    int      totalFrameCount_      = 0;
 
     // FPS 历史曲线（低频采样）
     static constexpr int   kFpsHistorySize = 60;
     float                  fpsHistory_[kFpsHistorySize]{};
     int                    fpsHistoryIndex_          = 0;
     float                  fpsHistorySampleTimer_    = 0.0f;
-    static constexpr float kFpsHistorySampleInterval = 0.1f; // 100ms 采样一次
+    static constexpr float kFpsHistorySampleInterval = 0.05f; // 50ms 采样一次 (与 OpenGL 版一致)
 
     // FPS 曲线动画
-    float fpsGraphAnimMinVal_   = 0.0f;   // Y 轴最小值动画
-    float fpsGraphAnimMaxVal_   = 120.0f; // Y 轴最大值动画
-    float fpsGraphScrollOffset_ = 0.0f;   // 水平滚动偏移（用于动画）
-    bool  fpsGraphFirstFrame_   = true;   // 首帧标记
+    float fpsGraphAnimMinVal_     = 0.0f;   // Y 轴最小值动画
+    float fpsGraphAnimMaxVal_     = 120.0f; // Y 轴最大值动画
+    float fpsGraphScrollAnimTime_ = 0.0f;   // 滚动动画累计时间（用于平滑滚动）
+    bool  fpsGraphFirstFrame_     = true;   // 首帧标记
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         starPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> starSRB_;

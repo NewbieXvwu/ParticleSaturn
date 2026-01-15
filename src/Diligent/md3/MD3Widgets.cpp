@@ -1252,15 +1252,15 @@ void EndCollapsingHeader() {
         dl->AddLine(ImVec2(contentBoxMin.x + cornerRadius, contentBoxMax.y),
                     ImVec2(contentBoxMax.x - cornerRadius, contentBoxMax.y), ColorToU32(borderColor), borderWidth);
 
-        // 绘制底部圆角弧线
+        // 绘制底部圆角弧线（凸出，向外弯曲）
         ImU32  borderColorU32 = ColorToU32(borderColor);
         ImVec2 blCenter(contentBoxMin.x + cornerRadius, contentBoxMax.y - cornerRadius); // 左下圆角中心
         ImVec2 brCenter(contentBoxMax.x - cornerRadius, contentBoxMax.y - cornerRadius); // 右下圆角中心
-        // 左下圆角（从 180° 到 270°，即 π 到 1.5π）
-        dl->PathArcTo(blCenter, cornerRadius, IM_PI, IM_PI * 1.5f, 8);
+        // 左下圆角（从 90° 到 180°，即 0.5π 到 π）- 向外凸出
+        dl->PathArcTo(blCenter, cornerRadius, IM_PI * 0.5f, IM_PI, 8);
         dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
-        // 右下圆角（从 270° 到 360°，即 1.5π 到 2π）
-        dl->PathArcTo(brCenter, cornerRadius, IM_PI * 1.5f, IM_PI * 2.0f, 8);
+        // 右下圆角（从 0° 到 90°，即 0 到 0.5π）- 向外凸出
+        dl->PathArcTo(brCenter, cornerRadius, 0.0f, IM_PI * 0.5f, 8);
         dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
     }
 

@@ -1,10 +1,10 @@
 #include "DiligentBackend.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
-#include <algorithm>
 #include <random>
 #include <vector>
 
@@ -2040,7 +2040,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
             lastLodBasisValid_    = true;
         }
         // 初始密度补偿：与 OpenGL 旧公式一致
-        appState_->render.densityComp = ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
+        appState_->render.densityComp =
+            ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
     }
     if (!CreateParticlePSO()) {
         if (lastError_.empty()) {
@@ -2279,10 +2280,10 @@ bool DiligentBackend::CreateBloomPSO() {
         return false;
     }
 
-    const auto downVS =
-        CreateShaderFromSource(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, downSources.Vertex, downSources.Language);
-    const auto downPS =
-        CreateShaderFromSource(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, downSources.Fragment, downSources.Language);
+    const auto downVS = CreateShaderFromSource(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, downSources.Vertex,
+                                               downSources.Language);
+    const auto downPS = CreateShaderFromSource(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, downSources.Fragment,
+                                               downSources.Language);
     const auto blurVS =
         CreateShaderFromSource(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, blurSources.Vertex, blurSources.Language);
     const auto blurPS =
@@ -2322,8 +2323,7 @@ bool DiligentBackend::CreateBloomPSO() {
         {SHADER_TYPE_PIXEL, "BlurCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
 
-    auto createPso = [&](const char* name, IShader* vs, IShader* ps,
-                         RefCntAutoPtr<IPipelineState>& outPso,
+    auto createPso = [&](const char* name, IShader* vs, IShader* ps, RefCntAutoPtr<IPipelineState>& outPso,
                          RefCntAutoPtr<IShaderResourceBinding>& outSrb) -> bool {
         GraphicsPipelineStateCreateInfo psoCI{};
         psoCI.PSODesc.Name         = name;
@@ -2392,9 +2392,7 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     bloomW_ = w;
     bloomH_ = h;
 
-    auto createTex = [&](const char* name,
-                         RefCntAutoPtr<ITexture>& outTex,
-                         RefCntAutoPtr<ITextureView>& outRTV,
+    auto createTex = [&](const char* name, RefCntAutoPtr<ITexture>& outTex, RefCntAutoPtr<ITextureView>& outRTV,
                          RefCntAutoPtr<ITextureView>& outSRV) -> bool {
         TextureDesc texDesc{};
         texDesc.Name      = name;
@@ -3288,7 +3286,7 @@ void DiligentBackend::RenderOffscreen() {
         immediateContext_->CommitShaderResources(starSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         DrawAttribs starsDraw{};
-        starsDraw.NumVertices  = 6;
+        starsDraw.NumVertices = 6;
         uint32_t starLodCount = starCount_;
         if (appState_ != nullptr && appState_->render.pixelRatio < 0.85f) {
             // OpenGL 版：低 pixelRatio 时绘制 60% 星星
@@ -3383,8 +3381,8 @@ void DiligentBackend::RenderOffscreen() {
                 // 对齐 OpenGL：pixelRatio / densityComp 由动态 LOD 或 UI 控制。
                 const float pixelRatio =
                     (appState_ != nullptr && appState_->render.pixelRatio > 0.0f) ? appState_->render.pixelRatio : 1.0f;
-                const float densityComp =
-                    (appState_ != nullptr) ? appState_->render.densityComp : ComputeDensityComp(particleCount_, pixelRatio);
+                const float densityComp = (appState_ != nullptr) ? appState_->render.densityComp
+                                                                 : ComputeDensityComp(particleCount_, pixelRatio);
 
                 cb->RenderParams[0] = uScale;
                 cb->RenderParams[1] = pixelRatio;
@@ -3498,9 +3496,9 @@ void DiligentBackend::RenderBloom() {
     }
 
     // Pass 1..N: Kawase blur ping-pong（bloomA <-> bloomB）
-    const float blurStrength = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
-    int         iterations   = 3 + static_cast<int>(blurStrength);
-    static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const float            blurStrength   = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
+    int                    iterations     = 3 + static_cast<int>(blurStrength);
+    static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0]));
     if (iterations < 2) {
         iterations = 2;
@@ -3520,9 +3518,9 @@ void DiligentBackend::RenderBloom() {
     const float bloomTexelY = 1.0f / static_cast<float>(bloomH_);
 
     for (int i = 1; i < iterations; ++i) {
-        const bool  writeToB = (i % 2 == 1);
-        ITextureView* outRTV = writeToB ? bloomRTV_B_ : bloomRTV_A_;
-        ITextureView* inSRV  = writeToB ? bloomSRV_A_ : bloomSRV_B_;
+        const bool    writeToB = (i % 2 == 1);
+        ITextureView* outRTV   = writeToB ? bloomRTV_B_ : bloomRTV_A_;
+        ITextureView* inSRV    = writeToB ? bloomSRV_A_ : bloomSRV_B_;
 
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         updateBlurCB(bloomTexelX, bloomTexelY, offsets[i], 0.0f);
@@ -3580,8 +3578,8 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
                 float pad[2];
             };
 
-            auto* cb     = static_cast<BloomCB*>(mapped);
-            cb->strength = std::max(0.0f, bloomStrength_);
+            auto* cb        = static_cast<BloomCB*>(mapped);
+            cb->strength    = std::max(0.0f, bloomStrength_);
             cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
             cb->pad[0] = cb->pad[1] = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
@@ -3634,19 +3632,15 @@ void DiligentBackend::RenderFrame() {
             // FPS 历史曲线采样（低频）
             fpsHistorySampleTimer_ += frameDt;
             if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
-                fpsHistorySampleTimer_        = 0.0f;
+                // 使用减法保留超出时间（与 OpenGL 版一致）
+                fpsHistorySampleTimer_ -= kFpsHistorySampleInterval;
                 fpsHistory_[fpsHistoryIndex_] = currentFps_;
                 fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
-                // 触发滚动动画
-                fpsGraphScrollOffset_ = 1.0f;
-            }
-
-            // 滚动动画衰减
-            if (fpsGraphScrollOffset_ > 0.001f) {
-                const float kScrollAnimSpeed = 12.0f;
-                fpsGraphScrollOffset_ *= expf(-kScrollAnimSpeed * frameDt);
+                // 滚动动画时间与采样计时器同步
+                fpsGraphScrollAnimTime_ = fpsHistorySampleTimer_;
             } else {
-                fpsGraphScrollOffset_ = 0.0f;
+                // 正常累加动画时间
+                fpsGraphScrollAnimTime_ += frameDt;
             }
         }
     }
@@ -3654,8 +3648,9 @@ void DiligentBackend::RenderFrame() {
 
     // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
     if (appState_ != nullptr && frameDt > 0.0f) {
-        const uint32_t prevBasisCount = lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
-        const float    prevBasisPR    = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
+        const uint32_t prevBasisCount =
+            lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
+        const float prevBasisPR = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
 
         // 确保初始值合理（Diligent 入口不一定会调用 AppState::InitDefaults）
         if (appState_->render.activeParticleCount == 0) {
@@ -3750,8 +3745,8 @@ void DiligentBackend::RenderFrame() {
         }
 
         // OpenGL 版：当粒子数或 pixelRatio 发生变化时，重新推导 densityComp（保持亮度/遮蔽观感）。
-        const bool basisChanged =
-            (!lastLodBasisValid_) || desiredCount != prevBasisCount || std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
+        const bool basisChanged = (!lastLodBasisValid_) || desiredCount != prevBasisCount ||
+                                  std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
         if (basisChanged) {
             appState_->render.densityComp = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
             lastLodParticleCount_         = desiredCount;
@@ -3926,9 +3921,16 @@ void DiligentBackend::RenderFrame() {
             drawList->PushClipRect(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), true);
 
             // 转换坐标（含滚动动画）
+            // 计算滚动进度：使用 EaseOutCubic 缓动使动画开始快结束慢
+            auto easeOutCubic = [](float t) -> float {
+                t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+                return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+            };
+            float scrollProgress = easeOutCubic(fpsGraphScrollAnimTime_ / kFpsHistorySampleInterval);
+
             auto toScreen = [&](float logicalX, float val) -> ImVec2 {
                 // 应用滚动偏移 - 新数据点从右侧滑入
-                float adjustedX  = logicalX - fpsGraphScrollOffset_;
+                float adjustedX  = logicalX - scrollProgress;
                 float x          = plotPos.x + (adjustedX / (float)(kFpsHistorySize - 1)) * plotSize.x;
                 float clampedVal = val < minVal ? minVal : (val > maxVal ? maxVal : val);
                 float y          = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
@@ -4136,8 +4138,7 @@ void DiligentBackend::RenderFrame() {
             // 显示状态
             ImGui::Text("Fullscreen: %s", appState_->window.isFullscreen ? "Yes" : "No");
             ImGui::Text("Transparent: %s", appState_->backdrop.useTransparent ? "Yes" : "No");
-            if (!appState_->backdrop.availableBackdrops.empty() &&
-                appState_->backdrop.backdropIndex >= 0 &&
+            if (!appState_->backdrop.availableBackdrops.empty() && appState_->backdrop.backdropIndex >= 0 &&
                 appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
                 const int mode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
                 ImGui::Text("Backdrop: %s", ParticleSaturn::Win32WindowManager::BackdropName(mode));
