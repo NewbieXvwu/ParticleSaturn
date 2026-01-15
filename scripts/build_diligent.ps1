@@ -11,8 +11,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Fix encoding for MSVC/CMake output (MSVC uses system codepage, typically GBK on Chinese Windows)
-[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(936)
+# Force MSVC to output English error messages
+$env:VSLANG = "1033"
+
+# Use UTF-8 for console output (works with VSLANG=1033 English output)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
 
 # Try to locate Ninja (faster incremental builds than NMake for large projects).
 function Find-NinjaPath {
@@ -72,7 +78,8 @@ $cmakeArgs = @(
     "-S", $SrcDir,
     "-B", $BuildDir,
     "-G", $generator,
-    "-DCMAKE_BUILD_TYPE=$Config"
+    "-DCMAKE_BUILD_TYPE=$Config",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 )
 if ($ninjaPath) {
     $cmakeArgs += "-DCMAKE_MAKE_PROGRAM=$ninjaPath"

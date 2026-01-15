@@ -362,9 +362,6 @@ struct DiligentRenderContext {
     Diligent::IPipelineState* stencilWritePSO = nullptr;
     Diligent::IPipelineState* stencilTestPSO  = nullptr;
 
-    // 窗口背景模糊纹理
-    ImTextureID blurTexture = 0;
-
     bool initialized = false;
 };
 

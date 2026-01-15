@@ -1,0 +1,20 @@
+CompileFlags:
+  CompilationDatabase: build_diligent_ninja
+  Add:
+    # 确保 clangd 能找到所有必要的头文件
+    - -Wno-unknown-warning-option
+    - -Wno-unused-command-line-argument
+
+Diagnostics:
+  Suppress:
+    # 抑制由于编译数据库不完整导致的错误
+    - pp_file_not_found
+    - module_not_found
+
+  ClangTidy:
+    Remove:
+      - modernize-*
+      - readability-identifier-naming
+
+Index:
+  Background: Build

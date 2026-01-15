@@ -114,29 +114,43 @@
     <CMakeArch>x64</CMakeArch>
   </PropertyGroup>
 
+  <!-- Common IntelliSense paths for all configurations -->
+  <PropertyGroup>
+    <DiligentIncludePaths>$(ProjectDir)src;$(ProjectDir)src\Diligent;$(ProjectDir)src\Diligent\md3;$(ProjectDir)libs\imgui;$(ProjectDir)libs\imgui\backends;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngine\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineD3D12\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineVulkan\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsAccessories\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsTools\include;$(ProjectDir)libs\DiligentCore\Common\include;$(ProjectDir)libs\DiligentCore\Primitives\interface;$(ProjectDir)libs\DiligentCore\Platforms\interface;$(ProjectDir)libs\DiligentCore\Platforms\Basic\include;$(ProjectDir)libs\DiligentCore\Platforms\Win32\include</DiligentIncludePaths>
+    <DiligentPreprocessorDefs>UNICODE;_UNICODE;NOMINMAX;WIN32;_WINDOWS;IMGUI_USER_CONFIG="imconfig.h"</DiligentPreprocessorDefs>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|Win32'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|Win32'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -144,24 +158,32 @@
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='FastRelease|x64'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
     <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
+    <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
 
   <ItemGroup>

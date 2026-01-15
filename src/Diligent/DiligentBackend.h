@@ -151,26 +151,6 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                sevenSegVB_[10]; // 每个数字一个 VB
     uint32_t                                                  sevenSegVertexCount_[10]{};
 
-    // 窗口背景模糊
-    bool CreateBlurPSO();
-    bool CreateBlurRenderTargets(SurfaceSize size);
-    void RenderBlur();
-
-    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         blurPSO_;
-    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> blurSRB1_;
-    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> blurSRB2_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>                blurConstants_;
-
-    Diligent::RefCntAutoPtr<Diligent::ITexture>     blurRT1_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurRTV1_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurSRV1_;
-
-    Diligent::RefCntAutoPtr<Diligent::ITexture>     blurRT2_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurRTV2_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> blurSRV2_;
-
-    SurfaceSize blurRTSize_{};
-
     // ImGui integration
     std::unique_ptr<UI::ImGuiDiligent> imgui_;
     HWND                               hwnd_ = nullptr;

@@ -1780,20 +1780,6 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
 
-    // 阶段 4.5：模糊效果 PSO 和渲染目标
-    if (!CreateBlurPSO()) {
-        if (lastError_.empty()) {
-            SetLastError(L"CreateBlurPSO() 失败。");
-        }
-        return false;
-    }
-    if (!CreateBlurRenderTargets(surfaceSize_)) {
-        if (lastError_.empty()) {
-            SetLastError(L"CreateBlurRenderTargets() 失败。");
-        }
-        return false;
-    }
-
     // 阶段 5：ImGui 初始化
     hwnd_  = hwnd;
     imgui_ = std::make_unique<UI::ImGuiDiligent>();
@@ -1827,18 +1813,6 @@ void DiligentBackend::Shutdown() {
     offscreenColor_.Release();
     fullscreenQuadSRB_.Release();
     fullscreenQuadPSO_.Release();
-
-    // 释放模糊相关资源
-    blurSRB1_.Release();
-    blurSRB2_.Release();
-    blurConstants_.Release();
-    blurPSO_.Release();
-    blurRTV1_.Release();
-    blurSRV1_.Release();
-    blurRT1_.Release();
-    blurRTV2_.Release();
-    blurSRV2_.Release();
-    blurRT2_.Release();
 
     starSRB_.Release();
     starVB_.Release();
@@ -2630,261 +2604,6 @@ bool DiligentBackend::CreateSevenSegmentBuffers() {
     return true;
 }
 
-// ============================================================================
-// 模糊效果 (Kawase Blur)
-// ============================================================================
-
-namespace {
-const char* GetBlurShaderSourcesHLSL_VS() {
-    return R"(
-struct VSInput {
-    uint VertexID : SV_VertexID;
-};
-
-struct PSInput {
-    float4 Pos : SV_POSITION;
-    float2 UV : TEXCOORD0;
-};
-
-void main(in VSInput VSIn, out PSInput PSIn) {
-    // 全屏三角形
-    float2 uv = float2((VSIn.VertexID << 1) & 2, VSIn.VertexID & 2);
-    PSIn.Pos = float4(uv * 2.0 - 1.0, 0.0, 1.0);
-    PSIn.Pos.y = -PSIn.Pos.y; // Flip Y for Diligent
-    PSIn.UV = uv;
-}
-)";
-}
-
-const char* GetBlurShaderSourcesHLSL_PS() {
-    return R"(
-Texture2D    g_Texture;
-SamplerState g_Texture_sampler;
-
-cbuffer BlurConstants {
-    float2 uTexelSize;
-    float  uOffset;
-    float  _pad;
-};
-
-struct PSInput {
-    float4 Pos : SV_POSITION;
-    float2 UV : TEXCOORD0;
-};
-
-float4 main(in PSInput PSIn) : SV_Target {
-    // Kawase Blur
-    float2 uv = PSIn.UV;
-    float2 off = uTexelSize * uOffset;
-    
-    float4 color = g_Texture.Sample(g_Texture_sampler, uv);
-    color += g_Texture.Sample(g_Texture_sampler, uv + float2(-off.x, -off.y));
-    color += g_Texture.Sample(g_Texture_sampler, uv + float2( off.x, -off.y));
-    color += g_Texture.Sample(g_Texture_sampler, uv + float2(-off.x,  off.y));
-    color += g_Texture.Sample(g_Texture_sampler, uv + float2( off.x,  off.y));
-    
-    return color * 0.2;
-}
-)";
-}
-} // anonymous namespace
-
-bool DiligentBackend::CreateBlurPSO() {
-    using namespace Diligent;
-
-    // 创建着色器
-    RefCntAutoPtr<IShader> pVS, pPS;
-    {
-        ShaderCreateInfo sci;
-        sci.SourceLanguage  = SHADER_SOURCE_LANGUAGE_HLSL;
-        sci.Desc.ShaderType = SHADER_TYPE_VERTEX;
-        sci.Desc.Name       = "Blur VS";
-        sci.Source          = GetBlurShaderSourcesHLSL_VS();
-        sci.EntryPoint      = "main";
-        device_->CreateShader(sci, &pVS);
-        if (!pVS) {
-            return false;
-        }
-    }
-    {
-        ShaderCreateInfo sci;
-        sci.SourceLanguage  = SHADER_SOURCE_LANGUAGE_HLSL;
-        sci.Desc.ShaderType = SHADER_TYPE_PIXEL;
-        sci.Desc.Name       = "Blur PS";
-        sci.Source          = GetBlurShaderSourcesHLSL_PS();
-        sci.EntryPoint      = "main";
-        device_->CreateShader(sci, &pPS);
-        if (!pPS) {
-            return false;
-        }
-    }
-
-    // 创建 PSO
-    GraphicsPipelineStateCreateInfo psoCI;
-    psoCI.PSODesc.Name         = "Blur PSO";
-    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
-
-    psoCI.GraphicsPipeline.NumRenderTargets             = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0]                = TEX_FORMAT_RGBA8_UNORM;
-    psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
-
-    psoCI.pVS = pVS;
-    psoCI.pPS = pPS;
-
-    // 资源布局
-    ShaderResourceVariableDesc vars[]      = {{SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}};
-    psoCI.PSODesc.ResourceLayout.Variables = vars;
-    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
-
-    SamplerDesc samDesc;
-    samDesc.MinFilter = FILTER_TYPE_LINEAR;
-    samDesc.MagFilter = FILTER_TYPE_LINEAR;
-    samDesc.MipFilter = FILTER_TYPE_LINEAR;
-    samDesc.AddressU  = TEXTURE_ADDRESS_CLAMP;
-    samDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
-    samDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
-
-    ImmutableSamplerDesc immutableSamplers[]          = {{SHADER_TYPE_PIXEL, "g_Texture", samDesc}};
-    psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = immutableSamplers;
-    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(immutableSamplers);
-
-    device_->CreateGraphicsPipelineState(psoCI, &blurPSO_);
-    if (!blurPSO_) {
-        return false;
-    }
-
-    // 创建常量缓冲区
-    BufferDesc cbDesc;
-    cbDesc.Name           = "Blur Constants";
-    cbDesc.Size           = sizeof(float) * 4; // texelSize(2) + offset(1) + pad(1)
-    cbDesc.Usage          = USAGE_DYNAMIC;
-    cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
-    cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
-    device_->CreateBuffer(cbDesc, nullptr, &blurConstants_);
-    if (!blurConstants_) {
-        return false;
-    }
-
-    // 创建 SRB
-    blurPSO_->CreateShaderResourceBinding(&blurSRB1_, true);
-    blurPSO_->CreateShaderResourceBinding(&blurSRB2_, true);
-    if (!blurSRB1_ || !blurSRB2_) {
-        return false;
-    }
-
-    return true;
-}
-
-bool DiligentBackend::CreateBlurRenderTargets(SurfaceSize size) {
-    using namespace Diligent;
-
-    // 低分辨率（1/6）用于模糊
-    uint32_t blurWidth  = std::max(1u, size.Width / 6);
-    uint32_t blurHeight = std::max(1u, size.Height / 6);
-
-    if (blurRTSize_.Width == blurWidth && blurRTSize_.Height == blurHeight) {
-        return true; // 尺寸未变，无需重建
-    }
-    blurRTSize_ = {blurWidth, blurHeight};
-
-    TextureDesc texDesc;
-    texDesc.Type      = RESOURCE_DIM_TEX_2D;
-    texDesc.Width     = blurWidth;
-    texDesc.Height    = blurHeight;
-    texDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
-    texDesc.BindFlags = BIND_RENDER_TARGET | BIND_SHADER_RESOURCE;
-    texDesc.Usage     = USAGE_DEFAULT;
-
-    // 创建模糊渲染目标 1
-    texDesc.Name = "Blur RT 1";
-    blurRT1_.Release();
-    device_->CreateTexture(texDesc, nullptr, &blurRT1_);
-    if (!blurRT1_) {
-        return false;
-    }
-    blurRTV1_ = blurRT1_->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
-    blurSRV1_ = blurRT1_->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
-
-    // 创建模糊渲染目标 2
-    texDesc.Name = "Blur RT 2";
-    blurRT2_.Release();
-    device_->CreateTexture(texDesc, nullptr, &blurRT2_);
-    if (!blurRT2_) {
-        return false;
-    }
-    blurRTV2_ = blurRT2_->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
-    blurSRV2_ = blurRT2_->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
-
-    return true;
-}
-
-void DiligentBackend::RenderBlur() {
-    using namespace Diligent;
-
-    if (!blurPSO_ || !blurRT1_ || !blurRT2_ || !offscreenSRV_) {
-        return;
-    }
-
-    // Kawase Blur 迭代
-    const float offsets[]  = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f};
-    const int   iterations = 5;
-
-    float texelSizeX = 1.0f / (float)blurRTSize_.Width;
-    float texelSizeY = 1.0f / (float)blurRTSize_.Height;
-
-    ITextureView*           srcSRV = offscreenSRV_;
-    ITextureView*           dstRTV = blurRTV1_;
-    IShaderResourceBinding* srb    = blurSRB1_;
-
-    for (int i = 0; i < iterations; ++i) {
-        // 更新常量
-        {
-            PVoid mapped = nullptr;
-            immediateContext_->MapBuffer(blurConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
-            float* data = static_cast<float*>(mapped);
-            data[0]     = texelSizeX;
-            data[1]     = texelSizeY;
-            data[2]     = offsets[i];
-            data[3]     = 0.0f;
-            immediateContext_->UnmapBuffer(blurConstants_, MAP_WRITE);
-        }
-
-        // 设置渲染目标
-        immediateContext_->SetRenderTargets(1, &dstRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-        // 清除（首次迭代）
-        if (i == 0) {
-            float clearColor[] = {0, 0, 0, 0};
-            immediateContext_->ClearRenderTarget(dstRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        }
-
-        // 绑定纹理
-        srb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture")->Set(srcSRV);
-
-        // 设置 PSO 和常量
-        immediateContext_->SetPipelineState(blurPSO_);
-        immediateContext_->CommitShaderResources(srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-        // 绘制全屏三角形
-        DrawAttribs drawAttribs;
-        drawAttribs.NumVertices = 3;
-        immediateContext_->Draw(drawAttribs);
-
-        // Ping-pong
-        if (i % 2 == 0) {
-            srcSRV = blurSRV1_;
-            dstRTV = blurRTV2_;
-            srb    = blurSRB2_;
-        } else {
-            srcSRV = blurSRV2_;
-            dstRTV = blurRTV1_;
-            srb    = blurSRB1_;
-        }
-    }
-}
-
 void DiligentBackend::UpdateFullscreenQuadBindings() {
     // g_Texture 和 g_BloomTexture 现在是 DYNAMIC 变量，不需要重新创建 SRB
     // 只需确保在 BlitOffscreenToBackBuffer 中每帧绑定正确的纹理即可
@@ -3358,34 +3077,10 @@ void DiligentBackend::RenderFrame() {
             float  cornerRadius = style.WindowRounding;
             ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
-            // 尝试使用模糊背景
-            ImTextureID blurTex = MD3::GetContext().diligent.blurTexture;
-            if (blurTex) {
-                // 计算 UV 坐标（窗口在屏幕上的位置映射到模糊纹理）
-                float  screenW = (float)surfaceSize_.Width;
-                float  screenH = (float)surfaceSize_.Height;
-                ImVec2 uvMin(pos.x / screenW, pos.y / screenH);
-                ImVec2 uvMax(endPos.x / screenW, endPos.y / screenH);
-
-                // 绘制模糊背景
-                MD3::AddImageRounded(dl, blurTex, pos, endPos, uvMin, uvMax, IM_COL32_WHITE, cornerRadius);
-
-                // 添加 tint 叠加
-                ImVec4 tintColor = MD3::GetContext().isDarkMode
-                                     ? ImVec4(20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f, 180.0f / 255.0f)
-                                     : ImVec4(245.0f / 255.0f, 245.0f / 255.0f, 255.0f / 255.0f, 150.0f / 255.0f);
-                dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(tintColor), cornerRadius);
-
-                // 边框高光
-                ImVec4 highlightColor = MD3::GetContext().isDarkMode ? ImVec4(1.0f, 1.0f, 1.0f, 40.0f / 255.0f)
-                                                                     : ImVec4(1.0f, 1.0f, 1.0f, 120.0f / 255.0f);
-                dl->AddRect(pos, endPos, ImGui::GetColorU32(highlightColor), cornerRadius, 0, 1.0f);
-            } else {
-                // 降级：使用普通背景
-                ImVec4 bgCol = colors.surfaceContainerLow;
-                bgCol.w      = 0.95f;
-                dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
-            }
+            // 之前在这里有模糊背景逻辑，已被移除
+            ImVec4 bgCol = colors.surfaceContainerLow;
+            bgCol.w      = 0.95f;
+            dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
         }
 
         // ========== 性能区域 ==========
@@ -3786,14 +3481,6 @@ void DiligentBackend::RenderFrame() {
 
     // 2. Offscreen Rendering (Compute + Stars + Particles)
     RenderOffscreen();
-
-    // 2.5 Blur for window background
-    RenderBlur();
-
-    // 设置模糊纹理到 MD3 上下文
-    if (blurSRV2_) {
-        MD3::GetContext().diligent.blurTexture = reinterpret_cast<ImTextureID>(blurSRV2_.RawPtr());
-    }
 
     // 3. Blit to Backbuffer
     BlitOffscreenToBackBuffer();

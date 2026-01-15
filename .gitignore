@@ -1,5 +1,12 @@
-# Visual Studio 编译产物
+# CMake/Ninja out-of-source builds
+build_diligent/
+build_diligent_ninja/
+build/
 bin/
+bin_diligent/
+out/
+
+# Visual Studio
 .vs/
 x64/
 Debug/
@@ -13,51 +20,30 @@ Release/
 *.exp
 *.iobj
 *.ipdb
-
-# Visual Studio 用户配置文件
 *.user
 *.suo
 *.aps
-
-# 预编译头文件
 *.pch
 *.gch
-
-# IntelliSense 数据�?
 *.VC.db
 *.VC.opendb
-
-# 构建日志
 *.log
 *.tlog/
-
-# VS 临时中间目录（按项目 GUID 生成）
 Particle.*
 
-# 临时文件
-*.tmp
-*~
-
-# macOS
-.DS_Store
-
-# 依赖 - 使用 Git Submodule 管理
-
-# vcpkg
+# Components/Artifacts
+HandTracker/libs/tensorflow/tflite_build/
 vcpkg_installed/
 
-# CMake out-of-source builds
-build_diligent/
-build/
-out/
-
-# TFLite build artifacts
-HandTracker/libs/tensorflow/tflite_build/
-
-
-.claude/settings.local.json
+# Tools & IDEs
+.clangd/
+.claude/
+.gemini/
 .codex-session
-.claude/codex_review_state.json
-.claude/hooks/state/post_state.json
-.claude/hooks/state/codex.disabled
+
+# Temporary/Backup
+*.tmp
+*~
+OldCodeBackup/
 NUL
+.DS_Store

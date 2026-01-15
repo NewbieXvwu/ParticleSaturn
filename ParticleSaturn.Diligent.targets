@@ -99,7 +99,7 @@
   <Target Name="Build" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
     <DirectExec
       Executable="powershell.exe"
-      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action build -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action build -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
       WorkingDirectory="$(ProjectDir)">
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
@@ -110,7 +110,7 @@
   <Target Name="CoreClean" DependsOnTargets="PrepareForNMakeBuild">
     <DirectExec
       Executable="powershell.exe"
-      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action clean -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action clean -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
       WorkingDirectory="$(ProjectDir)">
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
@@ -120,7 +120,7 @@
   <Target Name="Rebuild" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
     <DirectExec
       Executable="powershell.exe"
-      Arguments="-ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action rebuild -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
+      Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action rebuild -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
       WorkingDirectory="$(ProjectDir)">
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
