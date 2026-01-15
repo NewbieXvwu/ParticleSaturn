@@ -2080,7 +2080,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     }
 
     // 阶段 6：MD3 UI 系统初始化
-    MD3::Init(device_, immediateContext_, 1.0f);
+    MD3::Init(device_, immediateContext_, backend_, 1.0f);
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
 

@@ -9,6 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
+// 需要根据渲染后端选择 Ripple shader 语言（HLSL/GLSL）
+#include "../RenderBackend.h"
+
 // Diligent 前向声明
 namespace Diligent {
 class IRenderDevice;
@@ -410,7 +413,8 @@ MD3Context& GetContext();
 //=============================================================================
 
 // 初始化 MD3 系统（Diligent 版本）
-void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, float dpiScale = 1.0f);
+void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, ParticleSaturn::Render::Backend backend,
+          float dpiScale = 1.0f);
 
 // 关闭 MD3 系统
 void Shutdown();

@@ -4,12 +4,14 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
 #include "../ImGuiDiligent.h"
 #include "Buffer.h"
 #include "DeviceContext.h"
+#include "GraphicsTypes.h"
 #include "MD3.h"
 #include "PipelineState.h"
 #include "RefCntAutoPtr.hpp"
@@ -100,21 +102,87 @@ float4 main(in PSInput PSIn) : SV_Target {
 }
 )";
 
+// GLSL（Vulkan）版本：与 HLSL 常量/逻辑保持一致
+static const char* RippleGlslVS = R"(
+layout(std140, binding = 0) uniform Constants
+{
+    vec2  uScreenSize;
+    vec2  uRippleCenter;
+    float uRippleRadius;
+    float uRippleAlpha;
+    vec4  uRippleColor;
+    vec4  uBounds; // x, y, w, h
+    float uCornerRadius;
+};
+
+layout(location = 0) in vec2 inPos;
+layout(location = 0) out vec2 vScreenPos;
+
+void main()
+{
+    gl_Position = vec4(inPos, 0.0, 1.0);
+    vScreenPos = (inPos * 0.5 + 0.5) * uScreenSize;
+    vScreenPos.y = uScreenSize.y - vScreenPos.y;
+}
+)";
+
+static const char* RippleGlslPS = R"(
+layout(std140, binding = 0) uniform Constants
+{
+    vec2  uScreenSize;
+    vec2  uRippleCenter;
+    float uRippleRadius;
+    float uRippleAlpha;
+    vec4  uRippleColor;
+    vec4  uBounds; // x, y, w, h
+    float uCornerRadius;
+};
+
+layout(location = 0) in vec2 vScreenPos;
+layout(location = 0) out vec4 oColor;
+
+float roundedRectSDF(vec2 p, vec2 center, vec2 halfSize, float radius)
+{
+    vec2 d = abs(p - center) - halfSize + radius;
+    return min(max(d.x, d.y), 0.0) + length(max(d, vec2(0.0))) - radius;
+}
+
+void main()
+{
+    vec2 fragPos = vScreenPos;
+
+    vec2 rectCenter = uBounds.xy + uBounds.zw * 0.5;
+    float sdf = roundedRectSDF(fragPos, rectCenter, uBounds.zw * 0.5, uCornerRadius);
+    float aa = 1.0 - smoothstep(0.0, 1.0, sdf);
+    if (aa <= 0.0) discard;
+
+    float dist = distance(fragPos, uRippleCenter);
+
+    float edgeWidth = max(20.0, uRippleRadius * 0.15);
+    float edge = 1.0 - smoothstep(uRippleRadius - edgeWidth, uRippleRadius, dist);
+
+    float fade = 1.0 - smoothstep(0.0, uRippleRadius, dist) * 0.3;
+
+    oColor = vec4(uRippleColor.rgb, uRippleColor.a * uRippleAlpha * edge * fade * aa);
+}
+)";
+
 //=============================================================================
 // Diligent 资源创建
 //=============================================================================
 
-static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
+static bool CreateRipplePSO(Diligent::IRenderDevice* device, ParticleSaturn::Render::Backend backend) {
     using namespace Diligent;
 
     auto& ctx = GetContext();
 
     // 创建 Vertex Shader
     ShaderCreateInfo shaderCI;
-    shaderCI.SourceLanguage  = SHADER_SOURCE_LANGUAGE_HLSL;
+    shaderCI.SourceLanguage  = (backend == ParticleSaturn::Render::Backend::Vulkan) ? SHADER_SOURCE_LANGUAGE_GLSL
+                                                                                     : SHADER_SOURCE_LANGUAGE_HLSL;
     shaderCI.Desc.ShaderType = SHADER_TYPE_VERTEX;
     shaderCI.Desc.Name       = "MD3 Ripple VS";
-    shaderCI.Source          = RippleVS;
+    shaderCI.Source          = (backend == ParticleSaturn::Render::Backend::Vulkan) ? RippleGlslVS : RippleVS;
     shaderCI.EntryPoint      = "main";
 
     RefCntAutoPtr<IShader> pVS;
@@ -127,7 +195,7 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 创建 Pixel Shader
     shaderCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
     shaderCI.Desc.Name       = "MD3 Ripple PS";
-    shaderCI.Source          = RipplePS;
+    shaderCI.Source          = (backend == ParticleSaturn::Render::Backend::Vulkan) ? RippleGlslPS : RipplePS;
 
     RefCntAutoPtr<IShader> pPS;
     device->CreateShader(shaderCI, &pPS);
@@ -155,7 +223,8 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 渲染目标格式（与 swap chain 一致）
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
     psoCI.GraphicsPipeline.RTVFormats[0]    = TEX_FORMAT_RGBA8_UNORM_SRGB;
-    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_D32_FLOAT;
+    // 与 ImGuiDiligent 的 DSV 保持一致（用于 stencil 链路；Ripple 自身不做 depth test）
+    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_D24_UNORM_S8_UINT;
 
     // 混合状态（alpha blending）
     auto& RT0          = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
@@ -173,11 +242,13 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 深度模板状态
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
-    // 资源布局
-    ShaderResourceVariableDesc vars[] = {
-        {SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}};
+    // 资源布局：常量缓冲作为 STATIC 变量（每帧只更新 buffer 内容即可）
+    const ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_VERTEX, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
     psoCI.PSODesc.ResourceLayout.Variables    = vars;
-    psoCI.PSODesc.ResourceLayout.NumVariables = 1;
+    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
 
     RefCntAutoPtr<IPipelineState> pPSO;
     device->CreateGraphicsPipelineState(psoCI, &pPSO);
@@ -191,7 +262,7 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     // 创建 Constants buffer
     BufferDesc cbDesc;
     cbDesc.Name           = "MD3 Ripple Constants";
-    cbDesc.Size           = 64; // 足够存储所有 uniform
+    cbDesc.Size           = 256; // 对齐到 256，避免不同后端/驱动对 CB 对齐要求差异
     cbDesc.Usage          = USAGE_DYNAMIC;
     cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
     cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
@@ -200,18 +271,17 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     device->CreateBuffer(cbDesc, nullptr, &pCB);
     ctx.diligent.rippleConstants = pCB.Detach();
 
-    // 创建 SRB
+    // 绑定常量缓冲到 STATIC 变量（PSO 生命周期内固定）
+    if (auto* varVS = ctx.diligent.ripplePSO->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants"); varVS != nullptr) {
+        varVS->Set(ctx.diligent.rippleConstants);
+    }
+    if (auto* varPS = ctx.diligent.ripplePSO->GetStaticVariableByName(SHADER_TYPE_PIXEL, "Constants"); varPS != nullptr) {
+        varPS->Set(ctx.diligent.rippleConstants);
+    }
+
+    // 创建 SRB（无额外资源，但需要用于 CommitShaderResources）
     RefCntAutoPtr<IShaderResourceBinding> pSRB;
     ctx.diligent.ripplePSO->CreateShaderResourceBinding(&pSRB, true);
-
-    // 绑定 Constants buffer 到 DYNAMIC 变量
-    if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE_VERTEX, "Constants")) {
-        pVar->Set(ctx.diligent.rippleConstants);
-    }
-    if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE_PIXEL, "Constants")) {
-        pVar->Set(ctx.diligent.rippleConstants);
-    }
-
     ctx.diligent.rippleSRB = pSRB.Detach();
 
     // 创建全屏四边形 VB
@@ -234,7 +304,8 @@ static bool CreateRipplePSO(Diligent::IRenderDevice* device) {
     return true;
 }
 
-void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, float dpiScale) {
+void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, ParticleSaturn::Render::Backend backend,
+          float dpiScale) {
     auto& ctx = GetContext();
     if (ctx.initialized) {
         return;
@@ -256,8 +327,7 @@ void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, fl
 
     // 创建 Ripple 渲染资源
     if (device && context) {
-        CreateRipplePSO(device);
-        ctx.diligent.initialized = true;
+        ctx.diligent.initialized = CreateRipplePSO(device, backend);
     }
 
     ctx.initialized = true;
@@ -436,7 +506,7 @@ void BeginFrame(float dt) {
 
 void EndFrame() {
     // 渲染所有活跃的 Ripple 效果
-    DrawRipples();
+    DrawRipplesDiligent();
 }
 
 void SetDarkMode(bool dark) {
@@ -733,6 +803,138 @@ void DrawRipples() {
     }
 }
 
+//=============================================================================
+// Ripple（Diligent 渲染路径：通过 ImDrawList callback 在 ImGuiDiligent::Render() 中执行）
+//=============================================================================
+
+struct RippleDrawData {
+    float centerX;
+    float centerY;
+    float radius;
+    float alpha;
+
+    float boundsX;
+    float boundsY;
+    float boundsW;
+    float boundsH;
+    float cornerRadius;
+
+    float colorR;
+    float colorG;
+    float colorB;
+
+    float screenW;
+    float screenH;
+};
+
+static void DrawRippleDiligentCallback(const ImDrawList*, const ImDrawCmd* cmd) {
+    using namespace Diligent;
+
+    auto* data = static_cast<RippleDrawData*>(cmd->UserCallbackData);
+    if (data == nullptr) {
+        return;
+    }
+
+    auto& ctx = GetContext();
+    if (!ctx.diligent.initialized || ctx.diligent.ripplePSO == nullptr || ctx.diligent.rippleSRB == nullptr ||
+        ctx.diligent.rippleConstants == nullptr || ctx.diligent.rippleVB == nullptr) {
+        ImGui::MemFree(data);
+        return;
+    }
+
+    auto* imgui = ParticleSaturn::UI::GetImGuiDiligentInstance();
+    IDeviceContext* dc = (imgui != nullptr) ? imgui->GetCurrentContext() : ctx.diligent.context;
+    if (dc == nullptr) {
+        ImGui::MemFree(data);
+        return;
+    }
+
+    // 设置 scissor（ImGui 的 callback 分支不会自动设置裁剪矩形）
+    if (ImDrawData* drawData = ImGui::GetDrawData(); drawData != nullptr) {
+        const ImVec2 clipOff   = drawData->DisplayPos;
+        const ImVec2 clipScale = drawData->FramebufferScale;
+
+        ImVec2 clipMin((cmd->ClipRect.x - clipOff.x) * clipScale.x, (cmd->ClipRect.y - clipOff.y) * clipScale.y);
+        ImVec2 clipMax((cmd->ClipRect.z - clipOff.x) * clipScale.x, (cmd->ClipRect.w - clipOff.y) * clipScale.y);
+
+        const float vpWf = drawData->DisplaySize.x * clipScale.x;
+        const float vpHf = drawData->DisplaySize.y * clipScale.y;
+        const Uint32 vpW = vpWf > 0.0f ? static_cast<Uint32>(vpWf) : 0;
+        const Uint32 vpH = vpHf > 0.0f ? static_cast<Uint32>(vpHf) : 0;
+
+        if (vpW > 0 && vpH > 0) {
+            auto clampI32 = [](float v, float lo, float hi) -> Int32 {
+                if (v < lo) {
+                    v = lo;
+                }
+                if (v > hi) {
+                    v = hi;
+                }
+                return static_cast<Int32>(v);
+            };
+
+            Rect scissor{};
+            scissor.left   = clampI32(clipMin.x, 0.0f, static_cast<float>(vpW));
+            scissor.top    = clampI32(clipMin.y, 0.0f, static_cast<float>(vpH));
+            scissor.right  = clampI32(clipMax.x, 0.0f, static_cast<float>(vpW));
+            scissor.bottom = clampI32(clipMax.y, 0.0f, static_cast<float>(vpH));
+            dc->SetScissorRects(1, &scissor, vpW, vpH);
+        }
+    }
+
+    // 更新常量缓冲（HLSL/GLSL 共享同一字段顺序）
+    struct RippleCB {
+        float uScreenSize[2];
+        float uRippleCenter[2];
+        float uRippleRadius;
+        float uRippleAlpha;
+        float pad0[2];
+        float uRippleColor[4];
+        float uBounds[4];
+        float uCornerRadius;
+        float pad1[3];
+    };
+
+    PVoid mapped = nullptr;
+    dc->MapBuffer(ctx.diligent.rippleConstants, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
+    if (mapped != nullptr) {
+        auto* cb = static_cast<RippleCB*>(mapped);
+        cb->uScreenSize[0]   = data->screenW;
+        cb->uScreenSize[1]   = data->screenH;
+        cb->uRippleCenter[0] = data->centerX;
+        cb->uRippleCenter[1] = data->centerY;
+        cb->uRippleRadius    = data->radius;
+        cb->uRippleAlpha     = data->alpha;
+        cb->pad0[0]          = 0.0f;
+        cb->pad0[1]          = 0.0f;
+        cb->uRippleColor[0]  = data->colorR;
+        cb->uRippleColor[1]  = data->colorG;
+        cb->uRippleColor[2]  = data->colorB;
+        cb->uRippleColor[3]  = 1.0f;
+        cb->uBounds[0]       = data->boundsX;
+        cb->uBounds[1]       = data->boundsY;
+        cb->uBounds[2]       = data->boundsW;
+        cb->uBounds[3]       = data->boundsH;
+        cb->uCornerRadius    = data->cornerRadius;
+        cb->pad1[0] = cb->pad1[1] = cb->pad1[2] = 0.0f;
+        dc->UnmapBuffer(ctx.diligent.rippleConstants, MAP_WRITE);
+    }
+
+    dc->SetPipelineState(ctx.diligent.ripplePSO);
+    dc->CommitShaderResources(ctx.diligent.rippleSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    IBuffer* vb     = ctx.diligent.rippleVB;
+    Uint64   offset = 0;
+    dc->SetVertexBuffers(0, 1, &vb, &offset, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, SET_VERTEX_BUFFERS_FLAG_RESET);
+
+    DrawAttribs draw{};
+    draw.NumVertices = 4;
+    draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+    dc->Draw(draw);
+
+    ImGui::MemFree(data);
+}
+
 void DrawRipplesDiligent() {
     auto& ctx = GetContext();
     if (ctx.ripples.empty() || !ctx.diligent.initialized) {
@@ -741,9 +943,61 @@ void DrawRipplesDiligent() {
         return;
     }
 
-    // TODO: 使用 Diligent PSO 渲染 Ripple（带精确圆角裁剪）
-    // 目前先使用 ImDrawList 实现
-    DrawRipples();
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (!window) {
+        return;
+    }
+
+    const ImGuiIO& io       = ImGui::GetIO();
+    const float    fbScaleX = (io.DisplayFramebufferScale.x > 0.0f) ? io.DisplayFramebufferScale.x : 1.0f;
+    const float    fbScaleY = (io.DisplayFramebufferScale.y > 0.0f) ? io.DisplayFramebufferScale.y : 1.0f;
+    const float    fbScaleR = std::max(fbScaleX, fbScaleY);
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    for (const auto& r : ctx.ripples) {
+        if (r.alpha <= 0.001f) {
+            continue;
+        }
+        if (r.windowId != window->ID) {
+            continue;
+        }
+
+        const float scrollDeltaX = window->Scroll.x - r.initialScrollX;
+        const float scrollDeltaY = window->Scroll.y - r.initialScrollY;
+
+        const float currentBoundsX = r.initialBoundsX - scrollDeltaX;
+        const float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        const float centerX = currentBoundsX + r.relCenterX;
+        const float centerY = currentBoundsY + r.relCenterY;
+
+        // 先用矩形裁剪限制像素工作量
+        const ImVec2 clipMin(currentBoundsX, currentBoundsY);
+        const ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        dl->PushClipRect(clipMin, clipMax, true);
+
+        auto* data = static_cast<RippleDrawData*>(ImGui::MemAlloc(sizeof(RippleDrawData)));
+        data->centerX      = centerX * fbScaleX;
+        data->centerY      = centerY * fbScaleY;
+        data->radius       = r.radius * fbScaleR;
+        data->alpha        = r.alpha;
+        data->boundsX      = currentBoundsX * fbScaleX;
+        data->boundsY      = currentBoundsY * fbScaleY;
+        data->boundsW      = r.boundsW * fbScaleX;
+        data->boundsH      = r.boundsH * fbScaleY;
+        data->cornerRadius = r.cornerRadius * fbScaleR;
+        data->colorR       = r.colorR;
+        data->colorG       = r.colorG;
+        data->colorB       = r.colorB;
+        data->screenW      = io.DisplaySize.x * fbScaleX;
+        data->screenH      = io.DisplaySize.y * fbScaleY;
+
+        dl->AddCallback(DrawRippleDiligentCallback, data);
+        dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+        dl->PopClipRect();
+    }
 }
 
 //=============================================================================

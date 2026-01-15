@@ -389,6 +389,17 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                     stencilMode_ = StencilMode::Disabled;
                     context->SetPipelineState(pso_);
                     context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                    // ResetRenderState 的语义应恢复 ImGui 渲染器的关键 GPU 状态。
+                    // 这里至少需要恢复 viewport + VB/IB，否则用户回调（例如自定义 PSO 绘制）改变绑定后，后续 ImGui draw 会异常。
+                    context->SetViewports(1, &vp, static_cast<Uint32>(vp.Width), static_cast<Uint32>(vp.Height));
+
+                    IBuffer* resetVBs[]     = {vertexBuffer_};
+                    Uint64   resetOffsets[] = {0};
+                    context->SetVertexBuffers(0, 1, resetVBs, resetOffsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                              SET_VERTEX_BUFFERS_FLAG_RESET);
+                    context->SetIndexBuffer(indexBuffer_, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
                     currentTexture = nullptr; // 强制下次重新绑定纹理
                 } else {
                     // 执行用户回调
