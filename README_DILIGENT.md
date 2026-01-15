@@ -90,6 +90,13 @@ bin_diligent\\x64\\ParticleSaturn.Diligent.exe --backend=vulkan
 
 ## 常见陷阱
 
+### D3D12 下的 Adaptive VSync（vsyncMode=-1）
+
+OpenGL 版使用 `-1` 表示 Adaptive VSync（依赖 `WGL_EXT_swap_control_tear`）。Diligent 的 `SwapChain::Present()` 目前没有等价的“tear-on-miss”接口：
+
+- **D3D12**：已知在部分环境下 `vsyncMode=-1` 会导致启动即白屏/卡死，因此 Diligent 版会将其视为“不支持”，并在初始化阶段强制回退到 `vsyncMode=1`（On）。
+- **Vulkan**：`vsyncMode=-1` 目前等效为 `Present(0)`（低延迟/可撕裂语义占位），用于对齐 UI 选项，但不保证与 OpenGL 的 Adaptive 行为完全一致。
+
 ### Shader Resource Variable 类型选择（MUTABLE vs DYNAMIC）
 
 Diligent Engine 的 `ShaderResourceVariableDesc` 有三种类型，选择错误会导致资源绑定失效：

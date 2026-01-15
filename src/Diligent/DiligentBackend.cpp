@@ -1643,6 +1643,19 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
 
+    // VSync 行为对齐 OpenGL 版：
+    // - OpenGL：若支持 Adaptive（-1），默认启用；否则回退为 On（1）。
+    // - D3D12：已知 -1 在某些环境可能导致启动即白屏/卡死，故标记为不支持并强制回退到 1。
+    //
+    // 说明：Diligent 的 Present API 不支持真正意义上的“Adaptive VSync”（tear-on-miss），
+    // 这里的 -1 仅作为“尽可能低延迟”的语义占位（Vulkan 下等效 Present(0)）。
+    if (appState_ != nullptr) {
+        appState_->render.adaptiveVSyncSupported = (backend_ == Backend::Vulkan);
+        if (appState_->render.vsyncMode < 0 && !appState_->render.adaptiveVSyncSupported) {
+            appState_->render.vsyncMode = 1;
+        }
+    }
+
     device_.Release();
     immediateContext_.Release();
     swapChain_.Release();
@@ -3379,8 +3392,29 @@ void DiligentBackend::RenderFrame() {
 
             // VSync 模式选择 - 使用 MD3 Combo
             ImGui::Text("VSync:");
-            const char* vsyncModes[] = {"Off", "On"};
-            MD3::Combo("##VSync", &appState_->render.vsyncMode, vsyncModes, 2);
+            int vsyncIndex = 1;
+            if (appState_->render.vsyncMode == 0) {
+                vsyncIndex = 0;
+            } else if (appState_->render.vsyncMode == 1) {
+                vsyncIndex = 1;
+            } else {
+                vsyncIndex = 2; // -1 (Adaptive)
+            }
+
+            if (appState_->render.adaptiveVSyncSupported) {
+                const char* vsyncModes[] = {"Off", "On", "Adaptive"};
+                if (MD3::Combo("##VSync", &vsyncIndex, vsyncModes, 3)) {
+                    appState_->render.vsyncMode = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
+                }
+            } else {
+                const char* vsyncModes[] = {"Off", "On"};
+                if (vsyncIndex > 1) {
+                    vsyncIndex = 1; // 不支持 Adaptive 时回退到 On
+                }
+                if (MD3::Combo("##VSync", &vsyncIndex, vsyncModes, 2)) {
+                    appState_->render.vsyncMode = vsyncIndex; // 0/1
+                }
+            }
 
             ImGui::Dummy(ImVec2(0, 5));
 
@@ -3499,12 +3533,22 @@ void DiligentBackend::RenderFrame() {
     // 7. Present
     immediateContext_->Flush();
 
-    // D3D12: Adaptive VSync (-1) 可能与帧等待对象冲突，使用标准 VSync
-    int vsync = appState_->render.vsyncMode;
-    if (vsync < 0) {
-        vsync = 1;
+    // VSync：
+    // - 0  : Off  -> Present(0)
+    // - 1  : On   -> Present(1)
+    // - -1 : Adaptive(OpenGL 语义) -> Vulkan: Present(0)；D3D12：回退到 1（避免白屏/卡死）
+    int presentInterval = 1;
+    if (appState_ != nullptr) {
+        const int mode = appState_->render.vsyncMode;
+        if (mode == 0) {
+            presentInterval = 0;
+        } else if (mode == 1) {
+            presentInterval = 1;
+        } else { // -1 或其他非法值
+            presentInterval = (backend_ == Backend::Vulkan) ? 0 : 1;
+        }
     }
-    swapChain_->Present(static_cast<Uint32>(vsync));
+    swapChain_->Present(static_cast<Uint32>(presentInterval));
 }
 
 void DiligentBackend::RenderSevenSegmentFPS() {
