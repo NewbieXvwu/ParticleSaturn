@@ -74,6 +74,7 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
     src/Diligent/ImGuiDiligent.cpp
+    src/Diligent/Win32WindowManager.cpp
 
     # MD3 UI system
     src/Diligent/md3/MD3Theme.cpp
@@ -103,6 +104,7 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngine
     Diligent-GraphicsEngineD3D12-static
     Diligent-GraphicsEngineVk-static
+    dwmapi
 )
 
 target_compile_definitions(ParticleSaturn.Diligent PRIVATE

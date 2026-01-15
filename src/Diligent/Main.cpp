@@ -5,6 +5,8 @@
 #include "../AppState.h"
 #include "DiligentBackend.h"
 #include "RenderBackend.h"
+#include "Win32WindowManager.h"
+#include "md3/MD3.h"
 
 namespace {
 
@@ -42,6 +44,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     switch (msg) {
+    case WM_SETTINGCHANGE: {
+        // 系统主题切换（Win10/11）：更新标题栏暗色模式 + 应用内 dark mode
+        if (lParam != 0 && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0) {
+            if (backend != nullptr) {
+                auto* state = backend->GetAppState();
+                if (state != nullptr) {
+                    const bool dark = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
+                    state->ui.isDarkMode = dark;
+                    ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
+                    if (backend->IsInitialized()) {
+                        MD3::ApplyImGuiStyle();
+                    }
+                }
+            }
+        }
+        return 0;
+    }
     case WM_KEYDOWN: {
         if (backend != nullptr) {
             auto* state = backend->GetAppState();
@@ -88,8 +107,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (!state->input.keyB_pressed) {
                         state->input.keyB_pressed = true;
                         // 循环切换背景
-                        state->backdrop.backdropIndex = (state->backdrop.backdropIndex + 1) %
-                                                        static_cast<int>(state->backdrop.availableBackdrops.size());
+                        if (!state->backdrop.availableBackdrops.empty()) {
+                            state->backdrop.backdropIndex =
+                                (state->backdrop.backdropIndex + 1) % static_cast<int>(state->backdrop.availableBackdrops.size());
+                            const int mode = state->backdrop.availableBackdrops[state->backdrop.backdropIndex];
+                            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, mode, *state);
+                        }
                     }
                     break;
                 case VK_ESCAPE:
@@ -167,6 +190,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     ParticleSaturn::Render::DiligentBackend backend{};
     AppState                                appState{};
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&backend));
+
+    // 初始化 AppState 基本值（对齐 OpenGL：默认粒子数为 MAX=1200000）
+    appState.InitDefaults(1200000);
+
+    // 系统主题/窗口效果初始化
+    {
+        const bool dark = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
+        appState.ui.isDarkMode = dark;
+        ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
+
+        ParticleSaturn::Win32WindowManager::DetectAvailableBackdrops(hwnd, appState);
+        if (!appState.backdrop.availableBackdrops.empty()) {
+            const int mode = appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex];
+            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, mode, appState);
+        }
+    }
 
     const auto surface = GetClientSize(hwnd);
     if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface, &appState)) {

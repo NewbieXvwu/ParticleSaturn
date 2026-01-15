@@ -98,6 +98,14 @@ OpenGL 版使用 `-1` 表示 Adaptive VSync（依赖 `WGL_EXT_swap_control_tear`
 - **D3D12**：已知在部分环境下 `vsyncMode=-1` 会导致启动即白屏/卡死，因此 Diligent 版会将其视为“不支持”，并在初始化阶段强制回退到 `vsyncMode=1`（On）。
 - **Vulkan**：`vsyncMode=-1` 目前等效为 `Present(0)`（低延迟/可撕裂语义占位），用于对齐 UI 选项，但不保证与 OpenGL 的 Adaptive 行为完全一致。
 
+### Windows DWM 背景 / 透明窗口
+
+OpenGL 版支持 DWM Backdrop（Solid/Aero/Acrylic/Mica）并在开启透明背景时输出 alpha。Diligent 版已对齐该行为：
+
+- 启动时探测可用 Backdrop，并填充 `AppState::backdrop.availableBackdrops`，按 `B` 键循环切换。
+- 当 Backdrop 需要透明时，会设置 `backdrop.useTransparent=true`，并在 SwapChain BackBuffer 清屏/全屏合成时输出 `alpha=0~maxRGB`，以便 DWM 正确混合。
+- 系统主题变化（`WM_SETTINGCHANGE` + `ImmersiveColorSet`）会同步到 `AppState::ui.isDarkMode` 并更新标题栏暗色模式。
+
 ### Shader Resource Variable 类型选择（MUTABLE vs DYNAMIC）
 
 Diligent Engine 的 `ShaderResourceVariableDesc` 有三种类型，选择错误会导致资源绑定失效：

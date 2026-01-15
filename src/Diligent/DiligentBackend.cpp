@@ -16,6 +16,7 @@
 #include "InputLayout.h"
 #include "NativeWindow.h"
 #include "Sampler.h"
+#include "Win32WindowManager.h"
 #include "imgui.h"
 #include "md3/MD3.h"
 
@@ -120,7 +121,8 @@ SamplerState g_BloomTexture_sampler;
 cbuffer BloomCB
 {
     float g_BloomStrength;
-    float3 _pad;
+    float g_Transparent;
+    float2 _pad;
 };
 
 float3 ToneMap(float3 hdr)
@@ -141,7 +143,8 @@ float4 main(PSIn i) : SV_Target
     float w = (maxRGB >= 1.0) ? 0.5 : 0.0;
     col = lerp(col, ToneMap(col), w);
 
-    return float4(col, 1.0);
+    float alpha = lerp(1.0, maxRGB, g_Transparent);
+    return float4(col, alpha);
 }
 )";
 
@@ -180,6 +183,8 @@ layout(set=0, binding=1) uniform sampler2D g_BloomTexture;
 layout(std140, set=0, binding=2) uniform BloomCB
 {
     float g_BloomStrength;
+    float g_Transparent;
+    vec2 _pad;
 };
 
 vec3 toneMap(vec3 hdr)
@@ -199,7 +204,8 @@ void main()
     float w = (maxRGB >= 1.0) ? 0.5 : 0.0;
     col = mix(col, toneMap(col), w);
 
-    oColor = vec4(col, 1.0);
+    float alpha = mix(1.0, maxRGB, g_Transparent);
+    oColor = vec4(col, alpha);
 }
 )";
 
@@ -3177,8 +3183,14 @@ void DiligentBackend::RenderClear() {
     vp.MaxDepth = 1.0f;
     immediateContext_->SetViewports(1, &vp, scDesc.Width, scDesc.Height);
 
-    // 颜色随时间变化留到后续；此处用固定色验证呈现链路。
-    const float clearColor[4] = {0.05f, 0.07f, 0.10f, 1.0f};
+    // 透明窗口模式下需要清为 alpha=0（否则 DWM 会把 client 区域当作不透明）。
+    float clearColor[4] = {0.05f, 0.07f, 0.10f, 1.0f};
+    if (appState_ != nullptr && appState_->backdrop.useTransparent) {
+        clearColor[0] = 0.0f;
+        clearColor[1] = 0.0f;
+        clearColor[2] = 0.0f;
+        clearColor[3] = 0.0f;
+    }
     immediateContext_->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     if (pDSV != nullptr) {
@@ -3563,12 +3575,14 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
         if (mapped != nullptr) {
             struct BloomCB {
                 float strength;
-                float pad[3];
+                float transparent;
+                float pad[2];
             };
 
             auto* cb     = static_cast<BloomCB*>(mapped);
             cb->strength = std::max(0.0f, bloomStrength_);
-            cb->pad[0] = cb->pad[1] = cb->pad[2] = 0.0f;
+            cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
+            cb->pad[0] = cb->pad[1] = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
         }
     }
@@ -4110,7 +4124,13 @@ void DiligentBackend::RenderFrame() {
 
             // 显示状态
             ImGui::Text("Fullscreen: %s", appState_->window.isFullscreen ? "Yes" : "No");
-            ImGui::Text("Transparent: No");
+            ImGui::Text("Transparent: %s", appState_->backdrop.useTransparent ? "Yes" : "No");
+            if (!appState_->backdrop.availableBackdrops.empty() &&
+                appState_->backdrop.backdropIndex >= 0 &&
+                appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
+                const int mode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
+                ImGui::Text("Backdrop: %s", ParticleSaturn::Win32WindowManager::BackdropName(mode));
+            }
             MD3::EndCollapsingHeader();
         }
 
