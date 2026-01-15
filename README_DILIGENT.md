@@ -62,7 +62,7 @@ bin_diligent\\x64\\ParticleSaturn.Diligent.exe --backend=vulkan
   - 离屏渲染后通过全屏四边形合成到 SwapChain BackBuffer 并 Present（后续用于复刻 OpenGL 的 tone mapping 链路）
 - 已推进（阶段 2 复刻版验证）：
   - 星空使用 3D 球壳分布（与 OpenGL 旧实现一致的随机分布方式）
-  - 星空密度与分辨率无关：以 OpenGL 版在 1920x1080 下的星空密度（5 万）为基准，按像素面积缩放星星数量
+  - 星空数量策略对齐 OpenGL：基准星数固定 5 万；在低 `pixelRatio`（<0.85）时绘制数降到 60%（仅 Draw 级别的 LOD，不重建 VB）
   - 使用 view/proj/model 变换与深度相关的大小衰减（`aSize*(1000/-p.z)`）
   - 以“实例化 billboard 四边形”实现圆形点精灵（UV 圆形裁剪 + 软边 alpha），并用加法混合叠加
   - 每帧更新时间常量缓冲，星星闪烁逻辑沿用旧版噪声/正弦调制（用于验证 uniform/CB 链路）

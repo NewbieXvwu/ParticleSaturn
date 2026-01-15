@@ -38,31 +38,11 @@ namespace {
 
 static constexpr TEXTURE_FORMAT kOffscreenColorFormat = TEX_FORMAT_R11G11B10_FLOAT;
 
-static constexpr uint32_t kStarDensityBaseWidth  = 1920;
-static constexpr uint32_t kStarDensityBaseHeight = 1080;
-static constexpr uint32_t kStarDensityBaseCount  = 50000;
-static constexpr uint32_t kStarDensityMinCount   = 5000;
-static constexpr uint32_t kStarDensityMaxCount   = 500000;
-
-uint32_t ComputeStarCountForResolution(uint32_t width, uint32_t height) {
-    if (width == 0 || height == 0) {
-        return kStarDensityBaseCount;
-    }
-    const double baseArea = static_cast<double>(kStarDensityBaseWidth) * static_cast<double>(kStarDensityBaseHeight);
-    const double area     = static_cast<double>(width) * static_cast<double>(height);
-    const double scale    = (baseArea > 0.0) ? (area / baseArea) : 1.0;
-
-    double countD = static_cast<double>(kStarDensityBaseCount) * scale;
-    if (countD < static_cast<double>(kStarDensityMinCount)) {
-        countD = static_cast<double>(kStarDensityMinCount);
-    }
-    if (countD > static_cast<double>(kStarDensityMaxCount)) {
-        countD = static_cast<double>(kStarDensityMaxCount);
-    }
-
-    // 四舍五入，保证 1920x1080 下刚好是 50000。
-    return static_cast<uint32_t>(countD + 0.5);
-}
+// OpenGL 版星空策略：
+// - 基准星数固定为 5 万（STAR_COUNT=50000）
+// - 在低 pixelRatio 时绘制数量降到 60%（OpenGL：pixelRatio < 0.85）
+static constexpr uint32_t kStarCountBase = 50000u;
+static constexpr float    kStarLodRatio  = 0.6f;
 
 struct ShaderSources {
     const char*            Vertex   = nullptr;
@@ -1743,9 +1723,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     UpdateFullscreenQuadBindings();
 
     // 阶段 2：星空（先用 2D NDC 点列表验证 point 渲染 + 闪烁 + 混合链路）。
-    // 星空密度与分辨率无关：以 OpenGL 版在 1920x1080 下的密度（5 万）为基准，按像素面积等比缩放星星数量。
-    const uint32_t desiredStarCount = ComputeStarCountForResolution(surfaceSize_.Width, surfaceSize_.Height);
-    if (!CreateStarfieldBuffers(desiredStarCount)) {
+    // 对齐 OpenGL：基准星数固定为 5 万，LOD 仅在 Draw 时按 pixelRatio 调整绘制数量。
+    if (!CreateStarfieldBuffers(kStarCountBase)) {
         if (lastError_.empty()) {
             SetLastError(L"CreateStarfieldBuffers() 失败。");
         }
@@ -1876,12 +1855,6 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     // SwapChain Resize 只影响后备缓冲/深度缓冲；离屏 RT 需要手动重建。
     CreateOffscreenRenderTarget(surfaceSize_);
     UpdateFullscreenQuadBindings();
-
-    // 星空密度与分辨率无关：按面积缩放星星数量（以 1920x1080 的 5 万为基准）。
-    const uint32_t desiredStarCount = ComputeStarCountForResolution(surfaceSize_.Width, surfaceSize_.Height);
-    if (desiredStarCount != starCount_ && starPSO_ != nullptr) {
-        CreateStarfieldBuffers(desiredStarCount);
-    }
 
     // 更新 MD3 屏幕尺寸
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
@@ -2835,7 +2808,15 @@ void DiligentBackend::RenderOffscreen() {
 
         DrawAttribs starsDraw{};
         starsDraw.NumVertices  = 6;
-        starsDraw.NumInstances = starCount_;
+        uint32_t starLodCount = starCount_;
+        if (appState_ != nullptr && appState_->render.pixelRatio < 0.85f) {
+            // OpenGL 版：低 pixelRatio 时绘制 60% 星星
+            starLodCount = static_cast<uint32_t>(static_cast<float>(kStarCountBase) * kStarLodRatio);
+            if (starLodCount > starCount_) {
+                starLodCount = starCount_;
+            }
+        }
+        starsDraw.NumInstances = starLodCount;
         starsDraw.Flags        = DRAW_FLAG_VERIFY_ALL;
         immediateContext_->Draw(starsDraw);
     }
