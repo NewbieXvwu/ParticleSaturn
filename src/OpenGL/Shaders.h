@@ -380,24 +380,25 @@ void main(){
 // 星空着色器
 const char* const VertexStar = R"(
 #version 430 core
-layout(location=0) in vec3 aPos; layout(location=1) in vec3 aCol; layout(location=2) in float aSize;
-uniform mat4 view, projection, model; out vec3 vColor;
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aCol; layout(location=2) in float aSize; layout(location=3) in float aSeed;
+uniform mat4 view, projection, model; out vec3 vColor; out float vSeed;
 void main(){ 
     vec4 p=view*model*vec4(aPos,1.0); 
     gl_Position=projection*p; 
     gl_PointSize=clamp(aSize*(1000.0/-p.z),1.0,8.0); 
     vColor=aCol; 
+    vSeed=aSeed;
 }
 )";
 
 const char* const FragmentStar = R"(
 #version 430 core
-out vec4 F; in vec3 vColor; uniform float uTime;
+out vec4 F; in vec3 vColor; in float vSeed; uniform float uTime;
 void main(){ 
     vec2 c=2.0*gl_PointCoord-1.0; 
     if(dot(c,c)>1.0)discard; 
     float n=fract(sin(dot(gl_FragCoord.xy,vec2(12.9,78.2)))*43758.5); 
-    vec3 col = vColor * (0.7 + 0.3 * sin(uTime * 2.0 + n * 10.0)) * 3.0;
+    vec3 col = vColor * (0.7 + 0.3 * sin(uTime * 2.0 + (n + vSeed) * 10.0)) * 3.0;
     F=vec4(col, pow(1.0-dot(c,c),1.5)*0.9); 
 }
 )";

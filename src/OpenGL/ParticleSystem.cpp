@@ -156,8 +156,9 @@ void CreateStars(unsigned int& vao, unsigned int& vbo, int count) {
         float     th = rnd(gen) * 6.28f;
         float     ph = acos(2 * rnd(gen) - 1);
         glm::vec3 c  = cols[i % 4];
+        float     seed = rnd(gen);
         starData.insert(starData.end(),
-                        {r * sin(ph) * cos(th), r * cos(ph), r * sin(ph) * sin(th), c.x, c.y, c.z, 1 + rnd(gen) * 3});
+                        {r * sin(ph) * cos(th), r * cos(ph), r * sin(ph) * sin(th), c.x, c.y, c.z, 1 + rnd(gen) * 3, seed});
     }
 
     glGenVertexArrays(1, &vao);
@@ -166,11 +167,13 @@ void CreateStars(unsigned int& vao, unsigned int& vbo, int count) {
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, starData.size() * 4, starData.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, 0, 28, 0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, 0, 32, 0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, 0, 28, (void*)12);
+    glVertexAttribPointer(1, 3, GL_FLOAT, 0, 32, (void*)12);
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 1, GL_FLOAT, 0, 28, (void*)24);
+    glVertexAttribPointer(2, 1, GL_FLOAT, 0, 32, (void*)24);
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_FLOAT, 0, 32, (void*)28);
 }
 
 } // namespace ParticleSystem
