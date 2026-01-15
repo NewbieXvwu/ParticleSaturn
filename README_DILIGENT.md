@@ -78,9 +78,9 @@ bin_diligent\\x64\\ParticleSaturn.Diligent.exe --backend=vulkan
 - 阶段 3 已完成，原阶段 4（行星渲染）已从 OpenGL 版本移除，不再迁移。
 - 已推进（阶段 4 后处理效果）：
   - 实现离屏 HDR 渲染流程（场景先渲染到 offscreenColor_ 纹理）
-  - 实现 Kawase Blur ping-pong 渲染（1/6 分辨率，4 次迭代）
-  - 集成 Bloom 效果到最终合成（全屏四边形混合原图 + 模糊）
-  - Bloom 强度可调（通过 ImGui 滑块，0.0 ~ 2.0）
+  - 实现 Kawase Blur ping-pong 渲染（1/6 分辨率；迭代次数由 `ui.blurStrength` 影响，内部会做 clamp）
+  - Bloom：bright-pass（阈值 1.0）→ 低分辨率 Kawase blur → 全屏四边形合成
+  - Bloom 强度可调（通过 ImGui 滑块 `bloomStrength_`，0.0 ~ 2.0）
 - 已推进（阶段 5 ImGui 集成）：
   - 创建自定义 ImGuiDiligent 渲染器（支持所有 Diligent 后端：D3D12、Vulkan 等）
   - 集成 imgui_impl_win32.cpp 处理 Win32 输入

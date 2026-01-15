@@ -66,6 +66,11 @@ class DiligentBackend final {
     bool CreateSevenSegmentPSO();
     bool CreateSevenSegmentBuffers();
 
+    // Bloom / Blur (用于 bloom 合成与 UI 玻璃模糊的基础纹理)
+    bool CreateBloomPSO();
+    bool CreateBloomTextures(SurfaceSize size);
+    void RenderBloom();
+
     void RenderOffscreen();
     void BlitOffscreenToBackBuffer();
     void RenderClear();
@@ -149,6 +154,26 @@ class DiligentBackend final {
     // Bloom constants for fullscreen quad
     Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
     float                                      bloomStrength_ = 0.5f;
+
+    // Bloom blur pipeline（低分辨率 Kawase blur）
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomDownsamplePSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> bloomDownsampleSRB_;
+
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomBlurPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> bloomBlurSRB_;
+
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomBlurConstants_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     bloomTexA_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_A_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_A_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     bloomTexB_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_B_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_B_;
+
+    uint32_t bloomW_ = 0;
+    uint32_t bloomH_ = 0;
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;

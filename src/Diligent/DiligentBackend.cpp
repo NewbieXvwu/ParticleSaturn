@@ -209,6 +209,254 @@ void main()
     return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
 }
 
+ShaderSources GetBloomDownsampleShaderSources(Backend backend) {
+    // Bright-pass + downsample：把 HDR 场景提取成低分辨率 bloom 源（只保留高光）。
+    //
+    // 常量：
+    // - g_TexelSize : 源纹理 texel size（1/srcW, 1/srcH）
+    // - g_Threshold : 高光阈值（HDR 值，典型 1.0）
+    static constexpr char kHlslVS[] = R"(
+struct VSOut
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+VSOut main(uint VertID : SV_VertexID)
+{
+    float2 pos[4] =
+    {
+        float2(-1.0, -1.0),
+        float2(-1.0,  1.0),
+        float2( 1.0, -1.0),
+        float2( 1.0,  1.0)
+    };
+
+    float2 uv[4] =
+    {
+        float2(0.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 1.0),
+        float2(1.0, 0.0)
+    };
+
+    VSOut o;
+    o.Pos = float4(pos[VertID], 0.0, 1.0);
+    o.UV  = uv[VertID];
+    return o;
+}
+)";
+
+    static constexpr char kHlslPS[] = R"(
+struct PSIn
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+Texture2D    g_Texture;
+SamplerState g_Texture_sampler;
+
+cbuffer BlurCB
+{
+    float2 g_TexelSize;
+    float  g_Offset;
+    float  g_Threshold;
+};
+
+float3 BrightPass(float3 hdr)
+{
+    float m = max(hdr.r, max(hdr.g, hdr.b));
+    // 软阈值：避免硬切割带来的闪烁
+    float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
+    return hdr * w;
+}
+
+float4 main(PSIn i) : SV_Target
+{
+    // 4-tap box（轻度抗锯齿/降采样）
+    float2 halfPix = g_TexelSize * 0.5;
+    float3 c0 = g_Texture.Sample(g_Texture_sampler, i.UV + float2(-halfPix.x, -halfPix.y)).rgb;
+    float3 c1 = g_Texture.Sample(g_Texture_sampler, i.UV + float2( halfPix.x, -halfPix.y)).rgb;
+    float3 c2 = g_Texture.Sample(g_Texture_sampler, i.UV + float2(-halfPix.x,  halfPix.y)).rgb;
+    float3 c3 = g_Texture.Sample(g_Texture_sampler, i.UV + float2( halfPix.x,  halfPix.y)).rgb;
+    float3 col = (c0 + c1 + c2 + c3) * 0.25;
+    col = BrightPass(col);
+    return float4(col, 1.0);
+}
+)";
+
+    static constexpr char kGlslVS[] = R"(
+layout(location = 0) out vec2 vUV;
+void main()
+{
+    const vec2 pos[4] = vec2[4](
+        vec2(-1.0, -1.0),
+        vec2(-1.0,  1.0),
+        vec2( 1.0, -1.0),
+        vec2( 1.0,  1.0)
+    );
+    const vec2 uv[4] = vec2[4](
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+        vec2(1.0, 0.0)
+    );
+    gl_Position = vec4(pos[gl_VertexIndex], 0.0, 1.0);
+    vUV = uv[gl_VertexIndex];
+}
+)";
+
+    static constexpr char kGlslPS[] = R"(
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 oColor;
+
+layout(set=0, binding=0) uniform sampler2D g_Texture;
+layout(std140, set=0, binding=1) uniform BlurCB
+{
+    vec2  g_TexelSize;
+    float g_Offset;
+    float g_Threshold;
+};
+
+vec3 brightPass(vec3 hdr)
+{
+    float m = max(hdr.r, max(hdr.g, hdr.b));
+    float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
+    return hdr * w;
+}
+
+void main()
+{
+    vec2 halfPix = g_TexelSize * 0.5;
+    vec3 c0 = texture(g_Texture, vUV + vec2(-halfPix.x, -halfPix.y)).rgb;
+    vec3 c1 = texture(g_Texture, vUV + vec2( halfPix.x, -halfPix.y)).rgb;
+    vec3 c2 = texture(g_Texture, vUV + vec2(-halfPix.x,  halfPix.y)).rgb;
+    vec3 c3 = texture(g_Texture, vUV + vec2( halfPix.x,  halfPix.y)).rgb;
+    vec3 col = (c0 + c1 + c2 + c3) * 0.25;
+    col = brightPass(col);
+    oColor = vec4(col, 1.0);
+}
+)";
+
+    if (backend == Backend::Vulkan) {
+        return {kGlslVS, kGlslPS, SHADER_SOURCE_LANGUAGE_GLSL};
+    }
+    return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
+}
+
+ShaderSources GetBloomBlurShaderSources(Backend backend) {
+    // Kawase blur：4-tap 对角采样（offset 随迭代递增）
+    static constexpr char kHlslVS[] = R"(
+struct VSOut
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+VSOut main(uint VertID : SV_VertexID)
+{
+    float2 pos[4] =
+    {
+        float2(-1.0, -1.0),
+        float2(-1.0,  1.0),
+        float2( 1.0, -1.0),
+        float2( 1.0,  1.0)
+    };
+
+    float2 uv[4] =
+    {
+        float2(0.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 1.0),
+        float2(1.0, 0.0)
+    };
+
+    VSOut o;
+    o.Pos = float4(pos[VertID], 0.0, 1.0);
+    o.UV  = uv[VertID];
+    return o;
+}
+)";
+
+    static constexpr char kHlslPS[] = R"(
+struct PSIn
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+Texture2D    g_Texture;
+SamplerState g_Texture_sampler;
+
+cbuffer BlurCB
+{
+    float2 g_TexelSize;
+    float  g_Offset;
+    float  g_Threshold;
+};
+
+float4 main(PSIn i) : SV_Target
+{
+    float2 off = g_TexelSize * (g_Offset + 0.5);
+    float3 sum = g_Texture.Sample(g_Texture_sampler, i.UV + float2(-off.x,  off.y)).rgb;
+    sum       += g_Texture.Sample(g_Texture_sampler, i.UV + float2( off.x,  off.y)).rgb;
+    sum       += g_Texture.Sample(g_Texture_sampler, i.UV + float2( off.x, -off.y)).rgb;
+    sum       += g_Texture.Sample(g_Texture_sampler, i.UV + float2(-off.x, -off.y)).rgb;
+    return float4(sum * 0.25, 1.0);
+}
+)";
+
+    static constexpr char kGlslVS[] = R"(
+layout(location = 0) out vec2 vUV;
+void main()
+{
+    const vec2 pos[4] = vec2[4](
+        vec2(-1.0, -1.0),
+        vec2(-1.0,  1.0),
+        vec2( 1.0, -1.0),
+        vec2( 1.0,  1.0)
+    );
+    const vec2 uv[4] = vec2[4](
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+        vec2(1.0, 0.0)
+    );
+    gl_Position = vec4(pos[gl_VertexIndex], 0.0, 1.0);
+    vUV = uv[gl_VertexIndex];
+}
+)";
+
+    static constexpr char kGlslPS[] = R"(
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 oColor;
+
+layout(set=0, binding=0) uniform sampler2D g_Texture;
+layout(std140, set=0, binding=1) uniform BlurCB
+{
+    vec2  g_TexelSize;
+    float g_Offset;
+    float g_Threshold;
+};
+
+void main()
+{
+    vec2 off = g_TexelSize * (g_Offset + 0.5);
+    vec3 sum = texture(g_Texture, vUV + vec2(-off.x,  off.y)).rgb;
+    sum     += texture(g_Texture, vUV + vec2( off.x,  off.y)).rgb;
+    sum     += texture(g_Texture, vUV + vec2( off.x, -off.y)).rgb;
+    sum     += texture(g_Texture, vUV + vec2(-off.x, -off.y)).rgb;
+    oColor = vec4(sum * 0.25, 1.0);
+}
+)";
+
+    if (backend == Backend::Vulkan) {
+        return {kGlslVS, kGlslPS, SHADER_SOURCE_LANGUAGE_GLSL};
+    }
+    return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
+}
+
 ComputeShaderSource GetSaturnComputeShaderSource(Backend backend) {
     // 1:1 复刻 OpenGL ComputeSaturn（粒子物理模拟，双缓冲逻辑），但这里会接入三缓冲轮转：
     // - in  = 当前 render buffer
@@ -1735,6 +1983,20 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     }
     UpdateFullscreenQuadBindings();
 
+    // Bloom / Blur 资源（用于 Bloom 合成与 UI 玻璃模糊）
+    if (!CreateBloomPSO()) {
+        if (lastError_.empty()) {
+            SetLastError(L"CreateBloomPSO() 失败。");
+        }
+        return false;
+    }
+    if (!CreateBloomTextures(surfaceSize_)) {
+        if (lastError_.empty()) {
+            SetLastError(L"CreateBloomTextures() 失败。");
+        }
+        return false;
+    }
+
     // 阶段 2：星空（先用 2D NDC 点列表验证 point 渲染 + 闪烁 + 混合链路）。
     // 对齐 OpenGL：基准星数固定为 5 万，LOD 仅在 Draw 时按 pixelRatio 调整绘制数量。
     if (!CreateStarfieldBuffers(kStarCountBase)) {
@@ -1834,6 +2096,21 @@ void DiligentBackend::Shutdown() {
     fullscreenQuadSRB_.Release();
     fullscreenQuadPSO_.Release();
 
+    bloomSRV_B_.Release();
+    bloomRTV_B_.Release();
+    bloomTexB_.Release();
+    bloomSRV_A_.Release();
+    bloomRTV_A_.Release();
+    bloomTexA_.Release();
+    bloomBlurConstants_.Release();
+    bloomBlurSRB_.Release();
+    bloomBlurPSO_.Release();
+    bloomDownsampleSRB_.Release();
+    bloomDownsamplePSO_.Release();
+    bloomConstants_.Release();
+    bloomW_ = 0;
+    bloomH_ = 0;
+
     starSRB_.Release();
     starVB_.Release();
     starConstants_.Release();
@@ -1883,6 +2160,7 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     // SwapChain Resize 只影响后备缓冲/深度缓冲；离屏 RT 需要手动重建。
     CreateOffscreenRenderTarget(surfaceSize_);
     UpdateFullscreenQuadBindings();
+    CreateBloomTextures(surfaceSize_);
 
     // 更新 MD3 屏幕尺寸
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
@@ -1980,6 +2258,168 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 
     fullscreenQuadPSO_->CreateShaderResourceBinding(&fullscreenQuadSRB_, true);
     return fullscreenQuadSRB_ != nullptr;
+}
+
+bool DiligentBackend::CreateBloomPSO() {
+    if (device_ == nullptr || swapChain_ == nullptr) {
+        return false;
+    }
+
+    const auto downSources = GetBloomDownsampleShaderSources(backend_);
+    const auto blurSources = GetBloomBlurShaderSources(backend_);
+    if (downSources.Vertex == nullptr || downSources.Fragment == nullptr || blurSources.Vertex == nullptr ||
+        blurSources.Fragment == nullptr) {
+        return false;
+    }
+
+    const auto downVS =
+        CreateShaderFromSource(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, downSources.Vertex, downSources.Language);
+    const auto downPS =
+        CreateShaderFromSource(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, downSources.Fragment, downSources.Language);
+    const auto blurVS =
+        CreateShaderFromSource(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, blurSources.Vertex, blurSources.Language);
+    const auto blurPS =
+        CreateShaderFromSource(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, blurSources.Fragment, blurSources.Language);
+    if (downVS == nullptr || downPS == nullptr || blurVS == nullptr || blurPS == nullptr) {
+        return false;
+    }
+
+    // 常量缓冲（BlurCB）：float2 texelSize + float offset + float threshold
+    if (bloomBlurConstants_ == nullptr) {
+        BufferDesc cbDesc{};
+        cbDesc.Name           = "Bloom Blur Constants";
+        cbDesc.Size           = 16;
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+        device_->CreateBuffer(cbDesc, nullptr, &bloomBlurConstants_);
+        if (bloomBlurConstants_ == nullptr) {
+            return false;
+        }
+    }
+
+    SamplerDesc sampDesc{};
+    sampDesc.MinFilter = FILTER_TYPE_LINEAR;
+    sampDesc.MagFilter = FILTER_TYPE_LINEAR;
+    sampDesc.MipFilter = FILTER_TYPE_LINEAR;
+    sampDesc.AddressU  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
+
+    const ImmutableSamplerDesc imtblSamplers[] = {
+        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
+    };
+
+    const ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_PIXEL, "BlurCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+
+    auto createPso = [&](const char* name, IShader* vs, IShader* ps,
+                         RefCntAutoPtr<IPipelineState>& outPso,
+                         RefCntAutoPtr<IShaderResourceBinding>& outSrb) -> bool {
+        GraphicsPipelineStateCreateInfo psoCI{};
+        psoCI.PSODesc.Name         = name;
+        psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
+
+        // 输出到 Bloom 纹理（R11G11B10F），不需要 DSV
+        psoCI.GraphicsPipeline.NumRenderTargets = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]    = kOffscreenColorFormat;
+        psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN;
+
+        psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+        psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+
+        psoCI.PSODesc.ResourceLayout.NumVariables         = _countof(vars);
+        psoCI.PSODesc.ResourceLayout.Variables            = vars;
+        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
+        psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
+
+        psoCI.pVS = vs;
+        psoCI.pPS = ps;
+
+        outPso.Release();
+        outSrb.Release();
+        device_->CreateGraphicsPipelineState(psoCI, &outPso);
+        if (outPso == nullptr) {
+            return false;
+        }
+
+        if (auto* cbVar = outPso->GetStaticVariableByName(SHADER_TYPE_PIXEL, "BlurCB"); cbVar != nullptr) {
+            cbVar->Set(bloomBlurConstants_);
+        } else {
+            return false;
+        }
+
+        outPso->CreateShaderResourceBinding(&outSrb, true);
+        return outSrb != nullptr;
+    };
+
+    if (!createPso("Bloom Downsample PSO", downVS, downPS, bloomDownsamplePSO_, bloomDownsampleSRB_)) {
+        return false;
+    }
+    if (!createPso("Bloom Blur PSO", blurVS, blurPS, bloomBlurPSO_, bloomBlurSRB_)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
+    if (device_ == nullptr) {
+        return false;
+    }
+    if (size.Width == 0 || size.Height == 0) {
+        return true;
+    }
+
+    // 对齐 OpenGL 的玻璃模糊分辨率：1/6
+    const uint32_t w = std::max(1u, size.Width / 6u);
+    const uint32_t h = std::max(1u, size.Height / 6u);
+
+    if (bloomW_ == w && bloomH_ == h && bloomTexA_ != nullptr && bloomTexB_ != nullptr) {
+        return true;
+    }
+
+    bloomW_ = w;
+    bloomH_ = h;
+
+    auto createTex = [&](const char* name,
+                         RefCntAutoPtr<ITexture>& outTex,
+                         RefCntAutoPtr<ITextureView>& outRTV,
+                         RefCntAutoPtr<ITextureView>& outSRV) -> bool {
+        TextureDesc texDesc{};
+        texDesc.Name      = name;
+        texDesc.Type      = RESOURCE_DIM_TEX_2D;
+        texDesc.Width     = bloomW_;
+        texDesc.Height    = bloomH_;
+        texDesc.MipLevels = 1;
+        texDesc.Format    = kOffscreenColorFormat;
+        texDesc.Usage     = USAGE_DEFAULT;
+        texDesc.BindFlags = BIND_RENDER_TARGET | BIND_SHADER_RESOURCE;
+
+        outTex.Release();
+        outRTV.Release();
+        outSRV.Release();
+
+        device_->CreateTexture(texDesc, nullptr, &outTex);
+        if (outTex == nullptr) {
+            return false;
+        }
+        outRTV = outTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
+        outSRV = outTex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+        return outRTV != nullptr && outSRV != nullptr;
+    };
+
+    if (!createTex("Bloom Tex A", bloomTexA_, bloomRTV_A_, bloomSRV_A_)) {
+        return false;
+    }
+    if (!createTex("Bloom Tex B", bloomTexB_, bloomRTV_B_, bloomSRV_B_)) {
+        return false;
+    }
+
+    return true;
 }
 
 bool DiligentBackend::CreateStarfieldBuffers(uint32_t starCount) {
@@ -2967,6 +3407,130 @@ void DiligentBackend::RenderOffscreen() {
     }
 }
 
+void DiligentBackend::RenderBloom() {
+    if (immediateContext_ == nullptr || device_ == nullptr) {
+        return;
+    }
+    if (offscreenSRV_ == nullptr || bloomRTV_A_ == nullptr || bloomSRV_A_ == nullptr || bloomRTV_B_ == nullptr ||
+        bloomSRV_B_ == nullptr) {
+        return;
+    }
+    if (bloomDownsamplePSO_ == nullptr || bloomDownsampleSRB_ == nullptr || bloomBlurPSO_ == nullptr ||
+        bloomBlurSRB_ == nullptr || bloomBlurConstants_ == nullptr) {
+        return;
+    }
+    if (bloomW_ == 0 || bloomH_ == 0) {
+        return;
+    }
+
+    // 视口设为 Bloom 分辨率
+    Viewport vp{};
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    vp.Width    = static_cast<float>(bloomW_);
+    vp.Height   = static_cast<float>(bloomH_);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    immediateContext_->SetViewports(1, &vp, bloomW_, bloomH_);
+
+    auto updateBlurCB = [&](float texelX, float texelY, float offset, float threshold) {
+        PVoid mapped = nullptr;
+        immediateContext_->MapBuffer(bloomBlurConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
+        if (mapped != nullptr) {
+            struct BlurCB {
+                float texelSize[2];
+                float offset;
+                float threshold;
+            };
+            auto* cb         = static_cast<BlurCB*>(mapped);
+            cb->texelSize[0] = texelX;
+            cb->texelSize[1] = texelY;
+            cb->offset       = offset;
+            cb->threshold    = threshold;
+            immediateContext_->UnmapBuffer(bloomBlurConstants_, MAP_WRITE);
+        }
+    };
+
+    // Pass 0: bright-pass downsample（offscreen -> bloomA）
+    {
+        ITextureView* rtv = bloomRTV_A_;
+        immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        // offscreen texel size
+        uint32_t srcW = surfaceSize_.Width;
+        uint32_t srcH = surfaceSize_.Height;
+        if (offscreenColor_ != nullptr) {
+            const auto& desc = offscreenColor_->GetDesc();
+            srcW             = desc.Width;
+            srcH             = desc.Height;
+        }
+        const float texelX = (srcW > 0) ? (1.0f / static_cast<float>(srcW)) : 0.0f;
+        const float texelY = (srcH > 0) ? (1.0f / static_cast<float>(srcH)) : 0.0f;
+        updateBlurCB(texelX, texelY, 0.0f, 1.0f);
+
+        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(offscreenSRV_);
+        }
+
+        immediateContext_->SetPipelineState(bloomDownsamplePSO_);
+        immediateContext_->CommitShaderResources(bloomDownsampleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        // 无 VB，使用 SV_VertexID/gl_VertexIndex
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
+
+    // Pass 1..N: Kawase blur ping-pong（bloomA <-> bloomB）
+    const float blurStrength = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
+    int         iterations   = 3 + static_cast<int>(blurStrength);
+    static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0]));
+    if (iterations < 2) {
+        iterations = 2;
+    }
+    if (iterations > kMaxIterations) {
+        iterations = kMaxIterations;
+    }
+    // 保证 iterations 为偶数：最后一次写入 bloomB（对齐 OpenGL 的“最终结果落在第二个 FBO”策略）
+    if (iterations % 2 == 1) {
+        iterations++;
+        if (iterations > kMaxIterations) {
+            iterations = kMaxIterations;
+        }
+    }
+
+    const float bloomTexelX = 1.0f / static_cast<float>(bloomW_);
+    const float bloomTexelY = 1.0f / static_cast<float>(bloomH_);
+
+    for (int i = 1; i < iterations; ++i) {
+        const bool  writeToB = (i % 2 == 1);
+        ITextureView* outRTV = writeToB ? bloomRTV_B_ : bloomRTV_A_;
+        ITextureView* inSRV  = writeToB ? bloomSRV_A_ : bloomSRV_B_;
+
+        immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        updateBlurCB(bloomTexelX, bloomTexelY, offsets[i], 0.0f);
+
+        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(inSRV);
+        }
+
+        immediateContext_->SetPipelineState(bloomBlurPSO_);
+        immediateContext_->CommitShaderResources(bloomBlurSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
+}
+
 void DiligentBackend::BlitOffscreenToBackBuffer() {
     if (swapChain_ == nullptr || immediateContext_ == nullptr || fullscreenQuadPSO_ == nullptr ||
         fullscreenQuadSRB_ == nullptr || offscreenSRV_ == nullptr) {
@@ -2978,7 +3542,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
         return;
     }
 
-    // 全屏合成（只做 tone mapping，不混合 bloom）
+    // 全屏合成：offscreen + bloom + tone mapping
     immediateContext_->SetRenderTargets(1, &pBackBufferRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 设置视口（Diligent 需要显式设置）
@@ -2992,7 +3556,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
     vp.MaxDepth = 1.0f;
     immediateContext_->SetViewports(1, &vp, scDesc.Width, scDesc.Height);
 
-    // 设置 Bloom 强度为 0（不使用全局 bloom）
+    // Bloom 强度（由 UI 控制）
     if (bloomConstants_ != nullptr) {
         PVoid mapped = nullptr;
         immediateContext_->MapBuffer(bloomConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
@@ -3003,19 +3567,23 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
             };
 
             auto* cb     = static_cast<BloomCB*>(mapped);
-            cb->strength = 0.0f; // 不使用全局 bloom
+            cb->strength = std::max(0.0f, bloomStrength_);
             cb->pad[0] = cb->pad[1] = cb->pad[2] = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
         }
     }
 
-    // 只绑定原始 HDR 纹理（不混合 bloom）
+    // 绑定原始 HDR 纹理 + Bloom 纹理
     if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
         var->Set(offscreenSRV_);
     }
-    // Bloom 纹理也绑定原图（因为 strength=0，不会有影响）
+    // Bloom：使用 RenderBloom() 的最终结果（约 1/6 分辨率，采样时自动线性滤波）
     if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture"); var != nullptr) {
-        var->Set(offscreenSRV_);
+        if (bloomSRV_B_ != nullptr) {
+            var->Set(bloomSRV_B_);
+        } else {
+            var->Set(offscreenSRV_);
+        }
     }
 
     immediateContext_->SetPipelineState(fullscreenQuadPSO_);
@@ -3639,7 +4207,10 @@ void DiligentBackend::RenderFrame() {
     // 2. Offscreen Rendering (Compute + Stars + Particles)
     RenderOffscreen();
 
-    // 3. Blit to Backbuffer
+    // 3. Bloom（bright-pass + Kawase blur）
+    RenderBloom();
+
+    // 4. Blit to Backbuffer
     BlitOffscreenToBackBuffer();
 
     // 渲染七段数码管 FPS（在 BlitOffscreenToBackBuffer 之后）
