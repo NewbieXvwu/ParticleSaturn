@@ -2,7 +2,7 @@
 
 本文件描述 `ParticleSaturn` 迁移到 Diligent Engine 的当前进度与构建方式。
 
-当前阶段目标：推进到路线图 **阶段 5（ImGui 集成）**，实现调试 UI 和 FPS 显示。
+当前阶段目标：在路线图 **阶段 5（ImGui 集成）** 基础上继续对齐 OpenGL 旧版关键行为（VSync/动态 LOD/Bloom/DWM/错误处理/MD3 Ripple）。
 
 ## 代码位置
 
@@ -88,6 +88,7 @@ bin_diligent\\x64\\ParticleSaturn.Diligent.exe --backend=vulkan
   - Debug 窗口显示后端类型、分辨率、Bloom 强度滑块、模糊开关
   - 动态 LOD 对齐 OpenGL：每 0.5 秒基于平滑 FPS 自动调节 `activeParticleCount/pixelRatio`，并同步更新 `densityComp` 与 Indirect Draw 实例数；LOD 控制面板改动会实时生效
   - 统一错误处理/崩溃捕获：使用 `ErrorHandler` 安装全局异常处理器；初始化失败走 Early Fatal Dialog；渲染循环内可显示错误弹窗
+  - MD3 Ripple（Diligent 路径）：不再用 `ImDrawList::AddCircleFilled()`，改为通过 `ImDrawList` callback 在 `ImGuiDiligent::Render()` 中执行专用 PSO 绘制（DX12=HLSL，Vulkan=GLSL），并在 shader 内做圆角矩形裁剪（SDF + AA）
 - Vulkan 后端依赖显卡驱动提供 Vulkan 运行时（一般安装显卡驱动即可）；安装 Vulkan SDK 可让 CMake 检测与调试体验更好。
 
 ## 常见陷阱
@@ -136,3 +137,9 @@ const ShaderResourceVariableDesc vars[] = {
 **症状**：Compute Shader 计算结果不生效（如粒子不移动），但无运行时错误。
 
 **调试技巧**：在 Compute Shader 中强制修改输出颜色为固定值（如红色），如果渲染结果不变，说明 Compute 输出未被正确读取，检查变量类型是否应为 `DYNAMIC`。
+
+### ImDrawList callback 影响渲染状态
+
+MD3 Ripple 采用 `ImDrawList::AddCallback()` 在 ImGui 渲染过程中插入自定义 Diligent draw call。注意：用户回调可能改变 VB/IB/viewport 等状态，如果不恢复会导致后续 ImGui 绘制异常。
+
+- Diligent 版的 `ImDrawCallback_ResetRenderState` 已实现“恢复 ImGui PSO + viewport + VB/IB”的语义，用于在自定义回调后还原状态。
