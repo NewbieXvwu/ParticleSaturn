@@ -10,6 +10,7 @@
 
 #include "../DebugLog.h"
 #include "../ErrorHandler.h"
+#include "CrashAnalyzer.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
@@ -3769,9 +3770,19 @@ void DiligentBackend::RenderFrame() {
         // MD3 新帧
         MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
         MD3::SetDarkMode(appState_->ui.isDarkMode);
+        MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
+
+        // 传递模糊纹理给 MD3（用于窗口背景玻璃效果）
+        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(bloomSRV_B_.RawPtr()) : nullptr,
+                            appState_->ui.enableBlur);
 
         // Error dialogs（统一错误处理）
         ErrorHandler::RenderErrorDialog(frameDt);
+
+        // 崩溃分析器窗口（使用模糊背景）
+        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(bloomSRV_B_.RawPtr()) : 0;
+        CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
+                              appState_->ui.isDarkMode);
 
         // Debug 窗口 - 使用 MD3 无标题栏样式
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
@@ -3793,13 +3804,33 @@ void DiligentBackend::RenderFrame() {
             ImGuiStyle& style = ImGui::GetStyle();
 
             auto&  colors       = MD3::GetContext().colors;
+            auto&  ctx          = MD3::GetContext();
             float  cornerRadius = style.WindowRounding;
             ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
-            // 之前在这里有模糊背景逻辑，已被移除
-            ImVec4 bgCol = colors.surfaceContainerLow;
-            bgCol.w      = 0.95f;
-            dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
+            // 模糊背景：如果启用且有有效纹理
+            if (ctx.blurEnabled && ctx.blurTextureID != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+                // UV 计算：将窗口位置映射到模糊纹理坐标
+                ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
+                ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+
+                // 使用带圆角的图片绘制，避免黑边
+                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
+                                     IM_COL32(255, 255, 255, 255), cornerRadius);
+
+                // 覆盖着色层（填充半透明色彩）
+                ImU32 tintColor = appState_->ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
+                dl->AddRectFilled(pos, endPos, tintColor, cornerRadius);
+
+                // 高光边框
+                ImU32 highlight = appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
+            } else {
+                // 无模糊时的纯色背景
+                ImVec4 bgCol = colors.surfaceContainerLow;
+                bgCol.w      = 0.95f;
+                dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
+            }
         }
 
         // ========== 性能区域 ==========
@@ -4073,6 +4104,16 @@ void DiligentBackend::RenderFrame() {
             // 启用时显示强度滑块
             if (bloomEnabled_) {
                 MD3::Slider("  Intensity", &bloomStrength_, 0.1f, 1.5f, "%.2f");
+            }
+
+            ImGui::Spacing();
+
+            // 玻璃模糊效果开关（窗口背景）
+            MD3::Toggle("Glass Blur", &appState_->ui.enableBlur);
+
+            // 启用时显示强度滑块
+            if (appState_->ui.enableBlur) {
+                MD3::Slider("  Blur Strength", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
             }
 
             MD3::EndCollapsingHeader();

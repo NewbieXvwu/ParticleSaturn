@@ -383,6 +383,35 @@ void Shutdown() {
     std::cout << "[MD3] Material Design 3 UI system shutdown" << std::endl;
 }
 
+void SetDarkMode(bool dark) {
+    auto& ctx = GetContext();
+    if (ctx.isDarkMode == dark) {
+        return;
+    }
+    ctx.isDarkMode = dark;
+    ctx.colors     = dark ? GetDarkColorScheme() : GetLightColorScheme();
+}
+
+bool IsDarkMode() {
+    return GetContext().isDarkMode;
+}
+
+void SetScreenSize(float width, float height) {
+    auto& ctx        = GetContext();
+    ctx.screenWidth  = width;
+    ctx.screenHeight = height;
+}
+
+void SetDpiScale(float scale) {
+    GetContext().dpiScale = scale;
+}
+
+void SetBlurTexture(void* textureID, bool enabled) {
+    auto& ctx         = GetContext();
+    ctx.blurTextureID = textureID;
+    ctx.blurEnabled   = enabled;
+}
+
 void BeginFrame(float dt) {
     auto& ctx = GetContext();
     if (!ctx.initialized) {
@@ -509,30 +538,6 @@ void BeginFrame(float dt) {
 void EndFrame() {
     // 渲染所有活跃的 Ripple 效果
     DrawRipplesDiligent();
-}
-
-void SetDarkMode(bool dark) {
-    auto& ctx = GetContext();
-    if (ctx.isDarkMode == dark) {
-        return;
-    }
-
-    ctx.isDarkMode = dark;
-    ctx.colors     = dark ? GetDarkColorScheme() : GetLightColorScheme();
-}
-
-bool IsDarkMode() {
-    return GetContext().isDarkMode;
-}
-
-void SetScreenSize(float width, float height) {
-    auto& ctx        = GetContext();
-    ctx.screenWidth  = width;
-    ctx.screenHeight = height;
-}
-
-void SetDpiScale(float scale) {
-    GetContext().dpiScale = scale;
 }
 
 void ApplyImGuiStyle() {
