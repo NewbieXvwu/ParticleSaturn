@@ -513,9 +513,13 @@ int main() {
     }
 
     // 模糊效果 FBO
-    BlurFramebuffer fboBlur1, fboBlur2;
-    fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
-    fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
+    // - 1/6：窗口背景强模糊
+    // - 1/12：折叠区域弱模糊（对齐 Diligent 版的次级模糊链路）
+    BlurFramebuffer fboBlur1, fboBlur2, fboBlur3, fboBlur4;
+    fboBlur1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+    fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+    fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+    fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
 
     // 全屏四边形 VAO
     unsigned int vaoQuad, vboQuad;
@@ -641,8 +645,10 @@ int main() {
             proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
             projUI = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
             resizeFBO(appState.window.width, appState.window.height);
-            fboBlur1.Init(appState.window.width / 6, appState.window.height / 6);
-            fboBlur2.Init(appState.window.width / 6, appState.window.height / 6);
+            fboBlur1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+            fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+            fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+            fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
             if (appState.ui.imguiInitialized) {
                 MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
             }
@@ -823,7 +829,8 @@ int main() {
 
         // 模糊处理 (Kawase Blur - 更高效的模糊算法)
         // 优化: 预先计算迭代次数，确保最终结果在 fboBlur2 中，避免额外的复制 pass
-        GLuint finalBlurTex = fboBlur2.tex; // 最终模糊结果纹理
+        GLuint finalBlurTex  = fboBlur2.tex; // 1/6 强模糊结果
+        GLuint finalBlurTex2 = fboBlur3.tex; // 1/12 弱模糊结果（用于折叠区域）
         if (appState.ui.enableBlur) {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
@@ -871,6 +878,33 @@ int main() {
 
             // 最终结果现在保证在 fboBlur2 中
             finalBlurTex = fboBlur2.tex;
+
+            // ========== 次级模糊（1/12 分辨率，用于折叠区域）==========
+            // 第一步：从 1/6 降采样到 1/12（复用 blur shader，offset=0 作为 4-tap box downsample）
+            glViewport(0, 0, fboBlur3.w, fboBlur3.h);
+            glUniform2f(uc.blur_uTexelSize, 1.0f / fboBlur2.w, 1.0f / fboBlur2.h); // 源纹理 texel size
+
+            glBindFramebuffer(GL_FRAMEBUFFER, fboBlur3.fbo);
+            glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
+            glUniform1f(uc.blur_uOffset, 0.0f);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            // 第二步：2 次小 offset 模糊（ping-pong，最终落回 fboBlur3）
+            glUniform2f(uc.blur_uTexelSize, 1.0f / fboBlur3.w, 1.0f / fboBlur3.h);
+            float secondaryOffsets[] = {0.5f, 1.0f};
+            for (int i = 0; i < 2; ++i) {
+                if (i % 2 == 0) {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fboBlur4.fbo);
+                    glBindTexture(GL_TEXTURE_2D, fboBlur3.tex);
+                } else {
+                    glBindFramebuffer(GL_FRAMEBUFFER, fboBlur3.fbo);
+                    glBindTexture(GL_TEXTURE_2D, fboBlur4.tex);
+                }
+                glUniform1f(uc.blur_uOffset, secondaryOffsets[i]);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+            finalBlurTex2 = fboBlur3.tex;
+
             glViewport(0, 0, appState.window.width, appState.window.height);
         }
 
@@ -903,6 +937,10 @@ int main() {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
+
+            // 传递模糊纹理给 MD3（用于控件 Acrylic/玻璃效果）
+            MD3::SetBlurTexture(appState.ui.enableBlur ? fboBlur2.tex : 0, appState.ui.enableBlur);
+            MD3::SetBlurTexture2(appState.ui.enableBlur ? fboBlur3.tex : 0);
 
             // 平滑滚动：必须在提交任何窗口内容之前跑一次（否则这一帧改 ScrollY 没意义）
             MD3::HandleSmoothScroll(60.0f);

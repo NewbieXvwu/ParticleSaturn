@@ -411,6 +411,11 @@ struct MD3Context {
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth  = 1920.0f;
     float screenHeight = 1080.0f;
+
+    // 模糊纹理（用于 Acrylic/玻璃背景）
+    unsigned int blurTextureID  = 0; // 1/6 分辨率强模糊（或已合成的 Acrylic 结果）
+    unsigned int blurTextureID2 = 0; // 1/12 分辨率弱模糊（折叠区域）
+    bool         blurEnabled    = false;
 };
 
 // 获取全局上下文
@@ -443,6 +448,12 @@ void SetScreenSize(float width, float height);
 
 // 设置 DPI 缩放
 void SetDpiScale(float scale);
+
+// 设置模糊纹理（用于窗口背景玻璃/Acrylic）
+void SetBlurTexture(unsigned int textureID, bool enabled);
+
+// 设置次级模糊纹理（用于折叠区域 Acrylic 效果）
+void SetBlurTexture2(unsigned int textureID);
 
 //=============================================================================
 // MD3 控件

@@ -283,6 +283,15 @@ void SetDpiScale(float scale) {
     g_context.dpiScale = scale;
 }
 
+void SetBlurTexture(unsigned int textureID, bool enabled) {
+    g_context.blurTextureID = textureID;
+    g_context.blurEnabled   = enabled;
+}
+
+void SetBlurTexture2(unsigned int textureID) {
+    g_context.blurTextureID2 = textureID;
+}
+
 //=============================================================================
 // Ripple API 实现
 //=============================================================================
