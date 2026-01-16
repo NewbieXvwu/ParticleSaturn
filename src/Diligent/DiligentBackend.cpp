@@ -2287,8 +2287,8 @@ void DiligentBackend::Shutdown() {
     bloomDownsampleSRB_.Release();
     bloomDownsamplePSO_.Release();
     bloomConstants_.Release();
-    bloomW_ = 0;
-    bloomH_ = 0;
+    bloomW_  = 0;
+    bloomH_  = 0;
     bloomW2_ = 0;
     bloomH2_ = 0;
 
@@ -2648,7 +2648,7 @@ bool DiligentBackend::CreateAcrylicPSO() {
     sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
-    const char* samplerName = (backend_ == Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
+    const char*                samplerName     = (backend_ == Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
     const ImmutableSamplerDesc imtblSamplers[] = {
         {SHADER_TYPE_PIXEL, samplerName, sampDesc},
     };
@@ -2690,7 +2690,8 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     const uint32_t h2 = std::max(1u, size.Height / 12u);
 
     const bool sizeChanged = (bloomW_ != w || bloomH_ != h || bloomW2_ != w2 || bloomH2_ != h2);
-    if (!sizeChanged && bloomTexA_ != nullptr && bloomTexB_ != nullptr && bloomTexC_ != nullptr && bloomTexD_ != nullptr) {
+    if (!sizeChanged && bloomTexA_ != nullptr && bloomTexB_ != nullptr && bloomTexC_ != nullptr &&
+        bloomTexD_ != nullptr) {
         return true;
     }
 
@@ -2753,10 +2754,10 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
 
     const auto& scDesc = swapChain_->GetDesc();
 
-    const uint32_t w  = size.Width;
-    const uint32_t h  = size.Height;
-    const uint32_t w6 = std::max(1u, size.Width / 6u);
-    const uint32_t h6 = std::max(1u, size.Height / 6u);
+    const uint32_t w   = size.Width;
+    const uint32_t h   = size.Height;
+    const uint32_t w6  = std::max(1u, size.Width / 6u);
+    const uint32_t h6  = std::max(1u, size.Height / 6u);
     const uint32_t w12 = std::max(1u, size.Width / 12u);
     const uint32_t h12 = std::max(1u, size.Height / 12u);
 
@@ -2766,9 +2767,11 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
         sceneSizeChanged = (desc.Width != w || desc.Height != h || desc.Format != scDesc.ColorBufferFormat);
     }
 
-    const bool sizeChanged = sceneSizeChanged || (uiBlurW_ != w6 || uiBlurH_ != h6 || uiBlurW2_ != w12 || uiBlurH2_ != h12);
-    if (!sizeChanged && uiSceneColor_ != nullptr && uiBlurTexA_ != nullptr && uiBlurTexB_ != nullptr && uiBlurTexC_ != nullptr &&
-        uiBlurTexD_ != nullptr && uiAcrylicStrong_ != nullptr && uiAcrylicWeak_ != nullptr && uiNoiseTex_ != nullptr) {
+    const bool sizeChanged =
+        sceneSizeChanged || (uiBlurW_ != w6 || uiBlurH_ != h6 || uiBlurW2_ != w12 || uiBlurH2_ != h12);
+    if (!sizeChanged && uiSceneColor_ != nullptr && uiBlurTexA_ != nullptr && uiBlurTexB_ != nullptr &&
+        uiBlurTexC_ != nullptr && uiBlurTexD_ != nullptr && uiAcrylicStrong_ != nullptr && uiAcrylicWeak_ != nullptr &&
+        uiNoiseTex_ != nullptr) {
         return true;
     }
 
@@ -2809,16 +2812,20 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
     }
 
     // UI Blur 纹理（低分辨率 float，用于更平滑的模糊采样）
-    if (!createTex("UI Blur A (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexA_, uiBlurRTV_A_, uiBlurSRV_A_)) {
+    if (!createTex("UI Blur A (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexA_, uiBlurRTV_A_,
+                   uiBlurSRV_A_)) {
         return false;
     }
-    if (!createTex("UI Blur B (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexB_, uiBlurRTV_B_, uiBlurSRV_B_)) {
+    if (!createTex("UI Blur B (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexB_, uiBlurRTV_B_,
+                   uiBlurSRV_B_)) {
         return false;
     }
-    if (!createTex("UI Blur C (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexC_, uiBlurRTV_C_, uiBlurSRV_C_)) {
+    if (!createTex("UI Blur C (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexC_, uiBlurRTV_C_,
+                   uiBlurSRV_C_)) {
         return false;
     }
-    if (!createTex("UI Blur D (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexD_, uiBlurRTV_D_, uiBlurSRV_D_)) {
+    if (!createTex("UI Blur D (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexD_, uiBlurRTV_D_,
+                   uiBlurSRV_D_)) {
         return false;
     }
 
@@ -2827,8 +2834,8 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
                    uiAcrylicRTV_Strong_, uiAcrylicSRV_Strong_)) {
         return false;
     }
-    if (!createTex("UI Acrylic Weak (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiAcrylicWeak_, uiAcrylicRTV_Weak_,
-                   uiAcrylicSRV_Weak_)) {
+    if (!createTex("UI Acrylic Weak (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiAcrylicWeak_,
+                   uiAcrylicRTV_Weak_, uiAcrylicSRV_Weak_)) {
         return false;
     }
 
@@ -2840,14 +2847,14 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
         std::vector<uint8_t> noise;
         noise.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u);
 
-        std::mt19937                          gen{1337u};
-        std::uniform_int_distribution<int>    rnd(0, 255);
+        std::mt19937                       gen{1337u};
+        std::uniform_int_distribution<int> rnd(0, 255);
         for (size_t i = 0; i < noise.size(); i += 4u) {
-            const uint8_t v  = static_cast<uint8_t>(rnd(gen));
-            noise[i + 0u]    = v;
-            noise[i + 1u]    = v;
-            noise[i + 2u]    = v;
-            noise[i + 3u]    = 255u;
+            const uint8_t v = static_cast<uint8_t>(rnd(gen));
+            noise[i + 0u]   = v;
+            noise[i + 1u]   = v;
+            noise[i + 2u]   = v;
+            noise[i + 3u]   = 255u;
         }
 
         TextureDesc texDesc{};
@@ -2882,8 +2889,8 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
 }
 
 void DiligentBackend::RenderUISceneForUI() {
-    if (immediateContext_ == nullptr || swapChain_ == nullptr || fullscreenQuadPSO_ == nullptr || fullscreenQuadSRB_ == nullptr ||
-        offscreenSRV_ == nullptr || bloomSRV_B_ == nullptr || uiSceneRTV_ == nullptr) {
+    if (immediateContext_ == nullptr || swapChain_ == nullptr || fullscreenQuadPSO_ == nullptr ||
+        fullscreenQuadSRB_ == nullptr || offscreenSRV_ == nullptr || bloomSRV_B_ == nullptr || uiSceneRTV_ == nullptr) {
         return;
     }
 
@@ -2908,7 +2915,8 @@ void DiligentBackend::RenderUISceneForUI() {
 
     immediateContext_->SetPipelineState(fullscreenQuadPSO_);
     immediateContext_->CommitShaderResources(fullscreenQuadSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE, SET_VERTEX_BUFFERS_FLAG_RESET);
+    immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                        SET_VERTEX_BUFFERS_FLAG_RESET);
 
     DrawAttribs draw{};
     draw.NumVertices = 4;
@@ -2925,8 +2933,8 @@ void DiligentBackend::RenderUIBlur() {
         uiBlurSRV_D_ == nullptr) {
         return;
     }
-    if (bloomDownsamplePSO_ == nullptr || bloomDownsampleSRB_ == nullptr || bloomBlurPSO_ == nullptr || bloomBlurSRB_ == nullptr ||
-        bloomBlurConstants_ == nullptr) {
+    if (bloomDownsamplePSO_ == nullptr || bloomDownsampleSRB_ == nullptr || bloomBlurPSO_ == nullptr ||
+        bloomBlurSRB_ == nullptr || bloomBlurConstants_ == nullptr) {
         return;
     }
     if (uiBlurW_ == 0 || uiBlurH_ == 0) {
@@ -3061,8 +3069,8 @@ void DiligentBackend::RenderUIBlur() {
         immediateContext_->Draw(draw);
     }
 
-    const float texelX12 = 1.0f / static_cast<float>(uiBlurW2_);
-    const float texelY12 = 1.0f / static_cast<float>(uiBlurH2_);
+    const float            texelX12           = 1.0f / static_cast<float>(uiBlurW2_);
+    const float            texelY12           = 1.0f / static_cast<float>(uiBlurH2_);
     static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
     static constexpr int   secondaryIterations =
         static_cast<int>(sizeof(secondaryOffsets) / sizeof(secondaryOffsets[0])); // 偶数，最终结果落回 C
@@ -4391,8 +4399,9 @@ void DiligentBackend::RenderBloom() {
 
         // 第二步：2 次模糊迭代（使用较小的 offset）
         // 由于分辨率更低，使用较小的 offset 值。iterations 设为偶数，确保最终结果落在 bloomTexC_ 中。
-        static constexpr float secondaryOffsets[]  = {0.5f, 1.0f};
-        static constexpr int   secondaryIterations = static_cast<int>(sizeof(secondaryOffsets) / sizeof(secondaryOffsets[0]));
+        static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
+        static constexpr int   secondaryIterations =
+            static_cast<int>(sizeof(secondaryOffsets) / sizeof(secondaryOffsets[0]));
 
         for (int i = 0; i < secondaryIterations; ++i) {
             const bool    writeToD = (i % 2 == 0); // C->D->C...
@@ -4496,15 +4505,15 @@ void DiligentBackend::RenderFrame() {
     if (lastFrameTime_ != std::chrono::steady_clock::time_point{}) {
         frameDt = std::chrono::duration<float>(now - lastFrameTime_).count();
         if (frameDt > 0.0f && frameDt < 1.0f) {
-            fpsSamples_[fpsSampleIndex_] = 1.0f / frameDt;
-            fpsSampleIndex_              = (fpsSampleIndex_ + 1) % kFpsSampleCount;
+            frameDtSamples_[fpsSampleIndex_] = frameDt;
+            fpsSampleIndex_                  = (fpsSampleIndex_ + 1) % kFpsSampleCount;
 
-            // 计算平均 FPS
-            float sum = 0.0f;
+            // 计算平均 FPS（帧时间调和平均：N / Σdt）
+            float sumDt = 0.0f;
             for (int i = 0; i < kFpsSampleCount; ++i) {
-                sum += fpsSamples_[i];
+                sumDt += frameDtSamples_[i];
             }
-            currentFps_ = sum / static_cast<float>(kFpsSampleCount);
+            currentFps_ = (sumDt > 0.0f) ? (static_cast<float>(kFpsSampleCount) / sumDt) : 60.0f;
 
             // FPS 历史曲线采样（低频）
             fpsHistorySampleTimer_ += frameDt;
@@ -4660,7 +4669,8 @@ void DiligentBackend::RenderFrame() {
         ErrorHandler::RenderErrorDialog(frameDt);
 
         // 崩溃分析器窗口（使用模糊背景）
-        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
+        ImTextureID crashBlurTex =
+            appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
         CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
                               appState_->ui.isDarkMode);
 
@@ -4694,9 +4704,9 @@ void DiligentBackend::RenderFrame() {
                 ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
                 ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
 
-                 // 使用带圆角的图片绘制，避免黑边
-                 MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
-                                      IM_COL32(255, 255, 255, 255), cornerRadius);
+                // 使用带圆角的图片绘制，避免黑边
+                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
+                                     IM_COL32(255, 255, 255, 255), cornerRadius);
 
                 // 噪点层：防 banding + 增加“材质感”
                 if (ctx.noiseTextureID != nullptr) {
@@ -4841,17 +4851,17 @@ void DiligentBackend::RenderFrame() {
                 ImVec2 uv0(plotPos.x / ctx.screenWidth, plotPos.y / ctx.screenHeight);
                 ImVec2 uv1(plotEnd.x / ctx.screenWidth, plotEnd.y / ctx.screenHeight);
 
-                 // 弱模糊背景
-                 MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
-                                      uv1, IM_COL32(255, 255, 255, 255), cornerRadius);
+                // 弱模糊背景
+                MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
+                                     uv1, IM_COL32(255, 255, 255, 255), cornerRadius);
 
                 // 噪点层：防 banding + 增加“材质感”
                 if (ctx.noiseTextureID != nullptr) {
                     const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
                     const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
                     const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
-                    MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), plotPos, plotEnd, uv0, uv1,
-                                         noiseCol, cornerRadius);
+                    MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), plotPos, plotEnd,
+                                         uv0, uv1, noiseCol, cornerRadius);
                 }
 
                 // 细边框

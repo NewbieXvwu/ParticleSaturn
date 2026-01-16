@@ -104,9 +104,9 @@ class DiligentBackend final {
     float                                 animRotX_     = 0.4f;
     float                                 animRotY_     = 0.0f;
 
-    // FPS 计算（简单移动平均）
+    // FPS 计算（帧时间调和平均）
     static constexpr int                  kFpsSampleCount = 60;
-    float                                 fpsSamples_[kFpsSampleCount]{};
+    float                                 frameDtSamples_[kFpsSampleCount]{};
     int                                   fpsSampleIndex_ = 0;
     float                                 currentFps_     = 60.0f;
     std::chrono::steady_clock::time_point lastFrameTime_{};
