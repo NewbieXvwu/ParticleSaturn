@@ -5040,8 +5040,10 @@ void DiligentBackend::RenderFrame() {
 
             // 启用时显示强度滑块
             if (appState_->ui.enableBlur) {
-                MD3::Slider("  Blur Strength", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
-                MD3::Slider("  Noise", &appState_->ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
+                ImGui::TextUnformatted("Blur Strength");
+                MD3::Slider("##BlurStr", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
+                ImGui::TextUnformatted("Noise");
+                MD3::Slider("##Noise", &appState_->ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
             }
 
             MD3::EndCollapsingHeader();
