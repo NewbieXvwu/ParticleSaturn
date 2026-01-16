@@ -408,8 +408,12 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
             // 使用带圆角的图片绘制，避免黑边
             MD3::AddImageRounded(dl, blurTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                  IM_COL32(255, 255, 255, 255), style.WindowRounding);
-            ImU32 tintColor = isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
-            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
+            // 噪点层：防 banding + 增加“材质感”
+            if (MD3::GetContext().noiseTextureID != 0) {
+                const ImU32 noiseCol = isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                MD3::AddImageRounded(dl, MD3::GetContext().noiseTextureID, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
+                                     uv1, noiseCol, style.WindowRounding);
+            }
             ImU32 highlight = isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
             dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
         } else {

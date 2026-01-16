@@ -45,6 +45,8 @@ struct UniformCache {
     GLint ui_proj, ui_uColor, ui_uTransform;
     // 模糊着色器 (Kawase Blur)
     GLint blur_uTexture, blur_uTexelSize, blur_uOffset;
+    // Acrylic 合成着色器
+    GLint acrylic_uTexture, acrylic_uTint, acrylic_uParams;
     // 全屏四边形着色器
     GLint quad_uTexture, quad_uTransparent;
 };
@@ -63,7 +65,7 @@ inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc
 
 // 初始化 Uniform 缓存
 inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, unsigned int pStar,
-                             unsigned int pUI, unsigned int pBlur, unsigned int pQuad) {
+                              unsigned int pUI, unsigned int pBlur, unsigned int pAcrylic, unsigned int pQuad) {
     uc.comp_uDt            = glGetUniformLocation(pComp, "uDt");
     uc.comp_uHandScale     = glGetUniformLocation(pComp, "uHandScale");
     uc.comp_uHandHas       = glGetUniformLocation(pComp, "uHandHas");
@@ -92,6 +94,11 @@ inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int 
     uc.blur_uTexture   = glGetUniformLocation(pBlur, "uTexture");
     uc.blur_uTexelSize = glGetUniformLocation(pBlur, "uTexelSize");
     uc.blur_uOffset    = glGetUniformLocation(pBlur, "uOffset");
+
+    // Acrylic 合成着色器
+    uc.acrylic_uTexture = glGetUniformLocation(pAcrylic, "uTexture");
+    uc.acrylic_uTint    = glGetUniformLocation(pAcrylic, "uTint");
+    uc.acrylic_uParams  = glGetUniformLocation(pAcrylic, "uParams");
 
     // 全屏四边形着色器
     uc.quad_uTexture     = glGetUniformLocation(pQuad, "uTexture");

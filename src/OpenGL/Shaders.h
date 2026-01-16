@@ -377,6 +377,47 @@ void main(){
 }
 )";
 
+// Acrylic 近似合成：饱和度增强 + 近似 exclusion + tint（带亮度自适应）
+// 参数：
+// - uTint   : rgb + baseOpacity
+// - uParams : x=saturation, y=adaptive, z=darkModeFlag, w=exclusionStrength
+const char* const FragmentAcrylic = R"(
+#version 430 core
+out vec4 F;
+in vec2 vUV;
+uniform sampler2D uTexture;
+uniform vec4 uTint;
+uniform vec4 uParams;
+
+vec3 applySaturation(vec3 c, float sat)
+{
+    float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    vec3 gray = vec3(lum);
+    return clamp(gray + (c - gray) * sat, 0.0, 1.0);
+}
+
+void main()
+{
+    vec3 col = texture(uTexture, vUV).rgb;
+    col = applySaturation(col, uParams.x);
+
+    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    float a   = uTint.a;
+    float adapt = uParams.y;
+    if (uParams.z > 0.5) // dark
+        a = clamp(a + (lum - 0.5) * adapt, 0.0, 1.0);
+    else // light
+        a = clamp(a + (0.5 - lum) * adapt, 0.0, 1.0);
+
+    vec3 tint = uTint.rgb;
+    vec3 excl = (col + tint) - (2.0 * col * tint);
+    vec3 mixed = mix(col, excl, clamp(uParams.w, 0.0, 1.0));
+    vec3 outCol = mix(col, mixed, a);
+
+    F = vec4(outCol, 1.0);
+}
+)";
+
 // 星空着色器
 const char* const VertexStar = R"(
 #version 430 core

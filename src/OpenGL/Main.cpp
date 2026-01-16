@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
+#include <random>
 
 #include "AppState.h"
 #include "CameraSelector/CameraSelector.h"
@@ -419,9 +420,10 @@ int main() {
     unsigned int pUI     = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
     unsigned int pQuad   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
     unsigned int pBlur   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
+    unsigned int pAcrylic = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentAcrylic);
 
     // 检查核心着色器是否编译成功
-    if (!pSaturn || !pStar || !pUI || !pQuad || !pBlur) {
+    if (!pSaturn || !pStar || !pUI || !pQuad || !pBlur || !pAcrylic) {
         std::cerr << "[Main] Fatal: Core shader compilation failed" << std::endl;
         std::ostringstream details;
         details << "Shader compilation status:\n"
@@ -430,6 +432,7 @@ int main() {
                 << "  pUI:     " << (pUI ? "OK" : "FAILED") << "\n"
                 << "  pQuad:   " << (pQuad ? "OK" : "FAILED") << "\n"
                 << "  pBlur:   " << (pBlur ? "OK" : "FAILED") << "\n\n"
+                << "  pAcrylic:" << (pAcrylic ? "OK" : "FAILED") << "\n\n"
                 << "GPU: " << appState.gl.renderer << "\n"
                 << "OpenGL: " << appState.gl.version;
         ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, details.str());
@@ -515,11 +518,40 @@ int main() {
     // 模糊效果 FBO
     // - 1/6：窗口背景强模糊
     // - 1/12：折叠区域弱模糊（对齐 Diligent 版的次级模糊链路）
+    // - Acrylic：在模糊纹理上做饱和度/排除混合/着色合成，避免 ImGui 端叠加造成“二次着色”
     BlurFramebuffer fboBlur1, fboBlur2, fboBlur3, fboBlur4;
+    BlurFramebuffer fboAcrylic1, fboAcrylic2;
     fboBlur1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
     fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
     fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
     fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+    fboAcrylic1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+    fboAcrylic2.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+
+    // 噪点纹理（全分辨率；避免依赖 wrap sampler）
+    GLuint noiseTex = 0;
+    auto   rebuildNoiseTex = [&](int w, int h) {
+        if (noiseTex != 0) {
+            glDeleteTextures(1, &noiseTex);
+            noiseTex = 0;
+        }
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+
+        std::vector<unsigned char> rgba(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u, 0);
+        std::mt19937                          gen{1337u};
+        std::uniform_int_distribution<int>    rnd(0, 255);
+        for (size_t i = 0; i < rgba.size(); i += 4u) {
+            const unsigned char v = static_cast<unsigned char>(rnd(gen));
+            rgba[i + 0u]          = v;
+            rgba[i + 1u]          = v;
+            rgba[i + 2u]          = v;
+            rgba[i + 3u]          = 255u;
+        }
+        noiseTex = CreateTextureRGBA8(w, h, rgba.data());
+    };
+    rebuildNoiseTex(appState.window.width, appState.window.height);
 
     // 全屏四边形 VAO
     unsigned int vaoQuad, vboQuad;
@@ -567,7 +599,7 @@ int main() {
 
     // 初始化 Uniform 缓存
     UniformCache uc;
-    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pUI, pBlur, pQuad);
+    Renderer::InitUniformCache(uc, pComp, pSaturn, pStar, pUI, pBlur, pAcrylic, pQuad);
 
     // 投影和视图矩阵
     glm::mat4 proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
@@ -649,6 +681,9 @@ int main() {
             fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
             fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
             fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+            fboAcrylic1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
+            fboAcrylic2.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+            rebuildNoiseTex(appState.window.width, appState.window.height);
             if (appState.ui.imguiInitialized) {
                 MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
             }
@@ -905,6 +940,42 @@ int main() {
             }
             finalBlurTex2 = fboBlur3.tex;
 
+            // ========== Acrylic 合成（饱和度增强 + 近似 exclusion + tint）==========
+            // 在低分辨率模糊纹理上合成，避免 ImGui 端二次叠加造成偏色/灰蒙。
+            glUseProgram(pAcrylic);
+            glUniform1i(uc.acrylic_uTexture, 0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindVertexArray(vaoQuad);
+
+            const bool isDark = appState.ui.isDarkMode;
+
+            // Strong (1/6)：用于窗口背景
+            glViewport(0, 0, fboAcrylic1.w, fboAcrylic1.h);
+            glBindFramebuffer(GL_FRAMEBUFFER, fboAcrylic1.fbo);
+            glBindTexture(GL_TEXTURE_2D, finalBlurTex);
+            if (isDark) {
+                glUniform4f(uc.acrylic_uTint, 20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f, 180.0f / 255.0f);
+            } else {
+                glUniform4f(uc.acrylic_uTint, 245.0f / 255.0f, 245.0f / 255.0f, 255.0f / 255.0f, 150.0f / 255.0f);
+            }
+            glUniform4f(uc.acrylic_uParams, 1.35f, 0.35f, isDark ? 1.0f : 0.0f, 1.0f);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            // Weak (1/12)：用于折叠区域
+            glViewport(0, 0, fboAcrylic2.w, fboAcrylic2.h);
+            glBindFramebuffer(GL_FRAMEBUFFER, fboAcrylic2.fbo);
+            glBindTexture(GL_TEXTURE_2D, finalBlurTex2);
+            if (isDark) {
+                glUniform4f(uc.acrylic_uTint, 35.0f / 255.0f, 35.0f / 255.0f, 40.0f / 255.0f, 160.0f / 255.0f);
+            } else {
+                glUniform4f(uc.acrylic_uTint, 250.0f / 255.0f, 250.0f / 255.0f, 255.0f / 255.0f, 140.0f / 255.0f);
+            }
+            glUniform4f(uc.acrylic_uParams, 1.30f, 0.30f, isDark ? 1.0f : 0.0f, 1.0f);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            finalBlurTex  = fboAcrylic1.tex;
+            finalBlurTex2 = fboAcrylic2.tex;
+
             glViewport(0, 0, appState.window.width, appState.window.height);
         }
 
@@ -938,9 +1009,10 @@ int main() {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            // 传递模糊纹理给 MD3（用于控件 Acrylic/玻璃效果）
-            MD3::SetBlurTexture(appState.ui.enableBlur ? fboBlur2.tex : 0, appState.ui.enableBlur);
-            MD3::SetBlurTexture2(appState.ui.enableBlur ? fboBlur3.tex : 0);
+            // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
+            MD3::SetBlurTexture(appState.ui.enableBlur ? fboAcrylic1.tex : 0, appState.ui.enableBlur);
+            MD3::SetBlurTexture2(appState.ui.enableBlur ? fboAcrylic2.tex : 0);
+            MD3::SetNoiseTexture(appState.ui.enableBlur ? noiseTex : 0);
 
             // 平滑滚动：必须在提交任何窗口内容之前跑一次（否则这一帧改 ScrollY 没意义）
             MD3::HandleSmoothScroll(60.0f);
@@ -949,7 +1021,7 @@ int main() {
             ErrorHandler::RenderErrorDialog(dt);
 
             // Render crash analyzer window
-            CrashAnalyzer::Render(appState.ui.enableBlur, fboBlur2.tex, appState.window.width, appState.window.height,
+            CrashAnalyzer::Render(appState.ui.enableBlur, fboAcrylic1.tex, appState.window.width, appState.window.height,
                                   appState.ui.isDarkMode);
 
             if (appState.ui.showDebugWindow) {
@@ -978,10 +1050,14 @@ int main() {
                     ImVec2 uv1 = ImVec2((pos.x + size.x) / appState.window.width,
                                         1.0f - (pos.y + size.y) / appState.window.height);
                     // 使用带圆角的图片绘制，避免黑边
-                    MD3::AddImageRounded(dl, fboBlur2.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
+                    MD3::AddImageRounded(dl, fboAcrylic1.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                          IM_COL32(255, 255, 255, 255), style.WindowRounding);
-                    ImU32 tintColor = appState.ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
-                    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
+                    if (noiseTex != 0) {
+                        const ImU32 noiseCol =
+                            appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                        MD3::AddImageRounded(dl, noiseTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
+                                             noiseCol, style.WindowRounding);
+                    }
                     ImU32 highlight =
                         appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                     dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
