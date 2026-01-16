@@ -2226,11 +2226,14 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
-    // 让 HLSL 侧的 g_Texture_sampler / g_BloomTexture_sampler 使用同一个不可变采样器。
-    // 注意：D3D12 下需要使用采样器的完整名称（带 _sampler 后缀）
+    // Vulkan/GLSL 使用组合采样器 (sampler2D)，采样器名称直接用纹理名
+    // D3D12/HLSL 使用分离采样器，采样器名称需要 "_sampler" 后缀
+    const char* texSamplerName   = (backend_ == Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
+    const char* bloomSamplerName = (backend_ == Backend::Vulkan) ? "g_BloomTexture" : "g_BloomTexture_sampler";
+
     const ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
-        {SHADER_TYPE_PIXEL, "g_BloomTexture_sampler", sampDesc},
+        {SHADER_TYPE_PIXEL, texSamplerName, sampDesc},
+        {SHADER_TYPE_PIXEL, bloomSamplerName, sampDesc},
     };
     psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
     psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
@@ -2315,8 +2318,12 @@ bool DiligentBackend::CreateBloomPSO() {
     sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
+    // Vulkan/GLSL 使用组合采样器 (sampler2D)，采样器名称直接用纹理名 "g_Texture"
+    // D3D12/HLSL 使用分离采样器，采样器名称需要 "_sampler" 后缀
+    const char* samplerName = (backend_ == Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
+
     const ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
+        {SHADER_TYPE_PIXEL, samplerName, sampDesc},
     };
 
     const ShaderResourceVariableDesc vars[] = {
@@ -2732,6 +2739,25 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
     particleRenderIdx_ = 2;
     particleReadIdx_   = 0;
     particleWriteIdx_  = 1;
+
+    // Vulkan 修复：显式将所有粒子缓冲区转换到正确的初始资源状态。
+    // 在 Vulkan 下，新创建的缓冲区处于 RESOURCE_STATE_UNKNOWN 状态，
+    // 必须在首次使用前转换到正确状态，否则会导致验证层错误或崩溃。
+    // - renderIdx 缓冲区将用于渲染（SRV 读取）
+    // - readIdx 缓冲区将用于计算输入（SRV 读取）
+    // - writeIdx 缓冲区将用于计算输出（UAV 写入）
+    {
+        StateTransitionDesc barriers[kParticleBufferCount] = {};
+        for (uint32_t i = 0; i < kParticleBufferCount; ++i) {
+            barriers[i].pResource      = particleBuffers_[i];
+            barriers[i].OldState       = RESOURCE_STATE_UNKNOWN;
+            barriers[i].NewState       = RESOURCE_STATE_SHADER_RESOURCE;
+            barriers[i].TransitionType = STATE_TRANSITION_TYPE_IMMEDIATE;
+            barriers[i].Flags          = STATE_TRANSITION_FLAG_UPDATE_STATE;
+        }
+        immediateContext_->TransitionResourceStates(kParticleBufferCount, barriers);
+    }
+
     return true;
 }
 
@@ -3146,10 +3172,11 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
 
     // 显式的资源状态转换：确保 UAV 写入对后续的 SRV 读取可见
     // 这是等价于 OpenGL 的 glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT)
+    // 注意：使用 RESOURCE_STATE_UNKNOWN 让 Diligent 自动检测当前状态，避免第一帧时状态不匹配
     {
         StateTransitionDesc barrier{};
         barrier.pResource      = particleBuffers_[particleWriteIdx_];
-        barrier.OldState       = RESOURCE_STATE_UNORDERED_ACCESS;
+        barrier.OldState       = RESOURCE_STATE_UNKNOWN;
         barrier.NewState       = RESOURCE_STATE_SHADER_RESOURCE;
         barrier.TransitionType = STATE_TRANSITION_TYPE_IMMEDIATE;
         barrier.Flags          = STATE_TRANSITION_FLAG_UPDATE_STATE;
@@ -3219,8 +3246,16 @@ void DiligentBackend::RenderOffscreen() {
 
     OutputDebugStringA("  RenderOffscreen: Setup RT start\n");
 
+    // 添加空指针检查，避免 Vulkan 上因无效 RTV 导致崩溃
+    if (offscreenRTV_ == nullptr) {
+        OutputDebugStringA("  RenderOffscreen: offscreenRTV_ is NULL, skipping\n");
+        return;
+    }
+
     ITextureView* pRTV = offscreenRTV_;
+    OutputDebugStringA("  RenderOffscreen: Calling SetRenderTargets\n");
     immediateContext_->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    OutputDebugStringA("  RenderOffscreen: SetRenderTargets done\n");
 
     // 以实际离屏 RT 尺寸为准，避免 Resize/DPI 缩放导致的"像素尺寸 -> NDC"换算偏差（会直接影响星空/粒子"密度"观感）。
     uint32_t rtW = surfaceSize_.Width;
@@ -3239,14 +3274,19 @@ void DiligentBackend::RenderOffscreen() {
     vp.Height   = static_cast<float>(rtH);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
+    OutputDebugStringA("  RenderOffscreen: Calling SetViewports\n");
     immediateContext_->SetViewports(1, &vp, rtW, rtH);
+    OutputDebugStringA("  RenderOffscreen: SetViewports done\n");
 
     // 星空背景：先清为黑色，再加法混合叠加星点（更接近 OpenGL 旧实现观感）。
     const float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    OutputDebugStringA("  RenderOffscreen: Calling ClearRenderTarget\n");
     immediateContext_->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    OutputDebugStringA("  RenderOffscreen: ClearRenderTarget done\n");
 
     // 星空点精灵（加法混合）
     if (starPSO_ != nullptr && starVB_ != nullptr && starSRB_ != nullptr && starCount_ > 0) {
+        OutputDebugStringA("  RenderOffscreen: Star rendering START\n");
         // 更新常量（view/proj/model + 视口 + 时间）
         const auto now   = std::chrono::steady_clock::now();
         const auto secsF = std::chrono::duration<float>(now - startTime_).count();
@@ -3289,15 +3329,19 @@ void DiligentBackend::RenderOffscreen() {
                 immediateContext_->UnmapBuffer(starConstants_, MAP_WRITE);
             }
         }
+        OutputDebugStringA("  RenderOffscreen: Star constants updated\n");
 
         immediateContext_->SetPipelineState(starPSO_);
+        OutputDebugStringA("  RenderOffscreen: Star PSO set\n");
 
         IBuffer* pVBs[]    = {starVB_};
         Uint64   offsets[] = {0};
         immediateContext_->SetVertexBuffers(0, 1, pVBs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                             SET_VERTEX_BUFFERS_FLAG_RESET);
+        OutputDebugStringA("  RenderOffscreen: Star VB set\n");
 
         immediateContext_->CommitShaderResources(starSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        OutputDebugStringA("  RenderOffscreen: Star SRB committed\n");
 
         DrawAttribs starsDraw{};
         starsDraw.NumVertices = 6;
@@ -3311,10 +3355,13 @@ void DiligentBackend::RenderOffscreen() {
         }
         starsDraw.NumInstances = starLodCount;
         starsDraw.Flags        = DRAW_FLAG_VERIFY_ALL;
+        OutputDebugStringA("  RenderOffscreen: Calling Star Draw\n");
         immediateContext_->Draw(starsDraw);
+        OutputDebugStringA("  RenderOffscreen: Star Draw done\n");
     }
 
     // 土星粒子（阶段 3：先 CPU 初始化，渲染验证）
+    OutputDebugStringA("  RenderOffscreen: Particle section START\n");
     if (particlePSO_ != nullptr && particleSRB_ != nullptr && particleConstants_ != nullptr && particleCount_ > 0) {
         const auto now   = std::chrono::steady_clock::now();
         const auto secsF = std::chrono::duration<float>(now - startTime_).count();
@@ -4233,41 +4280,6 @@ void DiligentBackend::RenderFrame() {
 
         // ========== 窗口区域 ==========
         if (MD3::BeginCollapsingHeader("Window")) {
-            // 全屏切换按钮 - 使用 MD3 Button
-            if (MD3::TonalButton(appState_->window.isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen")) {
-                if (hwnd_ != nullptr) {
-                    if (!appState_->window.isFullscreen) {
-                        // 保存当前窗口位置和大小
-                        RECT rect;
-                        GetWindowRect(hwnd_, &rect);
-                        appState_->window.windowedX = rect.left;
-                        appState_->window.windowedY = rect.top;
-                        appState_->window.windowedW = rect.right - rect.left;
-                        appState_->window.windowedH = rect.bottom - rect.top;
-
-                        // 获取显示器信息
-                        HMONITOR    hMonitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
-                        MONITORINFO mi       = {sizeof(mi)};
-                        GetMonitorInfoW(hMonitor, &mi);
-
-                        // 设置全屏
-                        SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-                        SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
-                                     mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
-                                     SWP_FRAMECHANGED);
-                        appState_->window.isFullscreen = true;
-                    } else {
-                        // 恢复窗口模式
-                        SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-                        SetWindowPos(hwnd_, HWND_NOTOPMOST, appState_->window.windowedX, appState_->window.windowedY,
-                                     appState_->window.windowedW, appState_->window.windowedH, SWP_FRAMECHANGED);
-                        appState_->window.isFullscreen = false;
-                    }
-                }
-            }
-
-            ImGui::Dummy(ImVec2(0, 5));
-
             // VSync 模式选择 - 使用 MD3 Combo
             ImGui::Text("VSync:");
             int vsyncIndex = 1;

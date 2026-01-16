@@ -391,7 +391,8 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                     context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
                     // ResetRenderState 的语义应恢复 ImGui 渲染器的关键 GPU 状态。
-                    // 这里至少需要恢复 viewport + VB/IB，否则用户回调（例如自定义 PSO 绘制）改变绑定后，后续 ImGui draw 会异常。
+                    // 这里至少需要恢复 viewport + VB/IB，否则用户回调（例如自定义 PSO 绘制）改变绑定后，后续 ImGui draw
+                    // 会异常。
                     context->SetViewports(1, &vp, static_cast<Uint32>(vp.Width), static_cast<Uint32>(vp.Height));
 
                     IBuffer* resetVBs[]     = {vertexBuffer_};
@@ -517,9 +518,11 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
     sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
 
-    // 采样器 - D3D12 下需要使用采样器的完整名称（带 _sampler 后缀）
+    // 采样器 - Vulkan/GLSL 使用组合采样器 (sampler2D)，采样器名称直接用纹理名
+    // D3D12/HLSL 使用分离采样器，采样器名称需要 "_sampler" 后缀
+    const char*          samplerName     = (backend_ == Render::Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
     ImmutableSamplerDesc imtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture_sampler", sampDesc},
+        {SHADER_TYPE_PIXEL, samplerName, sampDesc},
     };
 
     // ========== PSO 1: 普通渲染（无 Stencil）==========

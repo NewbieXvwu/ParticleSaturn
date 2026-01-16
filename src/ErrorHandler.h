@@ -14,6 +14,10 @@
 #include "DebugLog.h"
 #include "Localization.h"
 
+// DbgHelp for symbol resolution (Debug builds)
+#include <DbgHelp.h>
+#pragma comment(lib, "DbgHelp.lib")
+
 // Note: comctl32.lib is NOT linked statically to avoid ordinal 345 error
 // TaskDialogIndirect and InitCommonControlsEx are loaded dynamically at runtime
 
@@ -214,24 +218,48 @@ inline void SetGPUInfo(const std::string& renderer, const std::string& version) 
     g_gpuVersion  = version;
 }
 
-// Capture call stack using CaptureStackBackTrace (no DbgHelp dependency)
+// Capture call stack using DbgHelp for symbol resolution (Debug builds get function names)
 inline std::vector<std::string> CaptureCallStack(CONTEXT* context = nullptr, int maxFrames = 20) {
     std::vector<std::string> stack;
 
-    // Use CaptureStackBackTrace for simple stack capture (works without DbgHelp)
+    // Initialize DbgHelp for symbol resolution
+    static bool dbgHelpInitialized = false;
+    static bool dbgHelpAvailable   = false;
+
+    if (!dbgHelpInitialized) {
+        dbgHelpInitialized = true;
+        HANDLE hProcess    = GetCurrentProcess();
+
+        // Set symbol options for better resolution
+        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+
+        // Initialize symbol handler - search in exe directory and symbol paths
+        if (SymInitialize(hProcess, nullptr, TRUE)) {
+            dbgHelpAvailable = true;
+        }
+    }
+
+    // Use CaptureStackBackTrace for stack capture
     void* frames[64];
     int   frameCount = maxFrames > 64 ? 64 : maxFrames;
 
-    // If context is provided (from exception), we can only get limited info
-    // CaptureStackBackTrace only works for current thread's stack
     USHORT captured = CaptureStackBackTrace(0, (DWORD)frameCount, frames, nullptr);
+    HANDLE hProcess = GetCurrentProcess();
+
+    // Prepare symbol info buffer (SYMBOL_INFO + space for name)
+    constexpr size_t kMaxNameLen = 256;
+    char             symbolBuffer[sizeof(SYMBOL_INFO) + kMaxNameLen];
+    SYMBOL_INFO*     symbolInfo = reinterpret_cast<SYMBOL_INFO*>(symbolBuffer);
+    symbolInfo->SizeOfStruct    = sizeof(SYMBOL_INFO);
+    symbolInfo->MaxNameLen      = kMaxNameLen;
 
     for (USHORT i = 0; i < captured; i++) {
         std::ostringstream oss;
         oss << "#" << i << "  ";
 
-        HMODULE module               = nullptr;
-        char    moduleName[MAX_PATH] = "Unknown";
+        HMODULE   module               = nullptr;
+        char      moduleName[MAX_PATH] = "Unknown";
+        uintptr_t addr                 = reinterpret_cast<uintptr_t>(frames[i]);
 
         if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                                (LPCSTR)frames[i], &module)) {
@@ -240,12 +268,40 @@ inline std::vector<std::string> CaptureCallStack(CONTEXT* context = nullptr, int
             if (lastSlash) {
                 memmove(moduleName, lastSlash + 1, strlen(lastSlash));
             }
+        }
 
-            // Calculate offset from module base
-            uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)module;
+        // Try to resolve symbol name using DbgHelp
+        bool symbolResolved = false;
+        if (dbgHelpAvailable) {
+            DWORD64 displacement = 0;
+            if (SymFromAddr(hProcess, addr, &displacement, symbolInfo)) {
+                // Got symbol name
+                oss << moduleName << "!" << symbolInfo->Name;
+
+                // Try to get source file and line number
+                IMAGEHLP_LINE64 lineInfo = {};
+                lineInfo.SizeOfStruct    = sizeof(lineInfo);
+                DWORD lineDisplacement   = 0;
+                if (SymGetLineFromAddr64(hProcess, addr, &lineDisplacement, &lineInfo)) {
+                    // Extract just the filename from full path
+                    const char* fileName        = lineInfo.FileName;
+                    const char* lastSlashInFile = strrchr(lineInfo.FileName, '\\');
+                    if (lastSlashInFile) {
+                        fileName = lastSlashInFile + 1;
+                    }
+                    oss << " (" << fileName << ":" << lineInfo.LineNumber << ")";
+                } else {
+                    // No line info, show offset
+                    oss << "+0x" << std::hex << std::uppercase << displacement;
+                }
+                symbolResolved = true;
+            }
+        }
+
+        // Fallback: just show module + offset
+        if (!symbolResolved) {
+            uintptr_t offset = addr - reinterpret_cast<uintptr_t>(module);
             oss << moduleName << "+0x" << std::hex << std::uppercase << offset;
-        } else {
-            oss << "0x" << std::hex << std::uppercase << (uintptr_t)frames[i];
         }
 
         stack.push_back(oss.str());
@@ -431,7 +487,10 @@ inline void ShowFatalCrashDialog(EXCEPTION_RECORD* exceptionRecord, CONTEXT* con
         pTaskDialogIndirect(&config, nullptr, nullptr, nullptr);
     } else {
         // Fallback to MessageBoxW (MessageBoxA doesn't support UTF-8)
-        std::string  fullMsg  = friendlyMsg + "\n\n" + details;
+        // 由于 MessageBox 不支持自定义按钮，先自动复制到剪贴板，再显示对话框
+        CopyToClipboard(details);
+
+        std::string  fullMsg  = friendlyMsg + "\n\n" + details + "\n\n(" + i18n::Get().copiedToClipboard + ")";
         int          titleLen = MultiByteToWideChar(CP_UTF8, 0, "Particle Saturn - Crash", -1, nullptr, 0);
         int          msgLen   = MultiByteToWideChar(CP_UTF8, 0, fullMsg.c_str(), -1, nullptr, 0);
         std::wstring wTitle(titleLen, 0);
