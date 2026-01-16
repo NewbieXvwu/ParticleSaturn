@@ -2404,7 +2404,7 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     const uint32_t h2 = std::max(1u, size.Height / 12u);
 
     const bool sizeChanged = (bloomW_ != w || bloomH_ != h || bloomW2_ != w2 || bloomH2_ != h2);
-    if (!sizeChanged && bloomTexA_ != nullptr && bloomTexB_ != nullptr && bloomTexC_ != nullptr) {
+    if (!sizeChanged && bloomTexA_ != nullptr && bloomTexB_ != nullptr && bloomTexC_ != nullptr && bloomTexD_ != nullptr) {
         return true;
     }
 
@@ -2448,6 +2448,9 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
 
     // 1/12 分辨率纹理（折叠区域弱模糊）
     if (!createTex("Bloom Tex C", bloomW2_, bloomH2_, bloomTexC_, bloomRTV_C_, bloomSRV_C_)) {
+        return false;
+    }
+    if (!createTex("Bloom Tex D", bloomW2_, bloomH2_, bloomTexD_, bloomRTV_D_, bloomSRV_D_)) {
         return false;
     }
 
@@ -3609,8 +3612,10 @@ void DiligentBackend::RenderBloom() {
     }
 
     // ========== 次级模糊 (1/12 分辨率，用于折叠区域 Acrylic 效果) ==========
-    // 从 bloomSRV_B_ (1/6) 降采样到 bloomTexC_ (1/12)，再做 2 次模糊
-    if (bloomTexC_ != nullptr && bloomRTV_C_ != nullptr && bloomSRV_C_ != nullptr) {
+    // 从 bloomSRV_B_ (1/6) 降采样到 bloomTexC_ (1/12)，再做 2 次模糊。
+    // 注意：不能 in-place（同一纹理同时 RTV+SRV）——在 D3D12/Vulkan 下属于未定义/不允许行为。
+    if (bloomTexC_ != nullptr && bloomRTV_C_ != nullptr && bloomSRV_C_ != nullptr && bloomTexD_ != nullptr &&
+        bloomRTV_D_ != nullptr && bloomSRV_D_ != nullptr) {
         const float texelX2 = 1.0f / static_cast<float>(bloomW2_);
         const float texelY2 = 1.0f / static_cast<float>(bloomH2_);
 
@@ -3645,20 +3650,20 @@ void DiligentBackend::RenderBloom() {
         }
 
         // 第二步：2 次模糊迭代（使用较小的 offset）
-        // 由于分辨率更低，使用较小的 offset 值
-        constexpr float secondaryOffsets[]  = {0.5f, 1.0f};
-        constexpr int   secondaryIterations = 2;
+        // 由于分辨率更低，使用较小的 offset 值。iterations 设为偶数，确保最终结果落在 bloomTexC_ 中。
+        static constexpr float secondaryOffsets[]  = {0.5f, 1.0f};
+        static constexpr int   secondaryIterations = static_cast<int>(sizeof(secondaryOffsets) / sizeof(secondaryOffsets[0]));
 
         for (int i = 0; i < secondaryIterations; ++i) {
-            // 交替使用 bloomTexC_ 进行 in-place 模糊（简化实现：只使用 bloomTexC_ 自身）
-            // 这里直接覆写同一纹理（GPU 会正确处理这种情况）
-            ITextureView* rtv = bloomRTV_C_.RawPtr();
-            immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            const bool    writeToD = (i % 2 == 0); // C->D->C...
+            ITextureView* outRTV   = writeToD ? bloomRTV_D_.RawPtr() : bloomRTV_C_.RawPtr();
+            ITextureView* inSRV    = writeToD ? bloomSRV_C_.RawPtr() : bloomSRV_D_.RawPtr();
 
+            immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
             updateBlurCB(texelX2, texelY2, secondaryOffsets[i], 0.0f);
 
             if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-                var->Set(bloomSRV_C_.RawPtr());
+                var->Set(inSRV);
             }
 
             immediateContext_->SetPipelineState(bloomBlurPSO_);

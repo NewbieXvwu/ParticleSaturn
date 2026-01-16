@@ -178,6 +178,9 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::ITexture>     bloomTexC_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_C_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_C_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     bloomTexD_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_D_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_D_;
 
     uint32_t bloomW_  = 0;
     uint32_t bloomH_  = 0;
