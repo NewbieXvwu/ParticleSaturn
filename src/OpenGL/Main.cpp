@@ -415,11 +415,11 @@ int main() {
 
     // 创建着色器程序
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
-    unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
-    unsigned int pStar   = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
-    unsigned int pUI     = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
-    unsigned int pQuad   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
-    unsigned int pBlur   = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
+    unsigned int pSaturn  = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
+    unsigned int pStar    = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
+    unsigned int pUI      = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
+    unsigned int pQuad    = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
+    unsigned int pBlur    = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
     unsigned int pAcrylic = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentAcrylic);
 
     // 检查核心着色器是否编译成功
@@ -521,15 +521,15 @@ int main() {
     // - Acrylic：在模糊纹理上做饱和度/排除混合/着色合成，避免 ImGui 端叠加造成“二次着色”
     BlurFramebuffer fboBlur1, fboBlur2, fboBlur3, fboBlur4;
     BlurFramebuffer fboAcrylic1, fboAcrylic2;
-    fboBlur1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-    fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-    fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
-    fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
-    fboAcrylic1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-    fboAcrylic2.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+    fboBlur1.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+    fboBlur2.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+    fboBlur3.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
+    fboBlur4.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
+    fboAcrylic1.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+    fboAcrylic2.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
 
     // 噪点纹理（全分辨率；避免依赖 wrap sampler）
-    GLuint noiseTex = 0;
+    GLuint noiseTex        = 0;
     auto   rebuildNoiseTex = [&](int w, int h) {
         if (noiseTex != 0) {
             glDeleteTextures(1, &noiseTex);
@@ -539,9 +539,9 @@ int main() {
             return;
         }
 
-        std::vector<unsigned char> rgba(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u, 0);
-        std::mt19937                          gen{1337u};
-        std::uniform_int_distribution<int>    rnd(0, 255);
+        std::vector<unsigned char>         rgba(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u, 0);
+        std::mt19937                       gen{1337u};
+        std::uniform_int_distribution<int> rnd(0, 255);
         for (size_t i = 0; i < rgba.size(); i += 4u) {
             const unsigned char v = static_cast<unsigned char>(rnd(gen));
             rgba[i + 0u]          = v;
@@ -677,12 +677,12 @@ int main() {
             proj   = glm::perspective(1.047f, (float)appState.window.width / appState.window.height, 1.f, 10000.f);
             projUI = glm::ortho(0.0f, (float)appState.window.width, 0.0f, (float)appState.window.height);
             resizeFBO(appState.window.width, appState.window.height);
-            fboBlur1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-            fboBlur2.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-            fboBlur3.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
-            fboBlur4.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
-            fboAcrylic1.Init(std::max(1, appState.window.width / 6), std::max(1, appState.window.height / 6));
-            fboAcrylic2.Init(std::max(1, appState.window.width / 12), std::max(1, appState.window.height / 12));
+            fboBlur1.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+            fboBlur2.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+            fboBlur3.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
+            fboBlur4.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
+            fboAcrylic1.Init(std::max(1u, appState.window.width / 6), std::max(1u, appState.window.height / 6));
+            fboAcrylic2.Init(std::max(1u, appState.window.width / 12), std::max(1u, appState.window.height / 12));
             rebuildNoiseTex(appState.window.width, appState.window.height);
             if (appState.ui.imguiInitialized) {
                 MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
@@ -758,9 +758,9 @@ int main() {
             // 旧版：autoTime 每帧 +0.005 -> 180fps 等价每秒 +0.9
             const float fixedRate = 0.005f * 180.0f;
             autoTime += dt * fixedRate;
-            targetScale       = 1.0f + sin(autoTime) * 0.2f;
-            targetRotX        = 0.4f + sin(autoTime * 0.3f) * 0.15f;
-            targetRotY        = 0.0f;
+            targetScale = 1.0f + sin(autoTime) * 0.2f;
+            targetRotX  = 0.4f + sin(autoTime * 0.3f) * 0.15f;
+            targetRotY  = 0.0f;
 
             // 旧版：每帧 lerpFactor=0.08；转换成 dt 下的等效 alpha，参考帧率取 180fps。
             const float perFrameAlpha = 0.08f;
@@ -1013,6 +1013,7 @@ int main() {
             MD3::SetBlurTexture(appState.ui.enableBlur ? fboAcrylic1.tex : 0, appState.ui.enableBlur);
             MD3::SetBlurTexture2(appState.ui.enableBlur ? fboAcrylic2.tex : 0);
             MD3::SetNoiseTexture(appState.ui.enableBlur ? noiseTex : 0);
+            MD3::SetNoiseIntensity(appState.ui.noiseIntensity);
 
             // 平滑滚动：必须在提交任何窗口内容之前跑一次（否则这一帧改 ScrollY 没意义）
             MD3::HandleSmoothScroll(60.0f);
@@ -1021,8 +1022,8 @@ int main() {
             ErrorHandler::RenderErrorDialog(dt);
 
             // Render crash analyzer window
-            CrashAnalyzer::Render(appState.ui.enableBlur, fboAcrylic1.tex, appState.window.width, appState.window.height,
-                                  appState.ui.isDarkMode);
+            CrashAnalyzer::Render(appState.ui.enableBlur, fboAcrylic1.tex, appState.window.width,
+                                  appState.window.height, appState.ui.isDarkMode);
 
             if (appState.ui.showDebugWindow) {
                 const auto& str = i18n::Get();
@@ -1510,6 +1511,7 @@ int main() {
                     if (appState.ui.enableBlur) {
                         ImGui::Indent(10);
                         MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
+                        MD3::Slider("##Noise", &appState.ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
                         ImGui::Unindent(10);
                     }
                     MD3::EndCollapsingHeader();
