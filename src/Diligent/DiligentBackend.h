@@ -71,6 +71,12 @@ class DiligentBackend final {
     bool CreateBloomTextures(SurfaceSize size);
     void RenderBloom();
 
+    // UI Blur：把“最终显示的场景颜色”（offscreen + bloom + tone mapping）解析到中间纹理后再做低分辨率模糊，
+    // 供 ImGui/MD3 采样，避免误用 Bloom 的 bright-pass 结果。
+    bool CreateUISceneTextures(SurfaceSize size);
+    void RenderUISceneForUI();
+    void RenderUIBlur();
+
     void RenderOffscreen();
     void BlitOffscreenToBackBuffer();
     void RenderClear();
@@ -186,6 +192,31 @@ class DiligentBackend final {
     uint32_t bloomH_  = 0;
     uint32_t bloomW2_ = 0; // 1/12 分辨率宽度
     uint32_t bloomH2_ = 0; // 1/12 分辨率高度
+
+    // UI 场景解析纹理（与 SwapChain 颜色格式一致）
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiSceneColor_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiSceneRTV_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiSceneSRV_;
+
+    // UI 模糊纹理（1/6 强模糊，1/12 弱模糊）
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiBlurTexA_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurRTV_A_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurSRV_A_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiBlurTexB_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurRTV_B_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurSRV_B_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiBlurTexC_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurRTV_C_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurSRV_C_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiBlurTexD_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurRTV_D_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiBlurSRV_D_;
+
+    uint32_t uiBlurW_  = 0;
+    uint32_t uiBlurH_  = 0;
+    uint32_t uiBlurW2_ = 0;
+    uint32_t uiBlurH2_ = 0;
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;

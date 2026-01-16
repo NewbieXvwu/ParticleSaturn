@@ -2010,6 +2010,12 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
+    if (!CreateUISceneTextures(surfaceSize_)) {
+        if (lastError_.empty()) {
+            SetLastError(L"CreateUISceneTextures() 失败。");
+        }
+        return false;
+    }
 
     // 阶段 2：星空（先用 2D NDC 点列表验证 point 渲染 + 闪烁 + 混合链路）。
     // 对齐 OpenGL：基准星数固定为 5 万，LOD 仅在 Draw 时按 pixelRatio 调整绘制数量。
@@ -2117,6 +2123,12 @@ void DiligentBackend::Shutdown() {
     bloomSRV_A_.Release();
     bloomRTV_A_.Release();
     bloomTexA_.Release();
+    bloomSRV_D_.Release();
+    bloomRTV_D_.Release();
+    bloomTexD_.Release();
+    bloomSRV_C_.Release();
+    bloomRTV_C_.Release();
+    bloomTexC_.Release();
     bloomBlurConstants_.Release();
     bloomBlurSRB_.Release();
     bloomBlurPSO_.Release();
@@ -2125,6 +2137,29 @@ void DiligentBackend::Shutdown() {
     bloomConstants_.Release();
     bloomW_ = 0;
     bloomH_ = 0;
+    bloomW2_ = 0;
+    bloomH2_ = 0;
+
+    uiSceneSRV_.Release();
+    uiSceneRTV_.Release();
+    uiSceneColor_.Release();
+
+    uiBlurSRV_D_.Release();
+    uiBlurRTV_D_.Release();
+    uiBlurTexD_.Release();
+    uiBlurSRV_C_.Release();
+    uiBlurRTV_C_.Release();
+    uiBlurTexC_.Release();
+    uiBlurSRV_B_.Release();
+    uiBlurRTV_B_.Release();
+    uiBlurTexB_.Release();
+    uiBlurSRV_A_.Release();
+    uiBlurRTV_A_.Release();
+    uiBlurTexA_.Release();
+    uiBlurW_  = 0;
+    uiBlurH_  = 0;
+    uiBlurW2_ = 0;
+    uiBlurH2_ = 0;
 
     starSRB_.Release();
     starVB_.Release();
@@ -2176,6 +2211,7 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     CreateOffscreenRenderTarget(surfaceSize_);
     UpdateFullscreenQuadBindings();
     CreateBloomTextures(surfaceSize_);
+    CreateUISceneTextures(surfaceSize_);
 
     // 更新 MD3 屏幕尺寸
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
@@ -2455,6 +2491,296 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     }
 
     return true;
+}
+
+bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
+    if (device_ == nullptr || swapChain_ == nullptr) {
+        return false;
+    }
+    if (size.Width == 0 || size.Height == 0) {
+        return true;
+    }
+
+    const auto& scDesc = swapChain_->GetDesc();
+
+    const uint32_t w  = size.Width;
+    const uint32_t h  = size.Height;
+    const uint32_t w6 = std::max(1u, size.Width / 6u);
+    const uint32_t h6 = std::max(1u, size.Height / 6u);
+    const uint32_t w12 = std::max(1u, size.Width / 12u);
+    const uint32_t h12 = std::max(1u, size.Height / 12u);
+
+    bool sceneSizeChanged = true;
+    if (uiSceneColor_ != nullptr) {
+        const auto& desc = uiSceneColor_->GetDesc();
+        sceneSizeChanged = (desc.Width != w || desc.Height != h || desc.Format != scDesc.ColorBufferFormat);
+    }
+
+    const bool sizeChanged = sceneSizeChanged || (uiBlurW_ != w6 || uiBlurH_ != h6 || uiBlurW2_ != w12 || uiBlurH2_ != h12);
+    if (!sizeChanged && uiSceneColor_ != nullptr && uiBlurTexA_ != nullptr && uiBlurTexB_ != nullptr && uiBlurTexC_ != nullptr &&
+        uiBlurTexD_ != nullptr) {
+        return true;
+    }
+
+    uiBlurW_  = w6;
+    uiBlurH_  = h6;
+    uiBlurW2_ = w12;
+    uiBlurH2_ = h12;
+
+    auto createTex = [&](const char* name, TEXTURE_FORMAT fmt, uint32_t texW, uint32_t texH,
+                         RefCntAutoPtr<ITexture>& outTex, RefCntAutoPtr<ITextureView>& outRTV,
+                         RefCntAutoPtr<ITextureView>& outSRV) -> bool {
+        TextureDesc texDesc{};
+        texDesc.Name      = name;
+        texDesc.Type      = RESOURCE_DIM_TEX_2D;
+        texDesc.Width     = texW;
+        texDesc.Height    = texH;
+        texDesc.MipLevels = 1;
+        texDesc.Format    = fmt;
+        texDesc.Usage     = USAGE_DEFAULT;
+        texDesc.BindFlags = BIND_RENDER_TARGET | BIND_SHADER_RESOURCE;
+
+        outTex.Release();
+        outRTV.Release();
+        outSRV.Release();
+
+        device_->CreateTexture(texDesc, nullptr, &outTex);
+        if (outTex == nullptr) {
+            return false;
+        }
+        outRTV = outTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
+        outSRV = outTex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+        return outRTV != nullptr && outSRV != nullptr;
+    };
+
+    // 解析后的 LDR 场景纹理（与 SwapChain 颜色格式一致）
+    if (!createTex("UI Scene Color", scDesc.ColorBufferFormat, w, h, uiSceneColor_, uiSceneRTV_, uiSceneSRV_)) {
+        return false;
+    }
+
+    // UI Blur 纹理（低分辨率 float，用于更平滑的模糊采样）
+    if (!createTex("UI Blur A (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexA_, uiBlurRTV_A_, uiBlurSRV_A_)) {
+        return false;
+    }
+    if (!createTex("UI Blur B (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiBlurTexB_, uiBlurRTV_B_, uiBlurSRV_B_)) {
+        return false;
+    }
+    if (!createTex("UI Blur C (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexC_, uiBlurRTV_C_, uiBlurSRV_C_)) {
+        return false;
+    }
+    if (!createTex("UI Blur D (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexD_, uiBlurRTV_D_, uiBlurSRV_D_)) {
+        return false;
+    }
+
+    return true;
+}
+
+void DiligentBackend::RenderUISceneForUI() {
+    if (immediateContext_ == nullptr || swapChain_ == nullptr || fullscreenQuadPSO_ == nullptr || fullscreenQuadSRB_ == nullptr ||
+        offscreenSRV_ == nullptr || bloomSRV_B_ == nullptr || uiSceneRTV_ == nullptr) {
+        return;
+    }
+
+    ITextureView* rtv = uiSceneRTV_.RawPtr();
+    immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    Viewport vp{};
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    vp.Width    = static_cast<float>(surfaceSize_.Width);
+    vp.Height   = static_cast<float>(surfaceSize_.Height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    immediateContext_->SetViewports(1, &vp, surfaceSize_.Width, surfaceSize_.Height);
+
+    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+        var->Set(offscreenSRV_);
+    }
+    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture"); var != nullptr) {
+        var->Set(bloomSRV_B_);
+    }
+
+    immediateContext_->SetPipelineState(fullscreenQuadPSO_);
+    immediateContext_->CommitShaderResources(fullscreenQuadSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE, SET_VERTEX_BUFFERS_FLAG_RESET);
+
+    DrawAttribs draw{};
+    draw.NumVertices = 4;
+    draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+    immediateContext_->Draw(draw);
+}
+
+void DiligentBackend::RenderUIBlur() {
+    if (immediateContext_ == nullptr) {
+        return;
+    }
+    if (uiSceneSRV_ == nullptr || uiBlurRTV_A_ == nullptr || uiBlurSRV_A_ == nullptr || uiBlurRTV_B_ == nullptr ||
+        uiBlurSRV_B_ == nullptr || uiBlurRTV_C_ == nullptr || uiBlurSRV_C_ == nullptr || uiBlurRTV_D_ == nullptr ||
+        uiBlurSRV_D_ == nullptr) {
+        return;
+    }
+    if (bloomDownsamplePSO_ == nullptr || bloomDownsampleSRB_ == nullptr || bloomBlurPSO_ == nullptr || bloomBlurSRB_ == nullptr ||
+        bloomBlurConstants_ == nullptr) {
+        return;
+    }
+    if (uiBlurW_ == 0 || uiBlurH_ == 0) {
+        return;
+    }
+
+    auto updateBlurCB = [&](float texelX, float texelY, float offset, float threshold) {
+        PVoid mapped = nullptr;
+        immediateContext_->MapBuffer(bloomBlurConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
+        if (mapped != nullptr) {
+            struct BlurCB {
+                float texelSize[2];
+                float offset;
+                float threshold;
+            };
+            auto* cb         = static_cast<BlurCB*>(mapped);
+            cb->texelSize[0] = texelX;
+            cb->texelSize[1] = texelY;
+            cb->offset       = offset;
+            cb->threshold    = threshold;
+            immediateContext_->UnmapBuffer(bloomBlurConstants_, MAP_WRITE);
+        }
+    };
+
+    // --- 1) downsample: uiScene(full) -> uiBlurA(1/6), 不做 bright-pass ---
+    {
+        ITextureView* rtv = uiBlurRTV_A_.RawPtr();
+        immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        Viewport vp{};
+        vp.TopLeftX = 0.0f;
+        vp.TopLeftY = 0.0f;
+        vp.Width    = static_cast<float>(uiBlurW_);
+        vp.Height   = static_cast<float>(uiBlurH_);
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        immediateContext_->SetViewports(1, &vp, 0, 0);
+
+        const float texelX = (surfaceSize_.Width > 0) ? (1.0f / static_cast<float>(surfaceSize_.Width)) : 0.0f;
+        const float texelY = (surfaceSize_.Height > 0) ? (1.0f / static_cast<float>(surfaceSize_.Height)) : 0.0f;
+        updateBlurCB(texelX, texelY, 0.0f, 0.0f);
+
+        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(uiSceneSRV_);
+        }
+
+        immediateContext_->SetPipelineState(bloomDownsamplePSO_);
+        immediateContext_->CommitShaderResources(bloomDownsampleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
+
+    // --- 2) Kawase blur ping-pong: uiBlurA <-> uiBlurB ---
+    const float            blurStrength   = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
+    int                    iterations     = 3 + static_cast<int>(blurStrength);
+    static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0]));
+    if (iterations < 2) {
+        iterations = 2;
+    }
+    if (iterations > kMaxIterations) {
+        iterations = kMaxIterations;
+    }
+    if (iterations % 2 == 1) {
+        iterations++;
+        if (iterations > kMaxIterations) {
+            iterations = kMaxIterations;
+        }
+    }
+
+    const float texelX6 = 1.0f / static_cast<float>(uiBlurW_);
+    const float texelY6 = 1.0f / static_cast<float>(uiBlurH_);
+
+    for (int i = 1; i < iterations; ++i) {
+        const bool    writeToB = (i % 2 == 1);
+        ITextureView* outRTV   = writeToB ? uiBlurRTV_B_.RawPtr() : uiBlurRTV_A_.RawPtr();
+        ITextureView* inSRV    = writeToB ? uiBlurSRV_A_.RawPtr() : uiBlurSRV_B_.RawPtr();
+
+        immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        updateBlurCB(texelX6, texelY6, offsets[i], 0.0f);
+
+        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(inSRV);
+        }
+
+        immediateContext_->SetPipelineState(bloomBlurPSO_);
+        immediateContext_->CommitShaderResources(bloomBlurSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
+
+    // --- 3) secondary (1/12): downsample uiBlurB(1/6) -> uiBlurC(1/12), 再做 2 次小 offset 模糊 ---
+    if (uiBlurW2_ == 0 || uiBlurH2_ == 0) {
+        return;
+    }
+    {
+        ITextureView* rtv = uiBlurRTV_C_.RawPtr();
+        immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        Viewport vp2{};
+        vp2.TopLeftX = 0.0f;
+        vp2.TopLeftY = 0.0f;
+        vp2.Width    = static_cast<float>(uiBlurW2_);
+        vp2.Height   = static_cast<float>(uiBlurH2_);
+        vp2.MinDepth = 0.0f;
+        vp2.MaxDepth = 1.0f;
+        immediateContext_->SetViewports(1, &vp2, 0, 0);
+
+        updateBlurCB(texelX6, texelY6, 0.0f, 0.0f);
+        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(uiBlurSRV_B_.RawPtr());
+        }
+
+        immediateContext_->SetPipelineState(bloomDownsamplePSO_);
+        immediateContext_->CommitShaderResources(bloomDownsampleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
+
+    const float texelX12 = 1.0f / static_cast<float>(uiBlurW2_);
+    const float texelY12 = 1.0f / static_cast<float>(uiBlurH2_);
+    static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
+    static constexpr int   secondaryIterations =
+        static_cast<int>(sizeof(secondaryOffsets) / sizeof(secondaryOffsets[0])); // 偶数，最终结果落回 C
+
+    for (int i = 0; i < secondaryIterations; ++i) {
+        const bool    writeToD = (i % 2 == 0); // C->D->C...
+        ITextureView* outRTV   = writeToD ? uiBlurRTV_D_.RawPtr() : uiBlurRTV_C_.RawPtr();
+        ITextureView* inSRV    = writeToD ? uiBlurSRV_C_.RawPtr() : uiBlurSRV_D_.RawPtr();
+
+        immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        updateBlurCB(texelX12, texelY12, secondaryOffsets[i], 0.0f);
+        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(inSRV);
+        }
+        immediateContext_->SetPipelineState(bloomBlurPSO_);
+        immediateContext_->CommitShaderResources(bloomBlurSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    }
 }
 
 bool DiligentBackend::CreateStarfieldBuffers(uint32_t starCount) {
@@ -3908,17 +4234,17 @@ void DiligentBackend::RenderFrame() {
         MD3::SetDarkMode(appState_->ui.isDarkMode);
         MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
 
-        // 传递模糊纹理给 MD3（用于窗口背景玻璃效果）
-        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(bloomSRV_B_.RawPtr()) : nullptr,
+        // 传递 UI 模糊纹理给 MD3（基于“最终显示的场景颜色”生成，而不是 Bloom bright-pass）
+        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiBlurSRV_B_.RawPtr()) : nullptr,
                             appState_->ui.enableBlur);
-        // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率）
-        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(bloomSRV_C_.RawPtr()) : nullptr);
+        // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
+        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiBlurSRV_C_.RawPtr()) : nullptr);
 
         // Error dialogs（统一错误处理）
         ErrorHandler::RenderErrorDialog(frameDt);
 
         // 崩溃分析器窗口（使用模糊背景）
-        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(bloomSRV_B_.RawPtr()) : 0;
+        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiBlurSRV_B_.RawPtr()) : 0;
         CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
                               appState_->ui.isDarkMode);
 
@@ -4425,6 +4751,10 @@ void DiligentBackend::RenderFrame() {
 
     // 3. Bloom（bright-pass + Kawase blur）
     RenderBloom();
+
+    // 3.5 UI Blur：先把最终显示的场景颜色解析到中间纹理，再做低分辨率模糊
+    RenderUISceneForUI();
+    RenderUIBlur();
 
     // 4. Blit to Backbuffer
     BlitOffscreenToBackBuffer();
