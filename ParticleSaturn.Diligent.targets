@@ -113,7 +113,7 @@
 
   <Target Name="BuildHandTracker">
     <DirectExec
-      Executable="msbuild.exe"
+      Executable="$(MSBuildToolsPath)\MSBuild.exe"
       Arguments="&quot;$(HandTrackerProject)&quot; /t:Build /m /p:Configuration=$(HandTrackerConfig) /p:Platform=$(Platform) /p:SolutionDir=$(ProjectDir)">
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
