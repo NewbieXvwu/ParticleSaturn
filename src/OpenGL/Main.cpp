@@ -1536,8 +1536,11 @@ int main() {
                     MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
                     if (appState.ui.enableBlur) {
                         ImGui::Indent(10);
+                        ImGui::TextUnformatted("Blur Strength");
                         MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
+                        ImGui::TextUnformatted("Noise (banding fix)");
                         MD3::Slider("##Noise", &appState.ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
+                        ImGui::TextDisabled("Keep it subtle. Typical: 0.005 - 0.02");
                         ImGui::Unindent(10);
                     }
                     MD3::EndCollapsingHeader();
