@@ -410,7 +410,17 @@ inline void Render(bool enableBlur = false, unsigned int blurTex = 0, unsigned i
                                  IM_COL32(255, 255, 255, 255), style.WindowRounding);
             // 噪点层：防 banding + 增加“材质感”
             if (MD3::GetContext().noiseTextureID != 0) {
-                const ImU32 noiseCol = isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                float intensity = MD3::GetContext().noiseIntensity;
+                if (intensity < 0.0f)
+                    intensity = 0.0f;
+                if (intensity > 0.1f)
+                    intensity = 0.1f;
+                int a = static_cast<int>(intensity * 255.0f + 0.5f);
+                if (a < 0)
+                    a = 0;
+                if (a > 64)
+                    a = 64;
+                const ImU32 noiseCol = IM_COL32(255, 255, 255, a);
                 MD3::AddImageRounded(dl, MD3::GetContext().noiseTextureID, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0,
                                      uv1, noiseCol, style.WindowRounding);
             }

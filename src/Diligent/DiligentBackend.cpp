@@ -4700,8 +4700,9 @@ void DiligentBackend::RenderFrame() {
 
                 // 噪点层：防 banding + 增加“材质感”
                 if (ctx.noiseTextureID != nullptr) {
-                    const ImU32 noiseCol =
-                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                    const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                    const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                    const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
                     MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1,
                                          noiseCol, cornerRadius);
                 }
@@ -4846,7 +4847,9 @@ void DiligentBackend::RenderFrame() {
 
                 // 噪点层：防 banding + 增加“材质感”
                 if (ctx.noiseTextureID != nullptr) {
-                    const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                    const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                    const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                    const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
                     MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), plotPos, plotEnd, uv0, uv1,
                                          noiseCol, cornerRadius);
                 }

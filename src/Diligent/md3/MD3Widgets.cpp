@@ -1127,7 +1127,9 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
 
         // 噪点层：防 banding + 增加“材质感”（噪点纹理为全分辨率，不依赖 wrap sampler）
         if (ctx.noiseTextureID != nullptr) {
-            const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+            const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+            const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+            const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
             AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1, noiseCol,
                             cornerRadius, roundingFlags);
         }
@@ -1276,7 +1278,9 @@ void EndCollapsingHeader() {
 
             // 噪点层：防 banding + 增加“材质感”
             if (ctx.noiseTextureID != nullptr) {
-                const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
                 AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), contentBoxMin, contentBoxMax, uv0,
                                 uv1, noiseCol, cornerRadius, ImDrawFlags_RoundCornersBottom);
             }

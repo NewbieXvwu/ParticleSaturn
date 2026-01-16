@@ -1054,8 +1054,9 @@ int main() {
                     MD3::AddImageRounded(dl, fboAcrylic1.tex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                          IM_COL32(255, 255, 255, 255), style.WindowRounding);
                     if (noiseTex != 0) {
-                        const ImU32 noiseCol =
-                            appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                        const float intensity = std::clamp(appState.ui.noiseIntensity, 0.0f, 0.1f);
+                        const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                        const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
                         MD3::AddImageRounded(dl, noiseTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                              noiseCol, style.WindowRounding);
                     }
