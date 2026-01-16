@@ -1268,8 +1268,8 @@ void EndCollapsingHeader() {
             ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, 1.0f - contentBoxMin.y / ctx.screenHeight);
             ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, 1.0f - contentBoxMax.y / ctx.screenHeight);
 
-            AddImageRounded(dl, ctx.blurTextureID2, contentBoxMin, contentBoxMax, uv0, uv1, IM_COL32(255, 255, 255, 255),
-                            cornerRadius, ImDrawFlags_RoundCornersBottom);
+            AddImageRounded(dl, ctx.blurTextureID2, contentBoxMin, contentBoxMax, uv0, uv1,
+                            IM_COL32(255, 255, 255, 255), cornerRadius, ImDrawFlags_RoundCornersBottom);
 
             if (ctx.noiseTextureID != 0) {
                 const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
@@ -1297,6 +1297,17 @@ void EndCollapsingHeader() {
         // 底部边框
         dl->AddLine(ImVec2(contentBoxMin.x + cornerRadius, contentBoxMax.y),
                     ImVec2(contentBoxMax.x - cornerRadius, contentBoxMax.y), ColorToU32(borderColor), borderWidth);
+
+        // 绘制底部圆角弧线（凸出，向外弯曲）
+        ImU32  borderColorU32 = ColorToU32(borderColor);
+        ImVec2 blCenter(contentBoxMin.x + cornerRadius, contentBoxMax.y - cornerRadius); // 左下圆角中心
+        ImVec2 brCenter(contentBoxMax.x - cornerRadius, contentBoxMax.y - cornerRadius); // 右下圆角中心
+        // 左下圆角（从 90° 到 180°，即 0.5π 到 π）- 向外凸出
+        dl->PathArcTo(blCenter, cornerRadius, IM_PI * 0.5f, IM_PI, 8);
+        dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
+        // 右下圆角（从 0° 到 90°，即 0 到 0.5π）- 向外凸出
+        dl->PathArcTo(brCenter, cornerRadius, 0.0f, IM_PI * 0.5f, 8);
+        dl->PathStroke(borderColorU32, ImDrawFlags_None, borderWidth);
     }
 
     // 合并 channels
