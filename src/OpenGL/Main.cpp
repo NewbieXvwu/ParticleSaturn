@@ -1188,13 +1188,39 @@ int main() {
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
                     // 背景
+                    const auto& md3Ctx = MD3::GetContext();
+                    const float cornerRadius = 6.0f * appState.ui.dpiScale;
+
                     ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
                     ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
                     ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
-                    drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
+
+                    const ImVec2 plotEnd = ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
+                    // FPS 曲线背景：对齐 Diligent 版，使用 1/12 的弱 Acrylic 模糊
+                    if (md3Ctx.blurEnabled && md3Ctx.blurTextureID2 != 0 && md3Ctx.screenWidth > 0 && md3Ctx.screenHeight > 0) {
+                        ImVec2 uv0(plotPos.x / md3Ctx.screenWidth, 1.0f - plotPos.y / md3Ctx.screenHeight);
+                        ImVec2 uv1(plotEnd.x / md3Ctx.screenWidth, 1.0f - plotEnd.y / md3Ctx.screenHeight);
+
+                        MD3::AddImageRounded(drawList, md3Ctx.blurTextureID2, plotPos, plotEnd, uv0, uv1,
+                                             IM_COL32(255, 255, 255, 255), cornerRadius);
+
+                        if (md3Ctx.noiseTextureID != 0 && md3Ctx.noiseIntensity > 0.0f) {
+                            const float intensity = std::clamp(md3Ctx.noiseIntensity, 0.0f, 0.1f);
+                            const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                            const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
+                            MD3::AddImageRounded(drawList, md3Ctx.noiseTextureID, plotPos, plotEnd, uv0, uv1, noiseCol,
+                                                 cornerRadius);
+                        }
+
+                        const ImU32 borderColor =
+                            md3Ctx.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
+                        drawList->AddRect(plotPos, plotEnd, borderColor, cornerRadius, 0, 1.0f);
+                    } else {
+                        drawList->AddRectFilled(plotPos, plotEnd, bgColor, cornerRadius);
+                    }
 
                     // 添加裁剪区域，防止曲线超出边界
-                    drawList->PushClipRect(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), true);
+                    drawList->PushClipRect(plotPos, plotEnd, true);
 
                     // 辅助函数：将逻辑索引和 FPS 值转换为屏幕坐标
                     auto toScreen = [&](float logicalX, float val) -> ImVec2 {
