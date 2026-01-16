@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #ifdef HANDTRACKER_STATIC
 #define HAND_API
 #elif defined(HANDTRACKER_EXPORTS)

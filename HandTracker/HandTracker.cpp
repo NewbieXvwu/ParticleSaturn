@@ -20,6 +20,12 @@
 #include "PalmDetector.h"
 #include "SIMDNormalize.h"
 
+// Defensive: avoid collisions with third-party headers that may define/undefine short macros.
+// If a macro named g_ctx exists, it can silently break the global tracker context declaration.
+#ifdef g_ctx
+#undef g_ctx
+#endif
+
 // One Euro Filter - 低通滤波器，用于平滑手势追踪数据
 // 核心特性：静止时强平滑，快速移动时弱平滑以保持响应性
 class OneEuroFilter {
@@ -124,10 +130,6 @@ struct TrackerContext {
     OneEuroFilter filter_rot_y{0.5f, 0.5f, 1.0f};
     OneEuroFilter filter_scale{0.2f, 0.05f, 1.0f};
 
-    // 配置：丢手延迟帧数（避免 has_hand 闪烁）
-    // 注意：这是运行时可配置参数，不应在 Reset() 中重置，以便上层 UI 改动在重启追踪器后仍然生效。
-    std::atomic<int> hand_lost_delay_frames{10};
-
     // 模型数据 (嵌入式模型)
     const void* palm_model_data = nullptr;
     size_t      palm_model_size = 0;
@@ -157,11 +159,16 @@ struct TrackerContext {
     }
 };
 
-// 全局上下文单例
+#if 1
+// Global tracker context (singleton)
 static TrackerContext g_ctx;
 
-// 常量：默认丢手延迟（上层可通过 SetTrackerHandLostDelayFrames() 修改）
+// Default "hand lost" delay (frames). Upper layers can adjust via SetTrackerHandLostDelayFrames().
 static constexpr int kDefaultHandLostDelayFrames = 10;
+
+// Runtime-configurable "hand lost" delay (frames). Do NOT reset in ReleaseTracker()/Reset().
+static std::atomic<int> g_handLostDelayFrames{kDefaultHandLostDelayFrames};
+#endif
 
 static std::string JoinPath(const std::string& folder, const std::string& filename) {
     if (folder.empty()) {
@@ -414,7 +421,7 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             smooth_has_hand   = true;
         } else {
             hand_lost_counter++;
-            int delay = g_ctx.hand_lost_delay_frames.load();
+            int delay = g_handLostDelayFrames.load();
             if (delay < 1) {
                 delay = kDefaultHandLostDelayFrames;
             }
@@ -661,11 +668,11 @@ HAND_API void SetTrackerHandLostDelayFrames(int frames) {
     } else if (frames > 120) {
         frames = 120;
     }
-    g_ctx.hand_lost_delay_frames.store(frames);
+    g_handLostDelayFrames.store(frames);
 }
 
 HAND_API int GetTrackerHandLostDelayFrames() {
-    int frames = g_ctx.hand_lost_delay_frames.load();
+    int frames = g_handLostDelayFrames.load();
     if (frames < 1) {
         frames = kDefaultHandLostDelayFrames;
     }
