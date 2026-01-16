@@ -403,7 +403,18 @@ void SetScreenSize(float width, float height) {
 }
 
 void SetDpiScale(float scale) {
-    GetContext().dpiScale = scale;
+    auto& ctx = GetContext();
+    if (std::abs(ctx.dpiScale - scale) < 0.001f) {
+        return; // 无变化
+    }
+    ctx.dpiScale = scale;
+
+    // DPI 变化时重新应用 ImGui 样式（圆角、间距等需要按 DPI 缩放）
+    ApplyImGuiStyle();
+
+    // 设置 ImGui 全局字体缩放（用于运行时 DPI 变化，无需重建字体纹理）
+    // 注意：这是一个临时方案，理想情况下应该重建字体
+    ImGui::GetIO().FontGlobalScale = scale;
 }
 
 void SetBlurTexture(void* textureID, bool enabled) {

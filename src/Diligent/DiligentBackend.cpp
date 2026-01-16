@@ -2245,8 +2245,9 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
 
-    // 阶段 6：MD3 UI 系统初始化
-    MD3::Init(device_, immediateContext_, backend_, 1.0f);
+    // 阶段 6：MD3 UI 系统初始化（使用 AppState 中的 DPI 缩放）
+    const float dpiScale = appState_ ? appState_->ui.dpiScale : 1.0f;
+    MD3::Init(device_, immediateContext_, backend_, dpiScale);
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
 
@@ -3000,7 +3001,7 @@ void DiligentBackend::RenderUIBlur() {
     static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
     const float            strength       = std::clamp(blurStrength, 0.0f, 5.0f);
     const float            scale          = strength / 5.0f; // 0..1
-    auto scaledOffset = [&](float base) -> float {
+    auto                   scaledOffset   = [&](float base) -> float {
         // Shader: off = g_TexelSize * (g_Offset + 0.5)
         // 让 scale=0 时 off=0，scale=1 时保持旧行为：
         // g_Offset = scale*(base+0.5) - 0.5
@@ -4319,7 +4320,7 @@ void DiligentBackend::RenderBloom() {
     static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
     const float            strength       = std::clamp(blurStrength, 0.0f, 5.0f);
     const float            scale          = strength / 5.0f; // 0..1
-    auto scaledOffset = [&](float base) -> float {
+    auto                   scaledOffset   = [&](float base) -> float {
         // Shader: off = g_TexelSize * (g_Offset + 0.5)
         // 让 scale=0 时 off=0，scale=1 时保持旧行为：
         // g_Offset = scale*(base+0.5) - 0.5

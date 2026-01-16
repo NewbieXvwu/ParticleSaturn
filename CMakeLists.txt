@@ -162,6 +162,9 @@ add_executable(ParticleSaturn.Diligent WIN32
 
     # ImGui Win32 platform backend
     libs/imgui/backends/imgui_impl_win32.cpp
+
+    # Windows manifest for DPI awareness (PerMonitorV2)
+    app.manifest
 )
 
 target_include_directories(ParticleSaturn.Diligent PRIVATE

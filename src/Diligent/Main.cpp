@@ -1,5 +1,6 @@
 #include <windows.h>
 
+#include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
 #include <string>
 
 #include "../AppState.h"
@@ -14,6 +15,24 @@ namespace {
 
 constexpr wchar_t kWindowClassName[] = L"ParticleSaturn.Diligent";
 constexpr wchar_t kWindowTitle[]     = L"Particle Saturn (Diligent)";
+
+// 获取窗口的 DPI 缩放因子（相对于 96 DPI）
+float GetDpiScaleForWindow(HWND hwnd) {
+    // 优先使用 GetDpiForWindow (Win10 1607+)
+    UINT dpi = GetDpiForWindow(hwnd);
+    if (dpi == 0) {
+        // 回退到系统 DPI
+        HDC hdc = GetDC(hwnd);
+        if (hdc) {
+            dpi = static_cast<UINT>(GetDeviceCaps(hdc, LOGPIXELSX));
+            ReleaseDC(hwnd, hdc);
+        }
+    }
+    if (dpi == 0) {
+        dpi = 96; // 默认 96 DPI
+    }
+    return static_cast<float>(dpi) / 96.0f;
+}
 
 ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdLine) {
     // 支持：
@@ -52,7 +71,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (backend != nullptr) {
                 auto* state = backend->GetAppState();
                 if (state != nullptr) {
-                    const bool dark = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
+                    const bool dark      = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
                     state->ui.isDarkMode = dark;
                     ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
                     if (backend->IsInitialized()) {
@@ -110,8 +129,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         state->input.keyB_pressed = true;
                         // 循环切换背景
                         if (!state->backdrop.availableBackdrops.empty()) {
-                            state->backdrop.backdropIndex =
-                                (state->backdrop.backdropIndex + 1) % static_cast<int>(state->backdrop.availableBackdrops.size());
+                            state->backdrop.backdropIndex = (state->backdrop.backdropIndex + 1) %
+                                                            static_cast<int>(state->backdrop.availableBackdrops.size());
                             const int mode = state->backdrop.availableBackdrops[state->backdrop.backdropIndex];
                             ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, mode, *state);
                         }
@@ -149,6 +168,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             const auto w = static_cast<uint32_t>(LOWORD(lParam));
             const auto h = static_cast<uint32_t>(HIWORD(lParam));
             backend->Resize({w, h});
+        }
+        return 0;
+    }
+    case WM_DPICHANGED: {
+        // DPI 变化时（如拖动窗口到不同 DPI 显示器）
+        if (backend != nullptr) {
+            const float newDpiScale = static_cast<float>(HIWORD(wParam)) / 96.0f;
+            auto*       state       = backend->GetAppState();
+            if (state != nullptr) {
+                state->ui.dpiScale = newDpiScale;
+            }
+            // 更新 MD3/ImGui 的 DPI 缩放
+            MD3::SetDpiScale(newDpiScale);
+
+            // 按系统建议调整窗口大小
+            const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+            SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
+                         suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         return 0;
     }
@@ -204,7 +241,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     // 系统主题/窗口效果初始化
     {
-        const bool dark = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
+        const bool dark        = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
         appState.ui.isDarkMode = dark;
         ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
 
@@ -213,6 +250,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             const int mode = appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex];
             ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, mode, appState);
         }
+
+        // 初始化 DPI 缩放
+        appState.ui.dpiScale = GetDpiScaleForWindow(hwnd);
     }
 
     const auto surface = GetClientSize(hwnd);
@@ -222,7 +262,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             if (w.empty()) {
                 return {};
             }
-            int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
+            int n =
+                WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
             if (n <= 0) {
                 return {};
             }
