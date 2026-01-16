@@ -2993,22 +2993,20 @@ void DiligentBackend::RenderUIBlur() {
     }
 
     // --- 2) Kawase blur ping-pong: uiBlurA <-> uiBlurB ---
+    // blurStrength 滑条是 float：旧实现用 int 决定 iterations，导致“滑条无级、效果有级”。
+    // 这里改为固定迭代次数 + 连续缩放 offset，让 blurStrength 真正连续生效。
     const float            blurStrength   = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
-    int                    iterations     = 3 + static_cast<int>(blurStrength);
     static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0]));
-    if (iterations < 2) {
-        iterations = 2;
-    }
-    if (iterations > kMaxIterations) {
-        iterations = kMaxIterations;
-    }
-    if (iterations % 2 == 1) {
-        iterations++;
-        if (iterations > kMaxIterations) {
-            iterations = kMaxIterations;
-        }
-    }
+    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
+    const float            strength       = std::clamp(blurStrength, 0.0f, 5.0f);
+    const float            scale          = strength / 5.0f; // 0..1
+    auto scaledOffset = [&](float base) -> float {
+        // Shader: off = g_TexelSize * (g_Offset + 0.5)
+        // 让 scale=0 时 off=0，scale=1 时保持旧行为：
+        // g_Offset = scale*(base+0.5) - 0.5
+        return scale * (base + 0.5f) - 0.5f;
+    };
+    const int iterations = kMaxIterations;
 
     const float texelX6 = 1.0f / static_cast<float>(uiBlurW_);
     const float texelY6 = 1.0f / static_cast<float>(uiBlurH_);
@@ -3019,7 +3017,7 @@ void DiligentBackend::RenderUIBlur() {
         ITextureView* inSRV    = writeToB ? uiBlurSRV_A_.RawPtr() : uiBlurSRV_B_.RawPtr();
 
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        updateBlurCB(texelX6, texelY6, offsets[i], 0.0f);
+        updateBlurCB(texelX6, texelY6, scaledOffset(offsets[i]), 0.0f);
 
         if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
             var->Set(inSRV);
@@ -3081,7 +3079,7 @@ void DiligentBackend::RenderUIBlur() {
         ITextureView* inSRV    = writeToD ? uiBlurSRV_C_.RawPtr() : uiBlurSRV_D_.RawPtr();
 
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        updateBlurCB(texelX12, texelY12, secondaryOffsets[i], 0.0f);
+        updateBlurCB(texelX12, texelY12, scaledOffset(secondaryOffsets[i]), 0.0f);
         if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
             var->Set(inSRV);
         }
@@ -4314,23 +4312,20 @@ void DiligentBackend::RenderBloom() {
     }
 
     // Pass 1..N: Kawase blur ping-pong（bloomA <-> bloomB）
+    // blurStrength 滑条是 float：旧实现用 int 决定 iterations，导致“滑条无级、效果有级”。
+    // 这里改为固定迭代次数 + 连续缩放 offset，让 blurStrength 真正连续生效。
     const float            blurStrength   = (appState_ != nullptr) ? appState_->ui.blurStrength : 2.0f;
-    int                    iterations     = 3 + static_cast<int>(blurStrength);
     static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0]));
-    if (iterations < 2) {
-        iterations = 2;
-    }
-    if (iterations > kMaxIterations) {
-        iterations = kMaxIterations;
-    }
-    // 保证 iterations 为偶数：最后一次写入 bloomB（对齐 OpenGL 的“最终结果落在第二个 FBO”策略）
-    if (iterations % 2 == 1) {
-        iterations++;
-        if (iterations > kMaxIterations) {
-            iterations = kMaxIterations;
-        }
-    }
+    static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
+    const float            strength       = std::clamp(blurStrength, 0.0f, 5.0f);
+    const float            scale          = strength / 5.0f; // 0..1
+    auto scaledOffset = [&](float base) -> float {
+        // Shader: off = g_TexelSize * (g_Offset + 0.5)
+        // 让 scale=0 时 off=0，scale=1 时保持旧行为：
+        // g_Offset = scale*(base+0.5) - 0.5
+        return scale * (base + 0.5f) - 0.5f;
+    };
+    const int iterations = kMaxIterations;
 
     const float bloomTexelX = 1.0f / static_cast<float>(bloomW_);
     const float bloomTexelY = 1.0f / static_cast<float>(bloomH_);
@@ -4341,7 +4336,7 @@ void DiligentBackend::RenderBloom() {
         ITextureView* inSRV    = writeToB ? bloomSRV_A_ : bloomSRV_B_;
 
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        updateBlurCB(bloomTexelX, bloomTexelY, offsets[i], 0.0f);
+        updateBlurCB(bloomTexelX, bloomTexelY, scaledOffset(offsets[i]), 0.0f);
 
         if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
             var->Set(inSRV);
@@ -4409,7 +4404,7 @@ void DiligentBackend::RenderBloom() {
             ITextureView* inSRV    = writeToD ? bloomSRV_C_.RawPtr() : bloomSRV_D_.RawPtr();
 
             immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-            updateBlurCB(texelX2, texelY2, secondaryOffsets[i], 0.0f);
+            updateBlurCB(texelX2, texelY2, scaledOffset(secondaryOffsets[i]), 0.0f);
 
             if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
                 var->Set(inSRV);
