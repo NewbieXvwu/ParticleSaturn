@@ -24,6 +24,10 @@ namespace ParticleSaturn::UI {
 class ImGuiDiligent;
 }
 
+namespace ParticleSaturn::HandTracking {
+class Controller;
+}
+
 namespace ParticleSaturn::Render {
 
 class DiligentBackend final {
@@ -247,6 +251,9 @@ class DiligentBackend final {
     // ImGui integration
     std::unique_ptr<UI::ImGuiDiligent> imgui_;
     HWND                               hwnd_ = nullptr;
+
+    // Hand tracking (MediaPipe/TFLite via HandTracker library)
+    std::unique_ptr<HandTracking::Controller> handTracker_;
 
     // 全局应用状态（由外部传入，生命周期由调用方管理）
     AppState* appState_ = nullptr;

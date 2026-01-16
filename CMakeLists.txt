@@ -147,12 +147,19 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
     src/Diligent/ImGuiDiligent.cpp
+    src/Diligent/HandTrackerController.cpp
     src/Diligent/Win32WindowManager.cpp
 
     # MD3 UI system
     src/Diligent/md3/MD3Theme.cpp
     src/Diligent/md3/MD3Context.cpp
     src/Diligent/md3/MD3Widgets.cpp
+
+    # Camera selector (used by HandTracker)
+    src/CameraSelector/CameraEnumerator.cpp
+    src/CameraSelector/CameraPreview.cpp
+    src/CameraSelector/CameraSelector.cpp
+    src/CameraSelector/D2DRenderer.cpp
 
     # ImGui core (minimal set)
     libs/imgui/imgui.cpp
@@ -171,6 +178,7 @@ target_include_directories(ParticleSaturn.Diligent PRIVATE
     src/Diligent
     src/Diligent/md3
     src
+    HandTracker/include
     libs/imgui
     libs/imgui/backends
 )

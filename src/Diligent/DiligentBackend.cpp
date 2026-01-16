@@ -14,11 +14,13 @@
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
+#include "HandTrackerController.h"
 #include "ImGuiDiligent.h"
 #include "InputLayout.h"
 #include "NativeWindow.h"
 #include "Sampler.h"
 #include "Win32WindowManager.h"
+#include "HandTracker.h"
 #include "imgui.h"
 #include "md3/MD3.h"
 
@@ -2251,10 +2253,23 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
 
+    // HandTracker：启动时与 OpenGL 版一致，弹出（必要时）摄像头选择，并异步初始化追踪器。
+    // 模型采用“随可执行文件分发”的策略：构建时会把 HandTracker/models 下的两份 tflite 复制到 exe 同目录。
+    handTracker_ = std::make_unique<HandTracking::Controller>();
+    if (handTracker_->Init(hwnd, appState_)) {
+        // 非阻塞启动：后续在 RenderFrame() 的 Tick() 中轮询 IsTrackerReady()。
+        handTracker_->StartWithCameraSelector(false);
+    }
+
     return true;
 }
 
 void DiligentBackend::Shutdown() {
+    if (handTracker_) {
+        handTracker_->Shutdown();
+        handTracker_.reset();
+    }
+
     // 先关闭 MD3（在 ImGui 之前）
     MD3::Shutdown();
 
@@ -4137,20 +4152,60 @@ void DiligentBackend::RenderOffscreen() {
             dt = 0.2f;
         }
 
-        animAutoTime_ += dt * (0.005f * 180.0f);
+        // Hand tracking (对齐 OpenGL)：
+        // - 无手：沿用自动动画（正弦）
+        // - 有手：由 HandTracker 的 scale/rot 映射到土星旋转/缩放，并做 dt 相关平滑
+        HandTracking::Sample handSample{};
+        bool                 hasHand = false;
+        if (handTracker_ != nullptr && handTracker_->GetStatus() == HandTracking::Status::Ready) {
+            handSample = handTracker_->GetLatestSample();
+            hasHand    = handSample.hasHand;
+        }
 
-        const float targetScale = 1.0f + std::sin(animAutoTime_) * 0.2f;
-        const float targetRotX  = 0.4f + std::sin(animAutoTime_ * 0.3f) * 0.15f;
-        const float targetRotY  = 0.0f;
+        float targetScale = 1.0f;
+        float targetRotX  = 0.4f;
+        float targetRotY  = 0.0f;
 
-        const float alpha = 1.0f - std::pow(1.0f - 0.08f, dt * 180.0f);
+        float perFrameAlpha = 0.08f; // OpenGL auto animation smoothing
+
+        if (!hasHand) {
+            animAutoTime_ += dt * (0.005f * 180.0f);
+            targetScale = 1.0f + std::sin(animAutoTime_) * 0.2f;
+            targetRotX  = 0.4f + std::sin(animAutoTime_ * 0.3f) * 0.15f;
+            targetRotY  = 0.0f;
+        } else {
+            targetScale = handSample.scale;
+
+            float sensitivity = 1.0f;
+            bool  invertX     = false;
+            bool  invertY     = false;
+            if (appState_ != nullptr) {
+                sensitivity = std::clamp(appState_->handParams.sensitivity, 0.1f, 3.0f);
+                invertX     = appState_->handParams.invertX;
+                invertY     = appState_->handParams.invertY;
+            }
+
+            auto applyInvert = [](float v, bool inv) -> float { return inv ? (1.0f - v) : v; };
+            const float rotX01 = applyInvert(handSample.rotX, invertX);
+            const float rotY01 = applyInvert(handSample.rotY, invertY);
+
+            // 对齐 OpenGL 映射：
+            // targetRotX = -0.6 + rotY*1.6
+            // targetRotY = (rotX-0.5)*2
+            targetRotX = (-0.6f + rotY01 * 1.6f) * sensitivity;
+            targetRotY = ((rotX01 - 0.5f) * 2.0f) * sensitivity;
+
+            perFrameAlpha = 0.25f; // OpenGL hand-driven smoothing
+        }
+
+        const float alpha = 1.0f - std::pow(1.0f - perFrameAlpha, dt * 180.0f);
         animScale_        = animScale_ + (targetScale - animScale_) * alpha;
         animRotX_         = animRotX_ + (targetRotX - animRotX_) * alpha;
         animRotY_         = animRotY_ + (targetRotY - animRotY_) * alpha;
 
         // 阶段 3（第 2 步）：接入 GPU ComputeSaturn（物理模拟）并用三缓冲轮转避免读写冲突。
-        // 当前没有手势追踪，uHandHas=0。
-        SimulateParticles(dt, animScale_, 0.0f);
+        // uHandHas：1 表示有手，0 表示无手（只影响 compute 的交互分支）。
+        SimulateParticles(dt, animScale_, hasHand ? 1.0f : 0.0f);
 
         {
             PVoid mapped = nullptr;
@@ -4495,6 +4550,11 @@ void DiligentBackend::RenderFrame() {
         return;
     }
 
+    // HandTracker：每帧轮询一次初始化状态（非阻塞）。
+    if (handTracker_) {
+        handTracker_->Tick();
+    }
+
     // 计算帧时间和 FPS（移动平均）
     const auto now     = std::chrono::steady_clock::now();
     float      frameDt = 0.0f;
@@ -4640,8 +4700,12 @@ void DiligentBackend::RenderFrame() {
     // 更新崩溃诊断状态（用于 ErrorHandler 的崩溃报告/对话框）
     if (appState_ != nullptr) {
         totalFrameCount_++;
+        bool handActive = false;
+        if (handTracker_ && handTracker_->GetStatus() == HandTracking::Status::Ready) {
+            handActive = handTracker_->GetLatestSample().hasHand;
+        }
         ErrorHandler::UpdateState(totalFrameCount_, appState_->render.activeParticleCount, appState_->render.pixelRatio,
-                                  false /*handTrackingActive*/);
+                                  handActive /*handTrackingActive*/);
     }
 
     // ImGui 新帧
@@ -4969,27 +5033,168 @@ void DiligentBackend::RenderFrame() {
             MD3::EndCollapsingHeader();
         }
 
-        // ========== 手部追踪区域（占位符）==========
+        // ========== 手部追踪区域（HandTracker 集成）==========
         if (MD3::BeginCollapsingHeader("Hand Tracking", true)) {
+            HandTracking::Status st = HandTracking::Status::Unavailable;
+            if (handTracker_ != nullptr) {
+                st = handTracker_->GetStatus();
+            }
+
+            const char* statusText = "Unavailable";
+            ImVec4      statusCol  = ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+            switch (st) {
+            case HandTracking::Status::NotStarted:
+                statusText = "Not Started";
+                statusCol  = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+                break;
+            case HandTracking::Status::Starting:
+                statusText = "Initializing";
+                statusCol  = ImVec4(1.0f, 0.8f, 0.0f, 1.0f);
+                break;
+            case HandTracking::Status::Ready:
+                statusText = "Ready";
+                statusCol  = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
+                break;
+            case HandTracking::Status::Failed:
+                statusText = "Failed";
+                statusCol  = ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+                break;
+            case HandTracking::Status::Unavailable:
+            default:
+                statusText = "Unavailable";
+                statusCol  = ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+                break;
+            }
+
+            // 控制：重启并选择摄像头
+            if (MD3::TonalButton("Select Camera (Restart)")) {
+                if (handTracker_ != nullptr) {
+                    handTracker_->RestartWithCameraSelector(true);
+                }
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("Selected: #%d", handTracker_ ? handTracker_->GetSelectedCamera() : -1);
+
             if (ImGui::BeginTable("TrackerTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::TextDisabled("Status");
                 ImGui::TableNextColumn();
-                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Not Available");
+                ImGui::TextColored(statusCol, "%s", statusText);
+
+                if (st == HandTracking::Status::Failed) {
+                    const int errCode = handTracker_ ? handTracker_->GetLastErrorCode() : HANDTRACKER_ERROR_UNKNOWN;
+                    const auto errMsg = handTracker_ ? handTracker_->GetLastErrorMessageUtf8() : std::string{};
+
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextDisabled("Error Code");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%d", errCode);
+
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextDisabled("Error Message");
+                    ImGui::TableNextColumn();
+                    ImGui::TextWrapped("%s", errMsg.empty() ? "(empty)" : errMsg.c_str());
+                }
 
                 ImGui::EndTable();
             }
 
             ImGui::Separator();
 
-            // 动画参数显示
-            ImGui::TextDisabled("Animation Values:");
+            // 用户可调参数：让它“真的生效”
+            if (appState_ != nullptr) {
+                ImGui::TextDisabled("Parameters:");
+                ImGui::Text("Sensitivity:");
+                MD3::Slider("##HandSensitivity", &appState_->handParams.sensitivity, 0.1f, 3.0f, "%.2f");
+                MD3::Toggle("Invert X", &appState_->handParams.invertX);
+                MD3::Toggle("Invert Y", &appState_->handParams.invertY);
+
+                ImGui::Text("Hand Lost Delay (frames):");
+                float delayF = static_cast<float>(appState_->handParams.handLostDelay);
+                if (MD3::Slider("##HandLostDelay", &delayF, 1.0f, 30.0f, "%.0f")) {
+                    appState_->handParams.handLostDelay = static_cast<int>(delayF);
+                }
+            }
+
+            ImGui::Separator();
+
+            // 追踪器调试开关
+            bool debugEnabled = false;
+            if (handTracker_ != nullptr && handTracker_->GetDebugMode(&debugEnabled)) {
+                if (MD3::Toggle("Show Camera Debug", &debugEnabled)) {
+                    handTracker_->SetDebugMode(debugEnabled);
+                    if (appState_ != nullptr) {
+                        appState_->ui.showCameraDebug = debugEnabled;
+                    }
+                }
+            } else {
+                ImGui::TextDisabled("Show Camera Debug: (not available)");
+            }
+
+            // SIMD mode
+            int simdMode = 0;
+            if (handTracker_ != nullptr && handTracker_->GetSIMDMode(&simdMode)) {
+                const char* simdModes[] = {"Auto", "AVX2", "SSE", "Scalar"};
+                if (MD3::Combo("SIMD Mode", &simdMode, simdModes, 4)) {
+                    handTracker_->SetSIMDMode(simdMode);
+                }
+                const std::string impl = handTracker_->GetSIMDImplementation();
+                ImGui::Text("SIMD Impl: %s", impl.empty() ? "(unknown)" : impl.c_str());
+            } else {
+                ImGui::TextDisabled("SIMD Mode: (not available)");
+            }
+
+            ImGui::Separator();
+
+            // 实时数值：raw vs smoothed（便于调试）
+            HandTracking::Sample raw{};
+            if (handTracker_ != nullptr && handTracker_->GetStatus() == HandTracking::Status::Ready) {
+                raw = handTracker_->GetLatestSample();
+            }
+
+            ImGui::TextDisabled("Raw HandTracker Values:");
+            if (ImGui::BeginTable("RawTable", 2, ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("Has Hand");
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", raw.hasHand ? "Yes" : "No");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("Scale");
+                ImGui::TableNextColumn();
+                ImGui::Text("%.3f", raw.scale);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("Rot X");
+                ImGui::TableNextColumn();
+                ImGui::Text("%.3f", raw.rotX);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("Rot Y");
+                ImGui::TableNextColumn();
+                ImGui::Text("%.3f", raw.rotY);
+
+                ImGui::EndTable();
+            }
+
+            ImGui::Separator();
+
+            ImGui::TextDisabled("Smoothed Animation Values:");
             if (ImGui::BeginTable("AnimTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                 ImGui::TableNextRow();
@@ -5013,8 +5218,6 @@ void DiligentBackend::RenderFrame() {
                 ImGui::EndTable();
             }
 
-            ImGui::Separator();
-            ImGui::TextDisabled("(Hand tracking not implemented in Diligent backend)");
             MD3::EndCollapsingHeader();
         }
 
