@@ -875,25 +875,24 @@ int main() {
             glActiveTexture(GL_TEXTURE0);
             glBindVertexArray(vaoQuad);
 
-            // Kawase Blur: 每次迭代增加采样偏移
-            int   iterations    = 3 + (int)appState.ui.blurStrength;
-            float offsets[]     = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-            int   maxIterations = sizeof(offsets) / sizeof(offsets[0]);
-            iterations          = (iterations > maxIterations) ? maxIterations : iterations;
-
-            // 优化: 调整迭代次数为偶数，确保最终结果自然落在 fboBlur2 中
-            // 这样避免了原来的额外复制 pass
-            if (iterations % 2 == 1) {
-                iterations++; // 增加一次迭代比复制更有意义（额外模糊效果）
-                if (iterations > maxIterations) {
-                    iterations = maxIterations;
-                }
-            }
+            // Kawase Blur：blurStrength 是 float，但旧实现把它强转成 int（导致“滑条无级、效果有级”）。
+            // 这里改为固定迭代次数 + 连续缩放 offset，使 blurStrength 真正连续生效。
+            static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+            static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
+            const float            strength       = std::clamp(appState.ui.blurStrength, 0.0f, 5.0f);
+            const float            scale          = strength / 5.0f; // 0..1
+            auto scaledOffset = [&](float base) -> float {
+                // Shader: off = uTexelSize * (uOffset + 0.5)
+                // 让 scale=0 时 off=0，scale=1 时保持旧行为：
+                // uOffset = scale*(base+0.5) - 0.5
+                return scale * (base + 0.5f) - 0.5f;
+            };
+            const int iterations = kMaxIterations;
 
             // 第一次: fboTex -> fboBlur1
             glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
             glBindTexture(GL_TEXTURE_2D, fboTex);
-            glUniform1f(uc.blur_uOffset, offsets[0]);
+            glUniform1f(uc.blur_uOffset, scaledOffset(offsets[0]));
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
             // 后续迭代: ping-pong between fboBlur1 and fboBlur2
@@ -907,7 +906,7 @@ int main() {
                     glBindFramebuffer(GL_FRAMEBUFFER, fboBlur1.fbo);
                     glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
                 }
-                glUniform1f(uc.blur_uOffset, offsets[std::min(i, maxIterations - 1)]);
+                glUniform1f(uc.blur_uOffset, scaledOffset(offsets[i]));
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
 
@@ -921,7 +920,7 @@ int main() {
 
             glBindFramebuffer(GL_FRAMEBUFFER, fboBlur3.fbo);
             glBindTexture(GL_TEXTURE_2D, fboBlur2.tex);
-            glUniform1f(uc.blur_uOffset, 0.0f);
+            glUniform1f(uc.blur_uOffset, scaledOffset(0.0f));
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
             // 第二步：2 次小 offset 模糊（ping-pong，最终落回 fboBlur3）
@@ -935,7 +934,7 @@ int main() {
                     glBindFramebuffer(GL_FRAMEBUFFER, fboBlur3.fbo);
                     glBindTexture(GL_TEXTURE_2D, fboBlur4.tex);
                 }
-                glUniform1f(uc.blur_uOffset, secondaryOffsets[i]);
+                glUniform1f(uc.blur_uOffset, scaledOffset(secondaryOffsets[i]));
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
             finalBlurTex2 = fboBlur3.tex;
