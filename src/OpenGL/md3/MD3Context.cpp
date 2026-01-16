@@ -296,6 +296,10 @@ void SetNoiseTexture(unsigned int textureID) {
     g_context.noiseTextureID = textureID;
 }
 
+void SetNoiseIntensity(float intensity) {
+    g_context.noiseIntensity = intensity;
+}
+
 //=============================================================================
 // Ripple API 实现
 //=============================================================================

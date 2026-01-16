@@ -420,6 +420,11 @@ void SetNoiseTexture(void* textureID) {
     GetContext().noiseTextureID = textureID;
 }
 
+void SetNoiseIntensity(float intensity) {
+    auto& ctx          = GetContext();
+    ctx.noiseIntensity = intensity;
+}
+
 void BeginFrame(float dt) {
     auto& ctx = GetContext();
     if (!ctx.initialized) {
