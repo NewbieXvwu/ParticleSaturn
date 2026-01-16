@@ -810,9 +810,24 @@ void DrawRipples() {
         float centerX = currentBoundsX + r.relCenterX;
         float centerY = currentBoundsY + r.relCenterY;
 
-        // Push clip rect for the control bounds (rectangular fast rejection)
-        ImVec2 boundsMin(currentBoundsX, currentBoundsY);
-        ImVec2 boundsMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        // 获取窗口裁剪区域，将控件边界与窗口可见区域取交集
+        ImVec2 windowClipMin(0, 0);
+        ImVec2 windowClipMax(ctx.screenWidth, ctx.screenHeight);
+        if (window) {
+            windowClipMin = window->ClipRect.Min;
+            windowClipMax = window->ClipRect.Max;
+        }
+
+        // Push clip rect for the control bounds intersected with window clip rect
+        ImVec2 boundsMin(std::max(currentBoundsX, windowClipMin.x), std::max(currentBoundsY, windowClipMin.y));
+        ImVec2 boundsMax(std::min(currentBoundsX + r.boundsW, windowClipMax.x),
+                         std::min(currentBoundsY + r.boundsH, windowClipMax.y));
+
+        // 如果裁剪区域无效（完全在窗口外），跳过此 ripple
+        if (boundsMax.x <= boundsMin.x || boundsMax.y <= boundsMin.y) {
+            continue;
+        }
+
         dl->PushClipRect(boundsMin, boundsMax, true);
 
         // Render the ripple with rounded corner awareness
@@ -1024,9 +1039,24 @@ void DrawRipplesDiligent() {
         const float centerX = currentBoundsX + r.relCenterX;
         const float centerY = currentBoundsY + r.relCenterY;
 
-        // 用矩形裁剪限制像素工作量
-        const ImVec2 clipMin(currentBoundsX, currentBoundsY);
-        const ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        // 获取窗口裁剪区域，将控件边界与窗口可见区域取交集
+        ImVec2 windowClipMin(0, 0);
+        ImVec2 windowClipMax(io.DisplaySize.x, io.DisplaySize.y);
+        if (window) {
+            windowClipMin = window->ClipRect.Min;
+            windowClipMax = window->ClipRect.Max;
+        }
+
+        // 用矩形裁剪限制像素工作量（与窗口裁剪区域取交集）
+        const ImVec2 clipMin(std::max(currentBoundsX, windowClipMin.x), std::max(currentBoundsY, windowClipMin.y));
+        const ImVec2 clipMax(std::min(currentBoundsX + r.boundsW, windowClipMax.x),
+                             std::min(currentBoundsY + r.boundsH, windowClipMax.y));
+
+        // 如果裁剪区域无效（完全在窗口外），跳过此 ripple
+        if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y) {
+            continue;
+        }
+
         dl->PushClipRect(clipMin, clipMax, true);
 
         // 分配回调数据
