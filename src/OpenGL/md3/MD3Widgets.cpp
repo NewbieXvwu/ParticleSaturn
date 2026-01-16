@@ -1114,7 +1114,36 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     }
 
     // 绘制头部背景
-    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius, roundingFlags);
+    // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 背景（对齐 Diligent 版）
+    ImVec2 endPos(pos.x + width, pos.y + height);
+    if (ctx.blurEnabled && ctx.blurTextureID2 != 0 && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+        // UV 计算：OpenGL 纹理坐标系（Y 需要翻转）
+        ImVec2 uv0(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
+        ImVec2 uv1(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+
+        // 弱模糊背景（1/12 分辨率，或已合成的 Acrylic 结果）
+        AddImageRounded(dl, ctx.blurTextureID2, pos, endPos, uv0, uv1, IM_COL32(255, 255, 255, 255), cornerRadius,
+                        roundingFlags);
+
+        // 噪点层：防 banding + 增加“材质感”
+        if (ctx.noiseTextureID != 0) {
+            const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+            AddImageRounded(dl, ctx.noiseTextureID, pos, endPos, uv0, uv1, noiseCol, cornerRadius, roundingFlags);
+        }
+
+        // 微妙的内边框（增加层次感）
+        ImU32 innerBorder = ctx.isDarkMode ? IM_COL32(255, 255, 255, 25) : IM_COL32(0, 0, 0, 15);
+        dl->AddRect(pos, endPos, innerBorder, cornerRadius, roundingFlags, 1.0f);
+
+        // 悬停状态层（在模糊背景上叠加）
+        if (hoverT > 0.001f) {
+            ImU32 hoverOverlay = ctx.isDarkMode ? IM_COL32(255, 255, 255, static_cast<int>(20 * hoverT))
+                                                : IM_COL32(0, 0, 0, static_cast<int>(15 * hoverT));
+            dl->AddRectFilled(pos, endPos, hoverOverlay, cornerRadius, roundingFlags);
+        }
+    } else {
+        dl->AddRectFilled(pos, endPos, ColorToU32(bgColor), cornerRadius, roundingFlags);
+    }
 
     // 绘制文本
     ImVec2 textPos(pos.x + padding, pos.y + (height - GetTextLineHeight()) * 0.5f);
@@ -1233,9 +1262,23 @@ void EndCollapsingHeader() {
     // 只有动画高度大于 0 时才绘制背景
     if (animatedHeight > 1.0f) {
         // 内容区域背景
-        ImVec4 contentBgColor = colors.surfaceContainerLow;
-        dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
-                          ImDrawFlags_RoundCornersBottom);
+        if (ctx.blurEnabled && ctx.blurTextureID2 != 0 && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+            ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, 1.0f - contentBoxMin.y / ctx.screenHeight);
+            ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, 1.0f - contentBoxMax.y / ctx.screenHeight);
+
+            AddImageRounded(dl, ctx.blurTextureID2, contentBoxMin, contentBoxMax, uv0, uv1, IM_COL32(255, 255, 255, 255),
+                            cornerRadius, ImDrawFlags_RoundCornersBottom);
+
+            if (ctx.noiseTextureID != 0) {
+                const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                AddImageRounded(dl, ctx.noiseTextureID, contentBoxMin, contentBoxMax, uv0, uv1, noiseCol, cornerRadius,
+                                ImDrawFlags_RoundCornersBottom);
+            }
+        } else {
+            ImVec4 contentBgColor = colors.surfaceContainerLow;
+            dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
+                              ImDrawFlags_RoundCornersBottom);
+        }
 
         // 内容区域边框
         ImVec4 borderColor = colors.outlineVariant;

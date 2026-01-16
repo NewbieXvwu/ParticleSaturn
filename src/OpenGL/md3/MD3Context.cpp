@@ -292,6 +292,10 @@ void SetBlurTexture2(unsigned int textureID) {
     g_context.blurTextureID2 = textureID;
 }
 
+void SetNoiseTexture(unsigned int textureID) {
+    g_context.noiseTextureID = textureID;
+}
+
 //=============================================================================
 // Ripple API 实现
 //=============================================================================
