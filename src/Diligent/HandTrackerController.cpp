@@ -14,6 +14,7 @@ namespace ParticleSaturn::HandTracking {
 
 namespace {
 
+#if !defined(HANDTRACKER_STATIC)
 // Function pointer types for runtime DLL loading.
 using FnInitTracker                     = bool (*)(int camera_id, const char* model_dir);
 using FnIsTrackerReady                  = int (*)();
@@ -55,6 +56,7 @@ template <typename T>
 T LoadProc(HMODULE mod, const char* name) {
     return reinterpret_cast<T>(GetProcAddress(mod, name));
 }
+#endif
 
 } // namespace
 
@@ -72,10 +74,23 @@ bool Controller::Init(HWND hwnd, AppState* state) {
 
 void Controller::Shutdown() {
     StopReaderThread();
+
+    // Best-effort cleanup: stop the tracker as well (static and dll mode).
+#if defined(HANDTRACKER_STATIC)
+    if (apiLoaded_) {
+        ReleaseTracker();
+    }
+#else
+    if (apiLoaded_ && g_api.ReleaseTracker != nullptr) {
+        g_api.ReleaseTracker();
+    }
     // Do NOT FreeLibrary; see comment above.
+#endif
+
     hwnd_     = nullptr;
     appState_ = nullptr;
     status_.store(Status::NotStarted);
+    apiLoaded_ = false;
 }
 
 bool Controller::EnsureApiLoaded() {
@@ -83,6 +98,10 @@ bool Controller::EnsureApiLoaded() {
         return true;
     }
 
+#if defined(HANDTRACKER_STATIC)
+    apiLoaded_ = true;
+    return true;
+#else
     if (g_api.module == nullptr) {
         const std::wstring dllPath = GetExeDirW() + L"\\HandTracker.dll";
         g_api.module               = LoadLibraryW(dllPath.c_str());
@@ -124,6 +143,7 @@ bool Controller::EnsureApiLoaded() {
 
     apiLoaded_ = true;
     return true;
+#endif
 }
 
 std::wstring Controller::GetExeDirW() const {
@@ -168,7 +188,11 @@ bool Controller::StartWithCameraSelector(bool forceShowDialog) {
 
     const std::string modelDirUtf8 = WideToUtf8(GetExeDirW());
     ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
+#if defined(HANDTRACKER_STATIC)
+    if (!InitTracker(selectedCamera_.load(), modelDirUtf8.c_str())) {
+#else
     if (!g_api.InitTracker(selectedCamera_.load(), modelDirUtf8.c_str())) {
+#endif
         status_.store(Status::Failed);
         return false;
     }
@@ -183,9 +207,13 @@ bool Controller::RestartWithCameraSelector(bool forceShowDialog) {
     }
 
     StopReaderThread();
+#if defined(HANDTRACKER_STATIC)
+    ReleaseTracker();
+#else
     if (g_api.ReleaseTracker) {
         g_api.ReleaseTracker();
     }
+#endif
     status_.store(Status::NotStarted);
 
     return StartWithCameraSelector(forceShowDialog);
@@ -203,7 +231,11 @@ void Controller::Tick() {
         return;
     }
 
+#if defined(HANDTRACKER_STATIC)
+    const int ready = IsTrackerReady();
+#else
     const int ready = g_api.IsTrackerReady ? g_api.IsTrackerReady() : -1;
+#endif
     if (ready == 0) {
         return;
     }
@@ -236,9 +268,13 @@ void Controller::ReaderLoop() {
     while (readerRunning_.load()) {
         Sample s{};
         bool   has = false;
+#if defined(HANDTRACKER_STATIC)
+        GetHandData(&s.scale, &s.rotX, &s.rotY, &has);
+#else
         if (g_api.GetHandData) {
             g_api.GetHandData(&s.scale, &s.rotX, &s.rotY, &has);
         }
+#endif
         s.hasHand = has;
         {
             std::lock_guard<std::mutex> lock(sampleMutex_);
@@ -254,68 +290,130 @@ Sample Controller::GetLatestSample() const {
 }
 
 bool Controller::GetDebugMode(bool* outEnabled) const {
-    if (!apiLoaded_ || g_api.GetTrackerDebugMode == nullptr || outEnabled == nullptr) {
+    if (!apiLoaded_ || outEnabled == nullptr) {
+        return false;
+    }
+#if defined(HANDTRACKER_STATIC)
+    *outEnabled = GetTrackerDebugMode();
+    return true;
+#else
+    if (g_api.GetTrackerDebugMode == nullptr) {
         return false;
     }
     *outEnabled = g_api.GetTrackerDebugMode();
     return true;
+#endif
 }
 
 void Controller::SetDebugMode(bool enabled) {
-    if (!apiLoaded_ || g_api.SetTrackerDebugMode == nullptr) {
+    if (!apiLoaded_) {
+        return;
+    }
+#if defined(HANDTRACKER_STATIC)
+    SetTrackerDebugMode(enabled);
+    return;
+#else
+    if (g_api.SetTrackerDebugMode == nullptr) {
         return;
     }
     g_api.SetTrackerDebugMode(enabled);
+#endif
 }
 
 bool Controller::GetSIMDMode(int* outMode) const {
-    if (!apiLoaded_ || g_api.GetTrackerSIMDMode == nullptr || outMode == nullptr) {
+    if (!apiLoaded_ || outMode == nullptr) {
+        return false;
+    }
+#if defined(HANDTRACKER_STATIC)
+    *outMode = GetTrackerSIMDMode();
+    return true;
+#else
+    if (g_api.GetTrackerSIMDMode == nullptr) {
         return false;
     }
     *outMode = g_api.GetTrackerSIMDMode();
     return true;
+#endif
 }
 
 void Controller::SetSIMDMode(int mode) {
-    if (!apiLoaded_ || g_api.SetTrackerSIMDMode == nullptr) {
+    if (!apiLoaded_) {
+        return;
+    }
+#if defined(HANDTRACKER_STATIC)
+    SetTrackerSIMDMode(mode);
+    return;
+#else
+    if (g_api.SetTrackerSIMDMode == nullptr) {
         return;
     }
     g_api.SetTrackerSIMDMode(mode);
+#endif
 }
 
 std::string Controller::GetSIMDImplementation() const {
-    if (!apiLoaded_ || g_api.GetTrackerSIMDImplementation == nullptr) {
+    if (!apiLoaded_) {
+        return {};
+    }
+#if defined(HANDTRACKER_STATIC)
+    const char* s = GetTrackerSIMDImplementation();
+    return s ? std::string(s) : std::string();
+#else
+    if (g_api.GetTrackerSIMDImplementation == nullptr) {
         return {};
     }
     const char* s = g_api.GetTrackerSIMDImplementation();
     return s ? std::string(s) : std::string();
+#endif
 }
 
 int Controller::GetLastErrorCode() const {
-    if (!apiLoaded_ || g_api.GetTrackerLastError == nullptr) {
+    if (!apiLoaded_) {
+        return HANDTRACKER_ERROR_UNKNOWN;
+    }
+#if defined(HANDTRACKER_STATIC)
+    return GetTrackerLastError();
+#else
+    if (g_api.GetTrackerLastError == nullptr) {
         return HANDTRACKER_ERROR_UNKNOWN;
     }
     return g_api.GetTrackerLastError();
+#endif
 }
 
 std::string Controller::GetLastErrorMessageUtf8() const {
-    if (!apiLoaded_ || g_api.GetTrackerLastErrorMessage == nullptr) {
+    if (!apiLoaded_) {
+        return {};
+    }
+#if defined(HANDTRACKER_STATIC)
+    const char* s = GetTrackerLastErrorMessage();
+    return s ? std::string(s) : std::string();
+#else
+    if (g_api.GetTrackerLastErrorMessage == nullptr) {
         return {};
     }
     const char* s = g_api.GetTrackerLastErrorMessage();
     return s ? std::string(s) : std::string();
+#endif
 }
 
 void Controller::ApplyHandParamsFromAppState() {
-    if (!apiLoaded_ || appState_ == nullptr || g_api.SetTrackerHandLostDelayFrames == nullptr) {
+    if (!apiLoaded_ || appState_ == nullptr) {
         return;
     }
     const int desired = appState_->handParams.handLostDelay;
     if (desired != lastHandLostDelayFrames_) {
-        g_api.SetTrackerHandLostDelayFrames(desired);
+#if defined(HANDTRACKER_STATIC)
+        SetTrackerHandLostDelayFrames(desired);
+#else
+        if (g_api.SetTrackerHandLostDelayFrames != nullptr) {
+            g_api.SetTrackerHandLostDelayFrames(desired);
+        } else {
+            return;
+        }
+#endif
         lastHandLostDelayFrames_ = desired;
     }
 }
 
 } // namespace ParticleSaturn::HandTracking
-

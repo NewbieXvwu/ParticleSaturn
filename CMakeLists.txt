@@ -90,6 +90,13 @@ message(STATUS "App version: ${APP_VERSION}")
 # - On CI/minimal VS installs, the shim can be enabled as a fallback.
 option(PARTICLESATURN_FORCE_ATL_SHIM "Force using the local ATL shim headers" OFF)
 option(PARTICLESATURN_FAST_BUILD "Prefer faster iteration builds (disables /GL for DiligentCore Release)" OFF)
+set(PARTICLESATURN_HANDTRACKER_LINK_MODE "dll" CACHE STRING "HandTracker link mode: dll (runtime load) or static (link into exe)")
+set_property(CACHE PARTICLESATURN_HANDTRACKER_LINK_MODE PROPERTY STRINGS dll static)
+
+if(MSVC AND PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")
+    # HandTracker Release_Static is built with /MT. Keep the entire CMake build consistent to avoid LNK2038 CRT mismatch.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
+endif()
 
 include(CheckIncludeFileCXX)
 check_include_file_cxx(atlbase.h PARTICLESATURN_HAS_ATLBASE_H)
@@ -190,6 +197,134 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngineVk-static
     dwmapi
 )
+
+if(PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")
+    target_compile_definitions(ParticleSaturn.Diligent PRIVATE HANDTRACKER_STATIC)
+
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(_ht_platform "x64")
+    else()
+        set(_ht_platform "Win32")
+    endif()
+
+    set(_ht_lib_dir "${CMAKE_SOURCE_DIR}/bin/${_ht_platform}/Release_Static")
+    set(_opencv_install_root "${CMAKE_SOURCE_DIR}/HandTracker/libs/opencv/build/install/${_ht_platform}")
+
+    file(GLOB _opencv_staticlib_candidates LIST_DIRECTORIES true "${_opencv_install_root}/vc*/staticlib")
+    list(SORT _opencv_staticlib_candidates)
+    list(LENGTH _opencv_staticlib_candidates _opencv_candidates_len)
+    if(_opencv_candidates_len GREATER 0)
+        list(GET _opencv_staticlib_candidates 0 _opencv_staticlib_dir)
+    else()
+        set(_opencv_staticlib_dir "${_opencv_install_root}/vc17/staticlib")
+    endif()
+
+    target_link_directories(ParticleSaturn.Diligent PRIVATE
+        "${_ht_lib_dir}"
+        "${_opencv_staticlib_dir}"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/install/lib"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/protobuf-build/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/strings/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/base/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/numeric/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/container/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/synchronization/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/time/MinSizeRel"
+        "${CMAKE_SOURCE_DIR}/HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build/absl/debugging/MinSizeRel"
+    )
+
+    # Mirror the OpenGL Release_Static link set so the static HandTracker build actually works.
+    target_link_libraries(ParticleSaturn.Diligent PRIVATE
+        HandTracker.lib
+        opencv_world4130.lib
+        libprotobuf.lib
+        libjpeg-turbo.lib
+        libpng.lib
+        zlib.lib
+        tensorflow-lite.lib
+        xnnpack-delegate.lib
+        XNNPACK.lib
+        cpuinfo.lib
+        pthreadpool.lib
+        farmhash.lib
+        fft2d_fftsg.lib
+        fft2d_fftsg2d.lib
+        flatbuffers.lib
+        eight_bit_int_gemm.lib
+        ruy_frontend.lib
+        ruy_trmul.lib
+        ruy_prepare_packed_matrices.lib
+        ruy_ctx.lib
+        ruy_context.lib
+        ruy_context_get_ctx.lib
+        ruy_allocator.lib
+        ruy_system_aligned_alloc.lib
+        ruy_apply_multiplier.lib
+        ruy_block_map.lib
+        ruy_blocking_counter.lib
+        ruy_cpuinfo.lib
+        ruy_denormal.lib
+        ruy_have_built_path_for_avx.lib
+        ruy_have_built_path_for_avx2_fma.lib
+        ruy_have_built_path_for_avx512.lib
+        ruy_kernel_arm.lib
+        ruy_kernel_avx.lib
+        ruy_kernel_avx2_fma.lib
+        ruy_kernel_avx512.lib
+        ruy_pack_arm.lib
+        ruy_pack_avx.lib
+        ruy_pack_avx2_fma.lib
+        ruy_pack_avx512.lib
+        ruy_prepacked_cache.lib
+        ruy_profiler_instrumentation.lib
+        ruy_thread_pool.lib
+        ruy_tune.lib
+        ruy_wait.lib
+        microkernels-prod.lib
+        absl_strings.lib
+        absl_strings_internal.lib
+        absl_string_view.lib
+        absl_base.lib
+        absl_throw_delegate.lib
+        absl_raw_logging_internal.lib
+        absl_log_severity.lib
+        absl_spinlock_wait.lib
+        absl_int128.lib
+        absl_hashtablez_sampler.lib
+        absl_raw_hash_set.lib
+        absl_synchronization.lib
+        absl_graphcycles_internal.lib
+        absl_kernel_timeout_internal.lib
+        absl_time.lib
+        absl_time_zone.lib
+        absl_civil_time.lib
+        absl_malloc_internal.lib
+        absl_stacktrace.lib
+        absl_symbolize.lib
+        absl_debugging_internal.lib
+        absl_demangle_internal.lib
+
+        # Media Foundation + misc Win32 deps used by HandTracker/OpenCV.
+        kernel32.lib
+        user32.lib
+        gdi32.lib
+        winspool.lib
+        comdlg32.lib
+        advapi32.lib
+        shell32.lib
+        ole32.lib
+        oleaut32.lib
+        uuid.lib
+        odbc32.lib
+        odbccp32.lib
+        mf.lib
+        mfplat.lib
+        mfreadwrite.lib
+        mfuuid.lib
+        shlwapi.lib
+    )
+endif()
 
 target_compile_definitions(ParticleSaturn.Diligent PRIVATE
     UNICODE

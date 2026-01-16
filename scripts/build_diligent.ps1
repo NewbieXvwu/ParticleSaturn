@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory=$true)][string]$SrcDir,
     [Parameter(Mandatory=$true)][string]$BuildDir,
     [Parameter(Mandatory=$true)][string]$Config,
+    [string]$HandTrackerLinkMode = "dll",
     [switch]$FastBuild
 )
 
@@ -53,6 +54,12 @@ $fastBuild =
         $false
     }
 
+$handTrackerLinkMode = $HandTrackerLinkMode.ToLowerInvariant()
+if ($handTrackerLinkMode -ne "dll" -and $handTrackerLinkMode -ne "static") {
+    Write-Error "Invalid -HandTrackerLinkMode '$HandTrackerLinkMode' (expected 'dll' or 'static')"
+    exit 2
+}
+
 # Create build directory if needed
 if (-not (Test-Path $BuildDir)) {
     New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
@@ -79,7 +86,8 @@ $cmakeArgs = @(
     "-B", $BuildDir,
     "-G", $generator,
     "-DCMAKE_BUILD_TYPE=$Config",
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DPARTICLESATURN_HANDTRACKER_LINK_MODE=$handTrackerLinkMode"
 )
 if ($ninjaPath) {
     $cmakeArgs += "-DCMAKE_MAKE_PROGRAM=$ninjaPath"
