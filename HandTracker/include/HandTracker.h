@@ -77,4 +77,11 @@ HAND_API int GetTrackerSIMDMode();
 
 // 获取当前 SIMD 实现名称
 HAND_API const char* GetTrackerSIMDImplementation();
+
+// 设置“丢手延迟”帧数（避免 has_hand 闪烁）
+// frames: >=1，建议范围 1~30（与上层 UI 一致）
+HAND_API void SetTrackerHandLostDelayFrames(int frames);
+
+// 获取当前“丢手延迟”帧数
+HAND_API int GetTrackerHandLostDelayFrames();
 }

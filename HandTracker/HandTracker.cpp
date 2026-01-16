@@ -124,6 +124,10 @@ struct TrackerContext {
     OneEuroFilter filter_rot_y{0.5f, 0.5f, 1.0f};
     OneEuroFilter filter_scale{0.2f, 0.05f, 1.0f};
 
+    // 配置：丢手延迟帧数（避免 has_hand 闪烁）
+    // 注意：这是运行时可配置参数，不应在 Reset() 中重置，以便上层 UI 改动在重启追踪器后仍然生效。
+    std::atomic<int> hand_lost_delay_frames{10};
+
     // 模型数据 (嵌入式模型)
     const void* palm_model_data = nullptr;
     size_t      palm_model_size = 0;
@@ -156,8 +160,8 @@ struct TrackerContext {
 // 全局上下文单例
 static TrackerContext g_ctx;
 
-// 常量
-static constexpr int HAND_LOST_FRAMES = 10;
+// 常量：默认丢手延迟（上层可通过 SetTrackerHandLostDelayFrames() 修改）
+static constexpr int kDefaultHandLostDelayFrames = 10;
 
 static std::string JoinPath(const std::string& folder, const std::string& filename) {
     if (folder.empty()) {
@@ -410,7 +414,11 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             smooth_has_hand   = true;
         } else {
             hand_lost_counter++;
-            if (hand_lost_counter >= HAND_LOST_FRAMES) {
+            int delay = g_ctx.hand_lost_delay_frames.load();
+            if (delay < 1) {
+                delay = kDefaultHandLostDelayFrames;
+            }
+            if (hand_lost_counter >= delay) {
                 smooth_has_hand = false;
             }
         }
@@ -644,6 +652,24 @@ HAND_API int GetTrackerSIMDMode() {
 
 HAND_API const char* GetTrackerSIMDImplementation() {
     return SIMDNormalize::GetCurrentImplementation();
+}
+
+HAND_API void SetTrackerHandLostDelayFrames(int frames) {
+    // Clamp to a sane range. UI defaults to 1~30, but we allow slightly broader for experimentation.
+    if (frames < 1) {
+        frames = 1;
+    } else if (frames > 120) {
+        frames = 120;
+    }
+    g_ctx.hand_lost_delay_frames.store(frames);
+}
+
+HAND_API int GetTrackerHandLostDelayFrames() {
+    int frames = g_ctx.hand_lost_delay_frames.load();
+    if (frames < 1) {
+        frames = kDefaultHandLostDelayFrames;
+    }
+    return frames;
 }
 
 HAND_API int GetTrackerLastError() {
