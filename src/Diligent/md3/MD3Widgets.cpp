@@ -1116,10 +1116,10 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     // 绘制头部背景
     // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 效果背景
     if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-        // UV 计算：将控件位置映射到模糊纹理坐标
+        // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下）
         ImVec2 endPos(pos.x + width, pos.y + height);
-        ImVec2 uv0(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
-        ImVec2 uv1(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+        ImVec2 uv0(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+        ImVec2 uv1(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
 
         // 绘制弱模糊背景（1/12 分辨率）
         AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), pos, endPos, uv0, uv1,
@@ -1263,9 +1263,9 @@ void EndCollapsingHeader() {
         // 内容区域背景
         // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 效果背景
         if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-            // UV 计算：将内容区域位置映射到模糊纹理坐标
-            ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, 1.0f - contentBoxMin.y / ctx.screenHeight);
-            ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, 1.0f - contentBoxMax.y / ctx.screenHeight);
+            // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下）
+            ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, contentBoxMin.y / ctx.screenHeight);
+            ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, contentBoxMax.y / ctx.screenHeight);
 
             // 绘制弱模糊背景（1/12 分辨率）
             AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), contentBoxMin, contentBoxMax, uv0,

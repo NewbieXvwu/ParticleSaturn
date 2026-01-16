@@ -242,8 +242,8 @@ struct CollapsingHeaderAnimState {
 
     CollapsingHeaderAnimState()
         : hoverState(0.0f, 500.0f, 30.0f),
-          openState(0.0f, 350.0f, 26.0f),
-          arrowRotation(0.0f, 350.0f, 26.0f),
+          openState(0.0f, 350.0f, 38.0f),     // damping 38 ≥ 2*sqrt(350)≈37.4 临界阻尼，消除振荡
+          arrowRotation(0.0f, 350.0f, 26.0f), // 箭头保持弹性动画效果
           lastContentHeight(0.0f) {}
 };
 

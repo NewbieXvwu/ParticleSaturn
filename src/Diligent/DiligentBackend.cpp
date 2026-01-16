@@ -3868,8 +3868,8 @@ void DiligentBackend::RenderFrame() {
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(320, 400), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(1200, 1200));
-        constexpr ImGuiWindowFlags kDebugWindowFlags =
-            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse;
+        constexpr ImGuiWindowFlags kDebugWindowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
+                                                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize;
         ImGui::Begin("Debug", nullptr, kDebugWindowFlags);
 
         // 自定义标题栏
@@ -3890,9 +3890,9 @@ void DiligentBackend::RenderFrame() {
 
             // 模糊背景：如果启用且有有效纹理
             if (ctx.blurEnabled && ctx.blurTextureID != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-                // UV 计算：将窗口位置映射到模糊纹理坐标
-                ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
-                ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+                // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
+                ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+                ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
 
                 // 使用带圆角的图片绘制，避免黑边
                 MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
@@ -4016,9 +4016,9 @@ void DiligentBackend::RenderFrame() {
                 valRange = 1.0f;
             }
 
-            // 绘图区域（调整右边距与左侧对齐）
-            float       graphPadding = ImGui::GetStyle().WindowPadding.x;
-            ImVec2      plotSize(ImGui::GetContentRegionAvail().x - graphPadding, 50);
+            // 绘图区域（调整右边距与左侧对齐 - 使用折叠区域的 contentPadding）
+            float       contentIndent = 16.0f * appState_->ui.dpiScale;
+            ImVec2      plotSize(ImGui::GetContentRegionAvail().x - contentIndent, 50);
             ImVec2      plotPos = ImGui::GetCursorScreenPos();
             ImVec2      plotEnd(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
             ImDrawList* drawList     = ImGui::GetWindowDrawList();
@@ -4028,13 +4028,13 @@ void DiligentBackend::RenderFrame() {
             auto& ctx       = MD3::GetContext();
             auto& colors    = ctx.colors;
             ImU32 lineColor = ImGui::GetColorU32(colors.primary);
-            ImU32 axisColor = ImGui::GetColorU32(colors.onSurfaceVariant);
+            ImU32 axisColor = IM_COL32(180, 180, 180, 140); // 半透明灰色用于 Y 轴标签
 
             // 如果启用模糊，绘制 Acrylic 效果背景
             if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-                // UV 计算
-                ImVec2 uv0(plotPos.x / ctx.screenWidth, 1.0f - plotPos.y / ctx.screenHeight);
-                ImVec2 uv1(plotEnd.x / ctx.screenWidth, 1.0f - plotEnd.y / ctx.screenHeight);
+                // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下）
+                ImVec2 uv0(plotPos.x / ctx.screenWidth, plotPos.y / ctx.screenHeight);
+                ImVec2 uv1(plotEnd.x / ctx.screenWidth, plotEnd.y / ctx.screenHeight);
 
                 // 弱模糊背景
                 MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
@@ -4064,10 +4064,14 @@ void DiligentBackend::RenderFrame() {
             };
             float scrollProgress = easeOutCubic(fpsGraphScrollAnimTime_ / kFpsHistorySampleInterval);
 
-            auto toScreen = [&](float logicalX, float val) -> ImVec2 {
-                // 应用滚动偏移 - 新数据点从右侧滑入
-                float adjustedX  = logicalX - scrollProgress;
-                float x          = plotPos.x + (adjustedX / (float)(kFpsHistorySize - 1)) * plotSize.x;
+            auto toScreen = [&](int logicalIdx, float val) -> ImVec2 {
+                // 修复：最新数据点始终固定在右边界，滚动只影响较旧的点向左偏移
+                // normalizedX: 将逻辑索引 [0, N-1] 映射到 [0, 1]
+                float normalizedX = (float)logicalIdx / (float)(kFpsHistorySize - 1);
+                // scrollOffset: 新数据到来时从 0 渐变到 1/(N-1)，所有点同步左移
+                float scrollOffset = scrollProgress / (float)(kFpsHistorySize - 1);
+                float x            = plotPos.x + (normalizedX - scrollOffset) * plotSize.x;
+
                 float clampedVal = val < minVal ? minVal : (val > maxVal ? maxVal : val);
                 float y          = plotPos.y + plotSize.y - ((clampedVal - minVal) / valRange) * plotSize.y;
                 return ImVec2(x, y);
@@ -4079,7 +4083,7 @@ void DiligentBackend::RenderFrame() {
             for (int i = 0; i < kFpsHistorySize; i++) {
                 float val = getValue(i);
                 if (val > 0.0f) {
-                    dataPoints.push_back(toScreen((float)i, val));
+                    dataPoints.push_back(toScreen(i, val));
                 }
             }
 
@@ -4122,12 +4126,15 @@ void DiligentBackend::RenderFrame() {
 
             drawList->PopClipRect();
 
-            // Y 轴刻度
+            // Y 轴刻度（较小字体，半透明）
             char maxLabel[16], minLabel[16];
             snprintf(maxLabel, sizeof(maxLabel), "%.0f", maxVal);
             snprintf(minLabel, sizeof(minLabel), "%.0f", minVal);
-            drawList->AddText(ImVec2(plotPos.x + 3, plotPos.y + 1), axisColor, maxLabel);
-            drawList->AddText(ImVec2(plotPos.x + 3, plotPos.y + plotSize.y - 13), axisColor, minLabel);
+            float smallFontSize = ImGui::GetFontSize() * 0.85f;
+            drawList->AddText(ImGui::GetFont(), smallFontSize, ImVec2(plotPos.x + 4, plotPos.y + 2), axisColor,
+                              maxLabel);
+            drawList->AddText(ImGui::GetFont(), smallFontSize,
+                              ImVec2(plotPos.x + 4, plotPos.y + plotSize.y - smallFontSize - 2), axisColor, minLabel);
 
             ImGui::Dummy(plotSize);
 
