@@ -471,6 +471,152 @@ void main()
     return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
 }
 
+ShaderSources GetAcrylicCompositeShaderSources(Backend backend) {
+    // Acrylic 近似合成（低分辨率）：饱和度增强 + 近似 exclusion + tint（带亮度自适应）
+    static constexpr char kHlslVS[] = R"(
+struct VSOut
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+VSOut main(uint VertID : SV_VertexID)
+{
+    float2 pos[4] =
+    {
+        float2(-1.0, -1.0),
+        float2(-1.0,  1.0),
+        float2( 1.0, -1.0),
+        float2( 1.0,  1.0)
+    };
+
+    float2 uv[4] =
+    {
+        float2(0.0, 1.0),
+        float2(0.0, 0.0),
+        float2(1.0, 1.0),
+        float2(1.0, 0.0)
+    };
+
+    VSOut o;
+    o.Pos = float4(pos[VertID], 0.0, 1.0);
+    o.UV  = uv[VertID];
+    return o;
+}
+)";
+
+    static constexpr char kHlslPS[] = R"(
+struct PSIn
+{
+    float4 Pos : SV_POSITION;
+    float2 UV  : TEX_COORD;
+};
+
+Texture2D    g_Texture;
+SamplerState g_Texture_sampler;
+
+cbuffer AcrylicCB
+{
+    float4 g_Tint;   // rgb + baseOpacity
+    float4 g_Params; // x=saturation, y=adaptive, z=darkModeFlag, w=exclusionStrength
+};
+
+float3 ApplySaturation(float3 c, float sat)
+{
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    float3 gray = float3(lum, lum, lum);
+    return saturate(gray + (c - gray) * sat);
+}
+
+float4 main(PSIn i) : SV_Target
+{
+    float3 col = g_Texture.Sample(g_Texture_sampler, i.UV).rgb;
+    col = ApplySaturation(col, g_Params.x);
+
+    float lum = dot(col, float3(0.2126, 0.7152, 0.0722));
+    float a   = g_Tint.a;
+    float adapt = g_Params.y;
+    if (g_Params.z > 0.5) // dark
+        a = saturate(a + (lum - 0.5) * adapt);
+    else // light
+        a = saturate(a + (0.5 - lum) * adapt);
+
+    float3 tint = g_Tint.rgb;
+    float3 excl = (col + tint) - (2.0 * col * tint);
+    float3 mixed = lerp(col, excl, saturate(g_Params.w));
+
+    float3 outCol = lerp(col, mixed, a);
+    return float4(outCol, 1.0);
+}
+)";
+
+    static constexpr char kGlslVS[] = R"(
+layout(location = 0) out vec2 vUV;
+void main()
+{
+    const vec2 pos[4] = vec2[4](
+        vec2(-1.0, -1.0),
+        vec2(-1.0,  1.0),
+        vec2( 1.0, -1.0),
+        vec2( 1.0,  1.0)
+    );
+    const vec2 uv[4] = vec2[4](
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+        vec2(1.0, 0.0)
+    );
+    gl_Position = vec4(pos[gl_VertexIndex], 0.0, 1.0);
+    vUV = uv[gl_VertexIndex];
+}
+)";
+
+    static constexpr char kGlslPS[] = R"(
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 oColor;
+
+layout(set=0, binding=0) uniform sampler2D g_Texture;
+layout(std140, set=0, binding=1) uniform AcrylicCB
+{
+    vec4 g_Tint;   // rgb + baseOpacity
+    vec4 g_Params; // x=saturation, y=adaptive, z=darkModeFlag, w=exclusionStrength
+};
+
+vec3 applySaturation(vec3 c, float sat)
+{
+    float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    vec3 gray = vec3(lum);
+    return clamp(gray + (c - gray) * sat, 0.0, 1.0);
+}
+
+void main()
+{
+    vec3 col = texture(g_Texture, vUV).rgb;
+    col = applySaturation(col, g_Params.x);
+
+    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    float a   = g_Tint.a;
+    float adapt = g_Params.y;
+    if (g_Params.z > 0.5) // dark
+        a = clamp(a + (lum - 0.5) * adapt, 0.0, 1.0);
+    else // light
+        a = clamp(a + (0.5 - lum) * adapt, 0.0, 1.0);
+
+    vec3 tint = g_Tint.rgb;
+    vec3 excl = (col + tint) - (2.0 * col * tint);
+    vec3 mixed = mix(col, excl, clamp(g_Params.w, 0.0, 1.0));
+    vec3 outCol = mix(col, mixed, a);
+
+    oColor = vec4(outCol, 1.0);
+}
+)";
+
+    if (backend == Backend::Vulkan) {
+        return {kGlslVS, kGlslPS, SHADER_SOURCE_LANGUAGE_GLSL};
+    }
+    return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
+}
+
 ComputeShaderSource GetSaturnComputeShaderSource(Backend backend) {
     // 1:1 复刻 OpenGL ComputeSaturn（粒子物理模拟，双缓冲逻辑），但这里会接入三缓冲轮转：
     // - in  = 当前 render buffer
@@ -2004,6 +2150,12 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
+    if (!CreateAcrylicPSO()) {
+        if (lastError_.empty()) {
+            SetLastError(L"CreateAcrylicPSO() 失败。");
+        }
+        return false;
+    }
     if (!CreateBloomTextures(surfaceSize_)) {
         if (lastError_.empty()) {
             SetLastError(L"CreateBloomTextures() 失败。");
@@ -2140,9 +2292,23 @@ void DiligentBackend::Shutdown() {
     bloomW2_ = 0;
     bloomH2_ = 0;
 
+    acrylicSRB_.Release();
+    acrylicPSO_.Release();
+    acrylicConstants_.Release();
+
     uiSceneSRV_.Release();
     uiSceneRTV_.Release();
     uiSceneColor_.Release();
+
+    uiAcrylicSRV_Strong_.Release();
+    uiAcrylicRTV_Strong_.Release();
+    uiAcrylicStrong_.Release();
+    uiAcrylicSRV_Weak_.Release();
+    uiAcrylicRTV_Weak_.Release();
+    uiAcrylicWeak_.Release();
+
+    uiNoiseSRV_.Release();
+    uiNoiseTex_.Release();
 
     uiBlurSRV_D_.Release();
     uiBlurRTV_D_.Release();
@@ -2423,6 +2589,90 @@ bool DiligentBackend::CreateBloomPSO() {
     return true;
 }
 
+bool DiligentBackend::CreateAcrylicPSO() {
+    if (device_ == nullptr) {
+        return false;
+    }
+
+    const auto sources = GetAcrylicCompositeShaderSources(backend_);
+    if (sources.Vertex == nullptr || sources.Fragment == nullptr) {
+        return false;
+    }
+
+    const auto vs =
+        CreateShaderFromSource(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+    const auto ps =
+        CreateShaderFromSource(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+    if (vs == nullptr || ps == nullptr) {
+        return false;
+    }
+
+    // 常量缓冲：2个 float4（tint + params）
+    if (acrylicConstants_ == nullptr) {
+        BufferDesc cbDesc{};
+        cbDesc.Name           = "Acrylic Constants";
+        cbDesc.Size           = 32;
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+        device_->CreateBuffer(cbDesc, nullptr, &acrylicConstants_);
+        if (acrylicConstants_ == nullptr) {
+            return false;
+        }
+    }
+
+    GraphicsPipelineStateCreateInfo psoCI{};
+    psoCI.PSODesc.Name         = "AcrylicComposite PSO";
+    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
+
+    psoCI.GraphicsPipeline.NumRenderTargets = 1;
+    psoCI.GraphicsPipeline.RTVFormats[0]    = kOffscreenColorFormat;
+    psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN;
+
+    psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+
+    const ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_PIXEL, "AcrylicCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
+    psoCI.PSODesc.ResourceLayout.Variables    = vars;
+
+    SamplerDesc sampDesc{};
+    sampDesc.MinFilter = FILTER_TYPE_LINEAR;
+    sampDesc.MagFilter = FILTER_TYPE_LINEAR;
+    sampDesc.MipFilter = FILTER_TYPE_LINEAR;
+    sampDesc.AddressU  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressV  = TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressW  = TEXTURE_ADDRESS_CLAMP;
+
+    const char* samplerName = (backend_ == Backend::Vulkan) ? "g_Texture" : "g_Texture_sampler";
+    const ImmutableSamplerDesc imtblSamplers[] = {
+        {SHADER_TYPE_PIXEL, samplerName, sampDesc},
+    };
+    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(imtblSamplers);
+    psoCI.PSODesc.ResourceLayout.ImmutableSamplers    = imtblSamplers;
+
+    psoCI.pVS = vs;
+    psoCI.pPS = ps;
+
+    acrylicPSO_.Release();
+    acrylicSRB_.Release();
+    device_->CreateGraphicsPipelineState(psoCI, &acrylicPSO_);
+    if (acrylicPSO_ == nullptr) {
+        return false;
+    }
+
+    if (auto* var = acrylicPSO_->GetStaticVariableByName(SHADER_TYPE_PIXEL, "AcrylicCB"); var != nullptr) {
+        var->Set(acrylicConstants_);
+    }
+
+    acrylicPSO_->CreateShaderResourceBinding(&acrylicSRB_, true);
+    return acrylicSRB_ != nullptr;
+}
+
 bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     if (device_ == nullptr) {
         return false;
@@ -2518,7 +2768,7 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
 
     const bool sizeChanged = sceneSizeChanged || (uiBlurW_ != w6 || uiBlurH_ != h6 || uiBlurW2_ != w12 || uiBlurH2_ != h12);
     if (!sizeChanged && uiSceneColor_ != nullptr && uiBlurTexA_ != nullptr && uiBlurTexB_ != nullptr && uiBlurTexC_ != nullptr &&
-        uiBlurTexD_ != nullptr) {
+        uiBlurTexD_ != nullptr && uiAcrylicStrong_ != nullptr && uiAcrylicWeak_ != nullptr && uiNoiseTex_ != nullptr) {
         return true;
     }
 
@@ -2570,6 +2820,62 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
     }
     if (!createTex("UI Blur D (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiBlurTexD_, uiBlurRTV_D_, uiBlurSRV_D_)) {
         return false;
+    }
+
+    // Acrylic 合成输出（同分辨率）
+    if (!createTex("UI Acrylic Strong (1/6)", kOffscreenColorFormat, uiBlurW_, uiBlurH_, uiAcrylicStrong_,
+                   uiAcrylicRTV_Strong_, uiAcrylicSRV_Strong_)) {
+        return false;
+    }
+    if (!createTex("UI Acrylic Weak (1/12)", kOffscreenColorFormat, uiBlurW2_, uiBlurH2_, uiAcrylicWeak_, uiAcrylicRTV_Weak_,
+                   uiAcrylicSRV_Weak_)) {
+        return false;
+    }
+
+    // 噪点纹理（全分辨率、一次性上传；避免依赖 wrap sampler）
+    {
+        uiNoiseSRV_.Release();
+        uiNoiseTex_.Release();
+
+        std::vector<uint8_t> noise;
+        noise.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u);
+
+        std::mt19937                          gen{1337u};
+        std::uniform_int_distribution<int>    rnd(0, 255);
+        for (size_t i = 0; i < noise.size(); i += 4u) {
+            const uint8_t v  = static_cast<uint8_t>(rnd(gen));
+            noise[i + 0u]    = v;
+            noise[i + 1u]    = v;
+            noise[i + 2u]    = v;
+            noise[i + 3u]    = 255u;
+        }
+
+        TextureDesc texDesc{};
+        texDesc.Name      = "UI Noise Texture";
+        texDesc.Type      = RESOURCE_DIM_TEX_2D;
+        texDesc.Width     = w;
+        texDesc.Height    = h;
+        texDesc.MipLevels = 1;
+        texDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
+        texDesc.BindFlags = BIND_SHADER_RESOURCE;
+        texDesc.Usage     = USAGE_IMMUTABLE;
+
+        TextureSubResData subRes{};
+        subRes.pData  = noise.data();
+        subRes.Stride = static_cast<Uint32>(w * 4u);
+
+        TextureData texData{};
+        texData.NumSubresources = 1;
+        texData.pSubResources   = &subRes;
+
+        device_->CreateTexture(texDesc, &texData, &uiNoiseTex_);
+        if (uiNoiseTex_ == nullptr) {
+            return false;
+        }
+        uiNoiseSRV_ = uiNoiseTex_->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+        if (uiNoiseSRV_ == nullptr) {
+            return false;
+        }
     }
 
     return true;
@@ -2780,6 +3086,114 @@ void DiligentBackend::RenderUIBlur() {
         draw.NumVertices = 4;
         draw.Flags       = DRAW_FLAG_VERIFY_ALL;
         immediateContext_->Draw(draw);
+    }
+}
+
+void DiligentBackend::RenderAcrylicComposite() {
+    if (immediateContext_ == nullptr) {
+        return;
+    }
+    if (appState_ != nullptr && !appState_->ui.enableBlur) {
+        return;
+    }
+    if (acrylicPSO_ == nullptr || acrylicSRB_ == nullptr || acrylicConstants_ == nullptr) {
+        return;
+    }
+    if (uiAcrylicRTV_Strong_ == nullptr || uiAcrylicSRV_Strong_ == nullptr || uiAcrylicRTV_Weak_ == nullptr ||
+        uiAcrylicSRV_Weak_ == nullptr) {
+        return;
+    }
+    if (uiBlurSRV_B_ == nullptr || uiBlurSRV_C_ == nullptr) {
+        return;
+    }
+    if (uiBlurW_ == 0 || uiBlurH_ == 0 || uiBlurW2_ == 0 || uiBlurH2_ == 0) {
+        return;
+    }
+
+    const bool isDark = (appState_ != nullptr) ? appState_->ui.isDarkMode : true;
+
+    auto updateCB = [&](float tintR, float tintG, float tintB, float baseOpacity, float saturation, float adaptive,
+                        float exclusionStrength) {
+        PVoid mapped = nullptr;
+        immediateContext_->MapBuffer(acrylicConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
+        if (mapped != nullptr) {
+            struct AcrylicCB {
+                float Tint[4];
+                float Params[4];
+            };
+            auto* cb    = static_cast<AcrylicCB*>(mapped);
+            cb->Tint[0] = tintR;
+            cb->Tint[1] = tintG;
+            cb->Tint[2] = tintB;
+            cb->Tint[3] = baseOpacity;
+
+            cb->Params[0] = saturation;
+            cb->Params[1] = adaptive;
+            cb->Params[2] = isDark ? 1.0f : 0.0f;
+            cb->Params[3] = exclusionStrength;
+
+            immediateContext_->UnmapBuffer(acrylicConstants_, MAP_WRITE);
+        }
+    };
+
+    auto drawComposite = [&](ITextureView* outRTV, uint32_t w, uint32_t h, ITextureView* inSRV) {
+        if (outRTV == nullptr || inSRV == nullptr) {
+            return;
+        }
+
+        immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        Viewport vp{};
+        vp.TopLeftX = 0.0f;
+        vp.TopLeftY = 0.0f;
+        vp.Width    = static_cast<float>(w);
+        vp.Height   = static_cast<float>(h);
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        immediateContext_->SetViewports(1, &vp, 0, 0);
+
+        if (auto* var = acrylicSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+            var->Set(inSRV);
+        }
+
+        immediateContext_->SetPipelineState(acrylicPSO_);
+        immediateContext_->CommitShaderResources(acrylicSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        DrawAttribs draw{};
+        draw.NumVertices = 4;
+        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        immediateContext_->Draw(draw);
+    };
+
+    // Strong Acrylic (1/6)：用于窗口背景
+    {
+        // 经验值：Acrylic 通常比原背景更“鲜艳”，并用较高 opacity 稳定可读性
+        const float saturation = 1.35f;
+        const float adaptive   = 0.35f;
+        const float excl       = 1.0f;
+
+        if (isDark) {
+            updateCB(20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f, 180.0f / 255.0f, saturation, adaptive, excl);
+        } else {
+            updateCB(245.0f / 255.0f, 245.0f / 255.0f, 255.0f / 255.0f, 150.0f / 255.0f, saturation, adaptive, excl);
+        }
+        drawComposite(uiAcrylicRTV_Strong_.RawPtr(), uiBlurW_, uiBlurH_, uiBlurSRV_B_.RawPtr());
+    }
+
+    // Weak Acrylic (1/12)：用于折叠区域/次级背景
+    {
+        const float saturation = 1.30f;
+        const float adaptive   = 0.30f;
+        const float excl       = 1.0f;
+
+        if (isDark) {
+            updateCB(35.0f / 255.0f, 35.0f / 255.0f, 40.0f / 255.0f, 160.0f / 255.0f, saturation, adaptive, excl);
+        } else {
+            updateCB(250.0f / 255.0f, 250.0f / 255.0f, 255.0f / 255.0f, 140.0f / 255.0f, saturation, adaptive, excl);
+        }
+        drawComposite(uiAcrylicRTV_Weak_.RawPtr(), uiBlurW2_, uiBlurH2_, uiBlurSRV_C_.RawPtr());
     }
 }
 
@@ -4234,17 +4648,18 @@ void DiligentBackend::RenderFrame() {
         MD3::SetDarkMode(appState_->ui.isDarkMode);
         MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
 
-        // 传递 UI 模糊纹理给 MD3（基于“最终显示的场景颜色”生成，而不是 Bloom bright-pass）
-        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiBlurSRV_B_.RawPtr()) : nullptr,
+        // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
+        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Strong_.RawPtr()) : nullptr,
                             appState_->ui.enableBlur);
         // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
-        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiBlurSRV_C_.RawPtr()) : nullptr);
+        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
+        MD3::SetNoiseTexture(appState_->ui.enableBlur ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
 
         // Error dialogs（统一错误处理）
         ErrorHandler::RenderErrorDialog(frameDt);
 
         // 崩溃分析器窗口（使用模糊背景）
-        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiBlurSRV_B_.RawPtr()) : 0;
+        ImTextureID crashBlurTex = appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
         CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
                               appState_->ui.isDarkMode);
 
@@ -4278,13 +4693,17 @@ void DiligentBackend::RenderFrame() {
                 ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
                 ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
 
-                // 使用带圆角的图片绘制，避免黑边
-                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
-                                     IM_COL32(255, 255, 255, 255), cornerRadius);
+                 // 使用带圆角的图片绘制，避免黑边
+                 MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
+                                      IM_COL32(255, 255, 255, 255), cornerRadius);
 
-                // 覆盖着色层（填充半透明色彩）
-                ImU32 tintColor = appState_->ui.isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
-                dl->AddRectFilled(pos, endPos, tintColor, cornerRadius);
+                // 噪点层：防 banding + 增加“材质感”
+                if (ctx.noiseTextureID != nullptr) {
+                    const ImU32 noiseCol =
+                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                    MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1,
+                                         noiseCol, cornerRadius);
+                }
 
                 // 高光边框
                 ImU32 highlight = appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
@@ -4420,13 +4839,16 @@ void DiligentBackend::RenderFrame() {
                 ImVec2 uv0(plotPos.x / ctx.screenWidth, plotPos.y / ctx.screenHeight);
                 ImVec2 uv1(plotEnd.x / ctx.screenWidth, plotEnd.y / ctx.screenHeight);
 
-                // 弱模糊背景
-                MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
-                                     uv1, IM_COL32(255, 255, 255, 255), cornerRadius);
+                 // 弱模糊背景
+                 MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
+                                      uv1, IM_COL32(255, 255, 255, 255), cornerRadius);
 
-                // 深色 tint 叠加（比折叠区域更深以区分）
-                ImU32 graphTint = ctx.isDarkMode ? IM_COL32(15, 15, 20, 200) : IM_COL32(240, 240, 245, 160);
-                drawList->AddRectFilled(plotPos, plotEnd, graphTint, cornerRadius);
+                // 噪点层：防 banding + 增加“材质感”
+                if (ctx.noiseTextureID != nullptr) {
+                    const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                    MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), plotPos, plotEnd, uv0, uv1,
+                                         noiseCol, cornerRadius);
+                }
 
                 // 细边框
                 ImU32 borderColor = ctx.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
@@ -4755,6 +5177,7 @@ void DiligentBackend::RenderFrame() {
     // 3.5 UI Blur：先把最终显示的场景颜色解析到中间纹理，再做低分辨率模糊
     RenderUISceneForUI();
     RenderUIBlur();
+    RenderAcrylicComposite();
 
     // 4. Blit to Backbuffer
     BlitOffscreenToBackBuffer();

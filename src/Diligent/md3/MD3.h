@@ -408,6 +408,7 @@ struct MD3Context {
     // 模糊纹理（用于窗口背景玻璃效果）
     void* blurTextureID  = nullptr; // ImTextureID (ITextureView*) - 1/6 分辨率强模糊
     void* blurTextureID2 = nullptr; // ImTextureID (ITextureView*) - 1/12 分辨率弱模糊（折叠区域）
+    void* noiseTextureID = nullptr; // ImTextureID (ITextureView*) - 全分辨率噪点（用于防 banding + 质感）
     bool  blurEnabled    = false;
 };
 
@@ -447,6 +448,9 @@ void SetBlurTexture(void* textureID, bool enabled);
 
 // 设置次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
 void SetBlurTexture2(void* textureID);
+
+// 设置噪点纹理（全分辨率，避免依赖 wrap sampler）
+void SetNoiseTexture(void* textureID);
 
 // 应用 MD3 主题到 ImGui 样式（窗口、表格、滚动条等）
 void ApplyImGuiStyle();

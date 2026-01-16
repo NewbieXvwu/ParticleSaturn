@@ -1125,9 +1125,12 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
         AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), pos, endPos, uv0, uv1,
                         IM_COL32(255, 255, 255, 255), cornerRadius, roundingFlags);
 
-        // Acrylic 风格：叠加半透明着色层（比窗口背景更亮一些以区分层次）
-        ImU32 tintColor = ctx.isDarkMode ? IM_COL32(35, 35, 40, 160) : IM_COL32(250, 250, 255, 140);
-        dl->AddRectFilled(pos, endPos, tintColor, cornerRadius, roundingFlags);
+        // 噪点层：防 banding + 增加“材质感”（噪点纹理为全分辨率，不依赖 wrap sampler）
+        if (ctx.noiseTextureID != nullptr) {
+            const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+            AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1, noiseCol,
+                            cornerRadius, roundingFlags);
+        }
 
         // 微妙的内边框（增加层次感）
         ImU32 innerBorder = ctx.isDarkMode ? IM_COL32(255, 255, 255, 25) : IM_COL32(0, 0, 0, 15);
@@ -1271,9 +1274,12 @@ void EndCollapsingHeader() {
             AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), contentBoxMin, contentBoxMax, uv0,
                             uv1, IM_COL32(255, 255, 255, 255), cornerRadius, ImDrawFlags_RoundCornersBottom);
 
-            // Acrylic 风格：叠加半透明着色层（比标题区域稍深以区分层次）
-            ImU32 contentTint = ctx.isDarkMode ? IM_COL32(25, 25, 30, 180) : IM_COL32(245, 245, 250, 150);
-            dl->AddRectFilled(contentBoxMin, contentBoxMax, contentTint, cornerRadius, ImDrawFlags_RoundCornersBottom);
+            // 噪点层：防 banding + 增加“材质感”
+            if (ctx.noiseTextureID != nullptr) {
+                const ImU32 noiseCol = ctx.isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), contentBoxMin, contentBoxMax, uv0,
+                                uv1, noiseCol, cornerRadius, ImDrawFlags_RoundCornersBottom);
+            }
         } else {
             // 无模糊时的纯色背景
             ImVec4 contentBgColor = colors.surfaceContainerLow;

@@ -406,13 +406,21 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
         ImDrawList* dl   = ImGui::GetWindowDrawList();
 
         if (enableBlur && blurTex != 0 && scrWidth > 0 && scrHeight > 0) {
-            ImVec2 uv0 = ImVec2(pos.x / scrWidth, 1.0f - pos.y / scrHeight);
-            ImVec2 uv1 = ImVec2((pos.x + size.x) / scrWidth, 1.0f - (pos.y + size.y) / scrHeight);
-            // 使用带圆角的图片绘制，避免黑边
+            // UV 计算：D3D12/Vulkan 坐标系（Y 从上到下，无需翻转）
+            ImVec2 uv0 = ImVec2(pos.x / scrWidth, pos.y / scrHeight);
+            ImVec2 uv1 = ImVec2((pos.x + size.x) / scrWidth, (pos.y + size.y) / scrHeight);
+
+            // blurTex 在 Diligent 版传入的是“已合成的 Acrylic 结果”
             MD3::AddImageRounded(dl, blurTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                  IM_COL32(255, 255, 255, 255), style.WindowRounding);
-            ImU32 tintColor = isDarkMode ? IM_COL32(20, 20, 25, 180) : IM_COL32(245, 245, 255, 150);
-            dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), tintColor, style.WindowRounding);
+
+            // 噪点层：防 banding + 增加“材质感”
+            if (MD3::GetContext().noiseTextureID != nullptr) {
+                const ImU32 noiseCol = isDarkMode ? IM_COL32(255, 255, 255, 10) : IM_COL32(255, 255, 255, 8);
+                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(MD3::GetContext().noiseTextureID), pos,
+                                     ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1, noiseCol, style.WindowRounding);
+            }
+
             ImU32 highlight = isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
             dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
         } else {

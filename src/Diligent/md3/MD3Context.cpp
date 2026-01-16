@@ -416,6 +416,10 @@ void SetBlurTexture2(void* textureID) {
     GetContext().blurTextureID2 = textureID;
 }
 
+void SetNoiseTexture(void* textureID) {
+    GetContext().noiseTextureID = textureID;
+}
+
 void BeginFrame(float dt) {
     auto& ctx = GetContext();
     if (!ctx.initialized) {

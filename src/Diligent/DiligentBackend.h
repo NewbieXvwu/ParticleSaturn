@@ -76,6 +76,8 @@ class DiligentBackend final {
     bool CreateUISceneTextures(SurfaceSize size);
     void RenderUISceneForUI();
     void RenderUIBlur();
+    bool CreateAcrylicPSO();
+    void RenderAcrylicComposite();
 
     void RenderOffscreen();
     void BlitOffscreenToBackBuffer();
@@ -217,6 +219,23 @@ class DiligentBackend final {
     uint32_t uiBlurH_  = 0;
     uint32_t uiBlurW2_ = 0;
     uint32_t uiBlurH2_ = 0;
+
+    // Acrylic 合成（在低分辨率模糊纹理上进行：饱和度增强 + 近似 exclusion + tint 调制）
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         acrylicPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> acrylicSRB_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                acrylicConstants_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiAcrylicStrong_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiAcrylicRTV_Strong_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiAcrylicSRV_Strong_;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiAcrylicWeak_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiAcrylicRTV_Weak_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiAcrylicSRV_Weak_;
+
+    // 噪点纹理（全分辨率，避免依赖 wrap sampler）
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     uiNoiseTex_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> uiNoiseSRV_;
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;
