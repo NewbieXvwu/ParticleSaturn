@@ -103,6 +103,7 @@ struct Strings {
     const char* statusUnknown;
     const char* statusRead;
     const char* statusWrite;
+    const char* copiedToClipboard;
 
     // Crash analyzer
     const char* crashAnalyzerTitle;
@@ -313,13 +314,14 @@ inline const Strings& GetChinese() {
         .fieldHandTracking     = "手势追踪",
 
         // Status values
-        .statusActive   = "活跃",
-        .statusInactive = "未活跃",
-        .statusEnabled  = "已启用",
-        .statusDisabled = "已禁用",
-        .statusUnknown  = "未知",
-        .statusRead     = "读取",
-        .statusWrite    = "写入",
+        .statusActive      = "活跃",
+        .statusInactive    = "未活跃",
+        .statusEnabled     = "已启用",
+        .statusDisabled    = "已禁用",
+        .statusUnknown     = "未知",
+        .statusRead        = "读取",
+        .statusWrite       = "写入",
+        .copiedToClipboard = "已复制到剪贴板",
 
         // Crash analyzer
         .crashAnalyzerTitle   = "崩溃分析工具",
@@ -532,13 +534,14 @@ inline const Strings& GetEnglish() {
         .fieldHandTracking     = "Hand Tracking",
 
         // Status values
-        .statusActive   = "Active",
-        .statusInactive = "Inactive",
-        .statusEnabled  = "Enabled",
-        .statusDisabled = "Disabled",
-        .statusUnknown  = "Unknown",
-        .statusRead     = "Read",
-        .statusWrite    = "Write",
+        .statusActive      = "Active",
+        .statusInactive    = "Inactive",
+        .statusEnabled     = "Enabled",
+        .statusDisabled    = "Disabled",
+        .statusUnknown     = "Unknown",
+        .statusRead        = "Read",
+        .statusWrite       = "Write",
+        .copiedToClipboard = "Copied to clipboard",
 
         // Crash analyzer
         .crashAnalyzerTitle   = "Crash Analyzer",
