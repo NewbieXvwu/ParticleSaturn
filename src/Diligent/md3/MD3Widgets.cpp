@@ -1114,7 +1114,35 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     }
 
     // 绘制头部背景
-    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius, roundingFlags);
+    // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 效果背景
+    if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+        // UV 计算：将控件位置映射到模糊纹理坐标
+        ImVec2 endPos(pos.x + width, pos.y + height);
+        ImVec2 uv0(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
+        ImVec2 uv1(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+
+        // 绘制弱模糊背景（1/12 分辨率）
+        AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), pos, endPos, uv0, uv1,
+                        IM_COL32(255, 255, 255, 255), cornerRadius, roundingFlags);
+
+        // Acrylic 风格：叠加半透明着色层（比窗口背景更亮一些以区分层次）
+        ImU32 tintColor = ctx.isDarkMode ? IM_COL32(35, 35, 40, 160) : IM_COL32(250, 250, 255, 140);
+        dl->AddRectFilled(pos, endPos, tintColor, cornerRadius, roundingFlags);
+
+        // 微妙的内边框（增加层次感）
+        ImU32 innerBorder = ctx.isDarkMode ? IM_COL32(255, 255, 255, 25) : IM_COL32(0, 0, 0, 15);
+        dl->AddRect(pos, endPos, innerBorder, cornerRadius, roundingFlags, 1.0f);
+
+        // 悬停状态层（在模糊背景上叠加）
+        if (hoverT > 0.001f) {
+            ImU32 hoverOverlay = ctx.isDarkMode ? IM_COL32(255, 255, 255, static_cast<int>(20 * hoverT))
+                                                : IM_COL32(0, 0, 0, static_cast<int>(15 * hoverT));
+            dl->AddRectFilled(pos, endPos, hoverOverlay, cornerRadius, roundingFlags);
+        }
+    } else {
+        // 无模糊时的纯色背景
+        dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ColorToU32(bgColor), cornerRadius, roundingFlags);
+    }
 
     // 绘制文本
     ImVec2 textPos(pos.x + padding, pos.y + (height - GetTextLineHeight()) * 0.5f);
@@ -1233,9 +1261,25 @@ void EndCollapsingHeader() {
     // 只有动画高度大于 0 时才绘制背景
     if (animatedHeight > 1.0f) {
         // 内容区域背景
-        ImVec4 contentBgColor = colors.surfaceContainerLow;
-        dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
-                          ImDrawFlags_RoundCornersBottom);
+        // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 效果背景
+        if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+            // UV 计算：将内容区域位置映射到模糊纹理坐标
+            ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, 1.0f - contentBoxMin.y / ctx.screenHeight);
+            ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, 1.0f - contentBoxMax.y / ctx.screenHeight);
+
+            // 绘制弱模糊背景（1/12 分辨率）
+            AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), contentBoxMin, contentBoxMax, uv0,
+                            uv1, IM_COL32(255, 255, 255, 255), cornerRadius, ImDrawFlags_RoundCornersBottom);
+
+            // Acrylic 风格：叠加半透明着色层（比标题区域稍深以区分层次）
+            ImU32 contentTint = ctx.isDarkMode ? IM_COL32(25, 25, 30, 180) : IM_COL32(245, 245, 250, 150);
+            dl->AddRectFilled(contentBoxMin, contentBoxMax, contentTint, cornerRadius, ImDrawFlags_RoundCornersBottom);
+        } else {
+            // 无模糊时的纯色背景
+            ImVec4 contentBgColor = colors.surfaceContainerLow;
+            dl->AddRectFilled(contentBoxMin, contentBoxMax, ColorToU32(contentBgColor), cornerRadius,
+                              ImDrawFlags_RoundCornersBottom);
+        }
 
         // 内容区域边框 - 使用 AddRect 绘制完整圆角边框
         ImVec4 borderColor = colors.outlineVariant;

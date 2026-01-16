@@ -174,8 +174,15 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_B_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_B_;
 
-    uint32_t bloomW_ = 0;
-    uint32_t bloomH_ = 0;
+    // 次级模糊纹理 (1/12 分辨率，用于折叠区域 Acrylic 效果)
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     bloomTexC_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomRTV_C_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> bloomSRV_C_;
+
+    uint32_t bloomW_  = 0;
+    uint32_t bloomH_  = 0;
+    uint32_t bloomW2_ = 0; // 1/12 分辨率宽度
+    uint32_t bloomH2_ = 0; // 1/12 分辨率高度
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;

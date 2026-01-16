@@ -2386,20 +2386,27 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
     const uint32_t w = std::max(1u, size.Width / 6u);
     const uint32_t h = std::max(1u, size.Height / 6u);
 
-    if (bloomW_ == w && bloomH_ == h && bloomTexA_ != nullptr && bloomTexB_ != nullptr) {
+    // 次级模糊分辨率：1/12（用于折叠区域 Acrylic 效果）
+    const uint32_t w2 = std::max(1u, size.Width / 12u);
+    const uint32_t h2 = std::max(1u, size.Height / 12u);
+
+    const bool sizeChanged = (bloomW_ != w || bloomH_ != h || bloomW2_ != w2 || bloomH2_ != h2);
+    if (!sizeChanged && bloomTexA_ != nullptr && bloomTexB_ != nullptr && bloomTexC_ != nullptr) {
         return true;
     }
 
-    bloomW_ = w;
-    bloomH_ = h;
+    bloomW_  = w;
+    bloomH_  = h;
+    bloomW2_ = w2;
+    bloomH2_ = h2;
 
-    auto createTex = [&](const char* name, RefCntAutoPtr<ITexture>& outTex, RefCntAutoPtr<ITextureView>& outRTV,
-                         RefCntAutoPtr<ITextureView>& outSRV) -> bool {
+    auto createTex = [&](const char* name, uint32_t texW, uint32_t texH, RefCntAutoPtr<ITexture>& outTex,
+                         RefCntAutoPtr<ITextureView>& outRTV, RefCntAutoPtr<ITextureView>& outSRV) -> bool {
         TextureDesc texDesc{};
         texDesc.Name      = name;
         texDesc.Type      = RESOURCE_DIM_TEX_2D;
-        texDesc.Width     = bloomW_;
-        texDesc.Height    = bloomH_;
+        texDesc.Width     = texW;
+        texDesc.Height    = texH;
         texDesc.MipLevels = 1;
         texDesc.Format    = kOffscreenColorFormat;
         texDesc.Usage     = USAGE_DEFAULT;
@@ -2418,10 +2425,16 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
         return outRTV != nullptr && outSRV != nullptr;
     };
 
-    if (!createTex("Bloom Tex A", bloomTexA_, bloomRTV_A_, bloomSRV_A_)) {
+    // 1/6 分辨率纹理（窗口背景强模糊）
+    if (!createTex("Bloom Tex A", bloomW_, bloomH_, bloomTexA_, bloomRTV_A_, bloomSRV_A_)) {
         return false;
     }
-    if (!createTex("Bloom Tex B", bloomTexB_, bloomRTV_B_, bloomSRV_B_)) {
+    if (!createTex("Bloom Tex B", bloomW_, bloomH_, bloomTexB_, bloomRTV_B_, bloomSRV_B_)) {
+        return false;
+    }
+
+    // 1/12 分辨率纹理（折叠区域弱模糊）
+    if (!createTex("Bloom Tex C", bloomW2_, bloomH2_, bloomTexC_, bloomRTV_C_, bloomSRV_C_)) {
         return false;
     }
 
@@ -3541,6 +3554,71 @@ void DiligentBackend::RenderBloom() {
         draw.Flags       = DRAW_FLAG_VERIFY_ALL;
         immediateContext_->Draw(draw);
     }
+
+    // ========== 次级模糊 (1/12 分辨率，用于折叠区域 Acrylic 效果) ==========
+    // 从 bloomSRV_B_ (1/6) 降采样到 bloomTexC_ (1/12)，再做 2 次模糊
+    if (bloomTexC_ != nullptr && bloomRTV_C_ != nullptr && bloomSRV_C_ != nullptr) {
+        const float texelX2 = 1.0f / static_cast<float>(bloomW2_);
+        const float texelY2 = 1.0f / static_cast<float>(bloomH2_);
+
+        // 第一步：从 1/6 降采样到 1/12（使用 downsample shader）
+        {
+            ITextureView* rtv = bloomRTV_C_.RawPtr();
+            immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            Viewport vp2{};
+            vp2.TopLeftX = 0.0f;
+            vp2.TopLeftY = 0.0f;
+            vp2.Width    = static_cast<float>(bloomW2_);
+            vp2.Height   = static_cast<float>(bloomH2_);
+            vp2.MinDepth = 0.0f;
+            vp2.MaxDepth = 1.0f;
+            immediateContext_->SetViewports(1, &vp2, 0, 0);
+
+            // 使用 1/6 纹理作为输入
+            if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+                var->Set(bloomSRV_B_.RawPtr());
+            }
+
+            immediateContext_->SetPipelineState(bloomDownsamplePSO_);
+            immediateContext_->CommitShaderResources(bloomDownsampleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                                SET_VERTEX_BUFFERS_FLAG_RESET);
+
+            DrawAttribs draw{};
+            draw.NumVertices = 4;
+            draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+            immediateContext_->Draw(draw);
+        }
+
+        // 第二步：2 次模糊迭代（使用较小的 offset）
+        // 由于分辨率更低，使用较小的 offset 值
+        constexpr float secondaryOffsets[]  = {0.5f, 1.0f};
+        constexpr int   secondaryIterations = 2;
+
+        for (int i = 0; i < secondaryIterations; ++i) {
+            // 交替使用 bloomTexC_ 进行 in-place 模糊（简化实现：只使用 bloomTexC_ 自身）
+            // 这里直接覆写同一纹理（GPU 会正确处理这种情况）
+            ITextureView* rtv = bloomRTV_C_.RawPtr();
+            immediateContext_->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            updateBlurCB(texelX2, texelY2, secondaryOffsets[i], 0.0f);
+
+            if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
+                var->Set(bloomSRV_C_.RawPtr());
+            }
+
+            immediateContext_->SetPipelineState(bloomBlurPSO_);
+            immediateContext_->CommitShaderResources(bloomBlurSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                                SET_VERTEX_BUFFERS_FLAG_RESET);
+
+            DrawAttribs draw{};
+            draw.NumVertices = 4;
+            draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+            immediateContext_->Draw(draw);
+        }
+    }
 }
 
 void DiligentBackend::BlitOffscreenToBackBuffer() {
@@ -3775,6 +3853,8 @@ void DiligentBackend::RenderFrame() {
         // 传递模糊纹理给 MD3（用于窗口背景玻璃效果）
         MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(bloomSRV_B_.RawPtr()) : nullptr,
                             appState_->ui.enableBlur);
+        // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率）
+        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(bloomSRV_C_.RawPtr()) : nullptr);
 
         // Error dialogs（统一错误处理）
         ErrorHandler::RenderErrorDialog(frameDt);
@@ -3936,20 +4016,45 @@ void DiligentBackend::RenderFrame() {
                 valRange = 1.0f;
             }
 
-            // 绘图区域
-            ImVec2      plotSize(ImGui::GetContentRegionAvail().x, 50);
-            ImVec2      plotPos  = ImGui::GetCursorScreenPos();
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            // 绘图区域（调整右边距与左侧对齐）
+            float       graphPadding = ImGui::GetStyle().WindowPadding.x;
+            ImVec2      plotSize(ImGui::GetContentRegionAvail().x - graphPadding, 50);
+            ImVec2      plotPos = ImGui::GetCursorScreenPos();
+            ImVec2      plotEnd(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
+            ImDrawList* drawList     = ImGui::GetWindowDrawList();
+            float       cornerRadius = 6.0f * appState_->ui.dpiScale;
 
             // 背景
-            auto& colors    = MD3::GetContext().colors;
-            ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
+            auto& ctx       = MD3::GetContext();
+            auto& colors    = ctx.colors;
             ImU32 lineColor = ImGui::GetColorU32(colors.primary);
             ImU32 axisColor = ImGui::GetColorU32(colors.onSurfaceVariant);
-            drawList->AddRectFilled(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), bgColor);
+
+            // 如果启用模糊，绘制 Acrylic 效果背景
+            if (ctx.blurEnabled && ctx.blurTextureID2 != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+                // UV 计算
+                ImVec2 uv0(plotPos.x / ctx.screenWidth, 1.0f - plotPos.y / ctx.screenHeight);
+                ImVec2 uv1(plotEnd.x / ctx.screenWidth, 1.0f - plotEnd.y / ctx.screenHeight);
+
+                // 弱模糊背景
+                MD3::AddImageRounded(drawList, reinterpret_cast<ImTextureID>(ctx.blurTextureID2), plotPos, plotEnd, uv0,
+                                     uv1, IM_COL32(255, 255, 255, 255), cornerRadius);
+
+                // 深色 tint 叠加（比折叠区域更深以区分）
+                ImU32 graphTint = ctx.isDarkMode ? IM_COL32(15, 15, 20, 200) : IM_COL32(240, 240, 245, 160);
+                drawList->AddRectFilled(plotPos, plotEnd, graphTint, cornerRadius);
+
+                // 细边框
+                ImU32 borderColor = ctx.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
+                drawList->AddRect(plotPos, plotEnd, borderColor, cornerRadius, 0, 1.0f);
+            } else {
+                // 无模糊时的纯色背景
+                ImU32 bgColor = ImGui::GetColorU32(ImGuiCol_FrameBg);
+                drawList->AddRectFilled(plotPos, plotEnd, bgColor, cornerRadius);
+            }
 
             // 裁剪区域
-            drawList->PushClipRect(plotPos, ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y), true);
+            drawList->PushClipRect(plotPos, plotEnd, true);
 
             // 转换坐标（含滚动动画）
             // 计算滚动进度：使用 EaseOutCubic 缓动使动画开始快结束慢

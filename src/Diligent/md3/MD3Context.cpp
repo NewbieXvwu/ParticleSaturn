@@ -412,6 +412,10 @@ void SetBlurTexture(void* textureID, bool enabled) {
     ctx.blurEnabled   = enabled;
 }
 
+void SetBlurTexture2(void* textureID) {
+    GetContext().blurTextureID2 = textureID;
+}
+
 void BeginFrame(float dt) {
     auto& ctx = GetContext();
     if (!ctx.initialized) {
