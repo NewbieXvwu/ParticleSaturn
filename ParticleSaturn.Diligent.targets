@@ -86,7 +86,8 @@
   <!-- Properties for the build scripts -->
   <PropertyGroup>
     <BuildScriptPath>$(ProjectDir)scripts\build_diligent.ps1</BuildScriptPath>
-    <BuildDir>$(ProjectDir)bin_diligent\$(Platform)</BuildDir>
+    <!-- 分离不同配置的构建目录，避免 PDB 和中间文件冲突 -->
+    <BuildDir>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)</BuildDir>
     <!-- Mark that we're using DirectExec to prevent default Exec from running -->
     <UseDirectExec>true</UseDirectExec>
   </PropertyGroup>

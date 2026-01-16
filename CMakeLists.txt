@@ -10,19 +10,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
-# 输出目录：按配置类型分离，避免 Debug/Release PDB 混淆
+# 输出目录：默认输出到 CMAKE_BINARY_DIR 根目录
+# 既然父级构建脚本（targets/ps1）已经通过 -B 区分了配置（如 bin_diligent/x64/Release），
+# 这里不再额外添加子目录，以保持路径简洁。
 # ============================================================================
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_FASTRELEASE "${CMAKE_BINARY_DIR}/FastRelease")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_FASTRELEASE "${CMAKE_BINARY_DIR}/FastRelease")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/lib")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/lib")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_FASTRELEASE "${CMAKE_BINARY_DIR}/FastRelease/lib")
-set(CMAKE_PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug")
-set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # ============================================================================
 # 添加 FastRelease 配置类型（快速迭代开发，无 PDB、无 LTCG）

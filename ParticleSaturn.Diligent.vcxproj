@@ -124,7 +124,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -132,7 +132,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -140,7 +140,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -148,7 +148,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -157,7 +157,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -165,7 +165,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -173,7 +173,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
@@ -181,7 +181,7 @@
     <NMakeBuildCommandLine>REM Build handled by custom DirectExec targets</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>REM Rebuild handled by custom DirectExec targets</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>REM Clean handled by custom DirectExec targets</NMakeCleanCommandLine>
-    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\ParticleSaturn.Diligent.exe</NMakeOutput>
+    <NMakeOutput>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\ParticleSaturn.Diligent.exe</NMakeOutput>
     <NMakeIncludeSearchPath>$(DiligentIncludePaths)</NMakeIncludeSearchPath>
     <NMakePreprocessorDefinitions>$(DiligentPreprocessorDefs)</NMakePreprocessorDefinitions>
   </PropertyGroup>
