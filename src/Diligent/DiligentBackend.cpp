@@ -4654,6 +4654,7 @@ void DiligentBackend::RenderFrame() {
         // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
         MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
         MD3::SetNoiseTexture(appState_->ui.enableBlur ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
+        MD3::SetNoiseIntensity((appState_ != nullptr) ? appState_->ui.noiseIntensity : 0.01f);
 
         // Error dialogs（统一错误处理）
         ErrorHandler::RenderErrorDialog(frameDt);
@@ -5032,6 +5033,7 @@ void DiligentBackend::RenderFrame() {
             // 启用时显示强度滑块
             if (appState_->ui.enableBlur) {
                 MD3::Slider("  Blur Strength", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
+                MD3::Slider("  Noise", &appState_->ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
             }
 
             MD3::EndCollapsingHeader();
