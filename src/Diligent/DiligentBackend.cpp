@@ -272,13 +272,16 @@ cbuffer BlurCB
     float  g_Threshold;
 };
 
-float3 BrightPass(float3 hdr)
-{
-    float m = max(hdr.r, max(hdr.g, hdr.b));
-    // 软阈值：避免硬切割带来的闪烁
-    float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
-    return hdr * w;
-}
+ float3 BrightPass(float3 hdr)
+ {
+     float m = max(hdr.r, max(hdr.g, hdr.b));
+     // g_Threshold<=0 时不做高光提取：避免 smoothstep(edge0==edge1) 在不同后端/驱动下出现未定义行为。
+     if (g_Threshold <= 0.0001)
+         return hdr;
+     // 软阈值：避免硬切割带来的闪烁
+     float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
+     return hdr * w;
+ }
 
 float4 main(PSIn i) : SV_Target
 {
@@ -327,12 +330,15 @@ layout(std140, set=0, binding=1) uniform BlurCB
     float g_Threshold;
 };
 
-vec3 brightPass(vec3 hdr)
-{
-    float m = max(hdr.r, max(hdr.g, hdr.b));
-    float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
-    return hdr * w;
-}
+ vec3 brightPass(vec3 hdr)
+ {
+     float m = max(hdr.r, max(hdr.g, hdr.b));
+     // g_Threshold<=0 时不做高光提取：避免 smoothstep(edge0==edge1) 的未定义行为。
+     if (g_Threshold <= 0.0001)
+         return hdr;
+     float w = smoothstep(g_Threshold, g_Threshold * 2.0, m);
+     return hdr * w;
+ }
 
 void main()
 {
