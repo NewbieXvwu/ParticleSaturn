@@ -86,6 +86,7 @@
   <!-- Properties for the build scripts -->
   <PropertyGroup>
     <BuildScriptPath>$(ProjectDir)scripts\build_diligent.ps1</BuildScriptPath>
+    <StageHandTrackerScriptPath>$(ProjectDir)scripts\stage_handtracker.ps1</StageHandTrackerScriptPath>
     <!-- 分离不同配置的构建目录，避免 PDB 和中间文件冲突 -->
     <BuildDir>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)</BuildDir>
     <!-- Mark that we're using DirectExec to prevent default Exec from running -->
@@ -96,8 +97,41 @@
     <FastBuildArg Condition="'$(ParticleSaturnFastBuild)'=='true'">-FastBuild</FastBuildArg>
   </PropertyGroup>
 
+  <!-- HandTracker build & staging config mapping -->
+  <PropertyGroup>
+    <HandTrackerProject>$(ProjectDir)HandTracker\HandTracker.vcxproj</HandTrackerProject>
+
+    <!-- Map Diligent solution configs to HandTracker configs -->
+    <HandTrackerConfig Condition="'$(Configuration)'=='Debug'">Debug</HandTrackerConfig>
+    <HandTrackerConfig Condition="'$(Configuration)'=='Release_Static'">Release_Static</HandTrackerConfig>
+    <HandTrackerConfig Condition="'$(HandTrackerConfig)'==''">Release</HandTrackerConfig>
+
+    <!-- Link mode: dynamic (dll) vs fully static (no HandTracker.dll) -->
+    <HandTrackerLinkMode Condition="'$(Configuration)'=='Release_Static'">static</HandTrackerLinkMode>
+    <HandTrackerLinkMode Condition="'$(HandTrackerLinkMode)'==''">dll</HandTrackerLinkMode>
+  </PropertyGroup>
+
+  <Target Name="BuildHandTracker">
+    <DirectExec
+      Executable="msbuild.exe"
+      Arguments="&quot;$(HandTrackerProject)&quot; /t:Build /m /p:Configuration=$(HandTrackerConfig) /p:Platform=$(Platform) /p:SolutionDir=$(ProjectDir)">
+      <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
+    </DirectExec>
+    <Error Text="HandTracker build failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+  </Target>
+
+  <Target Name="StageHandTracker" DependsOnTargets="BuildHandTracker">
+    <DirectExec
+      Executable="powershell.exe"
+      Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(StageHandTrackerScriptPath)&quot; -SrcDir &quot;$(ProjectDir).&quot; -OutDir &quot;$(BuildDir)&quot; -Platform &quot;$(Platform)&quot; -HandTrackerConfig &quot;$(HandTrackerConfig)&quot; -LinkMode &quot;$(HandTrackerLinkMode)&quot;"
+      WorkingDirectory="$(ProjectDir)">
+      <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
+    </DirectExec>
+    <Error Text="StageHandTracker failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+  </Target>
+
   <!-- Override the Build target completely -->
-  <Target Name="Build" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
+  <Target Name="Build" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath;BuildHandTracker" Returns="$(NMakeManagedOutput)">
     <DirectExec
       Executable="powershell.exe"
       Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action build -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
@@ -105,6 +139,7 @@
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
     <Error Text="Build failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+    <CallTarget Targets="StageHandTracker" />
   </Target>
 
   <!-- Override CoreClean target -->
@@ -118,7 +153,7 @@
   </Target>
 
   <!-- Override Rebuild target -->
-  <Target Name="Rebuild" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath" Returns="$(NMakeManagedOutput)">
+  <Target Name="Rebuild" DependsOnTargets="PrepareForNMakeBuild;ResolveReferences;GetTargetPath;BuildHandTracker" Returns="$(NMakeManagedOutput)">
     <DirectExec
       Executable="powershell.exe"
       Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;$(BuildScriptPath)&quot; -Action rebuild -SrcDir &quot;$(ProjectDir).&quot; -BuildDir &quot;$(BuildDir)&quot; -Config &quot;$(DiligentBuildConfig)&quot; $(FastBuildArg)"
@@ -126,6 +161,7 @@
       <Output TaskParameter="ExitCode" PropertyName="DirectExecExitCode" />
     </DirectExec>
     <Error Text="Rebuild failed with exit code $(DirectExecExitCode)" Condition="'$(DirectExecExitCode)' != '0'" />
+    <CallTarget Targets="StageHandTracker" />
   </Target>
 
 </Project>
