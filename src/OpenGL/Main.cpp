@@ -1758,8 +1758,41 @@ int main() {
                 float buttonWidth  = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
                 float buttonHeight = 48 * appState.ui.dpiScale;
                 if (MD3::FilledButton(str.cameraSelectorButton, ImVec2(buttonWidth, buttonHeight))) {
-                    CameraSelector::ShowCameraSelectorDialog(glfwGetWin32Window(window), GetModuleHandle(nullptr),
-                                                             true);
+                    // 修复：Camera Selector 必须真正重启 HandTracker（否则相机选择不会生效）
+                    asyncTracker.Stop();
+                    ReleaseTracker();
+                    handTrackerInitialized = false;
+                    handTrackerStarted     = false;
+                    handTrackerCheckDone   = false;
+
+                    ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
+                    HWND mainHwnd       = glfwGetWin32Window(window);
+                    int  selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd, GetModuleHandle(nullptr),
+                                                                                   true);
+                    if (selectedCamera < 0) {
+                        std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
+                        selectedCamera = 0;
+                    }
+
+#ifdef EMBED_MODELS
+                    const char* modelDir = nullptr;
+#else
+                    // Release 配置：模型从 exe 同目录读取（构建产物会把 HandTracker/models 的 tflite 复制到输出目录）
+                    const char* modelDir = ".";
+#endif
+
+                    if (!InitTracker(selectedCamera, modelDir)) {
+                        std::cerr << "[Main] Warning: Failed to start HandTracker thread" << std::endl;
+                        ErrorHandler::ShowWarning(i18n::Get().cameraInitFailed,
+                                                  "InitTracker() returned false - thread creation failed");
+                        handTrackerCheckDone = true;
+                    } else {
+                        handTrackerStarted = true;
+                        std::cout << "[Main] HandTracker thread started with camera " << selectedCamera
+                                  << " (async initialization)" << std::endl;
+                    }
+
+                    ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
                 }
                 ImGui::SameLine();
                 if (MD3::FilledButton(str.crashAnalyzerButton, ImVec2(buttonWidth, buttonHeight))) {
