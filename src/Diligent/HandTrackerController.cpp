@@ -7,7 +7,6 @@
 #include "../AppState.h"
 #include "../ErrorHandler.h"
 #include "../Localization.h"
-#include "CameraSelector/CameraEnumerator.h"
 #include "CameraSelector/CameraSelector.h"
 #include "HandTracker.h"
 
@@ -182,15 +181,9 @@ bool Controller::StartWithCameraSelector(bool forceShowDialog) {
     StopReaderThread();
     status_.store(Status::Starting);
 
-    // 启动行为：如果有多个摄像头则强制弹出选择器（避免“默认 #0”导致用户误以为没生效）。
-    // 注：forceShowDialog=true 也会绕过“记住我的选择/不再询问”，用于显式重启或强制选择。
-    bool shouldForceShow = forceShowDialog;
-    if (!shouldForceShow) {
-        const int camCount = CameraSelector::GetCameraCount();
-        shouldForceShow    = (camCount > 1);
-    }
-
-    const int cam = CameraSelector::ShowCameraSelectorDialog(hwnd_, GetModuleHandleW(nullptr), shouldForceShow);
+    // Respect "remember choice / don't ask again" behavior inside CameraSelector.
+    // - forceShowDialog=true is reserved for explicit user-initiated restart.
+    const int cam = CameraSelector::ShowCameraSelectorDialog(hwnd_, GetModuleHandleW(nullptr), forceShowDialog);
     selectedCamera_.store(cam < 0 ? 0 : cam);
 
     ApplyHandParamsFromAppState();
