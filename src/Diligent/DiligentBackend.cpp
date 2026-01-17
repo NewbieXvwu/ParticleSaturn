@@ -3617,14 +3617,15 @@ bool DiligentBackend::CreateParticleComputePSO() {
 
     const auto csSrc = GetSaturnComputeShaderSource(backend_);
     if (csSrc.Source == nullptr) {
-        OutputDebugStringA("[CreateParticleComputePSO] GetSaturnComputeShaderSource returned nullptr\n");
+        DebugLog::Instance().Add(LogLevel::Error,
+                                 "[CreateParticleComputePSO] GetSaturnComputeShaderSource() returned nullptr");
         return false;
     }
 
     const auto cs =
         CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language);
     if (cs == nullptr) {
-        OutputDebugStringA("[CreateParticleComputePSO] Compute shader compilation failed\n");
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] Compute shader compilation failed");
         return false;
     }
 
@@ -3651,7 +3652,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
     particleComputeSRB_.Release();
     device_->CreateComputePipelineState(psoCI, &particleComputePSO_);
     if (particleComputePSO_ == nullptr) {
-        OutputDebugStringA("[CreateParticleComputePSO] CreateComputePipelineState failed\n");
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateComputePipelineState failed");
         return false;
     }
 
@@ -3659,13 +3660,14 @@ bool DiligentBackend::CreateParticleComputePSO() {
         var != nullptr) {
         var->Set(particleComputeConstants_);
     } else {
-        OutputDebugStringA("[CreateParticleComputePSO] GetStaticVariableByName(ComputeConstants) returned nullptr\n");
+        DebugLog::Instance().Add(LogLevel::Error,
+                                 "[CreateParticleComputePSO] GetStaticVariableByName(ComputeConstants) returned nullptr");
         return false;
     }
 
     particleComputePSO_->CreateShaderResourceBinding(&particleComputeSRB_, true);
     if (particleComputeSRB_ == nullptr) {
-        OutputDebugStringA("[CreateParticleComputePSO] CreateShaderResourceBinding failed\n");
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateShaderResourceBinding failed");
     }
     return particleComputeSRB_ != nullptr;
 }
@@ -3884,11 +3886,12 @@ void DiligentBackend::UpdateFullscreenQuadBindings() {
 void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas) {
     if (immediateContext_ == nullptr || particleComputePSO_ == nullptr || particleComputeSRB_ == nullptr ||
         particleComputeConstants_ == nullptr) {
-        OutputDebugStringA("[SimulateParticles] Early return: nullptr check failed\n");
+        DebugLog::Instance().AddOnce("SimulateParticles_Null",
+                                     LogLevel::Warn,
+                                     "[SimulateParticles] skipped: compute pipeline not ready");
         return;
     }
     if (particleCount_ == 0) {
-        OutputDebugStringA("[SimulateParticles] Early return: particleCount_ == 0\n");
         return;
     }
     // 复刻 OpenGL 的三缓冲索引用法（见 OpenGL: DoubleBufferSSBO::Swap）：
@@ -3896,7 +3899,9 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
     // - writeIdx：本帧计算着色器的输出
     // - renderIdx：本帧渲染使用的数据（Swap 后等于上一帧的 readIdx）
     if (particleSRVs_[particleReadIdx_] == nullptr || particleUAVs_[particleWriteIdx_] == nullptr) {
-        OutputDebugStringA("[SimulateParticles] Early return: SRV/UAV nullptr\n");
+        DebugLog::Instance().AddOnce("SimulateParticles_SrvUavNull",
+                                     LogLevel::Warn,
+                                     "[SimulateParticles] skipped: SRV/UAV is null");
         return;
     }
 
@@ -4016,18 +4021,15 @@ void DiligentBackend::RenderOffscreen() {
         return;
     }
 
-    OutputDebugStringA("  RenderOffscreen: Setup RT start\n");
-
     // 添加空指针检查，避免 Vulkan 上因无效 RTV 导致崩溃
     if (offscreenRTV_ == nullptr) {
-        OutputDebugStringA("  RenderOffscreen: offscreenRTV_ is NULL, skipping\n");
+        DebugLog::Instance().AddOnce("RenderOffscreen_NoRTV", LogLevel::Warn,
+                                     "[RenderOffscreen] offscreenRTV_ is null, skipping");
         return;
     }
 
     ITextureView* pRTV = offscreenRTV_;
-    OutputDebugStringA("  RenderOffscreen: Calling SetRenderTargets\n");
     immediateContext_->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    OutputDebugStringA("  RenderOffscreen: SetRenderTargets done\n");
 
     // 以实际离屏 RT 尺寸为准，避免 Resize/DPI 缩放导致的"像素尺寸 -> NDC"换算偏差（会直接影响星空/粒子"密度"观感）。
     uint32_t rtW = surfaceSize_.Width;
@@ -4046,19 +4048,14 @@ void DiligentBackend::RenderOffscreen() {
     vp.Height   = static_cast<float>(rtH);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
-    OutputDebugStringA("  RenderOffscreen: Calling SetViewports\n");
     immediateContext_->SetViewports(1, &vp, rtW, rtH);
-    OutputDebugStringA("  RenderOffscreen: SetViewports done\n");
 
     // 星空背景：先清为黑色，再加法混合叠加星点（更接近 OpenGL 旧实现观感）。
     const float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    OutputDebugStringA("  RenderOffscreen: Calling ClearRenderTarget\n");
     immediateContext_->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    OutputDebugStringA("  RenderOffscreen: ClearRenderTarget done\n");
 
     // 星空点精灵（加法混合）
     if (starPSO_ != nullptr && starVB_ != nullptr && starSRB_ != nullptr && starCount_ > 0) {
-        OutputDebugStringA("  RenderOffscreen: Star rendering START\n");
         // 更新常量（view/proj/model + 视口 + 时间）
         const auto now   = std::chrono::steady_clock::now();
         const auto secsF = std::chrono::duration<float>(now - startTime_).count();
@@ -4101,19 +4098,14 @@ void DiligentBackend::RenderOffscreen() {
                 immediateContext_->UnmapBuffer(starConstants_, MAP_WRITE);
             }
         }
-        OutputDebugStringA("  RenderOffscreen: Star constants updated\n");
-
         immediateContext_->SetPipelineState(starPSO_);
-        OutputDebugStringA("  RenderOffscreen: Star PSO set\n");
 
         IBuffer* pVBs[]    = {starVB_};
         Uint64   offsets[] = {0};
         immediateContext_->SetVertexBuffers(0, 1, pVBs, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
                                             SET_VERTEX_BUFFERS_FLAG_RESET);
-        OutputDebugStringA("  RenderOffscreen: Star VB set\n");
 
         immediateContext_->CommitShaderResources(starSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        OutputDebugStringA("  RenderOffscreen: Star SRB committed\n");
 
         DrawAttribs starsDraw{};
         starsDraw.NumVertices = 6;
@@ -4127,13 +4119,10 @@ void DiligentBackend::RenderOffscreen() {
         }
         starsDraw.NumInstances = starLodCount;
         starsDraw.Flags        = DRAW_FLAG_VERIFY_ALL;
-        OutputDebugStringA("  RenderOffscreen: Calling Star Draw\n");
         immediateContext_->Draw(starsDraw);
-        OutputDebugStringA("  RenderOffscreen: Star Draw done\n");
     }
 
     // 土星粒子（阶段 3：先 CPU 初始化，渲染验证）
-    OutputDebugStringA("  RenderOffscreen: Particle section START\n");
     if (particlePSO_ != nullptr && particleSRB_ != nullptr && particleConstants_ != nullptr && particleCount_ > 0) {
         const auto now   = std::chrono::steady_clock::now();
         const auto secsF = std::chrono::duration<float>(now - startTime_).count();

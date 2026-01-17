@@ -1,27 +1,37 @@
 #pragma once
 // 调试日志系统 - 带 ImGui 显示的日志记录
+//
+// 目标：
+// - Diligent 版可在 ImGui 中看到日志（通过重定向 stdout/stderr）
+// - 降噪（重复日志合并、一次性日志）
+// - 支持 Info/Warn/Error 的过滤、搜索、复制
 
 #include <imgui.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <streambuf>
 #include <string>
+#include <unordered_set>
 
 #include "md3/MD3.h"
 
 // 日志级别
 enum class LogLevel {
-    Info,
-    Warn,
-    Error
+    Info = 0,
+    Warn = 1,
+    Error = 2,
 };
 
 // 日志条目
 struct LogEntry {
     std::string message;
-    LogLevel    level;
+    LogLevel    level       = LogLevel::Info;
+    uint32_t    repeatCount = 1;
+    uint64_t    timeMs      = 0; // since DebugLog start
 };
 
 class DebugLog {
@@ -31,27 +41,28 @@ class DebugLog {
         return inst;
     }
 
-    void Add(const std::string& msg) {
+    // 兼容旧用法：自动检测级别（仅提升等级）
+    void Add(const std::string& msg) { Add(LogLevel::Info, msg, true); }
+
+    // 显式级别
+    void Add(LogLevel level, const std::string& msg) { Add(level, msg, true); }
+
+    // 仅记录一次（按 key 去重），用于避免每帧刷屏
+    void AddOnce(const char* key, LogLevel level, const std::string& msg) {
+        if (key == nullptr || key[0] == '\0') {
+            Add(level, msg);
+            return;
+        }
         std::lock_guard<std::mutex> lock(m_mutex);
+        InitStartTimeIfNeeded();
+        if (m_onceKeys.insert(key).second) {
+            AddLocked(msg, level);
+        }
+    }
 
-        // 自动检测日志级别
-        LogLevel level = LogLevel::Info;
-        if (msg.find("[WARN]") != std::string::npos || msg.find("[Warning]") != std::string::npos ||
-            msg.find("warning") != std::string::npos || msg.find("Warning") != std::string::npos) {
-            level = LogLevel::Warn;
-        } else if (msg.find("[ERROR]") != std::string::npos || msg.find("[Error]") != std::string::npos ||
-                   msg.find("error") != std::string::npos || msg.find("Error") != std::string::npos ||
-                   msg.find("failed") != std::string::npos || msg.find("Failed") != std::string::npos) {
-            level = LogLevel::Error;
-        }
-
-        m_entries.push_back({msg, level});
-        if (m_entries.size() > MAX_LINES) {
-            m_entries.pop_front();
-        }
-        if (!m_paused) {
-            m_scrollToBottom = true;
-        }
+    // 便于 stdout/stderr 捕获：指定默认级别（仍会根据内容提升）
+    void AddFromStream(LogLevel defaultLevel, const std::string& msg) {
+        Add(defaultLevel, msg, true);
     }
 
     // 绘制日志（带过滤和搜索）
@@ -75,7 +86,7 @@ class DebugLog {
                 }
             }
 
-            // 搜索过滤
+            // 搜索过滤（在 message 上做匹配，避免时间前缀影响搜索）
             if (searchFilter && searchFilter[0] != '\0') {
                 if (entry.message.find(searchFilter) == std::string::npos) {
                     continue;
@@ -98,27 +109,33 @@ class DebugLog {
 
             ImGui::PushStyleColor(ImGuiCol_Text, color);
 
+            // 时间前缀（灰色）
+            if (m_startTimeInited) {
+                const double sec = static_cast<double>(entry.timeMs) / 1000.0;
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                ImGui::Text("[%.3fs]", sec);
+                ImGui::PopStyleColor();
+                ImGui::SameLine(0, 8.0f);
+            }
+
             // 高亮搜索关键字
             if (searchFilter && searchFilter[0] != '\0') {
                 const std::string& text      = entry.message;
                 size_t             pos       = 0;
-                size_t             searchLen = strlen(searchFilter);
+                size_t             searchLen = std::strlen(searchFilter);
                 size_t             lastPos   = 0;
 
                 while ((pos = text.find(searchFilter, lastPos)) != std::string::npos) {
-                    // 输出匹配前的文本
                     if (pos > lastPos) {
                         ImGui::TextUnformatted(text.c_str() + lastPos, text.c_str() + pos);
                         ImGui::SameLine(0, 0);
                     }
-                    // 高亮匹配文本
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
                     ImGui::TextUnformatted(text.c_str() + pos, text.c_str() + pos + searchLen);
                     ImGui::PopStyleColor();
                     ImGui::SameLine(0, 0);
                     lastPos = pos + searchLen;
                 }
-                // 输出剩余文本
                 if (lastPos < text.length()) {
                     ImGui::TextUnformatted(text.c_str() + lastPos);
                 } else {
@@ -126,6 +143,11 @@ class DebugLog {
                 }
             } else {
                 ImGui::TextUnformatted(entry.message.c_str());
+            }
+
+            if (entry.repeatCount > 1) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("x%u", entry.repeatCount);
             }
 
             ImGui::PopStyleColor();
@@ -144,13 +166,14 @@ class DebugLog {
     void Clear() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_entries.clear();
+        m_onceKeys.clear();
     }
 
     std::string GetAllText() {
         std::lock_guard<std::mutex> lock(m_mutex);
         std::string                 result;
         for (const auto& entry : m_entries) {
-            result += entry.message + "\n";
+            AppendLine(result, entry);
         }
         return result;
     }
@@ -160,7 +183,6 @@ class DebugLog {
         std::lock_guard<std::mutex> lock(m_mutex);
         std::string                 result;
         for (const auto& entry : m_entries) {
-            // 级别过滤
             if (levelFilter > 0) {
                 if (levelFilter == 1 && entry.level != LogLevel::Info) {
                     continue;
@@ -172,13 +194,12 @@ class DebugLog {
                     continue;
                 }
             }
-            // 搜索过滤
             if (searchFilter && searchFilter[0] != '\0') {
                 if (entry.message.find(searchFilter) == std::string::npos) {
                     continue;
                 }
             }
-            result += entry.message + "\n";
+            AppendLine(result, entry);
         }
         return result;
     }
@@ -189,35 +210,143 @@ class DebugLog {
 
   private:
     DebugLog() = default;
-    std::deque<LogEntry> m_entries;
-    std::mutex           m_mutex;
-    bool                 m_scrollToBottom = false;
-    bool                 m_paused         = false;
-    static const size_t  MAX_LINES        = 500; // 增加容量
+
+    void Add(LogLevel level, const std::string& msg, bool autoDetect) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        InitStartTimeIfNeeded();
+        LogLevel finalLevel = level;
+        if (autoDetect) {
+            const LogLevel detected = DetectLevel(msg);
+            if (static_cast<int>(detected) > static_cast<int>(finalLevel)) {
+                finalLevel = detected;
+            }
+        }
+        AddLocked(msg, finalLevel);
+    }
+
+    void AddLocked(const std::string& msg, LogLevel level) {
+        if (msg.empty()) {
+            return;
+        }
+
+        if (!m_entries.empty()) {
+            auto& last = m_entries.back();
+            if (last.level == level && last.message == msg) {
+                last.repeatCount++;
+                return;
+            }
+        }
+
+        LogEntry e{};
+        e.message = msg;
+        e.level   = level;
+        e.timeMs  = NowMsLocked();
+        m_entries.push_back(std::move(e));
+
+        if (m_entries.size() > MAX_LINES) {
+            m_entries.pop_front();
+        }
+        if (!m_paused) {
+            m_scrollToBottom = true;
+        }
+    }
+
+    void InitStartTimeIfNeeded() {
+        if (!m_startTimeInited) {
+            m_startTime       = std::chrono::steady_clock::now();
+            m_startTimeInited = true;
+        }
+    }
+
+    uint64_t NowMsLocked() const {
+        if (!m_startTimeInited) {
+            return 0;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - m_startTime).count());
+    }
+
+    static LogLevel DetectLevel(const std::string& msg) {
+        // Info -> Warn
+        if (msg.find("[WARN]") != std::string::npos || msg.find("[Warning]") != std::string::npos ||
+            msg.find("warning") != std::string::npos || msg.find("Warning") != std::string::npos) {
+            return LogLevel::Warn;
+        }
+        // Info/Warn -> Error
+        if (msg.find("[ERROR]") != std::string::npos || msg.find("[Error]") != std::string::npos ||
+            msg.find("error") != std::string::npos || msg.find("Error") != std::string::npos ||
+            msg.find("failed") != std::string::npos || msg.find("Failed") != std::string::npos ||
+            msg.find("FATAL") != std::string::npos || msg.find("Fatal") != std::string::npos) {
+            return LogLevel::Error;
+        }
+        return LogLevel::Info;
+    }
+
+    static void AppendLine(std::string& out, const LogEntry& e) {
+        out += e.message;
+        if (e.repeatCount > 1) {
+            out += " (x";
+            out += std::to_string(e.repeatCount);
+            out += ")";
+        }
+        out += "\n";
+    }
+
+    std::deque<LogEntry>          m_entries;
+    std::mutex                    m_mutex;
+    bool                          m_scrollToBottom = false;
+    bool                          m_paused         = false;
+    std::unordered_set<std::string> m_onceKeys;
+
+    bool                              m_startTimeInited = false;
+    std::chrono::steady_clock::time_point m_startTime{};
+
+    static const size_t MAX_LINES = 2000;
 };
 
-// 重定向 std::cout 到调试日志
+// 重定向 std::cout/std::cerr 到调试日志
 class DebugStreamBuf : public std::streambuf {
   public:
-    DebugStreamBuf(std::streambuf* orig) : m_orig(orig) {}
+    explicit DebugStreamBuf(std::streambuf* orig, LogLevel defaultLevel = LogLevel::Info)
+        : m_orig(orig), m_defaultLevel(defaultLevel) {}
+
+    ~DebugStreamBuf() override {
+        FlushPending();
+    }
 
   protected:
     int overflow(int c) override {
-        if (c != EOF) {
-            if (c == '\n') {
-                DebugLog::Instance().Add(m_buffer);
-                m_buffer.clear();
-            } else {
-                m_buffer += (char)c;
-            }
-            if (m_orig) {
-                m_orig->sputc(c);
-            }
+        if (c == EOF) {
+            return c;
+        }
+
+        if (c == '\n') {
+            FlushPending();
+        } else if (c != '\r') {
+            m_buffer += static_cast<char>(c);
+        }
+
+        if (m_orig) {
+            m_orig->sputc(c);
         }
         return c;
     }
 
+    int sync() override {
+        FlushPending();
+        return 0;
+    }
+
   private:
-    std::streambuf* m_orig;
+    void FlushPending() {
+        if (!m_buffer.empty()) {
+            DebugLog::Instance().AddFromStream(m_defaultLevel, m_buffer);
+            m_buffer.clear();
+        }
+    }
+
+    std::streambuf* m_orig         = nullptr;
+    LogLevel        m_defaultLevel = LogLevel::Info;
     std::string     m_buffer;
 };

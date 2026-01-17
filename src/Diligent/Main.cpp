@@ -1,9 +1,11 @@
 #include <windows.h>
 
 #include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
+#include <iostream>
 #include <string>
 
 #include "../AppState.h"
+#include "../DebugLog.h"
 #include "../ErrorHandler.h"
 #include "../Localization.h"
 #include "DiligentBackend.h"
@@ -200,11 +202,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+    // 将 stdout/stderr 重定向到 DebugLog（用于 ImGui 日志面板）
+    // 说明：DebugStreamBuf 会同时把内容写回原始 streambuf，因此 DebugView/VS Output 里仍能看到。
+    static DebugStreamBuf s_debugOut(std::cout.rdbuf(), LogLevel::Info);
+    static DebugStreamBuf s_debugErr(std::cerr.rdbuf(), LogLevel::Error);
+    std::cout.rdbuf(&s_debugOut);
+    std::cerr.rdbuf(&s_debugErr);
+
     // 统一错误处理/崩溃捕获：尽早初始化异常处理器
     ErrorHandler::Init();
     ErrorHandler::SetStage(ErrorHandler::AppStage::STARTUP);
 
     const std::wstring cmdLine = GetCommandLineW();
+    std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
+    const auto requestedBackend = ParseBackendFromCmdLine(cmdLine);
+    std::cout << "[Main] Backend: " << (requestedBackend == ParticleSaturn::Render::Backend::Vulkan ? "Vulkan" : "D3D12")
+              << std::endl;
 
     WNDCLASSEXW wc{};
     wc.cbSize        = sizeof(wc);
@@ -244,6 +257,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         const bool dark        = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
         appState.ui.isDarkMode = dark;
         ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
+        std::cout << "[DWM] System theme: " << (dark ? "Dark" : "Light") << std::endl;
 
         ParticleSaturn::Win32WindowManager::DetectAvailableBackdrops(hwnd, appState);
         if (!appState.backdrop.availableBackdrops.empty()) {
@@ -253,10 +267,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
         // 初始化 DPI 缩放
         appState.ui.dpiScale = GetDpiScaleForWindow(hwnd);
+        std::cout << "[Main] DPI scale: " << appState.ui.dpiScale << std::endl;
     }
 
     const auto surface = GetClientSize(hwnd);
-    if (!backend.Init(ParseBackendFromCmdLine(cmdLine), hwnd, surface, &appState)) {
+    if (!backend.Init(requestedBackend, hwnd, surface, &appState)) {
         // ShowEarlyFatalError 需要 UTF-8 字符串
         auto WideToUtf8 = [](const std::wstring& w) -> std::string {
             if (w.empty()) {
@@ -280,6 +295,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         return -2;
     }
     ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
+    std::cout << "[Main] Diligent backend initialized" << std::endl;
 
     MSG msg{};
     while (true) {
