@@ -169,29 +169,40 @@ void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
         return;
     }
 
+    std::cout << "[DWM] SetBackdropMode: mode=" << mode << " (" << BackdropName(mode) << ")" << std::endl;
+
     DisableAeroBlur(hwnd);
 
     // Reset system backdrop
     {
         int resetType = DWMSBT_NONE_CUSTOM;
-        (void)DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
+        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
+        std::cout << "[DWM] Reset backdrop: hr=0x" << std::hex << hr << std::dec << std::endl;
     }
 
     if (mode == 0) {
+        // Solid - 不透明
         MARGINS margins = {0, 0, 0, 0};
         (void)DwmExtendFrameIntoClientArea(hwnd, &margins);
         state.backdrop.useTransparent = false;
+        std::cout << "[DWM] Solid mode: useTransparent=false" << std::endl;
     } else if (mode == 1) {
-        (void)EnableAeroBlur(hwnd);
+        // Aero - 传统毛玻璃
+        bool ok = EnableAeroBlur(hwnd);
         state.backdrop.useTransparent = true;
+        std::cout << "[DWM] Aero blur: enabled=" << (ok ? "true" : "false") << std::endl;
     } else {
+        // Acrylic (mode=2) 或 Mica (mode=3)
         MARGINS margins = {-1, -1, -1, -1};
-        (void)DwmExtendFrameIntoClientArea(hwnd, &margins);
+        HRESULT hrMargins = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
         // Acrylic: TRANSIENT(3), Mica: MAINWINDOW(2)
         const int  backdropType = (mode == 2) ? DWMSBT_TRANSIENTWINDOW_CUSTOM : DWMSBT_MAINWINDOW_CUSTOM;
-        (void)DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         state.backdrop.useTransparent = true;
+
+        std::cout << "[DWM] " << BackdropName(mode) << ": backdropType=" << backdropType
+                  << ", hr=0x" << std::hex << hr << ", hrMargins=0x" << hrMargins << std::dec << std::endl;
     }
 
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
