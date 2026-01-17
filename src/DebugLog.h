@@ -81,12 +81,27 @@ class DebugLog {
 
         std::lock_guard<std::mutex> lock(m_mutex);
         // 两列：左侧时间轴（固定宽度），右侧消息（自动换行）
-        // 要求：换行后第二行与第一行正文对齐（也就是对齐到时间轴后方）
-        const float timeColWidth = ImGui::CalcTextSize("[99999.999s]").x + 6.0f * dpi;
+        // 要求：
+        // - 时间轴与正文之间不要留太大空隙
+        // - 换行后第二行与第一行正文对齐（也就是对齐到时间轴后方）
+        //
+        // 时间列宽度按“当前最大时间戳”动态估算，并限制上下界，避免像 "[99999.999s]" 这种过宽预留导致间距过大。
+        float timeColWidth = 0.0f;
+        {
+            const uint64_t maxMs = !m_entries.empty() ? m_entries.back().timeMs : 0;
+            const double   sec   = static_cast<double>(maxMs) / 1000.0;
+            char           buf[32]{};
+            std::snprintf(buf, sizeof(buf), "[%.3fs]", sec);
 
+            const float minW = ImGui::CalcTextSize("[0.000s]").x;
+            const float maxW = ImGui::CalcTextSize("[9999.999s]").x;
+            timeColWidth     = ImClamp(ImGui::CalcTextSize(buf).x, minW, maxW) + 4.0f * dpi;
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f * dpi, 2.0f * dpi));
         if (ImGui::BeginTable("##LogTable",
                               2,
-                              ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_NoSavedSettings)) {
+                              ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) {
             ImGui::TableSetupColumn("##Time", ImGuiTableColumnFlags_WidthFixed, timeColWidth);
             ImGui::TableSetupColumn("##Msg", ImGuiTableColumnFlags_WidthStretch);
 
@@ -158,6 +173,7 @@ class DebugLog {
 
             ImGui::EndTable();
         }
+        ImGui::PopStyleVar();
 
         if (m_scrollToBottom && !m_paused) {
             ImGui::SetScrollHereY(1.0f);
