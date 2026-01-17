@@ -211,6 +211,72 @@ class DebugLog {
   private:
     DebugLog() = default;
 
+    static void StripAnsiEscapesInPlace(std::string& s) {
+        // Remove ANSI escape sequences (e.g. "\x1b[39m") so ImGui log doesn't show "[39m" noise.
+        // Handles:
+        // - CSI: ESC [ ... <final byte>
+        // - OSC: ESC ] ... BEL
+        // Also removes stray "[39m"/"[0m" fragments (some copy paths may drop the ESC byte).
+        size_t w = 0;
+        for (size_t i = 0; i < s.size();) {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            if (c == 0x1B) { // ESC
+                if (i + 1 < s.size() && s[i + 1] == '[') { // CSI
+                    i += 2;
+                    // Parameter bytes 0x30-0x3F, intermediate bytes 0x20-0x2F, final byte 0x40-0x7E
+                    while (i < s.size()) {
+                        const unsigned char b = static_cast<unsigned char>(s[i]);
+                        if (b >= 0x40 && b <= 0x7E) {
+                            i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+                if (i + 1 < s.size() && s[i + 1] == ']') { // OSC
+                    i += 2;
+                    while (i < s.size() && static_cast<unsigned char>(s[i]) != 0x07) { // BEL
+                        i++;
+                    }
+                    if (i < s.size()) {
+                        i++; // consume BEL
+                    }
+                    continue;
+                }
+                // Unknown escape, drop ESC.
+                i++;
+                continue;
+            }
+
+            if (s[i] == '[') {
+                // Remove stray "[<digits/;>m" (e.g. "[39m", "[0m", "[1;32m")
+                size_t j        = i + 1;
+                bool   hasDigit = false;
+                while (j < s.size()) {
+                    const char ch = s[j];
+                    if (ch >= '0' && ch <= '9') {
+                        hasDigit = true;
+                        j++;
+                        continue;
+                    }
+                    if (ch == ';') {
+                        j++;
+                        continue;
+                    }
+                    break;
+                }
+                if (hasDigit && j < s.size() && s[j] == 'm') {
+                    i = j + 1;
+                    continue;
+                }
+            }
+
+            s[w++] = s[i++];
+        }
+        s.resize(w);
+    }
+
     void Add(LogLevel level, const std::string& msg, bool autoDetect) {
         std::lock_guard<std::mutex> lock(m_mutex);
         InitStartTimeIfNeeded();
@@ -229,16 +295,23 @@ class DebugLog {
             return;
         }
 
+        std::string normalized = msg;
+        StripAnsiEscapesInPlace(normalized);
+
+        if (normalized.empty()) {
+            return;
+        }
+
         if (!m_entries.empty()) {
             auto& last = m_entries.back();
-            if (last.level == level && last.message == msg) {
+            if (last.level == level && last.message == normalized) {
                 last.repeatCount++;
                 return;
             }
         }
 
         LogEntry e{};
-        e.message = msg;
+        e.message = std::move(normalized);
         e.level   = level;
         e.timeMs  = NowMsLocked();
         m_entries.push_back(std::move(e));
