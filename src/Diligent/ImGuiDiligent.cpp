@@ -13,6 +13,9 @@
 #include "backends/imgui_impl_win32.h"
 #include "imgui.h"
 
+// imgui_impl_win32.h 将该声明放在 #if 0 中（避免强制包含 <windows.h> 的依赖），这里显式前置声明。
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 using namespace Diligent;
 
 namespace ParticleSaturn::UI {
@@ -241,9 +244,8 @@ void ImGuiDiligent::NewFrame() {
 }
 
 bool ImGuiDiligent::HandleWin32Message(HWND hwnd, unsigned int msg, unsigned long long wParam, long long lParam) {
-    // 声明外部函数（定义在 imgui_impl_win32.cpp 中）
-    extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    return ImGui_ImplWin32_WndProcHandler(hwnd, msg, static_cast<WPARAM>(wParam), static_cast<LPARAM>(lParam)) != 0;
+    // 注意：ImGui Win32 后端的处理函数在全局命名空间，避免在 ParticleSaturn::UI 命名空间下产生未定义符号
+    return ::ImGui_ImplWin32_WndProcHandler(hwnd, msg, static_cast<WPARAM>(wParam), static_cast<LPARAM>(lParam)) != 0;
 }
 
 void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
