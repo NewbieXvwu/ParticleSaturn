@@ -67,7 +67,14 @@ class DebugLog {
 
     // 绘制日志（带过滤和搜索）
     void Draw(const char* searchFilter, int levelFilter) {
-        ImGui::BeginChild("LogScroll", ImVec2(0, 200), true);
+        // 复刻 OpenGL 版：日志框需要有内边距，并且滚动条不能突破圆角边界。
+        // - 内边距：避免文字贴边
+        // - 滚动条：关闭 ImGui 自带滚动条，改用 MD3::WindowScrollbar 自绘（与主窗口一致）
+        float dpi = MD3::GetContext().dpiScale;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * dpi, 8.0f * dpi));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 12.0f * dpi);
+
+        ImGui::BeginChild("LogScroll", ImVec2(0, 200), true, ImGuiWindowFlags_NoScrollbar);
 
         std::lock_guard<std::mutex> lock(m_mutex);
         for (size_t i = 0; i < m_entries.size(); ++i) {
@@ -157,7 +164,12 @@ class DebugLog {
             ImGui::SetScrollHereY(1.0f);
             m_scrollToBottom = false;
         }
+
+        // 在 Child 内自绘滚动条（titleBarHeight=0）
+        MD3::WindowScrollbar(0.0f);
+
         ImGui::EndChild();
+        ImGui::PopStyleVar(2);
     }
 
     // 保持向后兼容的简单绘制
