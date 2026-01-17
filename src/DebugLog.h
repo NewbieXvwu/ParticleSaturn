@@ -76,8 +76,8 @@ class DebugLog {
 
         ImGui::BeginChild("LogScroll",
                           ImVec2(0, 200),
-                          true,
-                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysUseWindowPadding);
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar);
 
         std::lock_guard<std::mutex> lock(m_mutex);
         // 两列：左侧时间轴（固定宽度），右侧消息（自动换行）
