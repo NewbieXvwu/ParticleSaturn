@@ -9,6 +9,7 @@
 #include "Buffer.h"
 #include "BufferView.h"
 #include "DeviceContext.h"
+#include "DirectCompositionSwapChain.h"
 #include "PipelineState.h"
 #include "RefCntAutoPtr.hpp"
 #include "RenderBackend.h"
@@ -51,7 +52,7 @@ class DiligentBackend final {
 
     Backend GetBackend() const { return backend_; }
 
-    bool IsInitialized() const { return swapChain_ != nullptr; }
+    bool IsInitialized() const { return swapChain_ != nullptr || dcompSwapChain_.IsInitialized(); }
 
     const std::wstring& GetLastError() const { return lastError_; }
 
@@ -93,6 +94,11 @@ class DiligentBackend final {
     // Debug Log Panel icons (pause/resume)
     Diligent::ITextureView* GetOrCreateLogControlIconSRV(bool pausedState /* true=resume icon, false=pause icon */);
 
+    // DirectComposition SwapChain 辅助方法
+    Diligent::ITextureView* GetCurrentBackBufferRTV();
+    bool                    CreateDCompBackBufferRTVs();
+    void                    PresentFrame(int syncInterval);
+
     Backend      backend_ = Backend::D3D12;
     SurfaceSize  surfaceSize_{};
     std::wstring lastError_;
@@ -100,6 +106,13 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice>  device_;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediateContext_;
     Diligent::RefCntAutoPtr<Diligent::ISwapChain>     swapChain_;
+
+    // DirectComposition SwapChain（D3D12 透明模式专用）
+    DirectCompositionSwapChain                            dcompSwapChain_;
+    bool                                                  useDCompSwapChain_ = false;
+    static constexpr uint32_t                             kDCompBufferCount  = 3;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>           dcompBackBuffers_[kDCompBufferCount];
+    Diligent::RefCntAutoPtr<Diligent::ITextureView>       dcompBackBufferRTVs_[kDCompBufferCount];
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         fullscreenQuadPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> fullscreenQuadSRB_;
@@ -169,8 +182,9 @@ class DiligentBackend final {
 
     // Bloom constants for fullscreen quad
     Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
-    float                                      bloomStrength_ = 0.5f;
-    bool                                       bloomEnabled_  = true; // Bloom 开关（默认启用）
+    float                                      bloomStrength_            = 0.5f;
+    float                                      bloomStrengthBeforeTransp_ = 0.5f; // 开启透明前的辉光值
+    bool                                       bloomEnabled_             = true;  // Bloom 开关（默认启用）
 
     // Bloom blur pipeline（低分辨率 Kawase blur）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomDownsamplePSO_;

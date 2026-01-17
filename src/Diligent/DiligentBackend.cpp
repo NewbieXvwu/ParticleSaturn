@@ -21,6 +21,9 @@
 #include "ImGuiDiligent.h"
 #include "InputLayout.h"
 #include "NativeWindow.h"
+#include "RenderDeviceD3D12.h"
+#include "DeviceContextD3D12.h"
+#include "CommandQueueD3D12.h"
 #include "Sampler.h"
 #include "Win32WindowManager.h"
 #include "HandTracker.h"
@@ -31,6 +34,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <d3d12.h>
 
 namespace ParticleSaturn::Render {
 
@@ -151,7 +155,8 @@ float4 main(PSIn i) : SV_Target
     col = lerp(col, ToneMap(col), w);
 
     float alpha = lerp(1.0, maxRGB, g_Transparent);
-    return float4(col, alpha);
+    // DirectComposition/DWM 要求预乘 alpha（premultiplied alpha）
+    return float4(col * alpha, alpha);
 }
 )";
 
@@ -212,7 +217,8 @@ void main()
     col = mix(col, toneMap(col), w);
 
     float alpha = mix(1.0, maxRGB, g_Transparent);
-    oColor = vec4(col, alpha);
+    // DirectComposition/DWM 要求预乘 alpha（premultiplied alpha）
+    oColor = vec4(col * alpha, alpha);
 }
 )";
 
@@ -2087,6 +2093,9 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 #ifdef _DEBUG
         engineCI.EnableValidation = true;
 #endif
+        // 增加 GPU 描述符堆大小，避免动态描述符耗尽
+        engineCI.GPUDescriptorHeapDynamicSize[0] = 32768; // CBV_SRV_UAV
+        engineCI.GPUDescriptorHeapDynamicSize[1] = 2048;  // SAMPLER
         factory->CreateDeviceAndContextsD3D12(engineCI, &device_, &immediateContext_);
 
         if (device_ == nullptr || immediateContext_ == nullptr) {
@@ -2094,8 +2103,72 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
             return false;
         }
 
-        FullScreenModeDesc fsDesc{};
-        factory->CreateSwapChainD3D12(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
+        // 检查是否需要透明模式（Mica/Acrylic 需要 DirectComposition SwapChain）
+        const bool needTransparent = (appState_ != nullptr && appState_->backdrop.useTransparent);
+
+        if (needTransparent) {
+            // 使用 DirectComposition SwapChain 实现透明窗口
+            std::cout << "[DiligentBackend] Transparent mode enabled, using DirectComposition SwapChain" << std::endl;
+
+            // 获取 D3D12 设备和命令队列
+            RefCntAutoPtr<IRenderDeviceD3D12> deviceD3D12;
+            device_->QueryInterface(IID_RenderDeviceD3D12,
+                                    reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D12**>(&deviceD3D12)));
+            if (!deviceD3D12) {
+                SetLastError(L"无法获取 IRenderDeviceD3D12 接口。");
+                return false;
+            }
+
+            ID3D12Device* d3d12Device = deviceD3D12->GetD3D12Device();
+
+            // 获取命令队列（通过 LockCommandQueue + ICommandQueueD3D12 接口）
+            ICommandQueue* cmdQueueBase = immediateContext_->LockCommandQueue();
+            if (!cmdQueueBase) {
+                SetLastError(L"无法锁定命令队列。");
+                return false;
+            }
+
+            RefCntAutoPtr<ICommandQueueD3D12> cmdQueueD3D12;
+            cmdQueueBase->QueryInterface(IID_CommandQueueD3D12,
+                                         reinterpret_cast<IObject**>(static_cast<ICommandQueueD3D12**>(&cmdQueueD3D12)));
+            if (!cmdQueueD3D12) {
+                immediateContext_->UnlockCommandQueue();
+                SetLastError(L"无法获取 ICommandQueueD3D12 接口。");
+                return false;
+            }
+
+            ID3D12CommandQueue* cmdQueue = cmdQueueD3D12->GetD3D12CommandQueue();
+
+            // 初始化 DirectComposition SwapChain
+            if (!dcompSwapChain_.Init(hwnd, d3d12Device, cmdQueue, initialSize.Width, initialSize.Height, 3)) {
+                immediateContext_->UnlockCommandQueue();
+                SetLastError(L"DirectComposition SwapChain 初始化失败。");
+                return false;
+            }
+
+            immediateContext_->UnlockCommandQueue();
+
+            // 创建 Diligent 后缓冲 RTV
+            if (!CreateDCompBackBufferRTVs()) {
+                SetLastError(L"创建 DirectComposition 后缓冲 RTV 失败。");
+                return false;
+            }
+
+            useDCompSwapChain_ = true;
+            surfaceSize_       = {dcompSwapChain_.GetWidth(), dcompSwapChain_.GetHeight()};
+        } else {
+            // 非透明模式：使用 Diligent 标准 SwapChain
+            FullScreenModeDesc fsDesc{};
+            factory->CreateSwapChainD3D12(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
+
+            if (swapChain_ == nullptr) {
+                SetLastError(L"SwapChain 创建失败。");
+                return false;
+            }
+
+            const auto& scFinalDesc = swapChain_->GetDesc();
+            surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
+        }
     } else {
         auto* factory = GetEngineFactoryVk();
         if (factory == nullptr) {
@@ -2115,17 +2188,18 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
 
         factory->CreateSwapChainVk(device_, immediateContext_, scDesc, window, &swapChain_);
-    }
 
-    if (swapChain_ == nullptr) {
-        SetLastError(L"SwapChain 创建失败。");
-        return false;
+        if (swapChain_ == nullptr) {
+            SetLastError(L"SwapChain 创建失败。");
+            return false;
+        }
+
+        const auto& scFinalDesc = swapChain_->GetDesc();
+        surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
     }
 
     // 注意：Win32 的 WM_SIZE/ClientRect 尺寸在某些 DPI/缩放配置下可能与 SwapChain 实际尺寸不完全一致。
-    // 后续渲染/点精灵的像素尺寸换算依赖“真实 RT 尺寸”，这里优先以 SwapChainDesc 为准。
-    const auto& scFinalDesc = swapChain_->GetDesc();
-    surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
+    // 后续渲染/点精灵的像素尺寸换算依赖"真实 RT 尺寸"，这里 surfaceSize_ 已在上面设置。
     startTime_              = std::chrono::steady_clock::now();
     lastAnimTime_           = std::chrono::steady_clock::time_point{};
     animAutoTime_           = 0.0f;
@@ -2243,7 +2317,18 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     // 阶段 5：ImGui 初始化
     hwnd_  = hwnd;
     imgui_ = std::make_unique<UI::ImGuiDiligent>();
-    if (!imgui_->Init(hwnd, backend, device_, swapChain_)) {
+
+    // 根据模式选择初始化方式
+    bool imguiOk = false;
+    if (useDCompSwapChain_) {
+        // DirectComposition 模式：使用 RTV 格式和尺寸
+        imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
+    } else {
+        // 标准模式：使用 SwapChain
+        imguiOk = imgui_->Init(hwnd, backend, device_, swapChain_);
+    }
+
+    if (!imguiOk) {
         if (lastError_.empty()) {
             SetLastError(L"ImGui 初始化失败。");
         }
@@ -2256,8 +2341,14 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
 
+    // 如果启动时透明模式已开启，将辉光设为 0（保留默认值在 bloomStrengthBeforeTransp_ 中）
+    if (appState_ != nullptr && appState_->backdrop.useTransparent) {
+        bloomStrength_ = 0.0f;
+        // bloomStrengthBeforeTransp_ 保持默认值 0.5f，用于关闭透明时恢复
+    }
+
     // HandTracker：启动时与 OpenGL 版一致，弹出（必要时）摄像头选择，并异步初始化追踪器。
-    // 模型采用“随可执行文件分发”的策略：构建时会把 HandTracker/models 下的两份 tflite 复制到 exe 同目录。
+    // 模型采用"随可执行文件分发"的策略：构建时会把 HandTracker/models 下的两份 tflite 复制到 exe 同目录。
     handTracker_ = std::make_unique<HandTracking::Controller>();
     if (handTracker_->Init(hwnd, appState_)) {
         // 非阻塞启动：后续在 RenderFrame() 的 Tick() 中轮询 IsTrackerReady()。
@@ -2381,21 +2472,38 @@ void DiligentBackend::Shutdown() {
 }
 
 void DiligentBackend::Resize(SurfaceSize newSize) {
-    if (swapChain_ == nullptr) {
+    if (!IsInitialized()) {
         return;
     }
     if (newSize.Width == 0 || newSize.Height == 0) {
         return;
     }
 
-    const auto& curDesc = swapChain_->GetDesc();
-    if (curDesc.Width == newSize.Width && curDesc.Height == newSize.Height) {
+    // 检查尺寸是否变化
+    if (surfaceSize_.Width == newSize.Width && surfaceSize_.Height == newSize.Height) {
         return;
     }
 
-    swapChain_->Resize(newSize.Width, newSize.Height);
-    const auto& newDesc = swapChain_->GetDesc();
-    surfaceSize_        = {newDesc.Width, newDesc.Height};
+    if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
+        // DirectComposition SwapChain 模式
+        if (!dcompSwapChain_.Resize(newSize.Width, newSize.Height)) {
+            std::cerr << "[DiligentBackend] DComp SwapChain resize failed" << std::endl;
+            return;
+        }
+
+        // 重新创建后缓冲 RTV
+        if (!CreateDCompBackBufferRTVs()) {
+            std::cerr << "[DiligentBackend] Failed to recreate DComp back buffer RTVs after resize" << std::endl;
+            return;
+        }
+
+        surfaceSize_ = {dcompSwapChain_.GetWidth(), dcompSwapChain_.GetHeight()};
+    } else if (swapChain_) {
+        // 标准 Diligent SwapChain 模式
+        swapChain_->Resize(newSize.Width, newSize.Height);
+        const auto& newDesc = swapChain_->GetDesc();
+        surfaceSize_        = {newDesc.Width, newDesc.Height};
+    }
 
     // SwapChain Resize 只影响后备缓冲/深度缓冲；离屏 RT 需要手动重建。
     CreateOffscreenRenderTarget(surfaceSize_);
@@ -2408,7 +2516,7 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
 }
 
 bool DiligentBackend::CreateFullscreenQuadPSO() {
-    if (device_ == nullptr || swapChain_ == nullptr) {
+    if (device_ == nullptr || !IsInitialized()) {
         return false;
     }
 
@@ -2429,10 +2537,16 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     psoCI.PSODesc.Name         = "FullscreenQuad PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    const auto& scDesc = swapChain_->GetDesc();
+    // 根据当前模式确定 RTV 格式
+    TEXTURE_FORMAT rtvFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    if (useDCompSwapChain_) {
+        rtvFormat = TEX_FORMAT_RGBA8_UNORM;
+    } else if (swapChain_) {
+        rtvFormat = swapChain_->GetDesc().ColorBufferFormat;
+    }
 
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0]    = scDesc.ColorBufferFormat;
+    psoCI.GraphicsPipeline.RTVFormats[0]    = rtvFormat;
     // 当前阶段的离屏 RT 不带深度；PSO 也不绑定 DSV。
     psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN;
 
@@ -2505,7 +2619,7 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 }
 
 bool DiligentBackend::CreateBloomPSO() {
-    if (device_ == nullptr || swapChain_ == nullptr) {
+    if (device_ == nullptr || (swapChain_ == nullptr && !useDCompSwapChain_)) {
         return false;
     }
 
@@ -2769,14 +2883,20 @@ bool DiligentBackend::CreateBloomTextures(SurfaceSize size) {
 }
 
 bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
-    if (device_ == nullptr || swapChain_ == nullptr) {
+    if (device_ == nullptr || (swapChain_ == nullptr && !useDCompSwapChain_)) {
         return false;
     }
     if (size.Width == 0 || size.Height == 0) {
         return true;
     }
 
-    const auto& scDesc = swapChain_->GetDesc();
+    // 根据当前模式确定 RTV 格式
+    TEXTURE_FORMAT rtvFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    if (useDCompSwapChain_) {
+        rtvFormat = TEX_FORMAT_RGBA8_UNORM; // DirectComposition 使用非 sRGB
+    } else if (swapChain_) {
+        rtvFormat = swapChain_->GetDesc().ColorBufferFormat;
+    }
 
     const uint32_t w   = size.Width;
     const uint32_t h   = size.Height;
@@ -2788,7 +2908,7 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
     bool sceneSizeChanged = true;
     if (uiSceneColor_ != nullptr) {
         const auto& desc = uiSceneColor_->GetDesc();
-        sceneSizeChanged = (desc.Width != w || desc.Height != h || desc.Format != scDesc.ColorBufferFormat);
+        sceneSizeChanged = (desc.Width != w || desc.Height != h || desc.Format != rtvFormat);
     }
 
     const bool sizeChanged =
@@ -2831,7 +2951,7 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
     };
 
     // 解析后的 LDR 场景纹理（与 SwapChain 颜色格式一致）
-    if (!createTex("UI Scene Color", scDesc.ColorBufferFormat, w, h, uiSceneColor_, uiSceneRTV_, uiSceneSRV_)) {
+    if (!createTex("UI Scene Color", rtvFormat, w, h, uiSceneColor_, uiSceneRTV_, uiSceneSRV_)) {
         return false;
     }
 
@@ -2971,7 +3091,7 @@ Diligent::ITextureView* DiligentBackend::GetOrCreateLogControlIconSRV(
 }
 
 void DiligentBackend::RenderUISceneForUI() {
-    if (immediateContext_ == nullptr || swapChain_ == nullptr || fullscreenQuadPSO_ == nullptr ||
+    if (immediateContext_ == nullptr || !IsInitialized() || fullscreenQuadPSO_ == nullptr ||
         fullscreenQuadSRB_ == nullptr || offscreenSRV_ == nullptr || bloomSRV_B_ == nullptr || uiSceneRTV_ == nullptr) {
         return;
     }
@@ -3360,7 +3480,7 @@ bool DiligentBackend::CreateStarfieldBuffers(uint32_t starCount) {
 }
 
 bool DiligentBackend::CreateStarfieldPSO() {
-    if (device_ == nullptr || swapChain_ == nullptr || starConstants_ == nullptr) {
+    if (device_ == nullptr || (swapChain_ == nullptr && !useDCompSwapChain_) || starConstants_ == nullptr) {
         return false;
     }
 
@@ -3381,9 +3501,7 @@ bool DiligentBackend::CreateStarfieldPSO() {
     psoCI.PSODesc.Name         = "Starfield PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    const auto& scDesc                      = swapChain_->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    (void)scDesc;
     psoCI.GraphicsPipeline.RTVFormats[0]     = kOffscreenColorFormat;
     psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_UNKNOWN;
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -3599,7 +3717,7 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
 }
 
 bool DiligentBackend::CreateParticlePSO() {
-    if (device_ == nullptr || swapChain_ == nullptr || particleConstants_ == nullptr) {
+    if (device_ == nullptr || (swapChain_ == nullptr && !useDCompSwapChain_) || particleConstants_ == nullptr) {
         return false;
     }
 
@@ -3620,9 +3738,7 @@ bool DiligentBackend::CreateParticlePSO() {
     psoCI.PSODesc.Name         = "SaturnParticle PSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-    const auto& scDesc                      = swapChain_->GetDesc();
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    (void)scDesc;
     psoCI.GraphicsPipeline.RTVFormats[0]                = kOffscreenColorFormat;
     psoCI.GraphicsPipeline.DSVFormat                    = TEX_FORMAT_UNKNOWN;
     psoCI.GraphicsPipeline.PrimitiveTopology            = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -3738,14 +3854,12 @@ bool DiligentBackend::CreateParticleComputePSO() {
 }
 
 bool DiligentBackend::CreateOffscreenRenderTarget(SurfaceSize size) {
-    if (device_ == nullptr || swapChain_ == nullptr) {
+    if (device_ == nullptr || (swapChain_ == nullptr && !useDCompSwapChain_)) {
         return false;
     }
     if (size.Width == 0 || size.Height == 0) {
         return false;
     }
-
-    const auto& scDesc = swapChain_->GetDesc();
 
     TextureDesc texDesc{};
     texDesc.Name      = "Offscreen Color";
@@ -3753,7 +3867,6 @@ bool DiligentBackend::CreateOffscreenRenderTarget(SurfaceSize size) {
     texDesc.Width     = size.Width;
     texDesc.Height    = size.Height;
     texDesc.MipLevels = 1;
-    (void)scDesc;
     // 与 OpenGL 旧版 FBO 对齐：R11G11B10F HDR（便于加法混合后在最终合成阶段做 tone mapping，避免过曝）。
     texDesc.Format    = kOffscreenColorFormat;
     texDesc.BindFlags = BIND_RENDER_TARGET | BIND_SHADER_RESOURCE;
@@ -3825,9 +3938,14 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
     psoCI.GraphicsPipeline.PrimitiveTopology          = PRIMITIVE_TOPOLOGY_LINE_LIST;
 
     // 渲染目标格式
-    const auto& scDesc                      = swapChain_->GetDesc();
+    TEXTURE_FORMAT rtvFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    if (useDCompSwapChain_) {
+        rtvFormat = TEX_FORMAT_RGBA8_UNORM;
+    } else if (swapChain_) {
+        rtvFormat = swapChain_->GetDesc().ColorBufferFormat;
+    }
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0]    = scDesc.ColorBufferFormat;
+    psoCI.GraphicsPipeline.RTVFormats[0]    = rtvFormat;
     psoCI.GraphicsPipeline.DSVFormat        = TEX_FORMAT_UNKNOWN; // 不使用深度
 
     // Alpha 混合（线条不透明，但保持一致性）
@@ -4041,29 +4159,29 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
 }
 
 void DiligentBackend::RenderClear() {
-    if (swapChain_ == nullptr || immediateContext_ == nullptr) {
+    if (!IsInitialized() || immediateContext_ == nullptr) {
         return;
     }
 
-    ITextureView* pRTV = swapChain_->GetCurrentBackBufferRTV();
+    ITextureView* pRTV = GetCurrentBackBufferRTV();
     if (pRTV == nullptr) {
         return;
     }
 
-    ITextureView* pDSV = swapChain_->GetDepthBufferDSV();
+    // 深度缓冲：DirectComposition 模式下暂不使用深度缓冲（后续可扩展）
+    ITextureView* pDSV = swapChain_ ? swapChain_->GetDepthBufferDSV() : nullptr;
 
     immediateContext_->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 设置视口（Diligent 需要显式设置）
-    const auto& scDesc = swapChain_->GetDesc();
     Viewport    vp{};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
-    vp.Width    = static_cast<float>(scDesc.Width);
-    vp.Height   = static_cast<float>(scDesc.Height);
+    vp.Width    = static_cast<float>(surfaceSize_.Width);
+    vp.Height   = static_cast<float>(surfaceSize_.Height);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
-    immediateContext_->SetViewports(1, &vp, scDesc.Width, scDesc.Height);
+    immediateContext_->SetViewports(1, &vp, surfaceSize_.Width, surfaceSize_.Height);
 
     // 透明窗口模式下需要清为 alpha=0（否则 DWM 会把 client 区域当作不透明）。
     float clearColor[4] = {0.05f, 0.07f, 0.10f, 1.0f};
@@ -4535,12 +4653,12 @@ void DiligentBackend::RenderBloom() {
 }
 
 void DiligentBackend::BlitOffscreenToBackBuffer() {
-    if (swapChain_ == nullptr || immediateContext_ == nullptr || fullscreenQuadPSO_ == nullptr ||
+    if (!IsInitialized() || immediateContext_ == nullptr || fullscreenQuadPSO_ == nullptr ||
         fullscreenQuadSRB_ == nullptr || offscreenSRV_ == nullptr) {
         return;
     }
 
-    ITextureView* pBackBufferRTV = swapChain_->GetCurrentBackBufferRTV();
+    ITextureView* pBackBufferRTV = GetCurrentBackBufferRTV();
     if (pBackBufferRTV == nullptr) {
         return;
     }
@@ -4549,15 +4667,14 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
     immediateContext_->SetRenderTargets(1, &pBackBufferRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 设置视口（Diligent 需要显式设置）
-    const auto& scDesc = swapChain_->GetDesc();
     Viewport    vp{};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
-    vp.Width    = static_cast<float>(scDesc.Width);
-    vp.Height   = static_cast<float>(scDesc.Height);
+    vp.Width    = static_cast<float>(surfaceSize_.Width);
+    vp.Height   = static_cast<float>(surfaceSize_.Height);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
-    immediateContext_->SetViewports(1, &vp, scDesc.Width, scDesc.Height);
+    immediateContext_->SetViewports(1, &vp, surfaceSize_.Width, surfaceSize_.Height);
 
     // Bloom 强度（由 UI 控制）
     if (bloomConstants_ != nullptr) {
@@ -4601,7 +4718,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
 }
 
 void DiligentBackend::RenderFrame() {
-    if (swapChain_ == nullptr) {
+    if (!IsInitialized()) {
         return;
     }
 
@@ -5341,25 +5458,53 @@ void DiligentBackend::RenderFrame() {
 
             ImGui::Dummy(ImVec2(0, 5));
 
+            // 透明效果开关（简化版：只有开/关两个选项）
+            // 注意：需要 Win10 1809+ 且使用 DirectComposition SwapChain
+            if (appState_->backdrop.transparentSupported) {
+                bool transparent = appState_->backdrop.useTransparent;
+                if (MD3::Toggle(str.transparent, &transparent)) {
+                    // 切换透明模式：透明时使用 Mica (mode=3)，不透明时使用 Solid (mode=0)
+                    const int newMode = transparent ? 3 : 0;
+
+                    // 辉光调整：开启透明时保存当前值并设为 0，关闭时恢复
+                    if (transparent) {
+                        // 开启透明：保存当前辉光值，设为 0
+                        bloomStrengthBeforeTransp_ = bloomStrength_;
+                        bloomStrength_             = 0.0f;
+                    } else {
+                        // 关闭透明：恢复之前的辉光值
+                        bloomStrength_ = bloomStrengthBeforeTransp_;
+                    }
+
+                    // 更新 backdropIndex 以匹配新模式
+                    for (int i = 0; i < static_cast<int>(appState_->backdrop.availableBackdrops.size()); ++i) {
+                        if (appState_->backdrop.availableBackdrops[i] == newMode) {
+                            appState_->backdrop.backdropIndex = i;
+                            break;
+                        }
+                    }
+
+                    ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd_, newMode, *appState_);
+                }
+            } else {
+                // 系统不支持透明效果，显示禁用状态
+                ImGui::BeginDisabled();
+                bool disabled = false;
+                MD3::Toggle(str.transparent, &disabled);
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::TextDisabled("(Win10 1809+)");
+            }
+
+            ImGui::Dummy(ImVec2(0, 5));
+
             // 显示状态
             ImGui::Text("%s: %s", str.fullscreen, appState_->window.isFullscreen ? str.yes : str.no);
-            ImGui::Text("%s: %s", str.transparent, appState_->backdrop.useTransparent ? str.yes : str.no);
-            if (!appState_->backdrop.availableBackdrops.empty() && appState_->backdrop.backdropIndex >= 0 &&
-                appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
-                const int mode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
-                ImGui::Text("%s: %s", str.backdrop, ParticleSaturn::Win32WindowManager::BackdropName(mode));
-            }
             MD3::EndCollapsingHeader();
         }
 
         // ========== 高级区域 ==========
         if (MD3::BeginCollapsingHeader(str.sectionAdvanced)) {
-            // Bloom 强度 - 使用 MD3 Slider
-            ImGui::Text("%s:", str.bloomStrength);
-            MD3::Slider("##Bloom", &bloomStrength_, 0.0f, 2.0f, "%.2f");
-
-            ImGui::Dummy(ImVec2(0, 5));
-
             // 显示一些调试信息
             ImGui::TextDisabled("%s:", str.debugInfo);
             ImGui::Text("%s: %u", str.starCount, starCount_);
@@ -5581,15 +5726,13 @@ void DiligentBackend::RenderFrame() {
 
     // 渲染 ImGui（在七段数码管之后，Present 之前）
     if (imgui_) {
-        ITextureView* pBackBufferRTV = swapChain_->GetCurrentBackBufferRTV();
+        ITextureView* pBackBufferRTV = GetCurrentBackBufferRTV();
         if (pBackBufferRTV != nullptr) {
             imgui_->Render(immediateContext_, pBackBufferRTV);
         }
     }
 
     // 7. Present
-    immediateContext_->Flush();
-
     // VSync：
     // - 0  : Off  -> Present(0)
     // - 1  : On   -> Present(1)
@@ -5605,7 +5748,7 @@ void DiligentBackend::RenderFrame() {
             presentInterval = (backend_ == Backend::Vulkan) ? 0 : 1;
         }
     }
-    swapChain_->Present(static_cast<Uint32>(presentInterval));
+    PresentFrame(presentInterval);
 }
 
 void DiligentBackend::RenderSevenSegmentFPS() {
@@ -5614,7 +5757,10 @@ void DiligentBackend::RenderSevenSegmentFPS() {
     }
 
     // 设置渲染目标为 SwapChain BackBuffer
-    ITextureView* pRTV = swapChain_->GetCurrentBackBufferRTV();
+    ITextureView* pRTV = GetCurrentBackBufferRTV();
+    if (pRTV == nullptr) {
+        return;
+    }
     immediateContext_->SetRenderTargets(1, &pRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // 设置视口
@@ -5728,6 +5874,83 @@ bool DiligentBackend::HandleWin32Message(HWND hwnd, unsigned int msg, unsigned l
         return imgui_->HandleWin32Message(hwnd, msg, wParam, lParam);
     }
     return false;
+}
+
+// ============================================================================
+// DirectComposition SwapChain 辅助方法
+// ============================================================================
+
+ITextureView* DiligentBackend::GetCurrentBackBufferRTV() {
+    if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
+        const uint32_t idx = dcompSwapChain_.GetCurrentBackBufferIndex();
+        if (idx < kDCompBufferCount && dcompBackBufferRTVs_[idx]) {
+            return dcompBackBufferRTVs_[idx].RawPtr();
+        }
+        return nullptr;
+    }
+    if (swapChain_) {
+        return swapChain_->GetCurrentBackBufferRTV();
+    }
+    return nullptr;
+}
+
+bool DiligentBackend::CreateDCompBackBufferRTVs() {
+    if (!dcompSwapChain_.IsInitialized() || !device_) {
+        return false;
+    }
+
+    // 尝试获取 D3D12 设备接口
+    RefCntAutoPtr<IRenderDeviceD3D12> deviceD3D12;
+    device_->QueryInterface(IID_RenderDeviceD3D12, reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D12**>(&deviceD3D12)));
+    if (!deviceD3D12) {
+        std::cerr << "[DiligentBackend] Failed to query IRenderDeviceD3D12" << std::endl;
+        return false;
+    }
+
+    const uint32_t bufferCount = dcompSwapChain_.GetBufferCount();
+    for (uint32_t i = 0; i < bufferCount && i < kDCompBufferCount; ++i) {
+        ID3D12Resource* d3d12Resource = dcompSwapChain_.GetBackBuffer(i);
+        if (!d3d12Resource) {
+            std::cerr << "[DiligentBackend] GetBackBuffer(" << i << ") returned null" << std::endl;
+            return false;
+        }
+
+        // 从 D3D12 资源创建 Diligent 纹理
+        dcompBackBuffers_[i].Release();
+        deviceD3D12->CreateTextureFromD3DResource(d3d12Resource, RESOURCE_STATE_PRESENT,
+                                                  &dcompBackBuffers_[i]);
+        if (!dcompBackBuffers_[i]) {
+            std::cerr << "[DiligentBackend] CreateTextureFromD3DResource failed for buffer " << i << std::endl;
+            return false;
+        }
+
+        // 创建 RTV
+        TextureViewDesc rtvDesc{};
+        rtvDesc.ViewType = TEXTURE_VIEW_RENDER_TARGET;
+        rtvDesc.Format   = TEX_FORMAT_RGBA8_UNORM_SRGB; // sRGB 视图
+        dcompBackBufferRTVs_[i].Release();
+        dcompBackBuffers_[i]->CreateView(rtvDesc, &dcompBackBufferRTVs_[i]);
+        if (!dcompBackBufferRTVs_[i]) {
+            std::cerr << "[DiligentBackend] CreateView RTV failed for buffer " << i << std::endl;
+            return false;
+        }
+    }
+
+    std::cout << "[DiligentBackend] Created " << bufferCount << " DComp back buffer RTVs" << std::endl;
+    return true;
+}
+
+void DiligentBackend::PresentFrame(int syncInterval) {
+    if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
+        // DirectComposition 模式：需要手动 Flush + FinishFrame 来确保引擎正确回收资源
+        immediateContext_->Flush();
+        dcompSwapChain_.Present(static_cast<uint32_t>(syncInterval));
+        // 通知引擎帧结束，回收动态描述符和过期资源
+        immediateContext_->FinishFrame();
+    } else if (swapChain_) {
+        // 标准模式：SwapChain->Present() 内部会调用 FinishFrame()
+        swapChain_->Present(static_cast<Uint32>(syncInterval));
+    }
 }
 
 } // namespace ParticleSaturn::Render

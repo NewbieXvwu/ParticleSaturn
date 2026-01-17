@@ -70,9 +70,10 @@ struct AppState {
 
     // 背景效果状态 (Windows DWM)
     struct {
-        std::vector<int> availableBackdrops = {0};
-        int              backdropIndex      = 0;
-        bool             useTransparent     = false;
+        std::vector<int> availableBackdrops   = {0};
+        int              backdropIndex        = 0;
+        bool             useTransparent       = false;
+        bool             transparentSupported = true; // 系统是否支持透明效果 (Win10 1809+)
     } backdrop;
 
     // OpenGL 信息 (用于崩溃报告)

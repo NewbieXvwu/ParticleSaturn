@@ -41,7 +41,12 @@ class ImGuiDiligent final {
 
     // 初始化 ImGui 上下文和 Diligent 渲染资源
     // backend: 用于选择着色器语言（HLSL/GLSL）
+    // swapChain: 可选，如果为 null 则使用 rtvFormat 和 surfaceSize
     bool Init(HWND hwnd, Render::Backend backend, Diligent::IRenderDevice* device, Diligent::ISwapChain* swapChain);
+
+    // 初始化 ImGui（不依赖 SwapChain，用于 DirectComposition 模式）
+    bool Init(HWND hwnd, Render::Backend backend, Diligent::IRenderDevice* device,
+              Diligent::TEXTURE_FORMAT rtvFormat, uint32_t width, uint32_t height);
     void Shutdown();
 
     // 每帧开始时调用
@@ -69,8 +74,8 @@ class ImGuiDiligent final {
 
   private:
     bool CreateFontTexture(Diligent::IRenderDevice* device);
-    bool CreatePipelineStates(Diligent::IRenderDevice* device, Diligent::ISwapChain* swapChain);
-    bool CreateDepthStencilBuffer(Diligent::IRenderDevice* device, Diligent::ISwapChain* swapChain);
+    bool CreatePipelineStates(Diligent::IRenderDevice* device, Diligent::TEXTURE_FORMAT rtvFormat);
+    bool CreateDepthStencilBuffer(Diligent::IRenderDevice* device, uint32_t width, uint32_t height);
     bool CreateBuffers(Diligent::IRenderDevice* device, int vertexCount, int indexCount);
     void ApplyStencilMode(Diligent::IDeviceContext* context);
 

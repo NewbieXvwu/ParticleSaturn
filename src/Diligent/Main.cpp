@@ -18,6 +18,46 @@ namespace {
 constexpr wchar_t kWindowClassName[] = L"ParticleSaturn.Diligent";
 constexpr wchar_t kWindowTitle[]     = L"Particle Saturn (Diligent)";
 
+// 检测 Windows 版本是否支持 DirectComposition 透明窗口 + Mica
+// Win11 22H2+ (Build 22621+) 支持 DWMWA_SYSTEMBACKDROP_TYPE
+// Win10 1803+ (Build 17134+) 支持 WS_EX_NOREDIRECTIONBITMAP 但不支持 Mica
+bool IsDirectCompositionSupported() {
+    // 使用 RtlGetVersion 获取真实版本（不受兼容性 shim 影响）
+    using RtlGetVersionPtr = NTSTATUS(WINAPI*)(PRTL_OSVERSIONINFOW);
+
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll == nullptr) {
+        return false;
+    }
+
+    auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
+    if (RtlGetVersion == nullptr) {
+        return false;
+    }
+
+    RTL_OSVERSIONINFOW osvi{};
+    osvi.dwOSVersionInfoSize = sizeof(osvi);
+    if (RtlGetVersion(&osvi) != 0) {
+        return false;
+    }
+
+    // Win10 1803+ (Build 17134+) 支持 WS_EX_NOREDIRECTIONBITMAP + DirectComposition
+    // Win11 (Build 22000+) 支持 Mica
+    // 保守起见，只在 Win10 1809+ (Build 17763+) 启用
+    const bool isWin10_1809OrLater = (osvi.dwMajorVersion > 10) ||
+                                     (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 17763);
+
+    if (isWin10_1809OrLater) {
+        std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
+                  << " Build " << osvi.dwBuildNumber << " - DirectComposition supported" << std::endl;
+        return true;
+    }
+
+    std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
+              << " Build " << osvi.dwBuildNumber << " - DirectComposition NOT supported" << std::endl;
+    return false;
+}
+
 // 获取窗口的 DPI 缩放因子（相对于 96 DPI）
 float GetDpiScaleForWindow(HWND hwnd) {
     // 优先使用 GetDpiForWindow (Win10 1607+)
@@ -202,6 +242,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+    // 最早的日志：使用 OutputDebugString，在任何 C++ 初始化之前
+    OutputDebugStringW(L"[ParticleSaturn] wWinMain entry\n");
+
     // 将 stdout/stderr 重定向到 DebugLog（用于 ImGui 日志面板）
     // 说明：DebugStreamBuf 会同时把内容写回原始 streambuf，因此 DebugView/VS Output 里仍能看到。
     static DebugStreamBuf s_debugOut(std::cout.rdbuf(), LogLevel::Info);
@@ -209,9 +252,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     std::cout.rdbuf(&s_debugOut);
     std::cerr.rdbuf(&s_debugErr);
 
+    OutputDebugStringW(L"[ParticleSaturn] DebugStreamBuf initialized\n");
+
     // 统一错误处理/崩溃捕获：尽早初始化异常处理器
     ErrorHandler::Init();
     ErrorHandler::SetStage(ErrorHandler::AppStage::STARTUP);
+
+    OutputDebugStringW(L"[ParticleSaturn] ErrorHandler initialized\n");
 
     const std::wstring cmdLine = GetCommandLineW();
     std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
@@ -227,27 +274,44 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     wc.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
     wc.lpszClassName = kWindowClassName;
     ErrorHandler::SetStage(ErrorHandler::AppStage::WINDOW_INIT);
+    OutputDebugStringW(L"[ParticleSaturn] Registering window class\n");
     RegisterClassExW(&wc);
 
-    const DWORD style   = WS_OVERLAPPEDWINDOW;
-    const DWORD exStyle = 0;
+    const DWORD style = WS_OVERLAPPEDWINDOW;
+
+    // 检测是否支持 DirectComposition 透明窗口
+    // WS_EX_NOREDIRECTIONBITMAP: Win10 1809+ 支持，但 Mica 需要 Win11 22H2+
+    // 在不支持的系统上使用普通窗口（无透明效果）
+    const bool  useDComp = IsDirectCompositionSupported();
+    const DWORD exStyle  = useDComp ? WS_EX_NOREDIRECTIONBITMAP : 0;
+
+    if (!useDComp) {
+        std::cout << "[Main] DirectComposition not supported, transparent effects disabled" << std::endl;
+    }
 
     RECT wr{0, 0, 1280, 720};
     AdjustWindowRectEx(&wr, style, FALSE, exStyle);
 
+    OutputDebugStringW(L"[ParticleSaturn] Creating window\n");
     HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, CW_USEDEFAULT, CW_USEDEFAULT,
                                 wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, hInstance, nullptr);
     if (hwnd == nullptr) {
+        OutputDebugStringW(L"[ParticleSaturn] Window creation FAILED\n");
         ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);
         return -1;
     }
+    OutputDebugStringW(L"[ParticleSaturn] Window created OK\n");
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
+    OutputDebugStringW(L"[ParticleSaturn] Creating DiligentBackend\n");
     ParticleSaturn::Render::DiligentBackend backend{};
     AppState                                appState{};
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&backend));
+
+    // 标记是否支持透明效果（影响后续 SwapChain 选择和 UI 显示）
+    appState.backdrop.transparentSupported = useDComp;
 
     // 初始化 AppState 基本值（对齐 OpenGL：默认粒子数为 MAX=1200000）
     appState.InitDefaults(1200000);
@@ -270,8 +334,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         std::cout << "[Main] DPI scale: " << appState.ui.dpiScale << std::endl;
     }
 
+    OutputDebugStringW(L"[ParticleSaturn] Calling backend.Init()\n");
     const auto surface = GetClientSize(hwnd);
     if (!backend.Init(requestedBackend, hwnd, surface, &appState)) {
+        OutputDebugStringW(L"[ParticleSaturn] backend.Init() FAILED\n");
         // ShowEarlyFatalError 需要 UTF-8 字符串
         auto WideToUtf8 = [](const std::wstring& w) -> std::string {
             if (w.empty()) {

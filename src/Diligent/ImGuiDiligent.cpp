@@ -143,10 +143,19 @@ ImGuiDiligent::~ImGuiDiligent() {
 }
 
 bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* device, ISwapChain* swapChain) {
+    if (swapChain == nullptr) {
+        return false;
+    }
+    const auto& scDesc = swapChain->GetDesc();
+    return Init(hwnd, backend, device, scDesc.ColorBufferFormat, scDesc.Width, scDesc.Height);
+}
+
+bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* device,
+                         TEXTURE_FORMAT rtvFormat, uint32_t width, uint32_t height) {
     if (initialized_) {
         return true;
     }
-    if (device == nullptr || swapChain == nullptr || hwnd == nullptr) {
+    if (device == nullptr || hwnd == nullptr || width == 0 || height == 0) {
         return false;
     }
 
@@ -168,7 +177,7 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
     }
 
     // 创建 Diligent 渲染资源
-    if (!CreatePipelineStates(device, swapChain)) {
+    if (!CreatePipelineStates(device, rtvFormat)) {
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
         return false;
@@ -180,7 +189,7 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
         return false;
     }
 
-    if (!CreateDepthStencilBuffer(device, swapChain)) {
+    if (!CreateDepthStencilBuffer(device, width, height)) {
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
         return false;
@@ -472,7 +481,7 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
     stencilMode_    = StencilMode::Disabled;
 }
 
-bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swapChain) {
+bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT rtvFormat) {
     const bool isVulkan = (backend_ == Render::Backend::Vulkan);
     const auto lang     = isVulkan ? SHADER_SOURCE_LANGUAGE_GLSL : SHADER_SOURCE_LANGUAGE_HLSL;
 
@@ -496,8 +505,6 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
             return false;
         }
     }
-
-    const auto& scDesc = swapChain->GetDesc();
 
     // 顶点输入布局（ImDrawVert: pos, uv, col）
     LayoutElement layoutElems[] = {
@@ -534,7 +541,7 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
         psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
@@ -583,7 +590,7 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
         psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
@@ -636,7 +643,7 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, ISwapChain* swap
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = scDesc.ColorBufferFormat;
+        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
         psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
@@ -833,17 +840,15 @@ bool ImGuiDiligent::CreateBuffers(IRenderDevice* device, int vertexCount, int in
     return true;
 }
 
-bool ImGuiDiligent::CreateDepthStencilBuffer(IRenderDevice* device, ISwapChain* swapChain) {
-    const auto& scDesc = swapChain->GetDesc();
-
-    cachedWidth_  = scDesc.Width;
-    cachedHeight_ = scDesc.Height;
+bool ImGuiDiligent::CreateDepthStencilBuffer(IRenderDevice* device, uint32_t width, uint32_t height) {
+    cachedWidth_  = width;
+    cachedHeight_ = height;
 
     TextureDesc dsDesc{};
     dsDesc.Name      = "ImGui DepthStencil";
     dsDesc.Type      = RESOURCE_DIM_TEX_2D;
-    dsDesc.Width     = scDesc.Width;
-    dsDesc.Height    = scDesc.Height;
+    dsDesc.Width     = width;
+    dsDesc.Height    = height;
     dsDesc.MipLevels = 1;
     dsDesc.Format    = TEX_FORMAT_D24_UNORM_S8_UINT;
     dsDesc.BindFlags = BIND_DEPTH_STENCIL;
