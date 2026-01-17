@@ -4734,62 +4734,64 @@ void DiligentBackend::RenderFrame() {
         CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
                               appState_->ui.isDarkMode);
 
-        // Debug 窗口 - 使用 MD3 无标题栏样式
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(320, 400), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(1200, 1200));
-        constexpr ImGuiWindowFlags kDebugWindowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
-                                                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize;
-        ImGui::Begin("Debug", nullptr, kDebugWindowFlags);
+        // Debug 窗口（默认关闭，F3 切换）- 使用 MD3 无标题栏样式
+        if (appState_ != nullptr && appState_->ui.showDebugWindow) {
+            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(320, 400), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSizeConstraints(ImVec2(280, 200), ImVec2(1200, 1200));
+            constexpr ImGuiWindowFlags kDebugWindowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar |
+                                                           ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize;
+            ImGui::Begin("Debug", nullptr, kDebugWindowFlags);
 
-        // 自定义标题栏
-        constexpr float kTitleBarHeight = 40.0f;
-        MD3::WindowTitleBar("Debug", nullptr);
+            // 自定义标题栏
+            constexpr float kTitleBarHeight = 40.0f;
+            MD3::WindowTitleBar("Debug", &appState_->ui.showDebugWindow);
 
-        // 绘制窗口背景
-        {
-            ImVec2      pos   = ImGui::GetWindowPos();
-            ImVec2      size  = ImGui::GetWindowSize();
-            ImDrawList* dl    = ImGui::GetWindowDrawList();
-            ImGuiStyle& style = ImGui::GetStyle();
+            // 绘制窗口背景
+            {
+                ImVec2      pos   = ImGui::GetWindowPos();
+                ImVec2      size  = ImGui::GetWindowSize();
+                ImDrawList* dl    = ImGui::GetWindowDrawList();
+                ImGuiStyle& style = ImGui::GetStyle();
 
-            auto&  colors       = MD3::GetContext().colors;
-            auto&  ctx          = MD3::GetContext();
-            float  cornerRadius = style.WindowRounding;
-            ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
+                auto&  colors       = MD3::GetContext().colors;
+                auto&  ctx          = MD3::GetContext();
+                float  cornerRadius = style.WindowRounding;
+                ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
-            // 模糊背景：如果启用且有有效纹理
-            if (ctx.blurEnabled && ctx.blurTextureID != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-                // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
-                ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
-                ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
+                // 模糊背景：如果启用且有有效纹理
+                if (ctx.blurEnabled && ctx.blurTextureID != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+                    // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
+                    ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+                    ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
 
-                // 使用带圆角的图片绘制，避免黑边
-                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
-                                     IM_COL32(255, 255, 255, 255), cornerRadius);
+                    // 使用带圆角的图片绘制，避免黑边
+                    MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
+                                         IM_COL32(255, 255, 255, 255), cornerRadius);
 
-                // 噪点层：防 banding + 增加“材质感”
-                if (ctx.noiseTextureID != nullptr) {
-                    const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
-                    const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
-                    const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
-                    MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1,
-                                         noiseCol, cornerRadius);
+                    // 噪点层：防 banding + 增加“材质感”
+                    if (ctx.noiseTextureID != nullptr) {
+                        const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                        const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                        const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
+                        MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0, uv1,
+                                             noiseCol, cornerRadius);
+                    }
+
+                    // 高光边框
+                    ImU32 highlight =
+                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                    dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
+                } else {
+                    // 无模糊时的纯色背景
+                    ImVec4 bgCol = colors.surfaceContainerLow;
+                    bgCol.w      = 0.95f;
+                    dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
                 }
-
-                // 高光边框
-                ImU32 highlight = appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
-                dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
-            } else {
-                // 无模糊时的纯色背景
-                ImVec4 bgCol = colors.surfaceContainerLow;
-                bgCol.w      = 0.95f;
-                dl->AddRectFilled(pos, endPos, ImGui::GetColorU32(bgCol), cornerRadius);
             }
-        }
 
-        // ========== 性能区域 ==========
-        if (MD3::BeginCollapsingHeader("Performance", true)) {
+            // ========== 性能区域 ==========
+            if (MD3::BeginCollapsingHeader("Performance", true)) {
             // 两列布局的辅助 lambda
             auto TwoColumnText = [](const char* label, const char* fmt, ...) {
                 ImGui::TableNextRow();
@@ -5366,14 +5368,15 @@ void DiligentBackend::RenderFrame() {
             MD3::EndCollapsingHeader();
         }
 
-        // 处理平滑滚动（必须在 WindowScrollbar 之前调用）
-        MD3::HandleSmoothScroll(90.0f);
+            // 处理平滑滚动（必须在 WindowScrollbar 之前调用）
+            MD3::HandleSmoothScroll(90.0f);
 
-        // 自定义滚动条和缩放手柄
-        MD3::WindowScrollbar(kTitleBarHeight);
-        MD3::WindowResize(280.0f, 200.0f);
+            // 自定义滚动条和缩放手柄
+            MD3::WindowScrollbar(kTitleBarHeight);
+            MD3::WindowResize(280.0f, 200.0f);
 
-        ImGui::End();
+            ImGui::End();
+        }
 
         // MD3 帧结束
         MD3::EndFrame();
