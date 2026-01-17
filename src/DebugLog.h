@@ -71,93 +71,92 @@ class DebugLog {
         // - 内边距：避免文字贴边
         // - 滚动条：关闭 ImGui 自带滚动条，改用 MD3::WindowScrollbar 自绘（与主窗口一致）
         float dpi = MD3::GetContext().dpiScale;
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * dpi, 8.0f * dpi));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f * dpi, 10.0f * dpi));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 12.0f * dpi);
 
-        ImGui::BeginChild("LogScroll", ImVec2(0, 200), true, ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("LogScroll",
+                          ImVec2(0, 200),
+                          true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysUseWindowPadding);
 
         std::lock_guard<std::mutex> lock(m_mutex);
-        for (size_t i = 0; i < m_entries.size(); ++i) {
-            const auto& entry = m_entries[i];
+        // 两列：左侧时间轴（固定宽度），右侧消息（自动换行）
+        // 要求：换行后第二行与第一行正文对齐（也就是对齐到时间轴后方）
+        const float timeColWidth = ImGui::CalcTextSize("[99999.999s]").x + 6.0f * dpi;
 
-            // 级别过滤: 0=全部, 1=Info, 2=Warn, 3=Error
-            if (levelFilter > 0) {
-                if (levelFilter == 1 && entry.level != LogLevel::Info) {
-                    continue;
-                }
-                if (levelFilter == 2 && entry.level != LogLevel::Warn) {
-                    continue;
-                }
-                if (levelFilter == 3 && entry.level != LogLevel::Error) {
-                    continue;
-                }
-            }
+        if (ImGui::BeginTable("##LogTable",
+                              2,
+                              ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_PadOuterX | ImGuiTableFlags_NoSavedSettings)) {
+            ImGui::TableSetupColumn("##Time", ImGuiTableColumnFlags_WidthFixed, timeColWidth);
+            ImGui::TableSetupColumn("##Msg", ImGuiTableColumnFlags_WidthStretch);
 
-            // 搜索过滤（在 message 上做匹配，避免时间前缀影响搜索）
-            if (searchFilter && searchFilter[0] != '\0') {
-                if (entry.message.find(searchFilter) == std::string::npos) {
-                    continue;
-                }
-            }
+            for (size_t i = 0; i < m_entries.size(); ++i) {
+                const auto& entry = m_entries[i];
 
-            // 根据级别设置颜色
-            ImVec4 color;
-            switch (entry.level) {
-            case LogLevel::Warn:
-                color = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
-                break;
-            case LogLevel::Error:
-                color = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
-                break;
-            default:
-                color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // 默认颜色
-                break;
-            }
-
-            ImGui::PushStyleColor(ImGuiCol_Text, color);
-
-            // 时间前缀（灰色）
-            if (m_startTimeInited) {
-                const double sec = static_cast<double>(entry.timeMs) / 1000.0;
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                ImGui::Text("[%.3fs]", sec);
-                ImGui::PopStyleColor();
-                ImGui::SameLine(0, 8.0f);
-            }
-
-            // 高亮搜索关键字
-            if (searchFilter && searchFilter[0] != '\0') {
-                const std::string& text      = entry.message;
-                size_t             pos       = 0;
-                size_t             searchLen = std::strlen(searchFilter);
-                size_t             lastPos   = 0;
-
-                while ((pos = text.find(searchFilter, lastPos)) != std::string::npos) {
-                    if (pos > lastPos) {
-                        ImGui::TextUnformatted(text.c_str() + lastPos, text.c_str() + pos);
-                        ImGui::SameLine(0, 0);
+                // 级别过滤: 0=全部, 1=Info, 2=Warn, 3=Error
+                if (levelFilter > 0) {
+                    if (levelFilter == 1 && entry.level != LogLevel::Info) {
+                        continue;
                     }
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
-                    ImGui::TextUnformatted(text.c_str() + pos, text.c_str() + pos + searchLen);
+                    if (levelFilter == 2 && entry.level != LogLevel::Warn) {
+                        continue;
+                    }
+                    if (levelFilter == 3 && entry.level != LogLevel::Error) {
+                        continue;
+                    }
+                }
+
+                // 搜索过滤（在 message 上做匹配，避免时间前缀影响搜索）
+                if (searchFilter && searchFilter[0] != '\0') {
+                    if (entry.message.find(searchFilter) == std::string::npos) {
+                        continue;
+                    }
+                }
+
+                // 根据级别设置颜色
+                ImVec4 color;
+                switch (entry.level) {
+                case LogLevel::Warn:
+                    color = ImVec4(1.0f, 0.8f, 0.0f, 1.0f); // 黄色
+                    break;
+                case LogLevel::Error:
+                    color = ImVec4(1.0f, 0.3f, 0.3f, 1.0f); // 红色
+                    break;
+                default:
+                    color = ImGui::GetStyleColorVec4(ImGuiCol_Text); // 默认颜色
+                    break;
+                }
+
+                ImGui::TableNextRow();
+
+                // 时间列（灰色）
+                ImGui::TableNextColumn();
+                if (m_startTimeInited) {
+                    const double sec = static_cast<double>(entry.timeMs) / 1000.0;
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                    ImGui::Text("[%.3fs]", sec);
                     ImGui::PopStyleColor();
-                    ImGui::SameLine(0, 0);
-                    lastPos = pos + searchLen;
-                }
-                if (lastPos < text.length()) {
-                    ImGui::TextUnformatted(text.c_str() + lastPos);
                 } else {
-                    ImGui::NewLine();
+                    ImGui::TextUnformatted("");
                 }
-            } else {
-                ImGui::TextUnformatted(entry.message.c_str());
+
+                // 消息列（自动换行，换行后保持对齐到时间轴后方）
+                ImGui::TableNextColumn();
+                ImGui::PushStyleColor(ImGuiCol_Text, color);
+                ImGui::PushTextWrapPos(0.0f);
+                if (entry.repeatCount > 1) {
+                    std::string msg = entry.message;
+                    msg += "  x";
+                    msg += std::to_string(entry.repeatCount);
+                    ImGui::TextUnformatted(msg.c_str());
+                } else {
+                    ImGui::TextUnformatted(entry.message.c_str());
+                }
+                ImGui::PopTextWrapPos();
+                ImGui::PopStyleColor();
             }
 
-            if (entry.repeatCount > 1) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("x%u", entry.repeatCount);
-            }
-
-            ImGui::PopStyleColor();
+            ImGui::EndTable();
         }
 
         if (m_scrollToBottom && !m_paused) {
