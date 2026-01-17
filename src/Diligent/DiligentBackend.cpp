@@ -5069,7 +5069,7 @@ void DiligentBackend::RenderFrame() {
             }
 
             // 控制：重启并选择摄像头
-            if (MD3::TonalButton("Select Camera (Restart)")) {
+            if (MD3::TonalButton("Select Camera")) {
                 if (handTracker_ != nullptr) {
                     handTracker_->RestartWithCameraSelector(true);
                 }

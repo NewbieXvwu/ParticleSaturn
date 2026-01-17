@@ -14,11 +14,34 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Kill processes that may lock our output files
+function Stop-LockingProcesses([string]$exeName) {
+    $procs = Get-Process -Name $exeName -ErrorAction SilentlyContinue
+    if ($procs) {
+        Write-Host "Terminating $exeName to release file locks..."
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 function Copy-FileIfExists([string]$from, [string]$toDir) {
     if (Test-Path $from) {
-        Copy-Item -Path $from -Destination $toDir -Force
-        Write-Host "Staged: $(Split-Path -Leaf $from)"
-        return $true
+        $destPath = Join-Path $toDir (Split-Path -Leaf $from)
+        $maxRetries = 3
+        for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+                Copy-Item -Path $from -Destination $toDir -Force
+                Write-Host "Staged: $(Split-Path -Leaf $from)"
+                return $true
+            } catch [System.IO.IOException] {
+                if ($i -lt $maxRetries) {
+                    Write-Host "File locked, retrying ($i/$maxRetries)..."
+                    Start-Sleep -Milliseconds 500
+                } else {
+                    throw
+                }
+            }
+        }
     }
     Write-Host "Missing (skip): $from"
     return $false
@@ -35,6 +58,9 @@ Copy-FileIfExists (Join-Path $modelsDir "hand_landmark_full.tflite") $OutDir | O
 
 # DLL is only needed for dynamic linking.
 if ($LinkMode -eq "dll") {
+    # Kill exe that may lock the DLL before copying
+    Stop-LockingProcesses "ParticleSaturn.Diligent"
+    
     $handOutDir = Join-Path $SrcDir ("bin/{0}/{1}" -f $Platform, $HandTrackerConfig)
     Copy-FileIfExists (Join-Path $handOutDir "HandTracker.dll") $OutDir | Out-Null
     # PDB is useful for dev/debug, but optional. Copy if present.
