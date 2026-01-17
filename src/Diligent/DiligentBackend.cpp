@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../DebugLog.h"
+#include "../Localization.h"
 #include "../ErrorHandler.h"
 #include "CrashAnalyzer.h"
 #include "EngineFactoryD3D12.h"
@@ -4745,7 +4746,8 @@ void DiligentBackend::RenderFrame() {
 
             // 自定义标题栏
             constexpr float kTitleBarHeight = 40.0f;
-            MD3::WindowTitleBar("Debug", &appState_->ui.showDebugWindow);
+            const auto& str = i18n::Get();
+            MD3::WindowTitleBar(str.debugPanelTitle, &appState_->ui.showDebugWindow);
 
             // 绘制窗口背景
             {
@@ -4791,7 +4793,7 @@ void DiligentBackend::RenderFrame() {
             }
 
             // ========== 性能区域 ==========
-            if (MD3::BeginCollapsingHeader("Performance", true)) {
+            if (MD3::BeginCollapsingHeader(str.sectionPerformance, true)) {
             // 两列布局的辅助 lambda
             auto TwoColumnText = [](const char* label, const char* fmt, ...) {
                 ImGui::TableNextRow();
@@ -4813,7 +4815,7 @@ void DiligentBackend::RenderFrame() {
                 // FPS（带颜色）- 使用 MD3 色彩方案
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("FPS");
+                ImGui::TextDisabled("%s", str.fps);
                 ImGui::TableNextColumn();
                 auto&  fpsColors = MD3::GetContext().colors;
                 ImVec4 fpsColor  = (currentFps_ >= 50.0f) ? fpsColors.primary
@@ -4824,10 +4826,10 @@ void DiligentBackend::RenderFrame() {
                 const uint32_t uiParticleCount =
                     (appState_ != nullptr) ? appState_->render.activeParticleCount : particleCount_;
                 const float uiPixelRatio = (appState_ != nullptr) ? appState_->render.pixelRatio : 1.0f;
-                TwoColumnText("Particles", "%u / %u", uiParticleCount, kParticleCountMax);
-                TwoColumnText("Pixel Ratio", "%.2f", uiPixelRatio);
-                TwoColumnText("Resolution", "%u x %u", surfaceSize_.Width, surfaceSize_.Height);
-                TwoColumnText("Backend", "%s", backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
+                TwoColumnText(str.particles, "%u / %u", uiParticleCount, kParticleCountMax);
+                TwoColumnText(str.pixelRatio, "%.2f", uiPixelRatio);
+                TwoColumnText(str.resolution, "%u x %u", surfaceSize_.Width, surfaceSize_.Height);
+                TwoColumnText(str.backend, "%s", backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
 
                 ImGui::EndTable();
             }
@@ -5036,45 +5038,45 @@ void DiligentBackend::RenderFrame() {
         }
 
         // ========== 手部追踪区域（HandTracker 集成）==========
-        if (MD3::BeginCollapsingHeader("Hand Tracking", true)) {
+        if (MD3::BeginCollapsingHeader(str.sectionHandTracking, true)) {
             HandTracking::Status st = HandTracking::Status::Unavailable;
             if (handTracker_ != nullptr) {
                 st = handTracker_->GetStatus();
             }
 
-            const char* statusText = "Unavailable";
+            const char* statusText = str.trackerUnavailable;
             ImVec4      statusCol  = ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
             switch (st) {
             case HandTracking::Status::NotStarted:
-                statusText = "Not Started";
+                statusText = str.trackerNotStarted;
                 statusCol  = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
                 break;
             case HandTracking::Status::Starting:
-                statusText = "Initializing";
+                statusText = str.trackerInitializing;
                 statusCol  = ImVec4(1.0f, 0.8f, 0.0f, 1.0f);
                 break;
             case HandTracking::Status::Ready:
-                statusText = "Ready";
+                statusText = str.trackerReady;
                 statusCol  = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
                 break;
             case HandTracking::Status::Failed:
-                statusText = "Failed";
+                statusText = str.trackerFailed;
                 statusCol  = ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
                 break;
             case HandTracking::Status::Unavailable:
             default:
-                statusText = "Unavailable";
+                statusText = str.trackerUnavailable;
                 statusCol  = ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
                 break;
             }
 
             // 控制：重启并选择摄像头
-            if (MD3::TonalButton("Select Camera")) {
+            if (MD3::TonalButton(str.cameraSelectorButton)) {
                 if (handTracker_ != nullptr) {
                     handTracker_->RestartWithCameraSelector(true);
                 }
             }
-            ImGui::TextDisabled("Selected: #%d", handTracker_ ? handTracker_->GetSelectedCamera() : -1);
+            ImGui::TextDisabled("%s: #%d", str.selectedCamera, handTracker_ ? handTracker_->GetSelectedCamera() : -1);
 
             if (ImGui::BeginTable("TrackerTable", 2, ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
@@ -5082,7 +5084,7 @@ void DiligentBackend::RenderFrame() {
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Status");
+                ImGui::TextDisabled("%s", str.labelStatus);
                 ImGui::TableNextColumn();
                 ImGui::TextColored(statusCol, "%s", statusText);
 
@@ -5092,15 +5094,15 @@ void DiligentBackend::RenderFrame() {
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextDisabled("Error Code");
+                    ImGui::TextDisabled("%s", str.labelErrorCode);
                     ImGui::TableNextColumn();
                     ImGui::Text("%d", errCode);
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextDisabled("Error Message");
+                    ImGui::TextDisabled("%s", str.labelErrorMessage);
                     ImGui::TableNextColumn();
-                    ImGui::TextWrapped("%s", errMsg.empty() ? "(empty)" : errMsg.c_str());
+                    ImGui::TextWrapped("%s", errMsg.empty() ? "-" : errMsg.c_str());
                 }
 
                 ImGui::EndTable();
@@ -5110,12 +5112,12 @@ void DiligentBackend::RenderFrame() {
 
             // 用户可调参数：让它“真的生效”
             if (appState_ != nullptr) {
-                ImGui::Text("Sensitivity:");
+                ImGui::Text("%s:", str.sensitivity);
                 MD3::Slider("##HandSensitivity", &appState_->handParams.sensitivity, 0.1f, 3.0f, "%.2f");
-                MD3::Toggle("Invert X", &appState_->handParams.invertX);
-                MD3::Toggle("Invert Y", &appState_->handParams.invertY);
+                MD3::Toggle(str.invertX, &appState_->handParams.invertX);
+                MD3::Toggle(str.invertY, &appState_->handParams.invertY);
 
-                ImGui::Text("Hand Lost Delay (frames):");
+                ImGui::Text("%s (%s):", str.handLostDelay, str.frames);
                 float delayF = static_cast<float>(appState_->handParams.handLostDelay);
                 if (MD3::Slider("##HandLostDelay", &delayF, 1.0f, 30.0f, "%.0f")) {
                     appState_->handParams.handLostDelay = static_cast<int>(delayF);
@@ -5127,28 +5129,28 @@ void DiligentBackend::RenderFrame() {
             // 追踪器调试开关
             bool debugEnabled = false;
             if (handTracker_ != nullptr && handTracker_->GetDebugMode(&debugEnabled)) {
-                if (MD3::Toggle("Show Camera Debug", &debugEnabled)) {
+                if (MD3::Toggle(str.showCameraDebug, &debugEnabled)) {
                     handTracker_->SetDebugMode(debugEnabled);
                     if (appState_ != nullptr) {
                         appState_->ui.showCameraDebug = debugEnabled;
                     }
                 }
             } else {
-                ImGui::TextDisabled("Show Camera Debug: (not available)");
+                ImGui::TextDisabled("%s: (%s)", str.showCameraDebug, str.notAvailable);
             }
 
             // SIMD mode
-            ImGui::TextDisabled("SIMD:");
+            ImGui::TextDisabled("%s:", str.simdMode);
             int simdMode = 0;
             if (handTracker_ != nullptr && handTracker_->GetSIMDMode(&simdMode)) {
-                const char* simdModes[] = {"Auto", "AVX2", "SSE", "Scalar"};
-                if (MD3::Combo("SIMD Mode", &simdMode, simdModes, 4)) {
+                const char* simdModes[] = {str.simdAuto, str.simdAVX2, str.simdSSE, str.simdScalar};
+                if (MD3::Combo(str.simdMode, &simdMode, simdModes, 4)) {
                     handTracker_->SetSIMDMode(simdMode);
                 }
                 const std::string impl = handTracker_->GetSIMDImplementation();
-                ImGui::Text("SIMD Impl: %s", impl.empty() ? "(unknown)" : impl.c_str());
+                ImGui::Text("%s: %s", str.simdCurrent, impl.empty() ? str.statusUnknown : impl.c_str());
             } else {
-                ImGui::TextDisabled("SIMD Mode: (not available)");
+                ImGui::TextDisabled("%s: (%s)", str.simdMode, str.notAvailable);
             }
 
             ImGui::Separator();
@@ -5159,32 +5161,32 @@ void DiligentBackend::RenderFrame() {
                 raw = handTracker_->GetLatestSample();
             }
 
-            ImGui::TextDisabled("Raw HandTracker Values:");
+            ImGui::TextDisabled("%s:", str.rawHandTrackerValues);
             if (ImGui::BeginTable("RawTable", 2, ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Has Hand");
+                ImGui::TextDisabled("%s", str.handDetected);
                 ImGui::TableNextColumn();
-                ImGui::Text("%s", raw.hasHand ? "Yes" : "No");
+                ImGui::Text("%s", raw.hasHand ? str.yes : str.no);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Scale");
+                ImGui::TextDisabled("%s", str.scale);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", raw.scale);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Rot X");
+                ImGui::TextDisabled("%s", str.animationRotX);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", raw.rotX);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Rot Y");
+                ImGui::TextDisabled("%s", str.animationRotY);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", raw.rotY);
 
@@ -5193,26 +5195,26 @@ void DiligentBackend::RenderFrame() {
 
             ImGui::Separator();
 
-            ImGui::TextDisabled("Smoothed Animation Values:");
+            ImGui::TextDisabled("%s:", str.smoothedAnimationValues);
             if (ImGui::BeginTable("AnimTable", 2, ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Scale");
+                ImGui::TextDisabled("%s", str.scale);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", animScale_);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Rot X");
+                ImGui::TextDisabled("%s", str.animationRotX);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", animRotX_);
 
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextDisabled("Rot Y");
+                ImGui::TextDisabled("%s", str.animationRotY);
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", animRotY_);
 
@@ -5223,31 +5225,32 @@ void DiligentBackend::RenderFrame() {
         }
 
         // ========== 视觉效果区域 ==========
-        if (MD3::BeginCollapsingHeader("Visuals")) {
+        if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
             // 暗色模式切换 - 使用 MD3 Toggle
-            if (MD3::Toggle("Dark Mode", &appState_->ui.isDarkMode)) {
+            if (MD3::Toggle(str.darkMode, &appState_->ui.isDarkMode)) {
                 // 应用 MD3 主题样式
                 MD3::ApplyImGuiStyle();
             }
 
             // Bloom 辉光效果开关
-            MD3::Toggle("Bloom", &bloomEnabled_);
+            MD3::Toggle(str.bloom, &bloomEnabled_);
 
             // 启用时显示强度滑块
             if (bloomEnabled_) {
-                MD3::Slider("  Intensity", &bloomStrength_, 0.1f, 1.5f, "%.2f");
+                ImGui::TextUnformatted(str.bloomStrength);
+                MD3::Slider("##BloomIntensity", &bloomStrength_, 0.1f, 1.5f, "%.2f");
             }
 
             ImGui::Spacing();
 
             // 玻璃模糊效果开关（窗口背景）
-            MD3::Toggle("Glass Blur", &appState_->ui.enableBlur);
+            MD3::Toggle(str.glassBlur, &appState_->ui.enableBlur);
 
             // 启用时显示强度滑块
             if (appState_->ui.enableBlur) {
-                ImGui::TextUnformatted("Blur Strength");
+                ImGui::TextUnformatted(str.blurStrength);
                 MD3::Slider("##BlurStr", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
-                ImGui::TextUnformatted("Noise");
+                ImGui::TextUnformatted(str.noise);
                 MD3::Slider("##Noise", &appState_->ui.noiseIntensity, 0.0f, 0.03f, "%.3f");
             }
 
@@ -5255,9 +5258,9 @@ void DiligentBackend::RenderFrame() {
         }
 
         // ========== 窗口区域 ==========
-        if (MD3::BeginCollapsingHeader("Window")) {
+        if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
             // VSync 模式选择 - 使用 MD3 Combo
-            ImGui::Text("VSync:");
+            ImGui::Text("%s:", str.vsync);
             int vsyncIndex = 1;
             if (appState_->render.vsyncMode == 0) {
                 vsyncIndex = 0;
@@ -5268,12 +5271,12 @@ void DiligentBackend::RenderFrame() {
             }
 
             if (appState_->render.adaptiveVSyncSupported) {
-                const char* vsyncModes[] = {"Off", "On", "Adaptive"};
+                const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn, str.vsyncAdaptive};
                 if (MD3::Combo("##VSync", &vsyncIndex, vsyncModes, 3)) {
                     appState_->render.vsyncMode = (vsyncIndex == 0) ? 0 : (vsyncIndex == 1) ? 1 : -1;
                 }
             } else {
-                const char* vsyncModes[] = {"Off", "On"};
+                const char* vsyncModes[] = {str.vsyncOff, str.vsyncOn};
                 if (vsyncIndex > 1) {
                     vsyncIndex = 1; // 不支持 Adaptive 时回退到 On
                 }
@@ -5285,40 +5288,40 @@ void DiligentBackend::RenderFrame() {
             ImGui::Dummy(ImVec2(0, 5));
 
             // 显示状态
-            ImGui::Text("Fullscreen: %s", appState_->window.isFullscreen ? "Yes" : "No");
-            ImGui::Text("Transparent: %s", appState_->backdrop.useTransparent ? "Yes" : "No");
+            ImGui::Text("%s: %s", str.fullscreen, appState_->window.isFullscreen ? str.yes : str.no);
+            ImGui::Text("%s: %s", str.transparent, appState_->backdrop.useTransparent ? str.yes : str.no);
             if (!appState_->backdrop.availableBackdrops.empty() && appState_->backdrop.backdropIndex >= 0 &&
                 appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
                 const int mode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
-                ImGui::Text("Backdrop: %s", ParticleSaturn::Win32WindowManager::BackdropName(mode));
+                ImGui::Text("%s: %s", str.backdrop, ParticleSaturn::Win32WindowManager::BackdropName(mode));
             }
             MD3::EndCollapsingHeader();
         }
 
         // ========== 高级区域 ==========
-        if (MD3::BeginCollapsingHeader("Advanced")) {
+        if (MD3::BeginCollapsingHeader(str.sectionAdvanced)) {
             // Bloom 强度 - 使用 MD3 Slider
-            ImGui::Text("Bloom Strength:");
+            ImGui::Text("%s:", str.bloomStrength);
             MD3::Slider("##Bloom", &bloomStrength_, 0.0f, 2.0f, "%.2f");
 
             ImGui::Dummy(ImVec2(0, 5));
 
             // 显示一些调试信息
-            ImGui::TextDisabled("Debug Info:");
-            ImGui::Text("Star Count: %u", starCount_);
-            ImGui::Text("Offscreen: %u x %u", surfaceSize_.Width, surfaceSize_.Height);
+            ImGui::TextDisabled("%s:", str.debugInfo);
+            ImGui::Text("%s: %u", str.starCount, starCount_);
+            ImGui::Text("%s: %u x %u", str.offscreen, surfaceSize_.Width, surfaceSize_.Height);
             MD3::EndCollapsingHeader();
         }
 
         // ========== LOD 控制区域 ==========
-        if (MD3::BeginCollapsingHeader("LOD Control")) {
+        if (MD3::BeginCollapsingHeader(str.sectionLodControl)) {
             // 锁定 LOD 开关
-            MD3::Toggle("Lock LOD", &appState_->lod.locked);
+            MD3::Toggle(str.lodLock, &appState_->lod.locked);
 
             ImGui::Dummy(ImVec2(0, 5));
 
             // 粒子数量滑块
-            ImGui::Text("Particle Count:");
+            ImGui::Text("%s:", str.particleCount);
             float particleCount = static_cast<float>(appState_->render.activeParticleCount);
             if (MD3::Slider("##ParticleCount", &particleCount, static_cast<float>(kParticleCountMin),
                             static_cast<float>(kParticleCountMax), "%.0f")) {
@@ -5328,31 +5331,31 @@ void DiligentBackend::RenderFrame() {
             ImGui::Dummy(ImVec2(0, 5));
 
             // 像素比例滑块
-            ImGui::Text("Pixel Ratio:");
+            ImGui::Text("%s:", str.pixelRatio);
             MD3::Slider("##PixelRatio", &appState_->render.pixelRatio, 0.5f, 1.0f, "%.2f");
 
             ImGui::Dummy(ImVec2(0, 5));
 
             // 密度补偿
-            ImGui::Text("Density Compensation:");
+            ImGui::Text("%s:", str.densityCompensation);
             MD3::Slider("##DensityComp", &appState_->render.densityComp, 0.0f, 2.0f, "%.2f");
 
             MD3::EndCollapsingHeader();
         }
 
         // ========== 日志区域 ==========
-        if (MD3::BeginCollapsingHeader("Log")) {
+        if (MD3::BeginCollapsingHeader(str.sectionLog)) {
             // 日志面板
             static char searchFilter[128] = "";
             static int  levelFilter       = 0; // 0=All, 1=Info, 2=Warn, 3=Error
 
-            ImGui::Text("Search:");
+            ImGui::Text("%s:", str.logSearch);
             ImGui::SameLine();
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
             ImGui::InputText("##LogSearch", searchFilter, sizeof(searchFilter));
 
-            const char* levels[] = {"All", "Info", "Warn", "Error"};
-            ImGui::Text("Level:");
+            const char* levels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
+            ImGui::Text("%s:", str.logLevel);
             ImGui::SameLine();
             MD3::Combo("##LogLevel", &levelFilter, levels, 4);
 
@@ -5361,7 +5364,7 @@ void DiligentBackend::RenderFrame() {
             // 绘制日志
             DebugLog::Instance().Draw(searchFilter, levelFilter);
 
-            if (MD3::TextButton("Clear Log")) {
+            if (MD3::TextButton(str.clearLog)) {
                 DebugLog::Instance().Clear();
             }
 

@@ -445,9 +445,8 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
 
         // Check DbgHelp availability
         if (!g_dbgHelp.Init()) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Warning: %s", g_dbgHelp.errorMessage.c_str());
-            ImGui::TextWrapped("Symbol resolution unavailable. You can still view addresses but cannot resolve them to "
-                               "function names.");
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "%s: %s", str.warningTitle, g_dbgHelp.errorMessage.c_str());
+            ImGui::TextWrapped("%s", str.symbolResolutionUnavailable);
             ImGui::Separator();
             ImGui::Spacing();
         }
