@@ -153,6 +153,7 @@ endif()
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
+    src/Diligent/DirectCompositionSwapChain.cpp
     src/Diligent/ImGuiDiligent.cpp
     src/Diligent/HandTrackerController.cpp
     src/Diligent/Win32WindowManager.cpp
@@ -196,6 +197,7 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngineD3D12-static
     Diligent-GraphicsEngineVk-static
     dwmapi
+    dcomp
 )
 
 if(PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")
