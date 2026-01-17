@@ -105,6 +105,11 @@ struct TrackerContext {
     std::mutex              init_mutex;
     std::condition_variable init_cv;
 
+    // 线程退出同步
+    std::atomic<bool>       thread_exited{false};
+    std::mutex              exit_mutex;
+    std::condition_variable exit_cv;
+
     // 调试模式
     std::atomic<bool> debug_mode{false};
     std::atomic<bool> debug_window_created{false};
@@ -156,6 +161,7 @@ struct TrackerContext {
         last_error_message.clear();
         init_complete = false;
         init_success  = false;
+        thread_exited = false;
     }
 };
 
@@ -210,6 +216,12 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             g_ctx.init_complete = true;
         }
         g_ctx.init_cv.notify_all();
+        // 通知线程退出
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.exit_mutex);
+            g_ctx.thread_exited = true;
+        }
+        g_ctx.exit_cv.notify_all();
         return;
     }
 
@@ -224,6 +236,12 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             g_ctx.init_complete = true;
         }
         g_ctx.init_cv.notify_all();
+        // 通知线程退出
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.exit_mutex);
+            g_ctx.thread_exited = true;
+        }
+        g_ctx.exit_cv.notify_all();
         return;
     }
 
@@ -263,6 +281,12 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
             g_ctx.init_complete = true;
         }
         g_ctx.init_cv.notify_all();
+        // 通知线程退出
+        {
+            std::lock_guard<std::mutex> lock(g_ctx.exit_mutex);
+            g_ctx.thread_exited = true;
+        }
+        g_ctx.exit_cv.notify_all();
         return;
     }
 
@@ -539,6 +563,13 @@ void WorkerThreadFunc(int cam_id, std::string model_dir) {
     }
     camera->close();
     std::cout << "[HandTracker] Worker thread stopped" << std::endl;
+
+    // 通知主线程：工作线程已退出
+    {
+        std::lock_guard<std::mutex> lock(g_ctx.exit_mutex);
+        g_ctx.thread_exited = true;
+    }
+    g_ctx.exit_cv.notify_all();
 }
 
 HAND_API void SetEmbeddedModels(const void* palm_data, size_t palm_size, const void* hand_data, size_t hand_size) {
@@ -624,13 +655,21 @@ HAND_API void ReleaseTracker() {
     g_ctx.running = false;
     if (g_ctx.worker_thread) {
         if (g_ctx.worker_thread->joinable()) {
-            // 超时保护: 最多等待 3 秒，防止线程阻塞导致主程序挂起
-            auto future = std::async(std::launch::async, [&]() { g_ctx.worker_thread->join(); });
-
-            if (future.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
-                std::cerr << "[HandTracker] Warning: Worker thread join timed out after 3 seconds" << std::endl;
-                // 线程超时，无法安全 join，只能 detach（线程会在进程退出时被强制终止）
-                g_ctx.worker_thread->detach();
+            // 等待工作线程响应 running=false 并自行退出
+            // 使用 condition_variable 等待线程退出通知，最多等待 3 秒
+            {
+                std::unique_lock<std::mutex> lock(g_ctx.exit_mutex);
+                bool exited = g_ctx.exit_cv.wait_for(lock, std::chrono::seconds(3),
+                                                     [] { return g_ctx.thread_exited.load(); });
+                if (exited) {
+                    // 线程已正常退出，可以安全 join
+                    g_ctx.worker_thread->join();
+                } else {
+                    // 超时，线程未能及时退出
+                    std::cerr << "[HandTracker] Warning: Worker thread did not exit within 3 seconds, detaching"
+                              << std::endl;
+                    g_ctx.worker_thread->detach();
+                }
             }
         }
         delete g_ctx.worker_thread;
