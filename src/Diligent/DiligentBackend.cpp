@@ -5072,7 +5072,6 @@ void DiligentBackend::RenderFrame() {
                     handTracker_->RestartWithCameraSelector(true);
                 }
             }
-            ImGui::SameLine();
             ImGui::TextDisabled("Selected: #%d", handTracker_ ? handTracker_->GetSelectedCamera() : -1);
 
             if (ImGui::BeginTable("TrackerTable", 2, ImGuiTableFlags_SizingStretchProp)) {
@@ -5109,7 +5108,6 @@ void DiligentBackend::RenderFrame() {
 
             // 用户可调参数：让它“真的生效”
             if (appState_ != nullptr) {
-                ImGui::TextDisabled("Parameters:");
                 ImGui::Text("Sensitivity:");
                 MD3::Slider("##HandSensitivity", &appState_->handParams.sensitivity, 0.1f, 3.0f, "%.2f");
                 MD3::Toggle("Invert X", &appState_->handParams.invertX);
@@ -5138,6 +5136,7 @@ void DiligentBackend::RenderFrame() {
             }
 
             // SIMD mode
+            ImGui::TextDisabled("SIMD:");
             int simdMode = 0;
             if (handTracker_ != nullptr && handTracker_->GetSIMDMode(&simdMode)) {
                 const char* simdModes[] = {"Auto", "AVX2", "SSE", "Scalar"};
