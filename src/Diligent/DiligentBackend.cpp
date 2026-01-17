@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <random>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "../DebugLog.h"
 #include "../Localization.h"
 #include "../ErrorHandler.h"
+#include "../generated/LogControlIcons.h"
 #include "CrashAnalyzer.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
@@ -2327,6 +2329,11 @@ void DiligentBackend::Shutdown() {
     uiNoiseSRV_.Release();
     uiNoiseTex_.Release();
 
+    logPauseIconSRV_.Release();
+    logPauseIconTex_.Release();
+    logResumeIconSRV_.Release();
+    logResumeIconTex_.Release();
+
     uiBlurSRV_D_.Release();
     uiBlurRTV_D_.Release();
     uiBlurTexD_.Release();
@@ -2903,6 +2910,64 @@ bool DiligentBackend::CreateUISceneTextures(SurfaceSize size) {
     }
 
     return true;
+}
+
+Diligent::ITextureView* DiligentBackend::GetOrCreateLogControlIconSRV(
+    bool pausedState /* true=resume icon, false=pause icon */) {
+    if (device_ == nullptr) {
+        return nullptr;
+    }
+
+    auto& tex = pausedState ? logResumeIconTex_ : logPauseIconTex_;
+    auto& srv = pausedState ? logResumeIconSRV_ : logPauseIconSRV_;
+    if (srv != nullptr) {
+        return srv.RawPtr();
+    }
+
+    const int      px  = GeneratedIcons::kLogIconPx;
+    const uint32_t rgb = GeneratedIcons::kLogIconRgb;
+    const uint8_t* a   = pausedState ? GeneratedIcons::kLogResumeAlpha : GeneratedIcons::kLogPauseAlpha;
+    if (px <= 0 || a == nullptr) {
+        return nullptr;
+    }
+
+    const uint8_t r = static_cast<uint8_t>((rgb >> 16) & 0xFFu);
+    const uint8_t g = static_cast<uint8_t>((rgb >> 8) & 0xFFu);
+    const uint8_t b = static_cast<uint8_t>(rgb & 0xFFu);
+
+    std::vector<uint8_t> rgba(static_cast<size_t>(px) * static_cast<size_t>(px) * 4u, 0u);
+    for (int i = 0; i < px * px; i++) {
+        rgba[static_cast<size_t>(i) * 4u + 0u] = r;
+        rgba[static_cast<size_t>(i) * 4u + 1u] = g;
+        rgba[static_cast<size_t>(i) * 4u + 2u] = b;
+        rgba[static_cast<size_t>(i) * 4u + 3u] = a[i];
+    }
+
+    TextureDesc texDesc{};
+    texDesc.Name      = pausedState ? "Log Resume Icon" : "Log Pause Icon";
+    texDesc.Type      = RESOURCE_DIM_TEX_2D;
+    texDesc.Width     = static_cast<Uint32>(px);
+    texDesc.Height    = static_cast<Uint32>(px);
+    texDesc.MipLevels = 1;
+    texDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
+    texDesc.BindFlags = BIND_SHADER_RESOURCE;
+    texDesc.Usage     = USAGE_IMMUTABLE;
+
+    TextureSubResData subRes{};
+    subRes.pData  = rgba.data();
+    subRes.Stride = static_cast<Uint32>(px * 4u);
+
+    TextureData texData{};
+    texData.NumSubresources = 1;
+    texData.pSubResources   = &subRes;
+
+    device_->CreateTexture(texDesc, &texData, &tex);
+    if (tex == nullptr) {
+        return nullptr;
+    }
+
+    srv = tex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+    return srv.RawPtr();
 }
 
 void DiligentBackend::RenderUISceneForUI() {
@@ -5333,30 +5398,149 @@ void DiligentBackend::RenderFrame() {
         }
 
         // ========== 日志区域 ==========
-        if (MD3::BeginCollapsingHeader(str.sectionLog)) {
-            // 日志面板
-            static char searchFilter[128] = "";
-            static int  levelFilter       = 0; // 0=All, 1=Info, 2=Warn, 3=Error
+        // 复刻 OpenGL 版：级别过滤 + 搜索 + 暂停按钮（带图标）+ 清空/复制 + 日志列表
+        if (MD3::BeginCollapsingHeader(str.sectionLog, true)) {
+            static char logSearchBuffer[128] = "";
+            static int  logLevelFilter       = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
-            ImGui::Text("%s:", str.logSearch);
+            float dpi           = appState_->ui.dpiScale;
+            float controlHeight = 40.0f * dpi;   // 与 MD3::Combo 控件高度一致
+            float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
+
+            // 第一行：级别过滤、搜索和暂停按钮
+            ImGui::SetNextItemWidth(80 * dpi);
+            const char* levelLabels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
+            MD3::Combo("##LogLevel", &logLevelFilter, levelLabels, 4);
+
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            ImGui::InputText("##LogSearch", searchFilter, sizeof(searchFilter));
+            // 搜索栏宽度 = 可用宽度 - 暂停按钮 - 间距 - 右侧留白
+            float itemSpacingX   = ImGui::GetStyle().ItemSpacing.x;
+            float rightMargin    = 12.0f * dpi; // 让暂停按钮不要贴右边界
+            float minSearchWidth = 120.0f * dpi;
+            float contentAvailX  = ImGui::GetContentRegionAvail().x;
 
-            const char* levels[] = {str.logLevelAll, str.logLevelInfo, str.logLevelWarn, str.logLevelError};
-            ImGui::Text("%s:", str.logLevel);
-            ImGui::SameLine();
-            MD3::Combo("##LogLevel", &levelFilter, levels, 4);
-
-            ImGui::Dummy(ImVec2(0, 5));
-
-            // 绘制日志
-            DebugLog::Instance().Draw(searchFilter, levelFilter);
-
-            if (MD3::TextButton(str.clearLog)) {
-                DebugLog::Instance().Clear();
+            float searchWidth = contentAvailX - buttonSize - itemSpacingX - rightMargin;
+            if (searchWidth < minSearchWidth) {
+                searchWidth = contentAvailX - buttonSize - itemSpacingX;
+            }
+            if (searchWidth < 1.0f) {
+                searchWidth = 1.0f;
             }
 
+            ImGui::SetNextItemWidth(searchWidth);
+
+            // InputText 走 ImGui 自带绘制：通过 FramePadding 精确对齐 MD3 的 40dp 高度，
+            // 并用圆角裁剪避免文字“顶出”圆角区域
+            float padY = (controlHeight - ImGui::GetFontSize()) * 0.5f;
+            if (padY < 0.0f) {
+                padY = 0.0f;
+            }
+
+            float inputRounding = controlHeight * 0.5f;
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * dpi, padY));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, inputRounding);
+
+            ImVec2 inputPos  = ImGui::GetCursorScreenPos();
+            ImVec2 inputSize = ImVec2(searchWidth, controlHeight);
+            MD3::PushRoundedClipRect(inputPos, ImVec2(inputPos.x + inputSize.x, inputPos.y + inputSize.y),
+                                     inputRounding);
+            ImGui::InputTextWithHint("##LogSearch", str.logSearch, logSearchBuffer, sizeof(logSearchBuffer));
+            MD3::PopRoundedClipRect();
+
+            ImGui::PopStyleVar(2);
+
+            // 右键粘贴菜单
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * dpi, 6.0f * dpi));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+            if (ImGui::BeginPopupContextItem("##LogSearchContext")) {
+                const char* clipText = ImGui::GetClipboardText();
+                bool        canPaste = (clipText && clipText[0] != '\0');
+                if (MD3::MenuItem(str.paste, canPaste, 36.0f * dpi)) {
+                    // 追加粘贴内容到搜索栏
+                    size_t currentLen = std::strlen(logSearchBuffer);
+                    size_t clipLen    = std::strlen(clipText);
+                    size_t maxAppend  = sizeof(logSearchBuffer) - 1 - currentLen;
+                    if (clipLen > maxAppend) {
+                        clipLen = maxAppend;
+                    }
+                    if (clipLen > 0) {
+                        std::memcpy(logSearchBuffer + currentLen, clipText, clipLen);
+                        logSearchBuffer[currentLen + clipLen] = '\0';
+                    }
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopStyleVar(2);
+
+            // 暂停/继续按钮（MD3 风格按钮 + 图标）
+            ImGui::SameLine();
+            bool isPaused = DebugLog::Instance().IsPaused();
+
+            ImGui::PushID("LogPauseBtn");
+            ImGui::InvisibleButton("##btn", ImVec2(buttonSize, buttonSize));
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            ImVec2      btnMin   = ImGui::GetItemRectMin();
+            ImVec2      btnMax   = ImGui::GetItemRectMax();
+            bool        hovered  = ImGui::IsItemHovered();
+            bool        held     = ImGui::IsItemActive();
+            bool        clicked  = ImGui::IsItemClicked(0);
+
+            const MD3::MD3ColorScheme colors =
+                MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
+            float rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
+
+            if (clicked) {
+                MD3::TriggerRippleForCurrentItem(ImGui::GetItemID(), rounding);
+                DebugLog::Instance().SetPaused(!isPaused);
+            }
+
+            if (hovered) {
+                ImGui::SetTooltip("%s", isPaused ? str.logResume : str.logPause);
+            }
+
+            // 轻微阴影（更接近 MD3 elevation）
+            {
+                ImVec4 shadow = colors.shadow;
+                shadow.w      = 0.18f;
+                ImVec2 sMin(btnMin.x, btnMin.y + 1.0f * dpi);
+                ImVec2 sMax(btnMax.x, btnMax.y + 1.0f * dpi);
+                drawList->AddRectFilled(sMin, sMax, MD3::ColorToU32(shadow), rounding);
+            }
+
+            // 底色 + 状态层
+            ImVec4 bgColor = colors.surfaceContainerHigh;
+            if (hovered || held) {
+                float alpha = held ? colors.stateLayerPressed : colors.stateLayerHover;
+                bgColor     = MD3::ApplyStateLayer(bgColor, colors.onSurface, alpha);
+            }
+            drawList->AddRectFilled(btnMin, btnMax, MD3::ColorToU32(bgColor), rounding);
+
+            // 图标：使用离线烘焙的 alpha 掩码（由原 SVG 转换得到），运行时只上传一次纹理
+            float drawIconPx = 24.0f * dpi;
+            if (auto* iconSRV = GetOrCreateLogControlIconSRV(isPaused); iconSRV != nullptr) {
+                float cx = (btnMin.x + btnMax.x) * 0.5f;
+                float cy = (btnMin.y + btnMax.y) * 0.5f;
+                ImVec2 iconMin(cx - drawIconPx * 0.5f, cy - drawIconPx * 0.5f);
+                ImVec2 iconMax(cx + drawIconPx * 0.5f, cy + drawIconPx * 0.5f);
+                drawList->AddImage(reinterpret_cast<ImTextureID>(iconSRV), iconMin, iconMax, ImVec2(0, 0), ImVec2(1, 1),
+                                   IM_COL32_WHITE);
+            }
+
+            ImGui::PopID();
+
+            // 第二行：清空和复制按钮
+            if (MD3::TonalButton(str.clearLog)) {
+                DebugLog::Instance().Clear();
+            }
+            ImGui::SameLine();
+            if (MD3::TonalButton(str.copyAllLog)) {
+                std::string filteredText = DebugLog::Instance().GetFilteredText(logSearchBuffer, logLevelFilter);
+                ImGui::SetClipboardText(filteredText.c_str());
+            }
+
+            // 日志列表（带过滤和搜索）
+            DebugLog::Instance().Draw(logSearchBuffer, logLevelFilter);
             MD3::EndCollapsingHeader();
         }
 

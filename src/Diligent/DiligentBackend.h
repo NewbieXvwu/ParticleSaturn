@@ -90,6 +90,9 @@ class DiligentBackend final {
     void SimulateParticles(float dt, float handScale, float handHas);
     void RenderSevenSegmentFPS();
 
+    // Debug Log Panel icons (pause/resume)
+    Diligent::ITextureView* GetOrCreateLogControlIconSRV(bool pausedState /* true=resume icon, false=pause icon */);
+
     Backend      backend_ = Backend::D3D12;
     SurfaceSize  surfaceSize_{};
     std::wstring lastError_;
@@ -240,6 +243,12 @@ class DiligentBackend final {
     // 噪点纹理（全分辨率，避免依赖 wrap sampler）
     Diligent::RefCntAutoPtr<Diligent::ITexture>     uiNoiseTex_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> uiNoiseSRV_;
+
+    // Debug Log 控制图标（ImGui::Image）
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     logPauseIconTex_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> logPauseIconSRV_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     logResumeIconTex_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> logResumeIconSRV_;
 
     // 七段数码管 FPS 显示
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         sevenSegPSO_;
