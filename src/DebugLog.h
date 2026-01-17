@@ -95,7 +95,7 @@ class DebugLog {
 
             const float minW = ImGui::CalcTextSize("[0.000s]").x;
             const float maxW = ImGui::CalcTextSize("[9999.999s]").x;
-            timeColWidth     = ImClamp(ImGui::CalcTextSize(buf).x, minW, maxW) + 4.0f * dpi;
+            timeColWidth     = std::clamp(ImGui::CalcTextSize(buf).x, minW, maxW) + 4.0f * dpi;
         }
 
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f * dpi, 2.0f * dpi));
