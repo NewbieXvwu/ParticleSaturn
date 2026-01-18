@@ -17,6 +17,7 @@
 #include "ShaderResourceBinding.h"
 #include "SwapChain.h"
 #include "Texture.h"
+#include "VulkanD3D12Interop.h"
 
 struct HWND__;
 using HWND = HWND__*;
@@ -52,7 +53,10 @@ class DiligentBackend final {
 
     Backend GetBackend() const { return backend_; }
 
-    bool IsInitialized() const { return swapChain_ != nullptr || dcompSwapChain_.IsInitialized(); }
+    bool IsInitialized() const {
+        return swapChain_ != nullptr || dcompSwapChain_.IsInitialized() ||
+               (useVkD3D12Interop_ && vkD3D12Interop_ && vkD3D12Interop_->IsInitialized());
+    }
 
     const std::wstring& GetLastError() const { return lastError_; }
 
@@ -99,6 +103,11 @@ class DiligentBackend final {
     bool                    CreateDCompBackBufferRTVs();
     void                    PresentFrame(int syncInterval);
 
+    // 运行时切换透明模式（仅 D3D12）
+    // @param enableTransparent true=启用透明（DComp SwapChain），false=禁用（标准 SwapChain）
+    // @return 是否成功
+    bool SwitchTransparentMode(bool enableTransparent);
+
     Backend      backend_ = Backend::D3D12;
     SurfaceSize  surfaceSize_{};
     std::wstring lastError_;
@@ -108,11 +117,15 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::ISwapChain>     swapChain_;
 
     // DirectComposition SwapChain（D3D12 透明模式专用）
-    DirectCompositionSwapChain                            dcompSwapChain_;
-    bool                                                  useDCompSwapChain_ = false;
-    static constexpr uint32_t                             kDCompBufferCount  = 3;
-    Diligent::RefCntAutoPtr<Diligent::ITexture>           dcompBackBuffers_[kDCompBufferCount];
-    Diligent::RefCntAutoPtr<Diligent::ITextureView>       dcompBackBufferRTVs_[kDCompBufferCount];
+    DirectCompositionSwapChain                      dcompSwapChain_;
+    bool                                            useDCompSwapChain_ = false;
+    static constexpr uint32_t                       kDCompBufferCount  = 3;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     dcompBackBuffers_[kDCompBufferCount];
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> dcompBackBufferRTVs_[kDCompBufferCount];
+
+    // Vulkan D3D12 互操作层（Vulkan 透明模式专用）
+    std::unique_ptr<VulkanD3D12Interop> vkD3D12Interop_;
+    bool                                useVkD3D12Interop_ = false;
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         fullscreenQuadPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> fullscreenQuadSRB_;
@@ -182,9 +195,9 @@ class DiligentBackend final {
 
     // Bloom constants for fullscreen quad
     Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
-    float                                      bloomStrength_            = 0.5f;
+    float                                      bloomStrength_             = 0.5f;
     float                                      bloomStrengthBeforeTransp_ = 0.5f; // 开启透明前的辉光值
-    bool                                       bloomEnabled_             = true;  // Bloom 开关（默认启用）
+    bool                                       bloomEnabled_              = true; // Bloom 开关（默认启用）
 
     // Bloom blur pipeline（低分辨率 Kawase blur）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomDownsamplePSO_;
