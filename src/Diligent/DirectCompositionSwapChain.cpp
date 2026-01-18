@@ -11,17 +11,31 @@ DirectCompositionSwapChain::~DirectCompositionSwapChain() {
     Shutdown();
 }
 
-bool DirectCompositionSwapChain::Init(HWND hwnd, ID3D12Device* d3d12Device, ID3D12CommandQueue* d3d12CmdQueue,
-                                      uint32_t width, uint32_t height, uint32_t bufferCount) {
+bool DirectCompositionSwapChain::InitD3D12(HWND hwnd, ID3D12Device* d3d12Device, ID3D12CommandQueue* d3d12CmdQueue,
+                                           uint32_t width, uint32_t height, uint32_t bufferCount) {
     if (hwnd == nullptr || d3d12Device == nullptr || d3d12CmdQueue == nullptr) {
-        std::cerr << "[DCompSwapChain] Invalid parameters" << std::endl;
+        std::cerr << "[DCompSwapChain] D3D12: Invalid parameters" << std::endl;
         return false;
     }
+    return InitCommon(hwnd, d3d12CmdQueue, width, height, bufferCount, Backend::D3D12);
+}
 
+bool DirectCompositionSwapChain::InitD3D11(HWND hwnd, ID3D11Device* d3d11Device, uint32_t width, uint32_t height,
+                                           uint32_t bufferCount) {
+    if (hwnd == nullptr || d3d11Device == nullptr) {
+        std::cerr << "[DCompSwapChain] D3D11: Invalid parameters" << std::endl;
+        return false;
+    }
+    return InitCommon(hwnd, d3d11Device, width, height, bufferCount, Backend::D3D11);
+}
+
+bool DirectCompositionSwapChain::InitCommon(HWND hwnd, IUnknown* deviceOrQueue, uint32_t width, uint32_t height,
+                                            uint32_t bufferCount, Backend backend) {
     hwnd_        = hwnd;
     width_       = width;
     height_      = height;
     bufferCount_ = bufferCount;
+    backendType_ = backend;
 
     // 1. 创建 DirectComposition 设备
     HRESULT hr = DCompositionCreateDevice(nullptr, IID_PPV_ARGS(&dcompDevice_));
@@ -75,7 +89,7 @@ bool DirectCompositionSwapChain::Init(HWND hwnd, ID3D12Device* d3d12Device, ID3D
     scDesc.Flags              = 0;
 
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swapChain1;
-    hr = dxgiFactory->CreateSwapChainForComposition(d3d12CmdQueue, &scDesc, nullptr, &swapChain1);
+    hr = dxgiFactory->CreateSwapChainForComposition(deviceOrQueue, &scDesc, nullptr, &swapChain1);
     if (FAILED(hr)) {
         std::cerr << "[DCompSwapChain] CreateSwapChainForComposition failed: 0x" << std::hex << hr << std::dec
                   << std::endl;
@@ -88,11 +102,16 @@ bool DirectCompositionSwapChain::Init(HWND hwnd, ID3D12Device* d3d12Device, ID3D
                   << std::endl;
         return false;
     }
-    std::cout << "[DCompSwapChain] SwapChain created with PREMULTIPLIED alpha mode" << std::endl;
+    std::cout << "[DCompSwapChain] SwapChain created with PREMULTIPLIED alpha mode ("
+              << (backend == Backend::D3D11 ? "D3D11" : "D3D12") << ")" << std::endl;
 
     // 6. 获取后缓冲引用
     for (uint32_t i = 0; i < bufferCount_; ++i) {
-        hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&backBuffers_[i]));
+        if (backend == Backend::D3D12) {
+            hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d12BackBuffers_[i]));
+        } else {
+            hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d11BackBuffers_[i]));
+        }
         if (FAILED(hr)) {
             std::cerr << "[DCompSwapChain] GetBuffer(" << i << ") failed: 0x" << std::hex << hr << std::dec
                       << std::endl;
@@ -127,7 +146,10 @@ bool DirectCompositionSwapChain::Init(HWND hwnd, ID3D12Device* d3d12Device, ID3D
 }
 
 void DirectCompositionSwapChain::Shutdown() {
-    for (auto& buf : backBuffers_) {
+    for (auto& buf : d3d12BackBuffers_) {
+        buf.Reset();
+    }
+    for (auto& buf : d3d11BackBuffers_) {
         buf.Reset();
     }
     swapChain_.Reset();
@@ -138,6 +160,7 @@ void DirectCompositionSwapChain::Shutdown() {
     width_       = 0;
     height_      = 0;
     bufferCount_ = 0;
+    d3d11CurrentBackBufferIndex_ = 0;
 }
 
 bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
@@ -146,7 +169,10 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
     }
 
     // 释放后缓冲引用
-    for (auto& buf : backBuffers_) {
+    for (auto& buf : d3d12BackBuffers_) {
+        buf.Reset();
+    }
+    for (auto& buf : d3d11BackBuffers_) {
         buf.Reset();
     }
 
@@ -161,7 +187,11 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
 
     // 重新获取后缓冲引用
     for (uint32_t i = 0; i < bufferCount_; ++i) {
-        hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&backBuffers_[i]));
+        if (backendType_ == Backend::D3D12) {
+            hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d12BackBuffers_[i]));
+        } else {
+            hr = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d11BackBuffers_[i]));
+        }
         if (FAILED(hr)) {
             std::cerr << "[DCompSwapChain] GetBuffer(" << i << ") after resize failed: 0x" << std::hex << hr << std::dec
                       << std::endl;
@@ -177,21 +207,41 @@ HRESULT DirectCompositionSwapChain::Present(uint32_t syncInterval) {
     if (!swapChain_) {
         return E_FAIL;
     }
-    return swapChain_->Present(syncInterval, 0);
+    HRESULT hr = swapChain_->Present(syncInterval, 0);
+
+    // D3D11：手动跟踪后缓冲索引（FLIP_SEQUENTIAL 模式下轮换）
+    if (backendType_ == Backend::D3D11 && SUCCEEDED(hr)) {
+        d3d11CurrentBackBufferIndex_ = (d3d11CurrentBackBufferIndex_ + 1) % bufferCount_;
+    }
+
+    return hr;
 }
 
 uint32_t DirectCompositionSwapChain::GetCurrentBackBufferIndex() const {
     if (!swapChain_) {
         return 0;
     }
-    return swapChain_->GetCurrentBackBufferIndex();
+    // D3D12：使用 IDXGISwapChain3::GetCurrentBackBufferIndex
+    // D3D11：使用手动跟踪的索引
+    if (backendType_ == Backend::D3D12) {
+        return swapChain_->GetCurrentBackBufferIndex();
+    } else {
+        return d3d11CurrentBackBufferIndex_;
+    }
 }
 
-ID3D12Resource* DirectCompositionSwapChain::GetBackBuffer(uint32_t index) const {
-    if (index >= bufferCount_) {
+ID3D12Resource* DirectCompositionSwapChain::GetBackBufferD3D12(uint32_t index) const {
+    if (index >= bufferCount_ || backendType_ != Backend::D3D12) {
         return nullptr;
     }
-    return backBuffers_[index].Get();
+    return d3d12BackBuffers_[index].Get();
+}
+
+ID3D11Texture2D* DirectCompositionSwapChain::GetBackBufferD3D11(uint32_t index) const {
+    if (index >= bufferCount_ || backendType_ != Backend::D3D11) {
+        return nullptr;
+    }
+    return d3d11BackBuffers_[index].Get();
 }
 
 } // namespace ParticleSaturn::Render

@@ -106,9 +106,9 @@ if(PARTICLESATURN_FORCE_ATL_SHIM OR NOT (PARTICLESATURN_HAS_ATLBASE_H AND PARTIC
     include_directories(BEFORE "${CMAKE_SOURCE_DIR}/src/shims/atl")
 endif()
 
-# Build only what we need from DiligentCore for now (Vulkan + D3D12).
+# Build D3D11 + D3D12 + Vulkan backends from DiligentCore.
 set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(DILIGENT_NO_DIRECT3D11 ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_DIRECT3D11 OFF CACHE BOOL "" FORCE)
 set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_METAL ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
@@ -196,13 +196,16 @@ target_include_directories(ParticleSaturn.Diligent PRIVATE
     libs/DiligentCore/ThirdParty/volk
 )
 
-# Link both backends so a single build can switch at runtime.
+# Link all three backends so a single build can switch at runtime.
 target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngine
+    Diligent-GraphicsEngineD3D11-static
     Diligent-GraphicsEngineD3D12-static
     Diligent-GraphicsEngineVk-static
     dwmapi
     dcomp
+    d3d11
+    dxgi
 )
 
 if(PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")

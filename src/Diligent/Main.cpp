@@ -78,12 +78,17 @@ float GetDpiScaleForWindow(HWND hwnd) {
 
 ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdLine) {
     // 支持：
+    //   --backend=d3d11
     //   --backend=d3d12
     //   --backend=vulkan
     // 默认：D3D12（Windows 上更常见，且无需 Vulkan SDK 即可运行）。
     if (cmdLine.find(L"--backend=vulkan") != std::wstring::npos ||
         cmdLine.find(L"--backend=vk") != std::wstring::npos) {
         return ParticleSaturn::Render::Backend::Vulkan;
+    }
+    if (cmdLine.find(L"--backend=d3d11") != std::wstring::npos ||
+        cmdLine.find(L"--backend=dx11") != std::wstring::npos) {
+        return ParticleSaturn::Render::Backend::D3D11;
     }
     return ParticleSaturn::Render::Backend::D3D12;
 }
@@ -169,12 +174,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case 'B':
                     if (!state->input.keyB_pressed) {
                         state->input.keyB_pressed = true;
-                        // 循环切换背景
-                        if (!state->backdrop.availableBackdrops.empty()) {
-                            state->backdrop.backdropIndex = (state->backdrop.backdropIndex + 1) %
-                                                            static_cast<int>(state->backdrop.availableBackdrops.size());
-                            const int mode = state->backdrop.availableBackdrops[state->backdrop.backdropIndex];
-                            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, mode, *state);
+                        // 简化切换：只有透明开(Mica)/关(Solid)两种模式，与UI一致
+                        // 仅 D3D12/D3D11 后端支持透明效果，Vulkan 不支持
+                        const auto currentBackend = backend->GetBackend();
+                        if (state->backdrop.transparentSupported &&
+                            (currentBackend == ParticleSaturn::Render::Backend::D3D12 ||
+                             currentBackend == ParticleSaturn::Render::Backend::D3D11)) {
+                            const bool newTransparent = !state->backdrop.useTransparent;
+                            const int  newMode        = newTransparent ? 3 : 0; // Mica or Solid
+                            // 更新 backdropIndex 以保持与 availableBackdrops 同步
+                            for (int i = 0; i < static_cast<int>(state->backdrop.availableBackdrops.size()); ++i) {
+                                if (state->backdrop.availableBackdrops[i] == newMode) {
+                                    state->backdrop.backdropIndex = i;
+                                    break;
+                                }
+                            }
+                            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, newMode, *state);
                         }
                     }
                     break;
@@ -263,7 +278,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     const std::wstring cmdLine = GetCommandLineW();
     std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
     const auto requestedBackend = ParseBackendFromCmdLine(cmdLine);
-    std::cout << "[Main] Backend: " << (requestedBackend == ParticleSaturn::Render::Backend::Vulkan ? "Vulkan" : "D3D12")
+    std::cout << "[Main] Backend: "
+              << (requestedBackend == ParticleSaturn::Render::Backend::D3D11 ? "D3D11"
+                  : requestedBackend == ParticleSaturn::Render::Backend::Vulkan ? "Vulkan" : "D3D12")
               << std::endl;
 
     WNDCLASSEXW wc{};

@@ -16,6 +16,7 @@
 #include "CommandQueueD3D12.h"
 #include "CrashAnalyzer.h"
 #include "DeviceContextD3D12.h"
+#include "EngineFactoryD3D11.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
@@ -24,6 +25,7 @@
 #include "ImGuiDiligent.h"
 #include "InputLayout.h"
 #include "NativeWindow.h"
+#include "RenderDeviceD3D11.h"
 #include "RenderDeviceD3D12.h"
 #include "Sampler.h"
 #include "VulkanD3D12Interop.h"
@@ -36,8 +38,10 @@
 #endif
 #include <windows.h>
 
+#include <d3d11.h>
 #include <d3d12.h>
 #include <dwmapi.h>
+#include <wrl/client.h> // For Microsoft::WRL::ComPtr
 
 namespace ParticleSaturn::Render {
 
@@ -136,12 +140,22 @@ cbuffer BloomCB
 {
     float g_BloomStrength;
     float g_Transparent;
-    float2 _pad;
+    float g_IsD3D11; // 1.0 = D3D11 (Manual SRGB), 0.0 = D3D12/Vk (HW SRGB)
+    float _pad;
 };
 
 float3 ToneMap(float3 hdr)
 {
     return hdr / (hdr + float3(1.0, 1.0, 1.0));
+}
+
+// 精确的线性到 sRGB 转换（IEC 61966-2-1）
+float3 LinearToSRGB(float3 color)
+{
+    float3 srgbLow = color * 12.92;
+    float3 srgbHigh = (pow(abs(color), 1.0/2.4) * 1.055) - 0.055;
+    float3 srgb = (color <= 0.0031308) ? srgbLow : srgbHigh;
+    return srgb;
 }
 
 float4 main(PSIn i) : SV_Target
@@ -158,6 +172,13 @@ float4 main(PSIn i) : SV_Target
     col = lerp(col, ToneMap(col), w);
 
     float alpha = lerp(1.0, maxRGB, g_Transparent);
+
+    // 如果是 D3D11，因为 SwapChain 不支持 sRGB 格式，需要手动应用 Gamma 校正
+    if (g_IsD3D11 > 0.5)
+    {
+        col = LinearToSRGB(col);
+    }
+
     // DirectComposition/DWM 要求预乘 alpha（premultiplied alpha）
     return float4(col * alpha, alpha);
 }
@@ -2058,12 +2079,11 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
 
-    // VSync 行为对齐 OpenGL 版：
+    // VSync 行为：
     // - OpenGL：若支持 Adaptive（-1），默认启用；否则回退为 On（1）。
     // - D3D12：已知 -1 在某些环境可能导致启动即白屏/卡死，故标记为不支持并强制回退到 1。
-    //
-    // 说明：Diligent 的 Present API 不支持真正意义上的“Adaptive VSync”（tear-on-miss），
-    // 这里的 -1 仅作为“尽可能低延迟”的语义占位（Vulkan 下等效 Present(0)）。
+    // - Vulkan：支持自适应 VSync。Diligent 在 SyncInterval=1 时优先选择 FIFO_RELAXED（自适应），
+    //   帧来得及则等 VBlank，帧晚则立即显示（可能撕裂），实现低延迟的帧率限制。
     if (appState_ != nullptr) {
         appState_->render.adaptiveVSyncSupported = (backend_ == Backend::Vulkan);
         if (appState_->render.vsyncMode < 0 && !appState_->render.adaptiveVSyncSupported) {
@@ -2142,8 +2162,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 
             ID3D12CommandQueue* cmdQueue = cmdQueueD3D12->GetD3D12CommandQueue();
 
-            // 初始化 DirectComposition SwapChain
-            if (!dcompSwapChain_.Init(hwnd, d3d12Device, cmdQueue, initialSize.Width, initialSize.Height, 3)) {
+            // 初始化 DirectComposition SwapChain（D3D12 版本）
+            if (!dcompSwapChain_.InitD3D12(hwnd, d3d12Device, cmdQueue, initialSize.Width, initialSize.Height, 3)) {
                 immediateContext_->UnlockCommandQueue();
                 SetLastError(L"DirectComposition SwapChain 初始化失败。");
                 return false;
@@ -2171,8 +2191,17 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 
             const auto& scFinalDesc = swapChain_->GetDesc();
             surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
+            // 诊断：打印实际使用的颜色格式（5=SRGB, 4=UNORM）
+            std::cout << "[DiligentBackend] D3D12 SwapChain ColorBufferFormat: "
+                      << static_cast<int>(scFinalDesc.ColorBufferFormat)
+                      << (scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM_SRGB   ? " (RGBA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM      ? " (RGBA8_UNORM)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM_SRGB ? " (BGRA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM      ? " (BGRA8_UNORM)"
+                                                                                         : " (Other)")
+                      << std::endl;
         }
-    } else {
+    } else if (backend == Backend::Vulkan) {
         auto* factory = GetEngineFactoryVk();
         if (factory == nullptr) {
             SetLastError(L"GetEngineFactoryVk() 返回空。");
@@ -2226,6 +2255,90 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
             const auto& scFinalDesc = swapChain_->GetDesc();
             surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
             useVkD3D12Interop_      = false;
+            // 诊断：打印实际使用的颜色格式（5=SRGB, 4=UNORM）
+            std::cout << "[DiligentBackend] Vulkan SwapChain ColorBufferFormat: "
+                      << static_cast<int>(scFinalDesc.ColorBufferFormat)
+                      << (scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM_SRGB   ? " (RGBA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM      ? " (RGBA8_UNORM)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM_SRGB ? " (BGRA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM      ? " (BGRA8_UNORM)"
+                                                                                         : " (Other)")
+                      << std::endl;
+        }
+    } else if (backend == Backend::D3D11) {
+        // D3D11 初始化
+        auto* factory = GetEngineFactoryD3D11();
+        if (factory == nullptr) {
+            SetLastError(L"GetEngineFactoryD3D11() 返回空。");
+            return false;
+        }
+
+        EngineD3D11CreateInfo engineCI{};
+#ifdef _DEBUG
+        engineCI.EnableValidation = true;
+#endif
+
+        factory->CreateDeviceAndContextsD3D11(engineCI, &device_, &immediateContext_);
+
+        if (device_ == nullptr || immediateContext_ == nullptr) {
+            SetLastError(L"D3D11 设备或上下文创建失败。");
+            return false;
+        }
+
+        // 检查是否需要透明模式（Mica/Acrylic 需要 DirectComposition SwapChain）
+        const bool needTransparent = (appState_ != nullptr && appState_->backdrop.useTransparent);
+
+        if (needTransparent) {
+            // 使用 DirectComposition SwapChain 实现透明窗口
+            std::cout << "[DiligentBackend] D3D11 Transparent mode enabled, using DirectComposition SwapChain"
+                      << std::endl;
+
+            // 获取 D3D11 设备
+            RefCntAutoPtr<IRenderDeviceD3D11> deviceD3D11;
+            device_->QueryInterface(IID_RenderDeviceD3D11,
+                                    reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D11**>(&deviceD3D11)));
+            if (!deviceD3D11) {
+                SetLastError(L"无法获取 IRenderDeviceD3D11 接口。");
+                return false;
+            }
+
+            ID3D11Device* d3d11Device = deviceD3D11->GetD3D11Device();
+
+            // 初始化 DirectComposition SwapChain（D3D11 版本）
+            if (!dcompSwapChain_.InitD3D11(hwnd, d3d11Device, initialSize.Width, initialSize.Height, 3)) {
+                SetLastError(L"D3D11 DirectComposition SwapChain 初始化失败。");
+                return false;
+            }
+
+            // 创建 Diligent 后缓冲 RTV
+            if (!CreateDCompBackBufferRTVs()) {
+                SetLastError(L"创建 D3D11 DirectComposition 后缓冲 RTV 失败。");
+                return false;
+            }
+
+            useDCompSwapChain_ = true;
+            surfaceSize_       = {dcompSwapChain_.GetWidth(), dcompSwapChain_.GetHeight()};
+        } else {
+            // 非透明模式：使用 Diligent 标准 SwapChain
+            FullScreenModeDesc fsDesc{};
+            factory->CreateSwapChainD3D11(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
+
+            if (swapChain_ == nullptr) {
+                SetLastError(L"D3D11 SwapChain 创建失败。");
+                return false;
+            }
+
+            const auto& scFinalDesc = swapChain_->GetDesc();
+            surfaceSize_            = {scFinalDesc.Width, scFinalDesc.Height};
+            // 诊断：打印实际使用的颜色格式
+            std::cout << "[DiligentBackend] D3D11 SwapChain ColorBufferFormat: "
+                      << static_cast<int>(scFinalDesc.ColorBufferFormat)
+                      << (scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM_SRGB   ? " (RGBA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_RGBA8_UNORM      ? " (RGBA8_UNORM)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM_SRGB ? " (BGRA8_UNORM_SRGB)"
+                          : scFinalDesc.ColorBufferFormat == TEX_FORMAT_BGRA8_UNORM      ? " (BGRA8_UNORM)"
+                                                                                         : " (Other)")
+                      << std::endl;
         }
     }
 
@@ -4755,13 +4868,15 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
             struct BloomCB {
                 float strength;
                 float transparent;
-                float pad[2];
+                float isD3D11; // pad[0] -> isD3D11
+                float pad;
             };
 
             auto* cb        = static_cast<BloomCB*>(mapped);
             cb->strength    = bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f;
             cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
-            cb->pad[0] = cb->pad[1] = 0.0f;
+            cb->isD3D11     = (backend_ == Backend::D3D11) ? 1.0f : 0.0f;
+            cb->pad         = 0.0f;
             immediateContext_->UnmapBuffer(bloomConstants_, MAP_WRITE);
         }
     }
@@ -5071,7 +5186,7 @@ void DiligentBackend::RenderFrame() {
                     TwoColumnText(str.particles, "%u / %u", uiParticleCount, kParticleCountMax);
                     TwoColumnText(str.pixelRatio, "%.2f", uiPixelRatio);
                     TwoColumnText(str.resolution, "%u x %u", surfaceSize_.Width, surfaceSize_.Height);
-                    TwoColumnText(str.backend, "%s", backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
+                    TwoColumnText(str.backend, "%s", backend_ == Backend::D3D11 ? "D3D11" : backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
 
                     ImGui::EndTable();
                 }
@@ -5804,18 +5919,19 @@ void DiligentBackend::RenderFrame() {
 
     // 7. Present
     // VSync：
-    // - 0  : Off  -> Present(0)
-    // - 1  : On   -> Present(1)
-    // - -1 : Adaptive(OpenGL 语义) -> Vulkan: Present(0)；D3D12：回退到 1（避免白屏/卡死）
+    // - 0  : Off  -> Present(0) -> Vulkan: MAILBOX/IMMEDIATE (无帧率限制)
+    // - 1  : On   -> Present(1) -> Vulkan: FIFO (严格垂直同步)
+    // - -1 : Adaptive -> Present(1) -> Vulkan: FIFO_RELAXED (自适应，帧晚则撕裂)
+    // 注意：Diligent Vulkan 在 SyncInterval=1 时优先选择 FIFO_RELAXED，这正是自适应 VSync 的语义。
     int presentInterval = 1;
     if (appState_ != nullptr) {
         const int mode = appState_->render.vsyncMode;
         if (mode == 0) {
             presentInterval = 0;
-        } else if (mode == 1) {
+        } else {
+            // mode == 1 (On) 或 mode == -1 (Adaptive) 都使用 SyncInterval=1
+            // Vulkan 会根据硬件支持选择 FIFO_RELAXED（自适应）或 FIFO（标准）
             presentInterval = 1;
-        } else { // -1 或其他非法值
-            presentInterval = (backend_ == Backend::Vulkan) ? 0 : 1;
         }
     }
     PresentFrame(presentInterval);
@@ -5952,6 +6068,18 @@ bool DiligentBackend::HandleWin32Message(HWND hwnd, unsigned int msg, unsigned l
 
 ITextureView* DiligentBackend::GetCurrentBackBufferRTV() {
     if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
+        const Backend dcompBackend = dcompSwapChain_.GetBackendType();
+
+        if (dcompBackend == Backend::D3D11) {
+            // D3D11 模式：每帧动态重建当前后缓冲的 RTV
+            // 因为 D3D11 + FLIP_SEQUENTIAL 不支持同时持有多个后缓冲的 RTV
+            if (!UpdateD3D11CurrentBackBufferRTV()) {
+                return nullptr;
+            }
+            return dcompBackBufferRTVs_[0].RawPtr();
+        }
+
+        // D3D12 模式：使用预创建的 RTV
         const uint32_t idx = dcompSwapChain_.GetCurrentBackBufferIndex();
         if (idx < kDCompBufferCount && dcompBackBufferRTVs_[idx]) {
             return dcompBackBufferRTVs_[idx].RawPtr();
@@ -5968,49 +6096,159 @@ ITextureView* DiligentBackend::GetCurrentBackBufferRTV() {
 }
 
 bool DiligentBackend::CreateDCompBackBufferRTVs() {
+    OutputDebugStringA("[DiligentBackend] CreateDCompBackBufferRTVs() called\n");
     if (!dcompSwapChain_.IsInitialized() || !device_) {
-        return false;
-    }
-
-    // 尝试获取 D3D12 设备接口
-    RefCntAutoPtr<IRenderDeviceD3D12> deviceD3D12;
-    device_->QueryInterface(IID_RenderDeviceD3D12,
-                            reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D12**>(&deviceD3D12)));
-    if (!deviceD3D12) {
-        std::cerr << "[DiligentBackend] Failed to query IRenderDeviceD3D12" << std::endl;
+        OutputDebugStringA("[DiligentBackend] CreateDCompBackBufferRTVs: dcompSwapChain_ or device_ not ready\n");
         return false;
     }
 
     const uint32_t bufferCount = dcompSwapChain_.GetBufferCount();
-    for (uint32_t i = 0; i < bufferCount && i < kDCompBufferCount; ++i) {
-        ID3D12Resource* d3d12Resource = dcompSwapChain_.GetBackBuffer(i);
-        if (!d3d12Resource) {
-            std::cerr << "[DiligentBackend] GetBackBuffer(" << i << ") returned null" << std::endl;
+    const Backend  dcompBackend = dcompSwapChain_.GetBackendType();
+
+    char dbgBuf[128];
+    sprintf_s(dbgBuf, "[DiligentBackend] CreateDCompBackBufferRTVs: bufferCount=%u, backend=%d\n",
+              bufferCount, static_cast<int>(dcompBackend));
+    OutputDebugStringA(dbgBuf);
+
+    if (dcompBackend == Backend::D3D12) {
+        // D3D12 路径
+        RefCntAutoPtr<IRenderDeviceD3D12> deviceD3D12;
+        device_->QueryInterface(IID_RenderDeviceD3D12,
+                                reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D12**>(&deviceD3D12)));
+        if (!deviceD3D12) {
+            std::cerr << "[DiligentBackend] Failed to query IRenderDeviceD3D12" << std::endl;
             return false;
         }
 
-        // 从 D3D12 资源创建 Diligent 纹理
-        dcompBackBuffers_[i].Release();
-        deviceD3D12->CreateTextureFromD3DResource(d3d12Resource, RESOURCE_STATE_PRESENT, &dcompBackBuffers_[i]);
-        if (!dcompBackBuffers_[i]) {
-            std::cerr << "[DiligentBackend] CreateTextureFromD3DResource failed for buffer " << i << std::endl;
+        for (uint32_t i = 0; i < bufferCount && i < kDCompBufferCount; ++i) {
+            ID3D12Resource* d3d12Resource = dcompSwapChain_.GetBackBufferD3D12(i);
+            if (!d3d12Resource) {
+                std::cerr << "[DiligentBackend] GetBackBufferD3D12(" << i << ") returned null" << std::endl;
+                return false;
+            }
+
+            // 从 D3D12 资源创建 Diligent 纹理
+            dcompBackBuffers_[i].Release();
+            deviceD3D12->CreateTextureFromD3DResource(d3d12Resource, RESOURCE_STATE_PRESENT, &dcompBackBuffers_[i]);
+            if (!dcompBackBuffers_[i]) {
+                std::cerr << "[DiligentBackend] CreateTextureFromD3DResource failed for buffer " << i << std::endl;
+                return false;
+            }
+
+            // 创建 RTV
+            TextureViewDesc rtvDesc{};
+            rtvDesc.ViewType = TEXTURE_VIEW_RENDER_TARGET;
+            rtvDesc.Format   = TEX_FORMAT_RGBA8_UNORM_SRGB; // sRGB 视图
+            dcompBackBufferRTVs_[i].Release();
+            dcompBackBuffers_[i]->CreateView(rtvDesc, &dcompBackBufferRTVs_[i]);
+            if (!dcompBackBufferRTVs_[i]) {
+                std::cerr << "[DiligentBackend] CreateView RTV failed for buffer " << i << std::endl;
+                return false;
+            }
+        }
+    } else if (dcompBackend == Backend::D3D11) {
+        // D3D11 路径
+        // 注意：D3D11 + FLIP_SEQUENTIAL 模式下，不能同时为所有后缓冲创建 RTV
+        // 只创建当前后缓冲的 RTV，每帧动态更新
+        OutputDebugStringA("[DiligentBackend] CreateDCompBackBufferRTVs: D3D11 path\n");
+        RefCntAutoPtr<IRenderDeviceD3D11> deviceD3D11;
+        device_->QueryInterface(IID_RenderDeviceD3D11,
+                                reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D11**>(&deviceD3D11)));
+        if (!deviceD3D11) {
+            OutputDebugStringA("[DiligentBackend] Failed to query IRenderDeviceD3D11\n");
+            std::cerr << "[DiligentBackend] Failed to query IRenderDeviceD3D11" << std::endl;
+            return false;
+        }
+        OutputDebugStringA("[DiligentBackend] IRenderDeviceD3D11 query OK\n");
+
+        // D3D11 只创建当前后缓冲的纹理和 RTV
+        const uint32_t currentIdx = dcompSwapChain_.GetCurrentBackBufferIndex();
+        char dbgBuf[128];
+        sprintf_s(dbgBuf, "[DiligentBackend] D3D11: Creating RTV for current buffer %u only\n", currentIdx);
+        OutputDebugStringA(dbgBuf);
+
+        ID3D11Texture2D* d3d11Texture = dcompSwapChain_.GetBackBufferD3D11(currentIdx);
+        if (!d3d11Texture) {
+            sprintf_s(dbgBuf, "[DiligentBackend] GetBackBufferD3D11(%u) returned null\n", currentIdx);
+            OutputDebugStringA(dbgBuf);
+            std::cerr << "[DiligentBackend] GetBackBufferD3D11(" << currentIdx << ") returned null" << std::endl;
+            return false;
+        }
+
+        // 从 D3D11 资源创建 Diligent 纹理
+        dcompBackBuffers_[0].Release();
+        deviceD3D11->CreateTexture2DFromD3DResource(d3d11Texture, RESOURCE_STATE_RENDER_TARGET, &dcompBackBuffers_[0]);
+        if (!dcompBackBuffers_[0]) {
+            OutputDebugStringA("[DiligentBackend] CreateTexture2DFromD3DResource failed\n");
+            std::cerr << "[DiligentBackend] CreateTexture2DFromD3DResource (D3D11) failed" << std::endl;
             return false;
         }
 
         // 创建 RTV
+        // 注意：D3D11 不支持从 UNORM 纹理创建 SRGB 视图（D3D12 可以）
+        // 所以 D3D11 必须使用 UNORM 格式，sRGB 校正需要在 shader 中手动处理
         TextureViewDesc rtvDesc{};
         rtvDesc.ViewType = TEXTURE_VIEW_RENDER_TARGET;
-        rtvDesc.Format   = TEX_FORMAT_RGBA8_UNORM_SRGB; // sRGB 视图
-        dcompBackBufferRTVs_[i].Release();
-        dcompBackBuffers_[i]->CreateView(rtvDesc, &dcompBackBufferRTVs_[i]);
-        if (!dcompBackBufferRTVs_[i]) {
-            std::cerr << "[DiligentBackend] CreateView RTV failed for buffer " << i << std::endl;
+        rtvDesc.Format   = TEX_FORMAT_RGBA8_UNORM;
+        dcompBackBufferRTVs_[0].Release();
+        dcompBackBuffers_[0]->CreateView(rtvDesc, &dcompBackBufferRTVs_[0]);
+        if (!dcompBackBufferRTVs_[0]) {
+            OutputDebugStringA("[DiligentBackend] CreateView RTV (D3D11) failed\n");
+            std::cerr << "[DiligentBackend] CreateView RTV (D3D11) failed" << std::endl;
             return false;
         }
+        OutputDebugStringA("[DiligentBackend] D3D11 initial RTV created OK\n");
+    } else {
+        std::cerr << "[DiligentBackend] Unsupported DComp backend type" << std::endl;
+        return false;
     }
 
-    std::cout << "[DiligentBackend] Created " << bufferCount << " DComp back buffer RTVs" << std::endl;
+    std::cout << "[DiligentBackend] Created " << bufferCount << " DComp back buffer RTVs ("
+              << (dcompBackend == Backend::D3D11 ? "D3D11" : "D3D12") << ")" << std::endl;
     return true;
+}
+
+bool DiligentBackend::UpdateD3D11CurrentBackBufferRTV() {
+    // D3D11 + FLIP 模式下，每帧需要重新调用 GetBuffer(0) 获取当前后缓冲
+    // 不能使用缓存的后缓冲引用
+    if (!dcompSwapChain_.IsInitialized() || !device_) {
+        return false;
+    }
+
+    RefCntAutoPtr<IRenderDeviceD3D11> deviceD3D11;
+    device_->QueryInterface(IID_RenderDeviceD3D11,
+                            reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D11**>(&deviceD3D11)));
+    if (!deviceD3D11) {
+        return false;
+    }
+
+    // D3D11 FLIP 模式：必须每帧调用 GetBuffer(0) 获取当前后缓冲
+    IDXGISwapChain3* swapChain = dcompSwapChain_.GetSwapChain();
+    if (!swapChain) {
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11Texture;
+    HRESULT hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&d3d11Texture));
+    if (FAILED(hr) || !d3d11Texture) {
+        return false;
+    }
+
+    // 释放旧资源并重新创建
+    dcompBackBuffers_[0].Release();
+    dcompBackBufferRTVs_[0].Release();
+
+    deviceD3D11->CreateTexture2DFromD3DResource(d3d11Texture.Get(), RESOURCE_STATE_RENDER_TARGET, &dcompBackBuffers_[0]);
+    if (!dcompBackBuffers_[0]) {
+        return false;
+    }
+
+    TextureViewDesc rtvDesc{};
+    rtvDesc.ViewType = TEXTURE_VIEW_RENDER_TARGET;
+    rtvDesc.Format   = TEX_FORMAT_RGBA8_UNORM; // D3D11 不支持从 UNORM 创建 SRGB 视图
+    dcompBackBuffers_[0]->CreateView(rtvDesc, &dcompBackBufferRTVs_[0]);
+
+    return dcompBackBufferRTVs_[0] != nullptr;
 }
 
 void DiligentBackend::PresentFrame(int syncInterval) {
@@ -6032,15 +6270,15 @@ void DiligentBackend::PresentFrame(int syncInterval) {
 }
 
 bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
-    // 回退：禁用 Vulkan 透明支持，仅允许 D3D12
-    if (backend_ != Backend::D3D12) {
-        std::cerr << "[DiligentBackend] SwitchTransparentMode: backend not supported (D3D12 only)" << std::endl;
+    // 支持 D3D11 和 D3D12，Vulkan 暂不支持透明模式
+    if (backend_ != Backend::D3D12 && backend_ != Backend::D3D11) {
+        std::cerr << "[DiligentBackend] SwitchTransparentMode: backend not supported (D3D11/D3D12 only)" << std::endl;
         return false;
     }
 
     // 检查当前状态
     bool currentlyTransparent = false;
-    if (backend_ == Backend::D3D12) {
+    if (backend_ == Backend::D3D12 || backend_ == Backend::D3D11) {
         currentlyTransparent = useDCompSwapChain_;
     } else if (backend_ == Backend::Vulkan) {
         currentlyTransparent = useVkD3D12Interop_;
@@ -6092,7 +6330,7 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
     }
 
     // 4. 销毁当前 SwapChain 资源
-    if (backend_ == Backend::D3D12) {
+    if (backend_ == Backend::D3D12 || backend_ == Backend::D3D11) {
         if (useDCompSwapChain_) {
             // 释放 DComp 后缓冲
             for (auto& rtv : dcompBackBufferRTVs_) {
@@ -6152,7 +6390,7 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
 
             ID3D12CommandQueue* cmdQueue = cmdQueueD3D12->GetD3D12CommandQueue();
 
-            if (!dcompSwapChain_.Init(hwnd_, d3d12Device, cmdQueue, surfaceSize_.Width, surfaceSize_.Height,
+            if (!dcompSwapChain_.InitD3D12(hwnd_, d3d12Device, cmdQueue, surfaceSize_.Width, surfaceSize_.Height,
                                       kDCompBufferCount)) {
                 immediateContext_->UnlockCommandQueue();
                 std::cerr << "[DiligentBackend] Failed to init DComp SwapChain" << std::endl;
@@ -6163,6 +6401,30 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
 
             if (!CreateDCompBackBufferRTVs()) {
                 std::cerr << "[DiligentBackend] Failed to create DComp back buffer RTVs" << std::endl;
+                return false;
+            }
+
+            useDCompSwapChain_ = true;
+        } else if (backend_ == Backend::D3D11) {
+            // D3D11 切换到 DirectComposition 模式
+            RefCntAutoPtr<IRenderDeviceD3D11> deviceD3D11;
+            device_->QueryInterface(IID_RenderDeviceD3D11,
+                                    reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D11**>(&deviceD3D11)));
+            if (!deviceD3D11) {
+                std::cerr << "[DiligentBackend] Failed to get IRenderDeviceD3D11" << std::endl;
+                return false;
+            }
+
+            ID3D11Device* d3d11Device = deviceD3D11->GetD3D11Device();
+
+            if (!dcompSwapChain_.InitD3D11(hwnd_, d3d11Device, surfaceSize_.Width, surfaceSize_.Height,
+                                           kDCompBufferCount)) {
+                std::cerr << "[DiligentBackend] Failed to init D3D11 DComp SwapChain" << std::endl;
+                return false;
+            }
+
+            if (!CreateDCompBackBufferRTVs()) {
+                std::cerr << "[DiligentBackend] Failed to create D3D11 DComp back buffer RTVs" << std::endl;
                 return false;
             }
 
@@ -6198,6 +6460,15 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
             }
             FullScreenModeDesc fsDesc{};
             factory->CreateSwapChainD3D12(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
+            useDCompSwapChain_ = false;
+        } else if (backend_ == Backend::D3D11) {
+            auto* factory = GetEngineFactoryD3D11();
+            if (!factory) {
+                std::cerr << "[DiligentBackend] Failed to get D3D11 factory" << std::endl;
+                return false;
+            }
+            FullScreenModeDesc fsDesc{};
+            factory->CreateSwapChainD3D11(device_, immediateContext_, scDesc, fsDesc, window, &swapChain_);
             useDCompSwapChain_ = false;
         } else if (backend_ == Backend::Vulkan) {
             auto* factory = GetEngineFactoryVk();

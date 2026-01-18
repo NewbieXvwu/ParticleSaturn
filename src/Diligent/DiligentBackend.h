@@ -101,6 +101,7 @@ class DiligentBackend final {
     // DirectComposition SwapChain 辅助方法
     Diligent::ITextureView* GetCurrentBackBufferRTV();
     bool                    CreateDCompBackBufferRTVs();
+    bool                    UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
     void                    PresentFrame(int syncInterval);
 
     // 运行时切换透明模式（仅 D3D12）
