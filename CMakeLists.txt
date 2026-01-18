@@ -154,6 +154,7 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
     src/Diligent/DirectCompositionSwapChain.cpp
+    src/Diligent/VulkanD3D12Interop.cpp
     src/Diligent/ImGuiDiligent.cpp
     src/Diligent/HandTrackerController.cpp
     src/Diligent/Win32WindowManager.cpp
@@ -189,6 +190,10 @@ target_include_directories(ParticleSaturn.Diligent PRIVATE
     HandTracker/include
     libs/imgui
     libs/imgui/backends
+    # For VulkanD3D12Interop: access to VulkanHeaders.h and volk
+    libs/DiligentCore/Graphics/GraphicsEngineVulkan/include
+    libs/DiligentCore/ThirdParty/Vulkan-Headers/include
+    libs/DiligentCore/ThirdParty/volk
 )
 
 # Link both backends so a single build can switch at runtime.
@@ -332,6 +337,8 @@ target_compile_definitions(ParticleSaturn.Diligent PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
+    # 启用 volk（Vulkan 函数加载器），与 DiligentCore 保持一致
+    DILIGENT_USE_VOLK=1
     # 使用 Diligent 版的 imconfig.h（与 OpenGL 版分开）
     IMGUI_USER_CONFIG="imconfig.h"
     # 版本号（用于崩溃报告等）
@@ -343,9 +350,11 @@ if(MSVC)
     target_compile_options(ParticleSaturn.Diligent PRIVATE /utf-8)
 
     # Release 配置：生成 PDB 用于事后崩溃分析，但不泄露开发环境路径
+    # /LTCG 启用链接时代码生成，与 DiligentCore 的 /GL 编译兼容
     target_link_options(ParticleSaturn.Diligent PRIVATE
         $<$<CONFIG:Release>:/DEBUG:FULL>
         $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>
+        $<$<CONFIG:Release>:/LTCG>
     )
 
     # FastRelease 配置：不生成 PDB，最快编译速度

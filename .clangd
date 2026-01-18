@@ -4,6 +4,12 @@ CompileFlags:
     # 确保 clangd 能找到所有必要的头文件
     - -Wno-unknown-warning-option
     - -Wno-unused-command-line-argument
+    # Vulkan 相关头文件（用于 VulkanD3D12Interop）
+    - -Ilibs/DiligentCore/Graphics/GraphicsEngineVulkan/include
+    - -Ilibs/DiligentCore/ThirdParty/Vulkan-Headers/include
+    - -Ilibs/DiligentCore/ThirdParty/volk
+    # 编译定义（让 volk 正确加载）
+    - -DDILIGENT_USE_VOLK=1
 
 Diagnostics:
   Suppress:
