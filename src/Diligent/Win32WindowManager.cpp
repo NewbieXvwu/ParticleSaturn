@@ -206,7 +206,8 @@ void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
     }
 
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+    // 强制 DWM 立即刷新，避免“关闭再开启后无效果/延迟生效”的观感。
+    (void)DwmFlush();
 }
 
 } // namespace ParticleSaturn::Win32WindowManager
-
