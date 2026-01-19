@@ -2660,9 +2660,39 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     }
 
     if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
+        // DXGI ResizeBuffers 要求：必须先释放所有对旧 backbuffer 的引用，否则会返回 DXGI_ERROR_INVALID_CALL。
+        // 除了 dcompSwapChain_ 内部缓存的原生 backbuffer，这里还持有 Diligent 侧包装后的纹理/RTV 引用，
+        // 并且 IDeviceContext 也可能缓存“当前渲染目标”引用。
+        if (immediateContext_) {
+            immediateContext_->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+            immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                                SET_VERTEX_BUFFERS_FLAG_RESET);
+            immediateContext_->SetIndexBuffer(nullptr, 0, RESOURCE_STATE_TRANSITION_MODE_NONE);
+            immediateContext_->Flush();
+        }
+
+        for (auto& rtv : dcompBackBufferRTVs_) {
+            rtv.Release();
+        }
+        for (auto& buf : dcompBackBuffers_) {
+            buf.Release();
+        }
+
+        // Diligent 在 D3D12 下会延迟释放底层对象（跨帧回收）；仅 Release() 指针可能不足以让 DXGI 看到引用数归零。
+        // 这里强制 GPU 空闲并回收 stale resources，尽量保证 ResizeBuffers 一次成功。
+        if (device_) {
+            device_->IdleGPU();
+            device_->ReleaseStaleResources(true);
+        }
+
         // DirectComposition SwapChain 模式
         if (!dcompSwapChain_.Resize(newSize.Width, newSize.Height)) {
             std::cerr << "[DiligentBackend] DComp SwapChain resize failed" << std::endl;
+            // ResizeBuffers 失败时必须恢复 backbuffer RTV，否则后续帧会因为 RTV 为空而“卡死”。
+            if (!CreateDCompBackBufferRTVs()) {
+                std::cerr << "[DiligentBackend] Failed to restore DComp back buffer RTVs after resize failure"
+                          << std::endl;
+            }
             return;
         }
 
@@ -2695,6 +2725,60 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
 
     // 更新 MD3 屏幕尺寸
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
+}
+
+void DiligentBackend::RequestResize(SurfaceSize newSize) {
+    if (newSize.Width == 0 || newSize.Height == 0) {
+        return;
+    }
+    pendingResize_    = newSize;
+    hasPendingResize_ = true;
+}
+
+bool DiligentBackend::SetBackdropMode(int mode) {
+    if (appState_ == nullptr || hwnd_ == nullptr) {
+        return false;
+    }
+
+    // mode: 0=Solid, 1=Aero, 2=Acrylic, 3=Mica
+    const bool wantTransparent = (mode != 0);
+
+    const bool canUseDComp =
+        (appState_->backdrop.transparentSupported) && (backend_ == Backend::D3D12 || backend_ == Backend::D3D11);
+
+    // 与 Debug UI 的逻辑保持一致：透明开启时抑制 bloom，关闭时恢复。
+    // 注意：这里的“透明”指的是输出 alpha 参与 DWM 合成（Backdrop 开启），与是否实际销毁/重建 SwapChain 解耦。
+    const bool wasTransparent = (appState_->backdrop.useTransparent);
+    if (wasTransparent != wantTransparent) {
+        if (wantTransparent) {
+            bloomStrengthBeforeTransp_ = bloomStrength_;
+            bloomStrength_             = 0.0f;
+        } else {
+            bloomStrength_ = bloomStrengthBeforeTransp_;
+        }
+    }
+
+    if (canUseDComp) {
+        // 只在“需要透明但当前没有 DComp”时切换到 DComp。
+        // 一旦进入 DComp 模式，不再切回普通 HWND SwapChain：
+        // 在 Win11 的部分环境下，运行期反复销毁/重建 DComp SwapChain 会导致系统 Backdrop（Mica/Acrylic）后续再开启失效，
+        // 表现为：DWM 退化为纯色背景（用户侧观感：模糊彻底没了）。
+        if (wantTransparent && !useDCompSwapChain_) {
+            if (!SwitchTransparentMode(true)) {
+                return false;
+            }
+        }
+    }
+
+    // 无论是否切换 SwapChain，都同步 DWM Backdrop（并更新 appState_->backdrop.useTransparent）
+    std::cout << "[DiligentBackend] SetBackdropMode: backend="
+              << (backend_ == Backend::D3D11   ? "D3D11"
+                  : backend_ == Backend::D3D12 ? "D3D12"
+                   : backend_ == Backend::Vulkan ? "Vulkan" : "Unknown")
+              << ", mode=" << mode << ", wantTransparent=" << (wantTransparent ? "true" : "false")
+              << ", useDCompSwapChain_=" << (useDCompSwapChain_ ? "true" : "false") << std::endl;
+    ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd_, mode, *appState_);
+    return true;
 }
 
 bool DiligentBackend::CreateFullscreenQuadPSO() {
@@ -4908,6 +4992,16 @@ void DiligentBackend::RenderFrame() {
         return;
     }
 
+    // 延迟 resize：避免在 WndProc 的 WM_SIZE 里做重资源操作导致卡顿/假死。
+    // 如果 ResizeBuffers 因 DXGI_ERROR_INVALID_CALL 暂时失败，保持 pending 状态，下一帧继续尝试。
+    if (hasPendingResize_) {
+        const auto target = pendingResize_;
+        Resize(target);
+        if (surfaceSize_.Width == target.Width && surfaceSize_.Height == target.Height) {
+            hasPendingResize_ = false;
+        }
+    }
+
     // HandTracker：每帧轮询一次初始化状态（非阻塞）。
     if (handTracker_) {
         handTracker_->Tick();
@@ -5106,40 +5200,56 @@ void DiligentBackend::RenderFrame() {
             const auto&     str             = i18n::Get();
             MD3::WindowTitleBar(str.debugPanelTitle, &appState_->ui.showDebugWindow);
 
-            // 绘制窗口背景
-            {
-                ImVec2      pos   = ImGui::GetWindowPos();
-                ImVec2      size  = ImGui::GetWindowSize();
-                ImDrawList* dl    = ImGui::GetWindowDrawList();
-                ImGuiStyle& style = ImGui::GetStyle();
+                // 绘制窗口背景
+                {
+                    ImVec2      pos   = ImGui::GetWindowPos();
+                    ImVec2      size  = ImGui::GetWindowSize();
+                    ImDrawList* dl    = ImGui::GetWindowDrawList();
+                    ImGuiStyle& style = ImGui::GetStyle();
 
-                auto&  colors       = MD3::GetContext().colors;
-                auto&  ctx          = MD3::GetContext();
-                float  cornerRadius = style.WindowRounding;
-                ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
+                    auto&  colors       = MD3::GetContext().colors;
+                    auto&  ctx          = MD3::GetContext();
+                    float  cornerRadius = style.WindowRounding;
+                    ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
-                // 模糊背景：如果启用且有有效纹理
-                if (ctx.blurEnabled && ctx.blurTextureID != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-                    // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
-                    ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
-                    ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
-
-                    // 使用带圆角的图片绘制，避免黑边
-                    MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.blurTextureID), pos, endPos, uv0, uv1,
-                                         IM_COL32(255, 255, 255, 255), cornerRadius);
-
-                    // 噪点层：防 banding + 增加“材质感”
-                    if (ctx.noiseTextureID != nullptr) {
-                        const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
-                        const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
-                        const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
-                        MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(ctx.noiseTextureID), pos, endPos, uv0,
-                                             uv1, noiseCol, cornerRadius);
+                    // 模糊背景：如果启用且有有效纹理
+                    const bool wantBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : false;
+                    ITextureView* blurSRV =
+                        (wantBlur && uiAcrylicSRV_Strong_ != nullptr) ? uiAcrylicSRV_Strong_.RawPtr() : nullptr;
+                    if (wantBlur) {
+                        static bool s_warnedBlurSrvNull  = false;
+                        static bool s_warnedNoiseSrvNull = false;
+                        if (!s_warnedBlurSrvNull && uiAcrylicSRV_Strong_ == nullptr) {
+                            OutputDebugStringA("[DiligentBackend] UI blur enabled but uiAcrylicSRV_Strong_ is null\n");
+                            s_warnedBlurSrvNull = true;
+                        }
+                        if (!s_warnedNoiseSrvNull && uiNoiseSRV_ == nullptr) {
+                            OutputDebugStringA("[DiligentBackend] UI blur enabled but uiNoiseSRV_ is null\n");
+                            s_warnedNoiseSrvNull = true;
+                        }
                     }
 
-                    // 高光边框
-                    ImU32 highlight =
-                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                    if (blurSRV != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+                        // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
+                        ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+                        ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
+
+                        // 使用带圆角的图片绘制，避免黑边
+                        MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(blurSRV), pos, endPos, uv0, uv1,
+                                             IM_COL32(255, 255, 255, 255), cornerRadius);
+
+                        // 噪点层：防 banding + 增加“材质感”
+                        if (wantBlur && uiNoiseSRV_ != nullptr) {
+                            const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                            const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                            const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
+                            MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(uiNoiseSRV_.RawPtr()), pos, endPos,
+                                                 uv0, uv1, noiseCol, cornerRadius);
+                        }
+
+                        // 高光边框
+                        ImU32 highlight =
+                            appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                     dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
                 } else {
                     // 无模糊时的纯色背景
@@ -5646,27 +5756,15 @@ void DiligentBackend::RenderFrame() {
 
                 ImGui::Dummy(ImVec2(0, 5));
 
-                // 透明效果开关（简化版：只有开/关两个选项）
-                // 注意：需要 Win10 1809+ 且使用 DirectComposition SwapChain
-                // 仅 D3D12 后端支持，Vulkan 后端隐藏此选项
+                // Backdrop/透明合成开关（简化版：开=使用 Mica，关=Solid）
+                // 注意：需要 Win10 1809+ 且窗口支持 DirectComposition；为保证运行期可反复切换不失效，DComp 一旦启用将保持启用。
+                // 仅 D3D12 后端显示此选项（D3D11 可用 B 键切换）。
                 if (appState_->backdrop.transparentSupported && backend_ == Backend::D3D12) {
                     bool transparent = appState_->backdrop.useTransparent;
                     if (MD3::Toggle(str.transparent, &transparent)) {
-                        // 运行时切换 SwapChain 模式
-                        if (SwitchTransparentMode(transparent)) {
-                            // 切换透明模式：透明时使用 Mica (mode=3)，不透明时使用 Solid (mode=0)
-                            const int newMode = transparent ? 3 : 0;
-
-                            // 辉光调整：开启透明时保存当前值并设为 0，关闭时恢复
-                            if (transparent) {
-                                // 开启透明：保存当前辉光值，设为 0
-                                bloomStrengthBeforeTransp_ = bloomStrength_;
-                                bloomStrength_             = 0.0f;
-                            } else {
-                                // 关闭透明：恢复之前的辉光值
-                                bloomStrength_ = bloomStrengthBeforeTransp_;
-                            }
-
+                        // 透明时使用 Mica (mode=3)，不透明时使用 Solid (mode=0)
+                        const int newMode = transparent ? 3 : 0;
+                        if (SetBackdropMode(newMode)) {
                             // 更新 backdropIndex 以匹配新模式
                             for (int i = 0; i < static_cast<int>(appState_->backdrop.availableBackdrops.size()); ++i) {
                                 if (appState_->backdrop.availableBackdrops[i] == newMode) {
@@ -5674,8 +5772,6 @@ void DiligentBackend::RenderFrame() {
                                     break;
                                 }
                             }
-
-                            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd_, newMode, *appState_);
                         }
                     }
                 }
@@ -6353,12 +6449,31 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
         }
     }
 
+    // 4.5 窗口扩展样式（WS_EX_NOREDIRECTIONBITMAP）处理：
+    // 该标志在本项目里用于 DirectComposition 透明 SwapChain。
+    //
+    // 注意：实际运行中把该标志“关掉再打开”会导致后续再开启系统 Backdrop（Mica/Acrylic）失效，
+    // 现象为：DWM 仍显示纯色背景（用户侧观感：模糊彻底没了）。
+    //
+    // 因此这里改为“只确保开启，不主动关闭”，让窗口在支持平台上始终保持该标志，
+    // 从而保证透明/Backdrop 可以稳定在运行期反复切换。
+    if (enableTransparent && hwnd_) {
+        const LONG_PTR exStyle  = GetWindowLongPtrW(hwnd_, GWL_EXSTYLE);
+        const LONG_PTR desired  = exStyle | static_cast<LONG_PTR>(WS_EX_NOREDIRECTIONBITMAP);
+        if (desired != exStyle) {
+            SetWindowLongPtrW(hwnd_, GWL_EXSTYLE, desired);
+            SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+    }
+
     // 5. 创建新的 SwapChain / Interop
     if (enableTransparent) {
         // 重要：在创建 DirectComposition 之前先设置 DWM backdrop（与启动时顺序一致）
         if (appState_ != nullptr && hwnd_ != nullptr) {
             const int micaMode = 3; // Mica
             ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd_, micaMode, *appState_);
+            DwmFlush();
         }
         if (backend_ == Backend::D3D12) {
             // 切换到 DirectComposition 模式

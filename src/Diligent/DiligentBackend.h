@@ -46,10 +46,15 @@ class DiligentBackend final {
     void Shutdown();
 
     void Resize(SurfaceSize newSize);
+    void RequestResize(SurfaceSize newSize);
     void RenderFrame();
 
     // 处理 Win32 消息（ImGui 输入）
     bool HandleWin32Message(HWND hwnd, unsigned int msg, unsigned long long wParam, long long lParam);
+
+    // 应用 DWM Backdrop 模式，并在需要时切换 SwapChain 透明模式（D3D11/D3D12）。
+    // mode: 0=Solid, 1=Aero, 2=Acrylic, 3=Mica（与 Win32WindowManager::BackdropName 一致）
+    bool SetBackdropMode(int mode);
 
     Backend GetBackend() const { return backend_; }
 
@@ -104,7 +109,7 @@ class DiligentBackend final {
     bool                    UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
     void                    PresentFrame(int syncInterval);
 
-    // 运行时切换透明模式（仅 D3D12）
+    // 运行时切换透明模式（D3D11/D3D12）
     // @param enableTransparent true=启用透明（DComp SwapChain），false=禁用（标准 SwapChain）
     // @return 是否成功
     bool SwitchTransparentMode(bool enableTransparent);
@@ -127,6 +132,10 @@ class DiligentBackend final {
     // Vulkan D3D12 互操作层（Vulkan 透明模式专用）
     std::unique_ptr<VulkanD3D12Interop> vkD3D12Interop_;
     bool                                useVkD3D12Interop_ = false;
+
+    // 延迟 resize：避免在 WndProc 里做重资源操作导致卡顿/假死
+    SurfaceSize pendingResize_{};
+    bool        hasPendingResize_ = false;
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         fullscreenQuadPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> fullscreenQuadSRB_;

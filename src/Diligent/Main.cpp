@@ -174,22 +174,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case 'B':
                     if (!state->input.keyB_pressed) {
                         state->input.keyB_pressed = true;
-                        // 简化切换：只有透明开(Mica)/关(Solid)两种模式，与UI一致
-                        // 仅 D3D12/D3D11 后端支持透明效果，Vulkan 不支持
-                        const auto currentBackend = backend->GetBackend();
-                        if (state->backdrop.transparentSupported &&
-                            (currentBackend == ParticleSaturn::Render::Backend::D3D12 ||
-                             currentBackend == ParticleSaturn::Render::Backend::D3D11)) {
-                            const bool newTransparent = !state->backdrop.useTransparent;
-                            const int  newMode        = newTransparent ? 3 : 0; // Mica or Solid
-                            // 更新 backdropIndex 以保持与 availableBackdrops 同步
-                            for (int i = 0; i < static_cast<int>(state->backdrop.availableBackdrops.size()); ++i) {
-                                if (state->backdrop.availableBackdrops[i] == newMode) {
-                                    state->backdrop.backdropIndex = i;
-                                    break;
-                                }
+                        // 与 README 约定一致：B 键循环切换可用 Backdrop（Mica/Acrylic/Solid/Aero 的子集）
+                        if (!state->backdrop.availableBackdrops.empty()) {
+                            const int n = static_cast<int>(state->backdrop.availableBackdrops.size());
+                            int       nextIndex = state->backdrop.backdropIndex + 1;
+                            if (nextIndex >= n) {
+                                nextIndex = 0;
                             }
-                            ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd, newMode, *state);
+                            const int nextMode = state->backdrop.availableBackdrops[nextIndex];
+
+                            // 先更新 index（便于 UI 立即显示正确状态）
+                            state->backdrop.backdropIndex = nextIndex;
+
+                            // 由后端统一处理：必要时切换 DComp SwapChain，并同步 DWM Backdrop
+                            (void)backend->SetBackdropMode(nextMode);
                         }
                     }
                     break;
@@ -224,7 +222,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (backend != nullptr && wParam != SIZE_MINIMIZED) {
             const auto w = static_cast<uint32_t>(LOWORD(lParam));
             const auto h = static_cast<uint32_t>(HIWORD(lParam));
-            backend->Resize({w, h});
+            backend->RequestResize({w, h});
         }
         return 0;
     }
