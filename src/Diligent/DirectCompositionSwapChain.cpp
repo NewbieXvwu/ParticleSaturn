@@ -31,6 +31,11 @@ bool DirectCompositionSwapChain::InitD3D11(HWND hwnd, ID3D11Device* d3d11Device,
 
 bool DirectCompositionSwapChain::InitCommon(HWND hwnd, IUnknown* deviceOrQueue, uint32_t width, uint32_t height,
                                             uint32_t bufferCount, Backend backend) {
+    if (bufferCount == 0 || bufferCount > 3) {
+        std::cerr << "[DCompSwapChain] Invalid bufferCount=" << bufferCount << " (supported: 1..3)" << std::endl;
+        return false;
+    }
+
     hwnd_        = hwnd;
     width_       = width;
     height_      = height;
@@ -168,22 +173,37 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
         return false;
     }
 
-    // 释放后缓冲引用
-    for (auto& buf : d3d12BackBuffers_) {
-        buf.Reset();
-    }
-    for (auto& buf : d3d11BackBuffers_) {
-        buf.Reset();
+    // DXGI ResizeBuffers 要求：调用前必须释放所有旧 backbuffer 引用，否则会 DXGI_ERROR_INVALID_CALL。
+    // 重要：这里不能“为了失败回滚”而先保存 ComPtr 副本 —— 那会增加引用计数，导致 ResizeBuffers 永远失败。
+    // 如果 ResizeBuffers 失败，可通过 GetBuffer() 重新获取当前（旧尺寸）缓冲来恢复渲染。
+    for (uint32_t i = 0; i < 3; ++i) {
+        d3d12BackBuffers_[i].Reset();
+        d3d11BackBuffers_[i].Reset();
     }
 
-    HRESULT hr = swapChain_->ResizeBuffers(bufferCount_, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    // 使用 0/UNKNOWN 保持原有 bufferCount/format，降低驱动对参数一致性的敏感度。
+    HRESULT hr = swapChain_->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
         std::cerr << "[DCompSwapChain] ResizeBuffers failed: 0x" << std::hex << hr << std::dec << std::endl;
+        // 恢复当前 backbuffer 引用，避免进入“无法继续渲染”的坏状态。
+        for (uint32_t i = 0; i < bufferCount_; ++i) {
+            HRESULT hrBuf = S_OK;
+            if (backendType_ == Backend::D3D12) {
+                hrBuf = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d12BackBuffers_[i]));
+            } else {
+                hrBuf = swapChain_->GetBuffer(i, IID_PPV_ARGS(&d3d11BackBuffers_[i]));
+            }
+            if (FAILED(hrBuf)) {
+                std::cerr << "[DCompSwapChain] GetBuffer(" << i << ") after resize failure failed: 0x" << std::hex
+                          << hrBuf << std::dec << std::endl;
+            }
+        }
         return false;
     }
 
     width_  = width;
     height_ = height;
+    d3d11CurrentBackBufferIndex_ = 0;
 
     // 重新获取后缓冲引用
     for (uint32_t i = 0; i < bufferCount_; ++i) {
@@ -197,6 +217,11 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
                       << std::endl;
             return false;
         }
+    }
+
+    // 某些情况下（尤其是频繁 resize）需要额外 commit 以确保 DComp 及时刷新。
+    if (dcompDevice_) {
+        (void)dcompDevice_->Commit();
     }
 
     std::cout << "[DCompSwapChain] Resized to " << width << "x" << height << std::endl;
