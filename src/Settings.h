@@ -5,14 +5,10 @@
 #include <cstdint>
 #include <string>
 
+#include "Diligent/RenderBackend.h"
+
 // 前向声明
 struct AppState;
-
-namespace ParticleSaturn {
-namespace Render {
-enum class Backend;
-}
-} // namespace ParticleSaturn
 
 namespace Settings {
 
