@@ -288,6 +288,12 @@ void ClearShaderCache() {
     }
 }
 
+// 检查缓存是否为空（用于判断是否需要编译）
+bool IsCacheEmpty() {
+    LoadCache();
+    return g_programCache.empty();
+}
+
 // 创建 Compute Shader 程序，支持二进制缓存
 unsigned int CreateComputeProgramImpl(const char* computeSrc) {
     // 确保缓存已加载

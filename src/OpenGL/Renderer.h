@@ -61,6 +61,7 @@ bool         CheckProgramLinkStatus(unsigned int program);
 // 着色器缓存管理
 void FlushShaderCache();  // 保存缓存到磁盘（程序退出前调用）
 void ClearShaderCache();  // 清除所有缓存
+bool IsCacheEmpty();      // 检查缓存是否为空（用于判断是否需要编译）
 
 // Compute Shader 程序创建（支持缓存）
 unsigned int CreateComputeProgramImpl(const char* computeSrc);

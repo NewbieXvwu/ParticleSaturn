@@ -22,6 +22,7 @@
 #include "ParticleSystem.h"
 #include "Renderer.h"
 #include "Shaders.h"
+#include "ShaderCompileProgress.h"
 #include "UIManager.h"
 #include "Utils.h"
 #include "WindowManager.h"
@@ -413,14 +414,76 @@ int main() {
     // 这可以显著加快程序启动速度（节省字体加载和着色器编译时间）
     // appState.ui.imguiInitialized 标志用于跟踪初始化状态
 
+    // 检测是否需要编译着色器（缓存为空时）
+    const bool needsCompile = Renderer::IsCacheEmpty();
+
+    // 如果需要编译，提前初始化 ImGui 以显示进度条
+    if (needsCompile) {
+        UIManager::Init(window, appState);
+        appState.ui.imguiInitialized = true;
+    }
+
+    // 进度条状态
+    ShaderCompileProgress::ProgressRenderer progressRenderer;
+    const int                               kTotalShaderSteps = 7; // 6 个普通着色器 + 1 个计算着色器
+    progressRenderer.SetTotal(kTotalShaderSteps);
+    auto lastFrameTime = std::chrono::steady_clock::now();
+
+    // 进度条渲染函数
+    auto renderProgress = [&]() {
+        if (!needsCompile) return;
+
+        auto  now = std::chrono::steady_clock::now();
+        float dt  = std::chrono::duration<float>(now - lastFrameTime).count();
+        lastFrameTime = now;
+
+        // 限制 dt 避免跳跃
+        if (dt > 0.1f) dt = 0.1f;
+
+        // 渲染进度条
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        progressRenderer.Render(appState.ui.isDarkMode, dt);
+
+        ImGui::Render();
+        glViewport(0, 0, appState.window.width, appState.window.height);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    };
+
+    // 渲染初始进度
+    renderProgress();
+
     // 创建着色器程序
     ErrorHandler::SetStage(ErrorHandler::AppStage::SHADER_COMPILE);
-    unsigned int pSaturn  = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
-    unsigned int pStar    = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
-    unsigned int pUI      = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
-    unsigned int pQuad    = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
-    unsigned int pBlur    = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
+    unsigned int pSaturn = Renderer::CreateProgram(Shaders::VertexSaturn, Shaders::FragmentSaturn);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
+    unsigned int pStar = Renderer::CreateProgram(Shaders::VertexStar, Shaders::FragmentStar);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
+    unsigned int pUI = Renderer::CreateProgram(Shaders::VertexUI, Shaders::FragmentUI);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
+    unsigned int pQuad = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentQuad);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
+    unsigned int pBlur = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentBlur);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
     unsigned int pAcrylic = Renderer::CreateProgram(Shaders::VertexQuad, Shaders::FragmentAcrylic);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     // 检查核心着色器是否编译成功
     if (!pSaturn || !pStar || !pUI || !pQuad || !pBlur || !pAcrylic) {
@@ -444,6 +507,9 @@ int main() {
 
     // 创建计算着色器（使用缓存）
     unsigned int pComp = Renderer::CreateComputeProgram(Shaders::ComputeSaturn);
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
     if (pComp == 0) {
         std::cerr << "[Main] Fatal: Compute shader creation failed" << std::endl;
         ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader creation failed");

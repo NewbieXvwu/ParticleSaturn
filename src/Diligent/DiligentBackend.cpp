@@ -1,13 +1,17 @@
 #include "DiligentBackend.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <future>
 #include <random>
+#include <thread>
 #include <vector>
 
 #include "../DebugLog.h"
@@ -15,6 +19,7 @@
 #include "../Localization.h"
 #include "../Settings.h"
 #include "../ShaderCache.h"
+#include "../ShaderCompileProgress.h"
 #include "../generated/LogControlIcons.h"
 #include "ArchiverFactoryLoader.h"
 #include "CommandQueueD3D12.h"
@@ -2401,6 +2406,66 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
     }
 
+    // 检测是否需要编译着色器（缓存未命中时）
+    // 如果 RenderStateCache 的 ContentVersion 为 ~0u，说明缓存未加载成功
+    const bool needsCompile = !renderStateCache_ || renderStateCache_->GetContentVersion() == static_cast<Uint32>(~0u);
+
+    // 提前初始化 ImGui（用于显示编译进度条）
+    hwnd_  = hwnd;
+    imgui_ = std::make_unique<UI::ImGuiDiligent>();
+    bool imguiOk = false;
+    if (useDCompSwapChain_) {
+        imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
+    } else if (useVkD3D12Interop_ && vkD3D12Interop_) {
+        imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
+    } else {
+        imguiOk = imgui_->Init(hwnd, backend, device_, swapChain_);
+    }
+    if (!imguiOk) {
+        if (lastError_.empty()) {
+            SetLastError(L"ImGui 初始化失败。");
+        }
+        return false;
+    }
+
+    // 进度条状态
+    ShaderCompileProgress::ProgressRenderer progressRenderer;
+    const int kTotalPSOSteps = 7; // FullscreenQuad, Bloom, Acrylic, Starfield, Particle, ParticleCompute, SevenSegment
+    progressRenderer.SetTotal(kTotalPSOSteps);
+    const bool isDarkMode = Win32WindowManager::IsSystemDarkMode();
+    auto lastFrameTime = std::chrono::steady_clock::now();
+
+    // 进度条渲染辅助 lambda
+    auto renderProgress = [&]() {
+        if (!needsCompile) return; // 缓存命中时不显示进度条
+
+        auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - lastFrameTime).count();
+        lastFrameTime = now;
+
+        // 开始 ImGui 帧
+        imgui_->NewFrame();
+        ImGui::NewFrame();
+
+        // 渲染进度条
+        progressRenderer.Render(isDarkMode, dt);
+
+        // 结束 ImGui 帧
+        ImGui::Render();
+
+        // 获取 RTV 并渲染
+        ITextureView* pRTV = GetCurrentBackBufferRTV();
+        if (pRTV) {
+            imgui_->Render(immediateContext_, pRTV);
+        }
+
+        // Present
+        PresentFrame(0);
+    };
+
+    // 显示初始进度
+    renderProgress();
+
     OutputDebugStringA("[DiligentBackend] Creating FullscreenQuadPSO...\n");
     if (!CreateFullscreenQuadPSO()) {
         OutputDebugStringA("[DiligentBackend] CreateFullscreenQuadPSO FAILED!\n");
@@ -2410,6 +2475,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
     OutputDebugStringA("[DiligentBackend] FullscreenQuadPSO OK\n");
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     OutputDebugStringA("[DiligentBackend] Creating OffscreenRenderTarget...\n");
     if (!CreateOffscreenRenderTarget(surfaceSize_)) {
@@ -2432,6 +2499,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
     OutputDebugStringA("[DiligentBackend] BloomPSO OK\n");
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     OutputDebugStringA("[DiligentBackend] Creating AcrylicPSO...\n");
     if (!CreateAcrylicPSO()) {
@@ -2442,6 +2511,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
     OutputDebugStringA("[DiligentBackend] AcrylicPSO OK\n");
+    progressRenderer.IncrementCompleted();
+    renderProgress();;
 
     OutputDebugStringA("[DiligentBackend] Creating BloomTextures...\n");
     if (!CreateBloomTextures(surfaceSize_)) {
@@ -2477,9 +2548,11 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     // 阶段 3（第 1 步）：粒子数据通路（先 CPU 复刻初始化，后续再接 compute 三缓冲轮转）。
-    // 复刻 OpenGL 旧版默认粒子规模：120 万（视觉遮蔽/密度/“不透光感”强相关）。
+    // 复刻 OpenGL 旧版默认粒子规模：120 万（视觉遮蔽/密度/"不透光感"强相关）。
     if (!CreateParticleBuffers(kParticleCountMax)) {
         if (lastError_.empty()) {
             SetLastError(L"CreateParticleBuffers() 失败。");
@@ -2508,12 +2581,17 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
+    progressRenderer.IncrementCompleted();
+    renderProgress();
+
     if (!CreateParticleComputePSO()) {
         if (lastError_.empty()) {
             SetLastError(L"CreateParticleComputePSO() 失败。");
         }
         return false;
     }
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     // 阶段 5：七段数码管 FPS 显示
     if (!CreateSevenSegmentPSO()) {
@@ -2528,30 +2606,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
-
-    // 阶段 5：ImGui 初始化
-    hwnd_  = hwnd;
-    imgui_ = std::make_unique<UI::ImGuiDiligent>();
-
-    // 根据模式选择初始化方式
-    bool imguiOk = false;
-    if (useDCompSwapChain_) {
-        // DirectComposition 模式：使用 RTV 格式和尺寸
-        imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
-    } else if (useVkD3D12Interop_ && vkD3D12Interop_) {
-        // Vulkan 互操作模式
-        imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
-    } else {
-        // 标准模式：使用 SwapChain
-        imguiOk = imgui_->Init(hwnd, backend, device_, swapChain_);
-    }
-
-    if (!imguiOk) {
-        if (lastError_.empty()) {
-            SetLastError(L"ImGui 初始化失败。");
-        }
-        return false;
-    }
+    progressRenderer.IncrementCompleted();
+    renderProgress();
 
     // 阶段 6：MD3 UI 系统初始化（使用 AppState 中的 DPI 缩放）
     const float dpiScale = appState_ ? appState_->ui.dpiScale : 1.0f;
