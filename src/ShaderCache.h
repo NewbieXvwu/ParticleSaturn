@@ -3,7 +3,6 @@
 // 提供跨 OpenGL/Diligent 版本的缓存路径管理和版本控制
 
 #include <cstdint>
-#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -33,43 +32,48 @@ struct CacheHeader {
 };
 
 // 获取缓存目录路径
-// 返回 %LOCALAPPDATA%\ParticleSaturn\
-inline std::filesystem::path GetCacheDirectory() {
+// 返回 %LOCALAPPDATA%\ParticleSaturn\ (宽字符)
+inline std::wstring GetCacheDirectory() {
     wchar_t* localAppData = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppData))) {
-        std::filesystem::path cachePath = localAppData;
+        std::wstring cachePath = localAppData;
         CoTaskMemFree(localAppData);
-        cachePath /= L"ParticleSaturn";
+        cachePath += L"\\ParticleSaturn";
 
         // 确保目录存在
-        std::error_code ec;
-        std::filesystem::create_directories(cachePath, ec);
-        if (!ec) {
-            return cachePath;
-        }
+        CreateDirectoryW(cachePath.c_str(), nullptr);
+        return cachePath;
     }
     return {};
 }
 
 // 获取 OpenGL 着色器缓存路径
-inline std::filesystem::path GetOpenGLCachePath() {
-    auto dir = GetCacheDirectory();
+inline std::wstring GetOpenGLCachePath() {
+    std::wstring dir = GetCacheDirectory();
     if (dir.empty()) return {};
-    return dir / L"shader_cache_opengl.bin";
+    return dir + L"\\shader_cache_opengl.bin";
 }
 
 // 获取 Diligent 缓存路径（按后端区分）
-inline std::filesystem::path GetDiligentCachePath(const char* backend) {
-    auto dir = GetCacheDirectory();
+inline std::wstring GetDiligentCachePath(const char* backend) {
+    std::wstring dir = GetCacheDirectory();
     if (dir.empty()) return {};
-    std::string filename = std::string("shader_cache_") + backend + ".bin";
-    return dir / filename;
+
+    // 转换 backend 名称为宽字符
+    std::wstring filename = L"\\shader_cache_";
+    while (*backend) {
+        filename += static_cast<wchar_t>(*backend++);
+    }
+    filename += L".bin";
+    return dir + filename;
 }
 
 // 读取缓存文件
 // 返回 true 并填充 outData（不含头部），如果缓存有效
 // 返回 false 如果缓存不存在、版本不匹配或损坏
-inline bool ReadCache(const std::filesystem::path& path, std::vector<uint8_t>& outData) {
+inline bool ReadCache(const std::wstring& path, std::vector<uint8_t>& outData) {
+    if (path.empty()) return false;
+
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
         return false;
@@ -101,8 +105,8 @@ inline bool ReadCache(const std::filesystem::path& path, std::vector<uint8_t>& o
 }
 
 // 写入缓存文件
-inline bool WriteCache(const std::filesystem::path& path, const void* data, size_t size) {
-    if (data == nullptr || size == 0) {
+inline bool WriteCache(const std::wstring& path, const void* data, size_t size) {
+    if (path.empty() || data == nullptr || size == 0) {
         return false;
     }
 
@@ -121,9 +125,10 @@ inline bool WriteCache(const std::filesystem::path& path, const void* data, size
 }
 
 // 删除缓存文件
-inline void InvalidateCache(const std::filesystem::path& path) {
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
+inline void InvalidateCache(const std::wstring& path) {
+    if (!path.empty()) {
+        DeleteFileW(path.c_str());
+    }
 }
 
 } // namespace ShaderCache
