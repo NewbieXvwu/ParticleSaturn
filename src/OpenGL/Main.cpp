@@ -442,29 +442,11 @@ int main() {
         return -1;
     }
 
-    // 创建计算着色器
-    unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(cs, 1, &Shaders::ComputeSaturn, 0);
-    glCompileShader(cs);
-    if (!Renderer::CheckShaderCompileStatus(cs, "Compute")) {
-        std::cerr << "[Main] Fatal: Compute shader compilation failed" << std::endl;
-        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader compilation failed");
-        glDeleteShader(cs);
-        UIManager::Shutdown();
-        glfwDestroyWindow(window);
-        glfwTerminate();
-        return -1;
-    }
-
-    unsigned int pComp = glCreateProgram();
-    glAttachShader(pComp, cs);
-    glLinkProgram(pComp);
-    glDeleteShader(cs);
-
-    if (!Renderer::CheckProgramLinkStatus(pComp)) {
-        std::cerr << "[Main] Fatal: Compute program linking failed" << std::endl;
-        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader program linking failed");
-        glDeleteProgram(pComp);
+    // 创建计算着色器（使用缓存）
+    unsigned int pComp = Renderer::CreateComputeProgram(Shaders::ComputeSaturn);
+    if (pComp == 0) {
+        std::cerr << "[Main] Fatal: Compute shader creation failed" << std::endl;
+        ErrorHandler::ShowError(i18n::Get().shaderCompileFailed, "Compute shader creation failed");
         UIManager::Shutdown();
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -1889,6 +1871,7 @@ int main() {
     // Cleanup
     // ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
     std::cout << "[Main] Shutting down..." << std::endl;
+    Renderer::FlushShaderCache(); // 保存着色器缓存到磁盘
     asyncTracker.Stop(); // 停止异步追踪线程
     CrashAnalyzer::Shutdown();
     if (appState.ui.imguiInitialized) {

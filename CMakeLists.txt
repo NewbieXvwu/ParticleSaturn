@@ -112,7 +112,7 @@ set(DILIGENT_NO_DIRECT3D11 OFF CACHE BOOL "" FORCE)
 set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_METAL ON CACHE BOOL "" FORCE)
 set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
-set(DILIGENT_NO_ARCHIVER ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_ARCHIVER OFF CACHE BOOL "" FORCE) # 启用 Archiver 以支持着色器缓存
 set(DILIGENT_NO_HLSL ON CACHE BOOL "" FORCE) # We provide GLSL for Vulkan; keep HLSL use scoped to D3D12.
 
 if(PARTICLESATURN_FAST_BUILD AND MSVC)
@@ -202,6 +202,8 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngineD3D11-static
     Diligent-GraphicsEngineD3D12-static
     Diligent-GraphicsEngineVk-static
+    Diligent-GraphicsTools    # For RenderStateCache
+    Diligent-Archiver-static  # For shader caching
     dwmapi
     dcomp
     d3d11

@@ -3,6 +3,7 @@
 #include "pch.h"
 
 #include "ParticleSystem.h"
+#include "Renderer.h"
 
 namespace ParticleSystem {
 
@@ -57,39 +58,11 @@ bool InitParticlesGPU(DoubleBufferSSBO& db) {
     DrawArraysIndirectCommand cmd = {MAX_PARTICLES, 1, 0, 0};
     glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawArraysIndirectCommand), &cmd, GL_DYNAMIC_DRAW);
 
-    // 2. 编译初始化 Compute Shader
-    unsigned int cs = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(cs, 1, &Shaders::ComputeInitSaturn, 0);
-    glCompileShader(cs);
-
-    // 检查编译错误
-    int  success;
-    char infoLog[512];
-    glGetShaderiv(cs, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        glGetShaderInfoLog(cs, 512, NULL, infoLog);
-        g_lastError = std::string("Init shader compilation failed:\n") + infoLog;
+    // 2. 编译初始化 Compute Shader（使用缓存）
+    unsigned int pInit = Renderer::CreateComputeProgram(Shaders::ComputeInitSaturn);
+    if (pInit == 0) {
+        g_lastError = "Init compute shader creation failed";
         std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
-        glDeleteShader(cs);
-        glDeleteBuffers(3, db.ssbo);
-        glDeleteBuffers(1, &db.indirectBuffer);
-        db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
-        db.indirectBuffer                    = 0;
-        return false;
-    }
-
-    unsigned int pInit = glCreateProgram();
-    glAttachShader(pInit, cs);
-    glLinkProgram(pInit);
-
-    // 检查链接错误
-    glGetProgramiv(pInit, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(pInit, 512, NULL, infoLog);
-        g_lastError = std::string("Init program linking failed:\n") + infoLog;
-        std::cerr << "[ParticleSystem] " << g_lastError << std::endl;
-        glDeleteShader(cs);
-        glDeleteProgram(pInit);
         glDeleteBuffers(3, db.ssbo);
         glDeleteBuffers(1, &db.indirectBuffer);
         db.ssbo[0] = db.ssbo[1] = db.ssbo[2] = 0;
@@ -105,8 +78,7 @@ bool InitParticlesGPU(DoubleBufferSSBO& db) {
     glDispatchCompute((MAX_PARTICLES + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 
-    // 4. 清理 Shader
-    glDeleteShader(cs);
+    // 4. 清理 Shader（不需要删除 cs，CreateComputeProgram 已处理）
     glDeleteProgram(pInit);
 
     // 5. 为三个 SSBO 设置 VAO (匹配优化后的数据结构)

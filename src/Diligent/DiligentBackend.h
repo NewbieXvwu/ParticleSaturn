@@ -14,6 +14,7 @@
 #include "RefCntAutoPtr.hpp"
 #include "RenderBackend.h"
 #include "RenderDevice.h"
+#include "RenderStateCache.h"
 #include "ShaderResourceBinding.h"
 #include "SwapChain.h"
 #include "Texture.h"
@@ -300,6 +301,9 @@ class DiligentBackend final {
 
     // Hand tracking (MediaPipe/TFLite via HandTracker library)
     std::unique_ptr<HandTracking::Controller> handTracker_;
+
+    // 着色器缓存（RenderStateCache）
+    Diligent::RefCntAutoPtr<Diligent::IRenderStateCache> renderStateCache_;
 
     // 全局应用状态（由外部传入，生命周期由调用方管理）
     AppState* appState_ = nullptr;

@@ -6,15 +6,19 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <random>
 #include <vector>
 
 #include "../DebugLog.h"
 #include "../ErrorHandler.h"
 #include "../Localization.h"
+#include "../ShaderCache.h"
 #include "../generated/LogControlIcons.h"
+#include "ArchiverFactoryLoader.h"
 #include "CommandQueueD3D12.h"
 #include "CrashAnalyzer.h"
+#include "DataBlobImpl.hpp"
 #include "DeviceContextD3D12.h"
 #include "EngineFactoryD3D11.h"
 #include "EngineFactoryD3D12.h"
@@ -1585,7 +1589,8 @@ void main()
 }
 
 RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char* name, SHADER_TYPE type,
-                                              const char* source, SHADER_SOURCE_LANGUAGE language) {
+                                              const char* source, SHADER_SOURCE_LANGUAGE language,
+                                              IRenderStateCache* cache = nullptr) {
     ShaderCreateInfo shaderCI{};
     shaderCI.Desc.Name       = name;
     shaderCI.Desc.ShaderType = type;
@@ -1594,7 +1599,17 @@ RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char*
     shaderCI.Source          = source;
 
     RefCntAutoPtr<IShader> shader;
-    device->CreateShader(shaderCI, &shader);
+
+    // 优先使用缓存创建着色器
+    if (cache != nullptr) {
+        cache->CreateShader(shaderCI, &shader);
+    }
+
+    // 如果缓存未命中或缓存不可用，直接创建
+    if (shader == nullptr) {
+        device->CreateShader(shaderCI, &shader);
+    }
+
     return shader;
 }
 
@@ -2351,6 +2366,41 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     animRotX_     = 0.4f;
     animRotY_     = 0.0f;
 
+    // 初始化着色器缓存
+    OutputDebugStringA("[DiligentBackend] Initializing RenderStateCache...\n");
+    {
+        IArchiverFactory* archiverFactory = Diligent::GetArchiverFactory();
+        if (archiverFactory != nullptr) {
+            RenderStateCacheCreateInfo cacheCI{};
+            cacheCI.pDevice          = device_;
+            cacheCI.pArchiverFactory = archiverFactory;
+            cacheCI.LogLevel         = RENDER_STATE_CACHE_LOG_LEVEL_NORMAL;
+            cacheCI.EnableHotReload  = false;
+
+            CreateRenderStateCache(cacheCI, &renderStateCache_);
+
+            if (renderStateCache_) {
+                // 尝试加载现有缓存
+                const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
+                                          : (backend_ == Backend::D3D12) ? "d3d12"
+                                                                         : "vulkan";
+                auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
+                if (!cachePath.empty()) {
+                    std::vector<uint8_t> cacheData;
+                    if (ShaderCache::ReadCache(cachePath, cacheData)) {
+                        RefCntAutoPtr<IDataBlob> dataBlob;
+                        CreateDataBlob(cacheData.size(), cacheData.data(), &dataBlob);
+                        if (dataBlob && renderStateCache_->Load(dataBlob, ShaderCache::kCacheVersion, false)) {
+                            OutputDebugStringA("[DiligentBackend] RenderStateCache loaded from disk\n");
+                        }
+                    }
+                }
+            }
+        } else {
+            OutputDebugStringA("[DiligentBackend] ArchiverFactory not available, shader caching disabled\n");
+        }
+    }
+
     OutputDebugStringA("[DiligentBackend] Creating FullscreenQuadPSO...\n");
     if (!CreateFullscreenQuadPSO()) {
         OutputDebugStringA("[DiligentBackend] CreateFullscreenQuadPSO FAILED!\n");
@@ -2527,6 +2577,23 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 }
 
 void DiligentBackend::Shutdown() {
+    // 保存着色器缓存到磁盘
+    if (renderStateCache_) {
+        const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
+                                  : (backend_ == Backend::D3D12) ? "d3d12"
+                                                                 : "vulkan";
+        auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
+        if (!cachePath.empty()) {
+            RefCntAutoPtr<IDataBlob> cacheBlob;
+            if (renderStateCache_->WriteToBlob(ShaderCache::kCacheVersion, &cacheBlob) && cacheBlob) {
+                if (ShaderCache::WriteCache(cachePath, cacheBlob->GetConstDataPtr(), cacheBlob->GetSize())) {
+                    OutputDebugStringA("[DiligentBackend] RenderStateCache saved to disk\n");
+                }
+            }
+        }
+        renderStateCache_.Release();
+    }
+
     if (handTracker_) {
         handTracker_->Shutdown();
         handTracker_.reset();
@@ -2792,9 +2859,9 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     }
 
     const auto vs =
-        CreateShaderFromSource(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+        CreateShaderFromSource(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
     const auto ps =
-        CreateShaderFromSource(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+        CreateShaderFromSource(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -2899,13 +2966,13 @@ bool DiligentBackend::CreateBloomPSO() {
     }
 
     const auto downVS = CreateShaderFromSource(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, downSources.Vertex,
-                                               downSources.Language);
+                                               downSources.Language, renderStateCache_);
     const auto downPS = CreateShaderFromSource(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, downSources.Fragment,
-                                               downSources.Language);
+                                               downSources.Language, renderStateCache_);
     const auto blurVS =
-        CreateShaderFromSource(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, blurSources.Vertex, blurSources.Language);
+        CreateShaderFromSource(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, blurSources.Vertex, blurSources.Language, renderStateCache_);
     const auto blurPS =
-        CreateShaderFromSource(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, blurSources.Fragment, blurSources.Language);
+        CreateShaderFromSource(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, blurSources.Fragment, blurSources.Language, renderStateCache_);
     if (downVS == nullptr || downPS == nullptr || blurVS == nullptr || blurPS == nullptr) {
         return false;
     }
@@ -3006,9 +3073,9 @@ bool DiligentBackend::CreateAcrylicPSO() {
     }
 
     const auto vs =
-        CreateShaderFromSource(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+        CreateShaderFromSource(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
     const auto ps =
-        CreateShaderFromSource(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+        CreateShaderFromSource(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -3759,9 +3826,9 @@ bool DiligentBackend::CreateStarfieldPSO() {
     }
 
     const auto vs =
-        CreateShaderFromSource(device_, "Starfield VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+        CreateShaderFromSource(device_, "Starfield VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
     const auto ps =
-        CreateShaderFromSource(device_, "Starfield PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+        CreateShaderFromSource(device_, "Starfield PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -3997,9 +4064,9 @@ bool DiligentBackend::CreateParticlePSO() {
     }
 
     const auto vs =
-        CreateShaderFromSource(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language);
+        CreateShaderFromSource(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
     const auto ps =
-        CreateShaderFromSource(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language);
+        CreateShaderFromSource(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -4074,7 +4141,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
     }
 
     const auto cs =
-        CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language);
+        CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language, renderStateCache_);
     if (cs == nullptr) {
         DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] Compute shader compilation failed");
         return false;

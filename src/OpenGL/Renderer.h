@@ -58,6 +58,16 @@ unsigned int CreateProgramImpl(const char* vertexSrc, const char* fragmentSrc);
 bool         CheckShaderCompileStatus(unsigned int shader, const char* type);
 bool         CheckProgramLinkStatus(unsigned int program);
 
+// 着色器缓存管理
+void FlushShaderCache();  // 保存缓存到磁盘（程序退出前调用）
+void ClearShaderCache();  // 清除所有缓存
+
+// Compute Shader 程序创建（支持缓存）
+unsigned int CreateComputeProgramImpl(const char* computeSrc);
+inline unsigned int CreateComputeProgram(const char* computeSrc) {
+    return CreateComputeProgramImpl(computeSrc);
+}
+
 // 创建着色器程序 (转发到实现)
 inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc) {
     return CreateProgramImpl(vertexSrc, fragmentSrc);
