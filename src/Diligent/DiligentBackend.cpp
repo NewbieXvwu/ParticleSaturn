@@ -13,6 +13,7 @@
 #include "../DebugLog.h"
 #include "../ErrorHandler.h"
 #include "../Localization.h"
+#include "../Settings.h"
 #include "../ShaderCache.h"
 #include "../generated/LogControlIcons.h"
 #include "ArchiverFactoryLoader.h"
@@ -2558,6 +2559,9 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
 
+    // 从注册表加载 ImGui 布局（在第一次 NewFrame 之前）
+    Settings::LoadImGuiLayout();
+
     // 如果启动时透明模式已开启，将辉光设为 0（保留默认值在 bloomStrengthBeforeTransp_ 中）
     if (appState_ != nullptr && appState_->backdrop.useTransparent) {
         bloomStrength_ = 0.0f;
@@ -2576,6 +2580,11 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
 }
 
 void DiligentBackend::Shutdown() {
+    // 保存会话状态到注册表（在释放资源之前）
+    if (appState_ != nullptr) {
+        Settings::SaveSession(*appState_, backend_);
+    }
+
     // 保存着色器缓存到磁盘
     if (renderStateCache_) {
         const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
@@ -5794,6 +5803,23 @@ void DiligentBackend::RenderFrame() {
 
             // ========== 窗口区域 ==========
             if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
+                // 图形后端切换
+                ImGui::Text("%s:", str.switchBackend);
+                int backendIndex = static_cast<int>(backend_);
+                const char* backendNames[] = {"D3D11", "D3D12", "Vulkan"};
+                if (MD3::Combo("##BackendSwitch", &backendIndex, backendNames, 3)) {
+                    if (backendIndex != static_cast<int>(backend_)) {
+                        // 用户选择了不同的后端，触发重启
+                        auto newBackend = static_cast<Backend>(backendIndex);
+                        if (Settings::RestartWithBackend(newBackend, *appState_)) {
+                            PostQuitMessage(0);
+                        }
+                    }
+                }
+                ImGui::TextDisabled("%s", str.switchBackendConfirm);
+
+                ImGui::Dummy(ImVec2(0, 5));
+
                 // VSync 模式选择 - 使用 MD3 Combo
                 ImGui::Text("%s:", str.vsync);
                 int vsyncIndex = 1;
@@ -6076,6 +6102,13 @@ void DiligentBackend::RenderFrame() {
         ITextureView* pBackBufferRTV = GetCurrentBackBufferRTV();
         if (pBackBufferRTV != nullptr) {
             imgui_->Render(immediateContext_, pBackBufferRTV);
+        }
+
+        // 检查 ImGui 是否需要保存布局（用户移动/调整窗口后）
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantSaveIniSettings) {
+            Settings::SaveImGuiLayout();
+            io.WantSaveIniSettings = false;
         }
     }
 

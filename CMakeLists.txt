@@ -158,6 +158,7 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/ImGuiDiligent.cpp
     src/Diligent/HandTrackerController.cpp
     src/Diligent/Win32WindowManager.cpp
+    src/Diligent/Settings.cpp
 
     # MD3 UI system
     src/Diligent/md3/MD3Theme.cpp

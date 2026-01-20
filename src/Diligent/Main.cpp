@@ -8,6 +8,7 @@
 #include "../DebugLog.h"
 #include "../ErrorHandler.h"
 #include "../Localization.h"
+#include "../Settings.h"
 #include "DiligentBackend.h"
 #include "RenderBackend.h"
 #include "Win32WindowManager.h"
@@ -77,11 +78,14 @@ float GetDpiScaleForWindow(HWND hwnd) {
 }
 
 ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdLine) {
+    // 优先级：命令行参数 > 注册表 > 默认值
+    //
     // 支持：
     //   --backend=d3d11
     //   --backend=d3d12
     //   --backend=vulkan
-    // 默认：D3D12（Windows 上更常见，且无需 Vulkan SDK 即可运行）。
+
+    // 1. 命令行参数优先
     if (cmdLine.find(L"--backend=vulkan") != std::wstring::npos ||
         cmdLine.find(L"--backend=vk") != std::wstring::npos) {
         return ParticleSaturn::Render::Backend::Vulkan;
@@ -90,6 +94,19 @@ ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdL
         cmdLine.find(L"--backend=dx11") != std::wstring::npos) {
         return ParticleSaturn::Render::Backend::D3D11;
     }
+    if (cmdLine.find(L"--backend=d3d12") != std::wstring::npos ||
+        cmdLine.find(L"--backend=dx12") != std::wstring::npos) {
+        return ParticleSaturn::Render::Backend::D3D12;
+    }
+
+    // 2. 注册表次之
+    int savedBackend = Settings::GetSavedBackend();
+    if (savedBackend >= 0 && savedBackend <= 2) {
+        std::cout << "[Main] Using saved backend from registry" << std::endl;
+        return static_cast<ParticleSaturn::Render::Backend>(savedBackend);
+    }
+
+    // 3. 默认 D3D12
     return ParticleSaturn::Render::Backend::D3D12;
 }
 
@@ -304,11 +321,26 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         std::cout << "[Main] DirectComposition not supported, transparent effects disabled" << std::endl;
     }
 
-    RECT wr{0, 0, 1280, 720};
+    // 从注册表加载窗口位置/大小
+    Settings::WindowState savedWindow = Settings::LoadWindowState();
+    int                   windowX     = CW_USEDEFAULT;
+    int                   windowY     = CW_USEDEFAULT;
+    int                   windowW     = 1280;
+    int                   windowH     = 720;
+    if (savedWindow.valid) {
+        windowX = savedWindow.x;
+        windowY = savedWindow.y;
+        windowW = savedWindow.w;
+        windowH = savedWindow.h;
+        std::cout << "[Main] Restored window position: " << windowX << "," << windowY << " size: " << windowW << "x"
+                  << windowH << std::endl;
+    }
+
+    RECT wr{0, 0, windowW, windowH};
     AdjustWindowRectEx(&wr, style, FALSE, exStyle);
 
     OutputDebugStringW(L"[ParticleSaturn] Creating window\n");
-    HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, CW_USEDEFAULT, CW_USEDEFAULT,
+    HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, windowX, windowY,
                                 wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, hInstance, nullptr);
     if (hwnd == nullptr) {
         OutputDebugStringW(L"[ParticleSaturn] Window creation FAILED\n");
@@ -330,6 +362,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     // 初始化 AppState 基本值（对齐 OpenGL：默认粒子数为 MAX=1200000）
     appState.InitDefaults(1200000);
+
+    // 从注册表加载会话状态（覆盖默认值）
+    Settings::LoadSession(appState);
+
+    // 恢复窗口状态
+    if (savedWindow.valid) {
+        appState.window.windowedX    = savedWindow.x;
+        appState.window.windowedY    = savedWindow.y;
+        appState.window.windowedW    = savedWindow.w;
+        appState.window.windowedH    = savedWindow.h;
+        appState.window.isFullscreen = savedWindow.fullscreen;
+    }
 
     // 系统主题/窗口效果初始化
     {

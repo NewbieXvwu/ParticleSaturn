@@ -230,6 +230,8 @@ struct Strings {
 
 	// Debug panel extras (Diligent)
 	const char* backend;
+	const char* switchBackend;
+	const char* switchBackendConfirm;
 	const char* bloom;
 	const char* bloomStrength;
 	const char* noise;
@@ -473,6 +475,8 @@ inline const Strings& GetChinese() {
 
 		// Debug panel extras (Diligent)
 		.backend              = "后端",
+		.switchBackend        = "切换图形后端",
+		.switchBackendConfirm = "程序将重启以应用更改",
 		.bloom                = "辉光",
 		.bloomStrength        = "辉光强度",
 		.noise                = "噪点",
@@ -718,6 +722,8 @@ inline const Strings& GetEnglish() {
 
 		// Debug panel extras (Diligent)
 		.backend              = "Backend",
+		.switchBackend        = "Switch Graphics Backend",
+		.switchBackendConfirm = "Program will restart to apply changes",
 		.bloom                = "Bloom",
 		.bloomStrength        = "Bloom Strength",
 		.noise                = "Noise",
