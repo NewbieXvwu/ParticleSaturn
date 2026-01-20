@@ -2388,8 +2388,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
                 if (!cachePath.empty()) {
                     std::vector<uint8_t> cacheData;
                     if (ShaderCache::ReadCache(cachePath, cacheData)) {
-                        RefCntAutoPtr<IDataBlob> dataBlob;
-                        CreateDataBlob(cacheData.size(), cacheData.data(), &dataBlob);
+                        auto dataBlob = Diligent::DataBlobImpl::Create(cacheData.size(), cacheData.data());
                         if (dataBlob && renderStateCache_->Load(dataBlob, ShaderCache::kCacheVersion, false)) {
                             OutputDebugStringA("[DiligentBackend] RenderStateCache loaded from disk\n");
                         }
