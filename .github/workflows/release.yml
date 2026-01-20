@@ -24,6 +24,7 @@ jobs:
             HandTracker/libs/opencv
             HandTracker/libs/tensorflow
             libs/imgui
+            libs/DiligentCore
           key: submodules-${{ hashFiles('.gitmodules') }}
           restore-keys: |
             submodules-
@@ -97,15 +98,50 @@ jobs:
         run: git apply scripts/imgui_md3.patch --directory=libs/imgui
         shell: bash
 
-      - name: Build Release
-        run: msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+      # ============================================================================
+      # Build HandTracker first (shared dependency)
+      # ============================================================================
+      - name: Build HandTracker Release
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /m
 
-      - name: Build ReleaseStatic
-        run: msbuild ParticleSaturn.slnx /p:Configuration=ReleaseStatic /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+      - name: Build HandTracker Release_Static
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /m
 
-      - name: Prepare Release artifacts
+      # ============================================================================
+      # OpenGL version builds
+      # ============================================================================
+      - name: Build OpenGL Release
+        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+
+      - name: Build OpenGL ReleaseStatic
+        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+
+      # ============================================================================
+      # Diligent version builds (uses CMake via PowerShell script)
+      # ============================================================================
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Build Diligent Release
+        run: .\scripts\build_diligent.ps1 -Action build -SrcDir . -BuildDir bin_diligent\x64\Release -Config Release -HandTrackerLinkMode dll
+        shell: pwsh
+
+      - name: Stage HandTracker for Diligent Release
+        run: .\scripts\stage_handtracker.ps1 -SrcDir . -OutDir bin_diligent\x64\Release -Platform x64 -HandTrackerConfig Release -LinkMode dll
+        shell: pwsh
+
+      - name: Build Diligent ReleaseStatic
+        run: .\scripts\build_diligent.ps1 -Action build -SrcDir . -BuildDir bin_diligent\x64\Release_Static -Config Release -HandTrackerLinkMode static
+        shell: pwsh
+
+      # ============================================================================
+      # Prepare artifacts
+      # ============================================================================
+      - name: Prepare OpenGL Release artifacts
         run: |
-          $releaseDir = "release_artifacts"
+          $releaseDir = "release_artifacts_opengl"
           New-Item -ItemType Directory -Force -Path $releaseDir
 
           # Copy Release build files
@@ -117,23 +153,60 @@ jobs:
           Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
           Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
 
-      - name: Create 7z archive (ultra compression)
-        run: 7z a -t7z -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.7z ./release_artifacts/*
+      - name: Prepare Diligent Release artifacts
+        run: |
+          $releaseDir = "release_artifacts_diligent"
+          New-Item -ItemType Directory -Force -Path $releaseDir
 
-      - name: Create zip archive (maximum compression)
-        run: 7z a -tzip -mx=9 ParticleSaturn-${{ steps.version.outputs.name }}.zip ./release_artifacts/*
+          # Copy Diligent Release build files
+          Copy-Item "bin_diligent/x64/Release/ParticleSaturn.Diligent.exe" $releaseDir/
+          Copy-Item "bin_diligent/x64/Release/HandTracker.dll" $releaseDir/
 
-      - name: Upload artifact (Release)
+          # Copy model files
+          Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
+          Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
+
+      # ============================================================================
+      # Create archives
+      # ============================================================================
+      - name: Create OpenGL 7z archive
+        run: 7z a -t7z -mx=9 ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.7z ./release_artifacts_opengl/*
+
+      - name: Create OpenGL zip archive
+        run: 7z a -tzip -mx=9 ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.zip ./release_artifacts_opengl/*
+
+      - name: Create Diligent 7z archive
+        run: 7z a -t7z -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z ./release_artifacts_diligent/*
+
+      - name: Create Diligent zip archive
+        run: 7z a -tzip -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip ./release_artifacts_diligent/*
+
+      # ============================================================================
+      # Upload artifacts
+      # ============================================================================
+      - name: Upload artifact (OpenGL Release)
         uses: actions/upload-artifact@v4
         with:
-          name: ParticleSaturn-${{ steps.version.outputs.name }}
-          path: release_artifacts/
+          name: ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}
+          path: release_artifacts_opengl/
 
-      - name: Upload artifact (Static)
+      - name: Upload artifact (Diligent Release)
         uses: actions/upload-artifact@v4
         with:
-          name: ParticleSaturn-Static-${{ steps.version.outputs.name }}
+          name: ParticleSaturn-Diligent-${{ steps.version.outputs.name }}
+          path: release_artifacts_diligent/
+
+      - name: Upload artifact (OpenGL Static)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-OpenGL-Static-${{ steps.version.outputs.name }}
           path: bin/x64/Release_Static/ParticleSaturn.exe
+
+      - name: Upload artifact (Diligent Static)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-Diligent-Static-${{ steps.version.outputs.name }}
+          path: bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.exe
 
       - name: Upload PDB artifacts
         uses: actions/upload-artifact@v4
@@ -143,15 +216,23 @@ jobs:
             bin/x64/Release/ParticleSaturn.pdb
             bin/x64/Release/HandTracker.pdb
             bin/x64/Release_Static/ParticleSaturn.pdb
+            bin_diligent/x64/Release/ParticleSaturn.Diligent.pdb
+            bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
 
+      # ============================================================================
+      # Upload to GitHub Release
+      # ============================================================================
       - name: Upload Release assets
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ParticleSaturn-${{ steps.version.outputs.name }}.7z
-            ParticleSaturn-${{ steps.version.outputs.name }}.zip
+            ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.7z
+            ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.zip
+            ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z
+            ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip
             bin/x64/Release_Static/ParticleSaturn.exe
+            bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.exe
 
       - name: Upload PDB to Release
         if: github.event_name == 'release'
@@ -159,3 +240,4 @@ jobs:
         with:
           files: |
             bin/x64/Release_Static/ParticleSaturn.pdb
+            bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
