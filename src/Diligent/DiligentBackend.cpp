@@ -6260,9 +6260,13 @@ void DiligentBackend::RenderFrame() {
     RenderBloom();
 
     // 3.5 UI Blur：先把最终显示的场景颜色解析到中间纹理，再做低分辨率模糊
-    RenderUISceneForUI();
-    RenderUIBlur();
-    RenderAcrylicComposite();
+    // 注意：enableBlur=false 时必须整段跳过，否则会白跑大量 blur ping-pong pass。
+    const bool wantUIBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : true;
+    if (wantUIBlur) {
+        RenderUISceneForUI();
+        RenderUIBlur();
+        RenderAcrylicComposite();
+    }
 
     // 4. Blit to Backbuffer
     BlitOffscreenToBackBuffer();
