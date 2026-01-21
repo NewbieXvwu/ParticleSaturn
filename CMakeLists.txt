@@ -82,6 +82,39 @@ endif()
 
 message(STATUS "App version: ${APP_VERSION}")
 
+# ============================================================================
+# Build ID (用于着色器/PSO 缓存失效判定)
+# - 与 APP_VERSION 不同：本地开发也会包含 git commit（避免长期 "dev" 导致缓存不失效）
+# ============================================================================
+set(APP_BUILD_ID "dev")
+if(GIT_FOUND)
+    if(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG)
+        set(APP_BUILD_ID "${GIT_TAG}")
+    elseif(GIT_COMMIT_RESULT EQUAL 0 AND GIT_COMMIT)
+        set(APP_BUILD_ID "${GIT_COMMIT}")
+    endif()
+endif()
+message(STATUS "App build id: ${APP_BUILD_ID}")
+
+# ============================================================================
+# DiligentCore 子模块版本（用于缓存失效判定）
+# ============================================================================
+set(DILIGENTCORE_COMMIT "unknown")
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_SOURCE_DIR}/libs/DiligentCore" rev-parse --short=12 HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE DILIGENTCORE_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE DILIGENTCORE_COMMIT_RESULT
+    )
+    if(NOT (DILIGENTCORE_COMMIT_RESULT EQUAL 0) OR NOT DILIGENTCORE_COMMIT)
+        set(DILIGENTCORE_COMMIT "unknown")
+    endif()
+endif()
+message(STATUS "DiligentCore commit: ${DILIGENTCORE_COMMIT}")
+
 # Provide a minimal ATL shim (CComPtr) only when needed.
 #
 # Rationale:
@@ -349,6 +382,10 @@ target_compile_definitions(ParticleSaturn.Diligent PRIVATE
     IMGUI_USER_CONFIG="imconfig.h"
     # 版本号（用于崩溃报告等）
     APP_VERSION="${APP_VERSION}"
+    # 构建标识（用于着色器/PSO 缓存失效判定：本地开发也会包含 commit）
+    APP_BUILD_ID="${APP_BUILD_ID}"
+    # DiligentCore 子模块版本（用于着色器/PSO 缓存失效判定）
+    DILIGENTCORE_COMMIT="${DILIGENTCORE_COMMIT}"
 )
 
 if(MSVC)

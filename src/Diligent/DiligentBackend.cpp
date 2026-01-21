@@ -90,6 +90,59 @@ static constexpr uint32_t kParticleCountMax = 1200000u;
 static constexpr uint32_t kParticleCountMin = 200000u;
 static constexpr float    kDensityCompBase  = 0.6f;
 
+static uint32_t HashFNV1a32Append(uint32_t hash, const char* s) {
+    if (s == nullptr) {
+        return hash;
+    }
+    while (*s) {
+        hash ^= static_cast<uint8_t>(*s++);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static const char* GetBackendName(Backend backend) {
+    switch (backend) {
+    case Backend::D3D11:
+        return "d3d11";
+    case Backend::D3D12:
+        return "d3d12";
+    case Backend::Vulkan:
+        return "vulkan";
+    default:
+        return "unknown";
+    }
+}
+
+static Uint32 ComputeRenderStateCacheContentVersion(Backend backend) {
+    // ContentVersion 参与 Diligent RenderStateCache 的版本检查：
+    // - 写入：WriteToBlob(ContentVersion)
+    // - 读取：Load(blob, ContentVersion)
+    //
+    // 这里用“应用构建标识 + DiligentCore 版本 + 后端”生成 32-bit hash，
+    // 保证任一发生变化时缓存自动失效（避免 ~0u 跳过版本检查导致的缓存污染）。
+    uint32_t h = 2166136261u;
+    h          = HashFNV1a32Append(h, "ParticleSaturn.Diligent.RenderStateCache|");
+    h          = HashFNV1a32Append(h, GetBackendName(backend));
+    h          = HashFNV1a32Append(h, "|");
+#ifdef APP_BUILD_ID
+    h = HashFNV1a32Append(h, APP_BUILD_ID);
+#else
+    h = HashFNV1a32Append(h, "unknown-build");
+#endif
+    h = HashFNV1a32Append(h, "|");
+#ifdef DILIGENTCORE_COMMIT
+    h = HashFNV1a32Append(h, DILIGENTCORE_COMMIT);
+#else
+    h = HashFNV1a32Append(h, "unknown-diligentcore");
+#endif
+
+    if (h == 0) {
+        h = 1;
+    }
+    return static_cast<Uint32>(h);
+}
+
 float ComputeDensityComp(uint32_t particleCount, float pixelRatio) {
     const float pr = (pixelRatio > 0.0f) ? pixelRatio : 1.0f;
     const float ratio =
@@ -2424,7 +2477,12 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     animRotY_     = 0.0f;
 
     // 初始化着色器缓存
+    renderStateCacheContentVersion_ = ComputeRenderStateCacheContentVersion(backend_);
+    std::cerr << "[DiligentBackend] RenderStateCache ContentVersion (expected) = " << renderStateCacheContentVersion_
+              << " (0x" << std::hex << renderStateCacheContentVersion_ << std::dec << ")" << std::endl;
+
     std::cerr << "[DiligentBackend] Initializing RenderStateCache..." << std::endl;
+    bool cacheLoadedOk = false;
     {
         IArchiverFactory* archiverFactory = Diligent::GetArchiverFactory();
         if (archiverFactory != nullptr) {
@@ -2447,11 +2505,13 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
                     if (ShaderCache::ReadCache(cachePath, cacheData)) {
                         std::cerr << "[DiligentBackend] Read cache data: " << cacheData.size() << " bytes" << std::endl;
                         auto dataBlob = Diligent::DataBlobImpl::Create(cacheData.size(), cacheData.data());
-                        // 使用 ~0u 跳过版本检查
-                        if (dataBlob && renderStateCache_->Load(dataBlob, ~0u, false)) {
+                        if (dataBlob && renderStateCache_->Load(dataBlob, renderStateCacheContentVersion_, false)) {
                             std::cerr << "[DiligentBackend] RenderStateCache loaded from disk" << std::endl;
+                            cacheLoadedOk = true;
                         } else {
                             std::cerr << "[DiligentBackend] RenderStateCache Load() failed" << std::endl;
+                            // 避免每次启动都反复尝试加载同一个坏缓存
+                            ShaderCache::InvalidateCache(cachePath);
                         }
                     } else {
                         std::cerr << "[DiligentBackend] No cache file found or version mismatch" << std::endl;
@@ -2466,16 +2526,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     }
 
     // 检测是否需要编译着色器（缓存未命中时）
-    // 如果 RenderStateCache 的 ContentVersion 为 ~0u，说明缓存未加载成功
-    bool needsCompile = true;
-    if (renderStateCache_) {
-        Uint32 contentVersion = renderStateCache_->GetContentVersion();
-        std::cerr << "[DiligentBackend] RenderStateCache ContentVersion = " << contentVersion
-                  << " (0x" << std::hex << contentVersion << std::dec << "), ~0u = " << static_cast<Uint32>(~0u) << std::endl;
-        needsCompile = (contentVersion == static_cast<Uint32>(~0u));
-    } else {
-        std::cerr << "[DiligentBackend] RenderStateCache is null" << std::endl;
-    }
+    const bool needsCompile = !cacheLoadedOk;
 
     // 提前初始化 ImGui（用于显示编译进度条）
     hwnd_  = hwnd;
@@ -2722,8 +2773,10 @@ void DiligentBackend::Shutdown() {
         logFile << L"[DiligentBackend] Cache path: " << cachePath << std::endl;
         if (!cachePath.empty()) {
             RefCntAutoPtr<IDataBlob> cacheBlob;
-            // 使用默认 ContentVersion (~0u)，让缓存系统自动管理版本
-            bool writeResult = renderStateCache_->WriteToBlob(~0u, &cacheBlob);
+            // 使用固定 ContentVersion（由构建标识 + DiligentCore 版本 + 后端生成），避免跨版本缓存污染。
+            const Uint32 cv = (renderStateCacheContentVersion_ != 0) ? renderStateCacheContentVersion_
+                                                                     : ComputeRenderStateCacheContentVersion(backend_);
+            bool writeResult = renderStateCache_->WriteToBlob(cv, &cacheBlob);
             logFile << L"[DiligentBackend] WriteToBlob returned: " << (writeResult ? L"true" : L"false") << std::endl;
             if (writeResult && cacheBlob) {
                 logFile << L"[DiligentBackend] WriteToBlob succeeded, size: " << cacheBlob->GetSize() << L" bytes" << std::endl;

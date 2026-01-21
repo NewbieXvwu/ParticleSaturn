@@ -307,6 +307,7 @@ class DiligentBackend final {
 
     // 着色器缓存（RenderStateCache）
     Diligent::RefCntAutoPtr<Diligent::IRenderStateCache> renderStateCache_;
+    Diligent::Uint32                                     renderStateCacheContentVersion_ = 0;
 
     // 全局应用状态（由外部传入，生命周期由调用方管理）
     AppState* appState_ = nullptr;

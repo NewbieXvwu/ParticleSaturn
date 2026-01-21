@@ -109,8 +109,14 @@ inline bool WriteCache(const std::wstring& path, const void* data, size_t size) 
     if (path.empty() || data == nullptr || size == 0) {
         return false;
     }
+    if (size > static_cast<size_t>(UINT32_MAX)) {
+        return false;
+    }
 
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    // 原子写入：先写临时文件，再替换目标文件，避免异常退出留下半截缓存导致后续读崩/读错。
+    const std::wstring tmpPath = path + L".tmp";
+
+    std::ofstream file(tmpPath, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         return false;
     }
@@ -121,7 +127,25 @@ inline bool WriteCache(const std::wstring& path, const void* data, size_t size) 
     file.write(reinterpret_cast<const char*>(&header), sizeof(header));
     file.write(reinterpret_cast<const char*>(data), size);
 
-    return file.good();
+    file.flush();
+    if (!file.good()) {
+        file.close();
+        DeleteFileW(tmpPath.c_str());
+        return false;
+    }
+    file.close();
+
+    // MOVEFILE_WRITE_THROUGH：尽可能确保落盘，减少断电/崩溃导致的“0字节目标文件”。
+    if (!MoveFileExW(tmpPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        // 部分环境下 REPLACE_EXISTING 可能因为权限/杀软占用失败：尝试先删再移。
+        DeleteFileW(path.c_str());
+        if (!MoveFileExW(tmpPath.c_str(), path.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            DeleteFileW(tmpPath.c_str());
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // 删除缓存文件
