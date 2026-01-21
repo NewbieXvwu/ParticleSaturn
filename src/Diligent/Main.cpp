@@ -1,8 +1,11 @@
 #include <windows.h>
 
+#include <imm.h>             // IME 控制
 #include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
 #include <iostream>
 #include <string>
+
+#pragma comment(lib, "imm32.lib")
 
 #include "../AppState.h"
 #include "../DebugLog.h"
@@ -191,21 +194,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case 'B':
                     if (!state->input.keyB_pressed) {
                         state->input.keyB_pressed = true;
-                        // 与 README 约定一致：B 键循环切换可用 Backdrop（Mica/Acrylic/Solid/Aero 的子集）
-                        if (!state->backdrop.availableBackdrops.empty()) {
-                            const int n = static_cast<int>(state->backdrop.availableBackdrops.size());
-                            int       nextIndex = state->backdrop.backdropIndex + 1;
-                            if (nextIndex >= n) {
-                                nextIndex = 0;
-                            }
-                            const int nextMode = state->backdrop.availableBackdrops[nextIndex];
-
-                            // 先更新 index（便于 UI 立即显示正确状态）
-                            state->backdrop.backdropIndex = nextIndex;
-
-                            // 由后端统一处理：必要时切换 DComp SwapChain，并同步 DWM Backdrop
-                            (void)backend->SetBackdropMode(nextMode);
-                        }
+                        // B 键切换模糊效果开关（只有开/关两种状态）
+                        state->ui.enableBlur = !state->ui.enableBlur;
                     }
                     break;
                 case VK_ESCAPE:
@@ -348,6 +338,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         return -1;
     }
     OutputDebugStringW(L"[ParticleSaturn] Window created OK\n");
+
+    // 禁用输入法或切换到英文模式（防止启动时自动激活中文输入法）
+    HIMC hIMC = ImmGetContext(hwnd);
+    if (hIMC != nullptr) {
+        // 设置为英文模式（关闭中文输入）
+        ImmSetConversionStatus(hIMC, IME_CMODE_ALPHANUMERIC, IME_SMODE_NONE);
+        ImmReleaseContext(hwnd, hIMC);
+    }
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);

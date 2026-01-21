@@ -3,6 +3,9 @@
 
 #include "pch.h"
 
+#include <imm.h>             // IME 控制
+#pragma comment(lib, "imm32.lib")
+
 #ifdef EMBED_MODELS
 #include "Resource.h"
 #endif
@@ -318,6 +321,13 @@ int main() {
 
     HWND hwnd = glfwGetWin32Window(window);
     if (hwnd) {
+        // 设置输入法为英文模式
+        HIMC hIMC = ImmGetContext(hwnd);
+        if (hIMC != nullptr) {
+            ImmSetConversionStatus(hIMC, IME_CMODE_ALPHANUMERIC, IME_SMODE_NONE);
+            ImmReleaseContext(hwnd, hIMC);
+        }
+
         WindowManager::SetTitleBarDarkMode(hwnd, true);
         appState.ui.isDarkMode = WindowManager::IsSystemDarkMode();
         std::cout << "[DWM] System theme: " << (appState.ui.isDarkMode ? "Dark" : "Light") << std::endl;
@@ -1922,12 +1932,7 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
             if (!appState.input.keyB_pressed) {
                 appState.input.keyB_pressed = true;
-                if (!appState.backdrop.availableBackdrops.empty()) {
-                    appState.backdrop.backdropIndex =
-                        (appState.backdrop.backdropIndex + 1) % (int)appState.backdrop.availableBackdrops.size();
-                    WindowManager::SetBackdropMode(
-                        hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
-                }
+                appState.ui.enableBlur = !appState.ui.enableBlur;
             }
         } else {
             appState.input.keyB_pressed = false;
