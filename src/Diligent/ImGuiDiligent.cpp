@@ -760,6 +760,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     }
 
     // 中文字体（MergeMode）：Deng.ttf → msyhl.ttc → msyh.ttc → simhei.ttf
+    // 使用简体常用字形集合以缩小字体贴图（减少启动时间/显存占用）。如需全量汉字可改回 ChineseFull。
     const char* chineseFonts[] = {"C:\\Windows\\Fonts\\Deng.ttf", "C:\\Windows\\Fonts\\msyhl.ttc",
                                   "C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\simhei.ttf"};
 
@@ -770,7 +771,8 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
 
     for (const char* fontPath : chineseFonts) {
         if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
-            io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig, io.Fonts->GetGlyphRangesChineseFull());
+            io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig,
+                                         io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
             break;
         }
     }
