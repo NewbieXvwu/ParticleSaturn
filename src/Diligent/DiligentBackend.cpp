@@ -68,6 +68,18 @@ namespace {
 
 static constexpr TEXTURE_FORMAT kOffscreenColorFormat = TEX_FORMAT_R11G11B10_FLOAT;
 
+// Draw/DrawIndirect 验证开关：
+// - Debug：启用验证，便于定位资源状态/参数错误
+// - Release/FastRelease/Release_Static：全部关闭，避免开发期验证逻辑污染性能
+//
+// 注意：Diligent 自身在非 Development 构建下也会禁用验证，但这里仍显式置零，
+// 保证“Release 系列”完全不走任何额外验证路径。
+#if defined(NDEBUG)
+static constexpr DRAW_FLAGS kDrawVerifyFlags = DRAW_FLAG_NONE;
+#else
+static constexpr DRAW_FLAGS kDrawVerifyFlags = DRAW_FLAG_VERIFY_ALL;
+#endif
+
 // OpenGL 版星空策略：
 // - 基准星数固定为 5 万（STAR_COUNT=50000）
 // - 在低 pixelRatio 时绘制数量降到 60%（OpenGL：pixelRatio < 0.85）
@@ -3607,7 +3619,7 @@ void DiligentBackend::RenderUISceneForUI() {
 
     DrawAttribs draw{};
     draw.NumVertices = 4;
-    draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+    draw.Flags       = kDrawVerifyFlags;
     immediateContext_->Draw(draw);
 }
 
@@ -3675,7 +3687,7 @@ void DiligentBackend::RenderUIBlur() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 
@@ -3717,7 +3729,7 @@ void DiligentBackend::RenderUIBlur() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 
@@ -3750,7 +3762,7 @@ void DiligentBackend::RenderUIBlur() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 
@@ -3777,7 +3789,7 @@ void DiligentBackend::RenderUIBlur() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 }
@@ -3856,7 +3868,7 @@ void DiligentBackend::RenderAcrylicComposite() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     };
 
@@ -4786,7 +4798,7 @@ void DiligentBackend::RenderOffscreen() {
             }
         }
         starsDraw.NumInstances = starLodCount;
-        starsDraw.Flags        = DRAW_FLAG_VERIFY_ALL;
+        starsDraw.Flags        = kDrawVerifyFlags;
         immediateContext_->Draw(starsDraw);
     }
 
@@ -4941,7 +4953,7 @@ void DiligentBackend::RenderOffscreen() {
         if (particleIndirectArgs_ != nullptr) {
             DrawIndirectAttribs ia{};
             ia.pAttribsBuffer                   = particleIndirectArgs_;
-            ia.Flags                            = DRAW_FLAG_VERIFY_ALL;
+            ia.Flags                            = kDrawVerifyFlags;
             ia.AttribsBufferStateTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
             immediateContext_->DrawIndirect(ia);
         }
@@ -5021,7 +5033,7 @@ void DiligentBackend::RenderBloom() {
                                             SET_VERTEX_BUFFERS_FLAG_RESET);
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 
@@ -5064,7 +5076,7 @@ void DiligentBackend::RenderBloom() {
 
         DrawAttribs draw{};
         draw.NumVertices = 4;
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
     }
 
@@ -5102,7 +5114,7 @@ void DiligentBackend::RenderBloom() {
 
             DrawAttribs draw{};
             draw.NumVertices = 4;
-            draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+            draw.Flags       = kDrawVerifyFlags;
             immediateContext_->Draw(draw);
         }
 
@@ -5131,7 +5143,7 @@ void DiligentBackend::RenderBloom() {
 
             DrawAttribs draw{};
             draw.NumVertices = 4;
-            draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+            draw.Flags       = kDrawVerifyFlags;
             immediateContext_->Draw(draw);
         }
     }
@@ -5200,7 +5212,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
 
     DrawAttribs draw{};
     draw.NumVertices = 4;
-    draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+    draw.Flags       = kDrawVerifyFlags;
     immediateContext_->Draw(draw);
 }
 
@@ -6404,7 +6416,7 @@ void DiligentBackend::RenderSevenSegmentFPS() {
         // 绘制
         DrawAttribs draw{};
         draw.NumVertices = sevenSegVertexCount_[digit];
-        draw.Flags       = DRAW_FLAG_VERIFY_ALL;
+        draw.Flags       = kDrawVerifyFlags;
         immediateContext_->Draw(draw);
 
         xCursor -= digitSpacing;

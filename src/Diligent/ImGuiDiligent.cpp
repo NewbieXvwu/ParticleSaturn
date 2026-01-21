@@ -22,6 +22,13 @@ namespace ParticleSaturn::UI {
 
 namespace {
 
+// Draw 验证开关：Release 系列全部关闭（见同项目 DiligentBackend.cpp 的说明）。
+#if defined(NDEBUG)
+static constexpr DRAW_FLAGS kDrawVerifyFlags = DRAW_FLAG_NONE;
+#else
+static constexpr DRAW_FLAGS kDrawVerifyFlags = DRAW_FLAG_VERIFY_ALL;
+#endif
+
 // ImGui 顶点常量缓冲结构
 struct ImGuiConstants {
     float ProjectionMatrix[4][4];
@@ -467,7 +474,7 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                 drawAttribs.IndexType          = sizeof(ImDrawIdx) == 2 ? VT_UINT16 : VT_UINT32;
                 drawAttribs.FirstIndexLocation = pcmd->IdxOffset + globalIdxOffset;
                 drawAttribs.BaseVertex         = pcmd->VtxOffset + globalVtxOffset;
-                drawAttribs.Flags              = DRAW_FLAG_VERIFY_ALL;
+                drawAttribs.Flags              = kDrawVerifyFlags;
                 context->DrawIndexed(drawAttribs);
             }
         }
