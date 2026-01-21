@@ -721,14 +721,10 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     scDesc.Width             = initialSize.Width;
     scDesc.Height            = initialSize.Height;
     scDesc.ColorBufferFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
-    // 缓冲数权衡：
-    // - D3D12：保持 3（历史上用于降低帧等待/超时风险）
-    // - Vulkan：VSync Off 时用 2 以降低输入延迟与显存占用；其他情况保持 3
-    Uint32 bufferCount = 3;
-    if (backend == Backend::Vulkan && appState_ != nullptr && appState_->render.vsyncMode == 0) {
-        bufferCount = 2;
-    }
-    scDesc.BufferCount = bufferCount;
+    // SwapChain 缓冲数固定为 3：
+    // - VSync（Present sync interval）与缓冲数解耦，避免“切 VSync 导致帧队列深度变化”的隐式副作用。
+    // - 历史上三缓冲也用于降低 D3D12 帧等待/超时风险。
+    scDesc.BufferCount       = 3;
     // 阶段 1：引入深度缓冲（即便当下的全屏四边形不依赖深度测试，先把链路补齐）。
     scDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
 
