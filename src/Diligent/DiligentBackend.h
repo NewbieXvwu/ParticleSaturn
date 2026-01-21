@@ -68,6 +68,9 @@ class DiligentBackend final {
 
     AppState* GetAppState() const { return appState_; }
 
+    // 清除着色器缓存（删除磁盘文件，下次启动时重新编译）
+    void ClearShaderCache();
+
   private:
     void SetLastError(const wchar_t* msg) { lastError_ = (msg != nullptr) ? msg : L""; }
 

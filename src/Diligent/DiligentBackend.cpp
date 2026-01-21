@@ -1619,6 +1619,45 @@ RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char*
     return shader;
 }
 
+// 通过缓存创建 Graphics PSO 的辅助函数
+// 如果缓存可用且命中则返回 true，否则通过 device 创建并返回 false
+bool CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI,
+                       IPipelineState** ppPSO, IRenderStateCache* cache = nullptr) {
+    *ppPSO = nullptr;
+
+    // 优先使用缓存创建 PSO
+    if (cache != nullptr) {
+        cache->CreateGraphicsPipelineState(psoCI, ppPSO);
+    }
+
+    // 如果缓存未命中或缓存不可用，直接创建
+    if (*ppPSO == nullptr) {
+        device->CreateGraphicsPipelineState(psoCI, ppPSO);
+        return false;
+    }
+
+    return true;
+}
+
+// 通过缓存创建 Compute PSO 的辅助函数
+bool CreateComputePSO(IRenderDevice* device, const ComputePipelineStateCreateInfo& psoCI,
+                      IPipelineState** ppPSO, IRenderStateCache* cache = nullptr) {
+    *ppPSO = nullptr;
+
+    // 优先使用缓存创建 PSO
+    if (cache != nullptr) {
+        cache->CreateComputePipelineState(psoCI, ppPSO);
+    }
+
+    // 如果缓存未命中或缓存不可用，直接创建
+    if (*ppPSO == nullptr) {
+        device->CreateComputePipelineState(psoCI, ppPSO);
+        return false;
+    }
+
+    return true;
+}
+
 struct StarInstance {
     float Pos[3]   = {0.0f, 0.0f, 0.0f};
     float Color[3] = {1.0f, 1.0f, 1.0f};
@@ -2373,7 +2412,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     animRotY_     = 0.0f;
 
     // 初始化着色器缓存
-    OutputDebugStringA("[DiligentBackend] Initializing RenderStateCache...\n");
+    std::cerr << "[DiligentBackend] Initializing RenderStateCache..." << std::endl;
     {
         IArchiverFactory* archiverFactory = Diligent::GetArchiverFactory();
         if (archiverFactory != nullptr) {
@@ -2394,21 +2433,37 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
                 if (!cachePath.empty()) {
                     std::vector<uint8_t> cacheData;
                     if (ShaderCache::ReadCache(cachePath, cacheData)) {
+                        std::cerr << "[DiligentBackend] Read cache data: " << cacheData.size() << " bytes" << std::endl;
                         auto dataBlob = Diligent::DataBlobImpl::Create(cacheData.size(), cacheData.data());
-                        if (dataBlob && renderStateCache_->Load(dataBlob, ShaderCache::kCacheVersion, false)) {
-                            OutputDebugStringA("[DiligentBackend] RenderStateCache loaded from disk\n");
+                        // 使用 ~0u 跳过版本检查
+                        if (dataBlob && renderStateCache_->Load(dataBlob, ~0u, false)) {
+                            std::cerr << "[DiligentBackend] RenderStateCache loaded from disk" << std::endl;
+                        } else {
+                            std::cerr << "[DiligentBackend] RenderStateCache Load() failed" << std::endl;
                         }
+                    } else {
+                        std::cerr << "[DiligentBackend] No cache file found or version mismatch" << std::endl;
                     }
                 }
+            } else {
+                std::cerr << "[DiligentBackend] CreateRenderStateCache() failed" << std::endl;
             }
         } else {
-            OutputDebugStringA("[DiligentBackend] ArchiverFactory not available, shader caching disabled\n");
+            std::cerr << "[DiligentBackend] ArchiverFactory not available, shader caching disabled" << std::endl;
         }
     }
 
     // 检测是否需要编译着色器（缓存未命中时）
     // 如果 RenderStateCache 的 ContentVersion 为 ~0u，说明缓存未加载成功
-    const bool needsCompile = !renderStateCache_ || renderStateCache_->GetContentVersion() == static_cast<Uint32>(~0u);
+    bool needsCompile = true;
+    if (renderStateCache_) {
+        Uint32 contentVersion = renderStateCache_->GetContentVersion();
+        std::cerr << "[DiligentBackend] RenderStateCache ContentVersion = " << contentVersion
+                  << " (0x" << std::hex << contentVersion << std::dec << "), ~0u = " << static_cast<Uint32>(~0u) << std::endl;
+        needsCompile = (contentVersion == static_cast<Uint32>(~0u));
+    } else {
+        std::cerr << "[DiligentBackend] RenderStateCache is null" << std::endl;
+    }
 
     // 提前初始化 ImGui（用于显示编译进度条）
     hwnd_  = hwnd;
@@ -2642,21 +2697,40 @@ void DiligentBackend::Shutdown() {
     }
 
     // 保存着色器缓存到磁盘
+    // 写入日志文件（因为此时 ImGui 已关闭，std::cerr 无法显示）
+    auto logPath = ShaderCache::GetCacheDirectory() + L"\\shutdown_log.txt";
+    std::wofstream logFile(logPath, std::ios::app);  // 追加模式
+    logFile << L"[DiligentBackend] Shutdown called..." << std::endl;
+
     if (renderStateCache_) {
         const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
                                   : (backend_ == Backend::D3D12) ? "d3d12"
                                                                  : "vulkan";
         auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
+        logFile << L"[DiligentBackend] Cache path: " << cachePath << std::endl;
         if (!cachePath.empty()) {
             RefCntAutoPtr<IDataBlob> cacheBlob;
-            if (renderStateCache_->WriteToBlob(ShaderCache::kCacheVersion, &cacheBlob) && cacheBlob) {
+            // 使用默认 ContentVersion (~0u)，让缓存系统自动管理版本
+            bool writeResult = renderStateCache_->WriteToBlob(~0u, &cacheBlob);
+            logFile << L"[DiligentBackend] WriteToBlob returned: " << (writeResult ? L"true" : L"false") << std::endl;
+            if (writeResult && cacheBlob) {
+                logFile << L"[DiligentBackend] WriteToBlob succeeded, size: " << cacheBlob->GetSize() << L" bytes" << std::endl;
                 if (ShaderCache::WriteCache(cachePath, cacheBlob->GetConstDataPtr(), cacheBlob->GetSize())) {
-                    OutputDebugStringA("[DiligentBackend] RenderStateCache saved to disk\n");
+                    logFile << L"[DiligentBackend] RenderStateCache saved to disk" << std::endl;
+                } else {
+                    logFile << L"[DiligentBackend] WriteCache() failed, GetLastError=" << GetLastError() << std::endl;
                 }
+            } else {
+                logFile << L"[DiligentBackend] WriteToBlob() failed" << std::endl;
             }
+        } else {
+            logFile << L"[DiligentBackend] Cache path is empty!" << std::endl;
         }
         renderStateCache_.Release();
+    } else {
+        logFile << L"[DiligentBackend] renderStateCache_ is null, nothing to save" << std::endl;
     }
+    logFile.close();
 
     if (handTracker_) {
         handTracker_->Shutdown();
@@ -2775,6 +2849,18 @@ void DiligentBackend::Shutdown() {
     swapChain_.Release();
     immediateContext_.Release();
     device_.Release();
+}
+
+void DiligentBackend::ClearShaderCache() {
+    // 删除当前后端的缓存文件
+    const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
+                              : (backend_ == Backend::D3D12) ? "d3d12"
+                                                             : "vulkan";
+    auto cachePath = ShaderCache::GetDiligentCachePath(backendName);
+    if (!cachePath.empty()) {
+        ShaderCache::InvalidateCache(cachePath);
+        OutputDebugStringA("[DiligentBackend] Shader cache cleared\n");
+    }
 }
 
 void DiligentBackend::Resize(SurfaceSize newSize) {
@@ -2988,7 +3074,7 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 
     fullscreenQuadPSO_.Release();
     fullscreenQuadSRB_.Release();
-    device_->CreateGraphicsPipelineState(psoCI, &fullscreenQuadPSO_);
+    CreateGraphicsPSO(device_, psoCI, &fullscreenQuadPSO_, renderStateCache_);
     if (fullscreenQuadPSO_ == nullptr) {
         return false;
     }
@@ -3101,7 +3187,7 @@ bool DiligentBackend::CreateBloomPSO() {
 
         outPso.Release();
         outSrb.Release();
-        device_->CreateGraphicsPipelineState(psoCI, &outPso);
+        CreateGraphicsPSO(device_, psoCI, &outPso, renderStateCache_);
         if (outPso == nullptr) {
             return false;
         }
@@ -3197,7 +3283,7 @@ bool DiligentBackend::CreateAcrylicPSO() {
 
     acrylicPSO_.Release();
     acrylicSRB_.Release();
-    device_->CreateGraphicsPipelineState(psoCI, &acrylicPSO_);
+    CreateGraphicsPSO(device_, psoCI, &acrylicPSO_, renderStateCache_);
     if (acrylicPSO_ == nullptr) {
         return false;
     }
@@ -3943,7 +4029,7 @@ bool DiligentBackend::CreateStarfieldPSO() {
     psoCI.pPS = ps;
 
     starPSO_.Release();
-    device_->CreateGraphicsPipelineState(psoCI, &starPSO_);
+    CreateGraphicsPSO(device_, psoCI, &starPSO_, renderStateCache_);
     if (starPSO_ == nullptr) {
         return false;
     }
@@ -4168,7 +4254,7 @@ bool DiligentBackend::CreateParticlePSO() {
     psoCI.pPS = ps;
 
     particlePSO_.Release();
-    device_->CreateGraphicsPipelineState(psoCI, &particlePSO_);
+    CreateGraphicsPSO(device_, psoCI, &particlePSO_, renderStateCache_);
     if (particlePSO_ == nullptr) {
         return false;
     }
@@ -4232,7 +4318,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
 
     particleComputePSO_.Release();
     particleComputeSRB_.Release();
-    device_->CreateComputePipelineState(psoCI, &particleComputePSO_);
+    CreateComputePSO(device_, psoCI, &particleComputePSO_, renderStateCache_);
     if (particleComputePSO_ == nullptr) {
         DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateComputePipelineState failed");
         return false;
@@ -4373,7 +4459,7 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
     psoCI.pVS = vs;
     psoCI.pPS = ps;
 
-    device_->CreateGraphicsPipelineState(psoCI, &sevenSegPSO_);
+    CreateGraphicsPSO(device_, psoCI, &sevenSegPSO_, renderStateCache_);
     if (sevenSegPSO_ == nullptr) {
         return false;
     }
@@ -5938,6 +6024,25 @@ void DiligentBackend::RenderFrame() {
                 ImGui::TextDisabled("%s:", str.debugInfo);
                 ImGui::Text("%s: %u", str.starCount, starCount_);
                 ImGui::Text("%s: %u x %u", str.offscreen, surfaceSize_.Width, surfaceSize_.Height);
+
+                ImGui::Dummy(ImVec2(0, 8));
+
+                // 清除着色器缓存按钮
+                static bool shaderCacheCleared = false;
+                if (shaderCacheCleared) {
+                    ImGui::BeginDisabled();
+                    MD3::Button(str.shaderCacheCleared);
+                    ImGui::EndDisabled();
+                } else {
+                    if (MD3::Button(str.clearShaderCache)) {
+                        ClearShaderCache();
+                        shaderCacheCleared = true;
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("%s", str.clearShaderCacheHint);
+                    }
+                }
+
                 MD3::EndCollapsingHeader();
             }
 
