@@ -1644,6 +1644,25 @@ int main() {
                         std::cout << "[Main] SIMD mode changed to: " << GetTrackerSIMDImplementation() << std::endl;
                     }
                     ImGui::Text("%s: %s", str.simdCurrent, GetTrackerSIMDImplementation());
+
+                    ImGui::Dummy(ImVec2(0, 8));
+
+                    // 清除着色器缓存按钮
+                    static bool shaderCacheCleared = false;
+                    if (shaderCacheCleared) {
+                        ImGui::BeginDisabled();
+                        MD3::Button(str.shaderCacheCleared);
+                        ImGui::EndDisabled();
+                    } else {
+                        if (MD3::Button(str.clearShaderCache)) {
+                            Renderer::ClearShaderCache();
+                            shaderCacheCleared = true;
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("%s", str.clearShaderCacheHint);
+                        }
+                    }
+
                     MD3::EndCollapsingHeader();
                 }
 

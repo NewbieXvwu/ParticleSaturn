@@ -249,6 +249,12 @@ struct Strings {
 	const char* smoothedAnimationValues;
 	const char* notAvailable;
 
+	// Shader cache (new)
+	const char* recompileShaders;
+	const char* clearShaderCache;
+	const char* clearShaderCacheHint;
+	const char* shaderCacheCleared;
+
 	// Crash analyzer extras (Diligent)
 	const char* symbolResolutionUnavailable;
 };
@@ -493,6 +499,12 @@ inline const Strings& GetChinese() {
 		.rawHandTrackerValues = "HandTracker 原始值",
 		.smoothedAnimationValues = "平滑后的动画值",
 		.notAvailable         = "不可用",
+
+		// Shader cache (new)
+		.recompileShaders  = "重新编译着色器",
+		.clearShaderCache  = "清除着色器缓存",
+		.clearShaderCacheHint = "删除缓存文件，下次启动时将重新编译着色器",
+		.shaderCacheCleared = "已清除！",
 
 		// Crash analyzer extras (Diligent)
 		.symbolResolutionUnavailable = "符号解析不可用：仍可查看地址，但无法解析到函数名。",
@@ -740,6 +752,12 @@ inline const Strings& GetEnglish() {
 		.rawHandTrackerValues = "Raw HandTracker Values",
 		.smoothedAnimationValues = "Smoothed Animation Values",
 		.notAvailable         = "Not available",
+
+		// Shader cache (new)
+		.recompileShaders  = "Recompile Shaders",
+		.clearShaderCache  = "Clear Shader Cache",
+		.clearShaderCacheHint = "Delete cache files, shaders will be recompiled on next startup",
+		.shaderCacheCleared = "Cleared!",
 
 		// Crash analyzer extras (Diligent)
 		.symbolResolutionUnavailable =
