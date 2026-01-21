@@ -16,6 +16,13 @@ jobs:
       - name: Checkout main repository
         uses: actions/checkout@v4
 
+      - name: Compute submodule cache key
+        id: submodule-key
+        run: |
+          # Key must change when the expected submodule SHAs change (even if .gitmodules stays the same).
+          echo "sha=$(git submodule status --recursive | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
       - name: Cache submodules
         id: cache-submodules
         uses: actions/cache@v4
@@ -25,8 +32,9 @@ jobs:
             HandTracker/libs/tensorflow
             libs/imgui
             libs/DiligentCore
-          key: submodules-${{ hashFiles('.gitmodules') }}
+          key: submodules-${{ hashFiles('.gitmodules') }}-${{ steps.submodule-key.outputs.sha }}
           restore-keys: |
+            submodules-${{ hashFiles('.gitmodules') }}-
             submodules-
 
       - name: Initialize submodules (cache miss)
