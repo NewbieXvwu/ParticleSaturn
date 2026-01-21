@@ -4551,8 +4551,8 @@ void DiligentBackend::RenderFrame() {
 
                 // Backdrop/透明合成开关（简化版：开=使用 Mica，关=Solid）
                 // 注意：需要 Win10 1809+ 且窗口支持 DirectComposition；为保证运行期可反复切换不失效，DComp 一旦启用将保持启用。
-                // 仅 D3D12 后端显示此选项（D3D11 可用 B 键切换）。
-                if (appState_->backdrop.transparentSupported && backend_ == Backend::D3D12) {
+                // 仅 D3D12 和 D3D11 后端显示此选项。
+                if (appState_->backdrop.transparentSupported && (backend_ == Backend::D3D12 || backend_ == Backend::D3D11)) {
                     bool transparent = appState_->backdrop.useTransparent;
                     if (MD3::Toggle(str.transparent, &transparent)) {
                         // 透明时使用 Mica (mode=3)，不透明时使用 Solid (mode=0)
