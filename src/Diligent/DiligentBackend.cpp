@@ -3658,11 +3658,14 @@ void DiligentBackend::RenderUISceneForUI() {
     vp.MaxDepth = 1.0f;
     immediateContext_->SetViewports(1, &vp, surfaceSize_.Width, surfaceSize_.Height);
 
-    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-        var->Set(offscreenSRV_);
+    // 热路径：避免每帧重复字符串查找
+    auto* texVar   = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+    auto* bloomVar = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture");
+    if (texVar != nullptr) {
+        texVar->Set(offscreenSRV_);
     }
-    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture"); var != nullptr) {
-        var->Set(bloomSRV_B_);
+    if (bloomVar != nullptr) {
+        bloomVar->Set(bloomSRV_B_);
     }
 
     immediateContext_->SetPipelineState(fullscreenQuadPSO_);
@@ -3711,6 +3714,10 @@ void DiligentBackend::RenderUIBlur() {
         }
     };
 
+    // 热路径：避免在 blur ping-pong 循环里反复做字符串查找
+    auto* downTexVar = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+    auto* blurTexVar = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+
     // --- 1) downsample: uiScene(full) -> uiBlurA(1/6), 不做 bright-pass ---
     {
         ITextureView* rtv = uiBlurRTV_A_.RawPtr();
@@ -3729,8 +3736,8 @@ void DiligentBackend::RenderUIBlur() {
         const float texelY = (surfaceSize_.Height > 0) ? (1.0f / static_cast<float>(surfaceSize_.Height)) : 0.0f;
         updateBlurCB(texelX, texelY, 0.0f, 0.0f);
 
-        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(uiSceneSRV_);
+        if (downTexVar != nullptr) {
+            downTexVar->Set(uiSceneSRV_);
         }
 
         immediateContext_->SetPipelineState(bloomDownsamplePSO_);
@@ -3771,8 +3778,8 @@ void DiligentBackend::RenderUIBlur() {
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         updateBlurCB(texelX6, texelY6, scaledOffset(offsets[i]), 0.0f);
 
-        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(inSRV);
+        if (blurTexVar != nullptr) {
+            blurTexVar->Set(inSRV);
         }
 
         immediateContext_->SetPipelineState(bloomBlurPSO_);
@@ -3804,8 +3811,8 @@ void DiligentBackend::RenderUIBlur() {
         immediateContext_->SetViewports(1, &vp2, 0, 0);
 
         updateBlurCB(texelX6, texelY6, 0.0f, 0.0f);
-        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(uiBlurSRV_B_.RawPtr());
+        if (downTexVar != nullptr) {
+            downTexVar->Set(uiBlurSRV_B_.RawPtr());
         }
 
         immediateContext_->SetPipelineState(bloomDownsamplePSO_);
@@ -3832,8 +3839,8 @@ void DiligentBackend::RenderUIBlur() {
 
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         updateBlurCB(texelX12, texelY12, scaledOffset(secondaryOffsets[i]), 0.0f);
-        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(inSRV);
+        if (blurTexVar != nullptr) {
+            blurTexVar->Set(inSRV);
         }
         immediateContext_->SetPipelineState(bloomBlurPSO_);
         immediateContext_->CommitShaderResources(bloomBlurSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -3894,6 +3901,9 @@ void DiligentBackend::RenderAcrylicComposite() {
         }
     };
 
+    // 热路径：避免每次合成都做字符串查找
+    auto* acrylicTexVar = acrylicSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+
     auto drawComposite = [&](ITextureView* outRTV, uint32_t w, uint32_t h, ITextureView* inSRV) {
         if (outRTV == nullptr || inSRV == nullptr) {
             return;
@@ -3910,8 +3920,8 @@ void DiligentBackend::RenderAcrylicComposite() {
         vp.MaxDepth = 1.0f;
         immediateContext_->SetViewports(1, &vp, 0, 0);
 
-        if (auto* var = acrylicSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(inSRV);
+        if (acrylicTexVar != nullptr) {
+            acrylicTexVar->Set(inSRV);
         }
 
         immediateContext_->SetPipelineState(acrylicPSO_);
@@ -5057,6 +5067,10 @@ void DiligentBackend::RenderBloom() {
         }
     };
 
+    // 热路径：RenderBloom 每帧多次 ping-pong，避免循环内反复 GetVariableByName()
+    auto* downTexVar = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+    auto* blurTexVar = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+
     // Pass 0: bright-pass downsample（offscreen -> bloomA）
     {
         ITextureView* rtv = bloomRTV_A_;
@@ -5074,8 +5088,8 @@ void DiligentBackend::RenderBloom() {
         const float texelY = (srcH > 0) ? (1.0f / static_cast<float>(srcH)) : 0.0f;
         updateBlurCB(texelX, texelY, 0.0f, 1.0f);
 
-        if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(offscreenSRV_);
+        if (downTexVar != nullptr) {
+            downTexVar->Set(offscreenSRV_);
         }
 
         immediateContext_->SetPipelineState(bloomDownsamplePSO_);
@@ -5117,8 +5131,8 @@ void DiligentBackend::RenderBloom() {
         immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         updateBlurCB(bloomTexelX, bloomTexelY, scaledOffset(offsets[i]), 0.0f);
 
-        if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-            var->Set(inSRV);
+        if (blurTexVar != nullptr) {
+            blurTexVar->Set(inSRV);
         }
 
         immediateContext_->SetPipelineState(bloomBlurPSO_);
@@ -5156,8 +5170,8 @@ void DiligentBackend::RenderBloom() {
             immediateContext_->SetViewports(1, &vp2, 0, 0);
 
             // 使用 1/6 纹理作为输入
-            if (auto* var = bloomDownsampleSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-                var->Set(bloomSRV_B_.RawPtr());
+            if (downTexVar != nullptr) {
+                downTexVar->Set(bloomSRV_B_.RawPtr());
             }
 
             immediateContext_->SetPipelineState(bloomDownsamplePSO_);
@@ -5185,8 +5199,8 @@ void DiligentBackend::RenderBloom() {
             immediateContext_->SetRenderTargets(1, &outRTV, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
             updateBlurCB(texelX2, texelY2, scaledOffset(secondaryOffsets[i]), 0.0f);
 
-            if (auto* var = bloomBlurSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-                var->Set(inSRV);
+            if (blurTexVar != nullptr) {
+                blurTexVar->Set(inSRV);
             }
 
             immediateContext_->SetPipelineState(bloomBlurPSO_);
@@ -5247,16 +5261,18 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
         }
     }
 
-    // 绑定原始 HDR 纹理 + Bloom 纹理
-    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-        var->Set(offscreenSRV_);
+    // 绑定原始 HDR 纹理 + Bloom 纹理（热路径：避免每帧重复字符串查找）
+    auto* texVar   = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+    auto* bloomVar = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture");
+    if (texVar != nullptr) {
+        texVar->Set(offscreenSRV_);
     }
     // Bloom：使用 RenderBloom() 的最终结果（约 1/6 分辨率，采样时自动线性滤波）
-    if (auto* var = fullscreenQuadSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_BloomTexture"); var != nullptr) {
+    if (bloomVar != nullptr) {
         if (bloomSRV_B_ != nullptr) {
-            var->Set(bloomSRV_B_);
+            bloomVar->Set(bloomSRV_B_);
         } else {
-            var->Set(offscreenSRV_);
+            bloomVar->Set(offscreenSRV_);
         }
     }
 

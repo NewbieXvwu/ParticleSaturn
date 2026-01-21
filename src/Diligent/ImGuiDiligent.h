@@ -90,6 +90,11 @@ class ImGuiDiligent final {
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srbStencilWrite_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srbStencilTest_;
+
+    // 频繁使用的 SRB 变量缓存：避免 Render() 热路径里反复 GetVariableByName() 字符串查找
+    Diligent::IShaderResourceVariable* texVar_            = nullptr;
+    Diligent::IShaderResourceVariable* texVarStencilWrite_ = nullptr;
+    Diligent::IShaderResourceVariable* texVarStencilTest_  = nullptr;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                vertexBuffer_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                indexBuffer_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                constantBuffer_;

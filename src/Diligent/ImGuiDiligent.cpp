@@ -236,6 +236,9 @@ void ImGuiDiligent::Shutdown() {
     srb_.Release();
     srbStencilWrite_.Release();
     srbStencilTest_.Release();
+    texVar_             = nullptr;
+    texVarStencilWrite_ = nullptr;
+    texVarStencilTest_  = nullptr;
     vertexBuffer_.Release();
     indexBuffer_.Release();
     constantBuffer_.Release();
@@ -449,13 +452,20 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                     currentTexture = texView;
                     // 根据当前 Stencil 模式选择正确的 SRB
                     IShaderResourceBinding* currentSrb = srb_.RawPtr();
+                    IShaderResourceVariable* texVar    = texVar_;
                     if (stencilMode_ == StencilMode::WriteIncr || stencilMode_ == StencilMode::WriteDecr) {
                         currentSrb = srbStencilWrite_.RawPtr();
+                        texVar     = texVarStencilWrite_;
                     } else if (stencilMode_ == StencilMode::TestEqual) {
                         currentSrb = srbStencilTest_.RawPtr();
+                        texVar     = texVarStencilTest_;
                     }
-                    if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-                        var->Set(texView);
+                    if (texVar == nullptr && currentSrb != nullptr) {
+                        // 兜底：理论上 CreatePipelineStates() 会缓存变量指针；若因重建/异常未缓存，这里退化为一次查找。
+                        texVar = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
+                    }
+                    if (texVar != nullptr) {
+                        texVar->Set(texView);
                     }
                     context->CommitShaderResources(currentSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
                 }
@@ -588,6 +598,7 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
             var->Set(constantBuffer_);
         }
         pso_->CreateShaderResourceBinding(&srb_, true);
+        texVar_ = (srb_ != nullptr) ? srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture") : nullptr;
     }
 
     // ========== PSO 2: Stencil 写入（禁止颜色写入）==========
@@ -641,6 +652,8 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
             var->Set(constantBuffer_);
         }
         psoStencilWrite_->CreateShaderResourceBinding(&srbStencilWrite_, true);
+        texVarStencilWrite_ =
+            (srbStencilWrite_ != nullptr) ? srbStencilWrite_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture") : nullptr;
     }
 
     // ========== PSO 3: Stencil 测试（相等时通过）==========
@@ -699,6 +712,8 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
             var->Set(constantBuffer_);
         }
         psoStencilTest_->CreateShaderResourceBinding(&srbStencilTest_, true);
+        texVarStencilTest_ =
+            (srbStencilTest_ != nullptr) ? srbStencilTest_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture") : nullptr;
     }
 
     return srb_ != nullptr && srbStencilWrite_ != nullptr && srbStencilTest_ != nullptr;
@@ -799,8 +814,8 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     }
 
     // 绑定字体纹理到 SRB
-    if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture"); var != nullptr) {
-        var->Set(fontSRV_);
+    if (texVar_ != nullptr) {
+        texVar_->Set(fontSRV_);
     }
 
     // 存储纹理 ID（ImGui 使用）
