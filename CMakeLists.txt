@@ -186,6 +186,7 @@ endif()
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
+    src/Diligent/DiligentShaderSources.cpp
     src/Diligent/DirectCompositionSwapChain.cpp
     src/Diligent/VulkanD3D12Interop.cpp
     src/Diligent/ImGuiDiligent.cpp

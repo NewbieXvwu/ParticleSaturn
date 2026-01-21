@@ -189,6 +189,8 @@
   <ItemGroup>
     <None Include="src\Diligent\Main.cpp" />
     <None Include="src\Diligent\DiligentBackend.cpp" />
+    <None Include="src\Diligent\DiligentShaderSources.cpp" />
+    <None Include="src\Diligent\DiligentShaderSources.h" />
     <None Include="src\Diligent\DiligentBackend.h" />
     <None Include="src\Diligent\RenderBackend.h" />
     <None Include="src\Diligent\SuperResolution.h" />
