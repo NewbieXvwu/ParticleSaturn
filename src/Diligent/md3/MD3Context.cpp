@@ -813,9 +813,23 @@ void DrawRipples() {
             scrollDeltaY = window->Scroll.y - r.initialScrollY;
         }
 
-        // 计算当前控件位置（补偿滚动）
+        // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
+        float boundsW       = r.boundsW;
+        float boundsH       = r.boundsH;
+        float cornerRadius  = r.cornerRadius;
         float currentBoundsX = r.initialBoundsX - scrollDeltaX;
         float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        auto it = ctx.widgetBounds.find(r.widgetId);
+        if (it != ctx.widgetBounds.end()) {
+            const auto& wb = it->second;
+            // widgetBounds 中的坐标已经是当前帧的屏幕坐标，不需要再补偿滚动
+            currentBoundsX = wb.x;
+            currentBoundsY = wb.y;
+            boundsW        = wb.w;
+            boundsH        = wb.h;
+            cornerRadius   = wb.cornerRadius;
+        }
 
         // 计算 ripple 中心的屏幕位置
         float centerX = currentBoundsX + r.relCenterX;
@@ -831,8 +845,8 @@ void DrawRipples() {
 
         // Push clip rect for the control bounds intersected with window clip rect
         ImVec2 boundsMin(std::max(currentBoundsX, windowClipMin.x), std::max(currentBoundsY, windowClipMin.y));
-        ImVec2 boundsMax(std::min(currentBoundsX + r.boundsW, windowClipMax.x),
-                         std::min(currentBoundsY + r.boundsH, windowClipMax.y));
+        ImVec2 boundsMax(std::min(currentBoundsX + boundsW, windowClipMax.x),
+                         std::min(currentBoundsY + boundsH, windowClipMax.y));
 
         // 如果裁剪区域无效（完全在窗口外），跳过此 ripple
         if (boundsMax.x <= boundsMin.x || boundsMax.y <= boundsMin.y) {
@@ -845,7 +859,7 @@ void DrawRipples() {
         ImVec4 rippleColor(r.colorR, r.colorG, r.colorB, r.alpha);
         ImU32  col = ColorToU32(rippleColor);
 
-        if (r.cornerRadius > 1.0f) {
+        if (cornerRadius > 1.0f) {
             // For rounded corners: draw ripple as intersection of circle and rounded rect
             float left   = std::max(boundsMin.x, centerX - r.radius);
             float right  = std::min(boundsMax.x, centerX + r.radius);
@@ -858,7 +872,7 @@ void DrawRipples() {
 
                 // Calculate effective corner radius for the intersection region
                 float effectiveCorner =
-                    std::min(r.cornerRadius, std::min((right - left) * 0.5f, (bottom - top) * 0.5f));
+                    std::min(cornerRadius, std::min((right - left) * 0.5f, (bottom - top) * 0.5f));
 
                 // Draw as rounded rectangle to respect the control's corner radius
                 dl->AddRectFilled(rippleMin, rippleMax, col, effectiveCorner);
@@ -1044,8 +1058,23 @@ void DrawRipplesDiligent() {
             scrollDeltaY = window->Scroll.y - r.initialScrollY;
         }
 
-        const float currentBoundsX = r.initialBoundsX - scrollDeltaX;
-        const float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+        // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
+        float boundsW       = r.boundsW;
+        float boundsH       = r.boundsH;
+        float cornerRadius  = r.cornerRadius;
+        float currentBoundsX = r.initialBoundsX - scrollDeltaX;
+        float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        auto it = ctx.widgetBounds.find(r.widgetId);
+        if (it != ctx.widgetBounds.end()) {
+            const auto& wb = it->second;
+            // widgetBounds 中的坐标已经是当前帧的屏幕坐标，不需要再补偿滚动
+            currentBoundsX = wb.x;
+            currentBoundsY = wb.y;
+            boundsW        = wb.w;
+            boundsH        = wb.h;
+            cornerRadius   = wb.cornerRadius;
+        }
 
         const float centerX = currentBoundsX + r.relCenterX;
         const float centerY = currentBoundsY + r.relCenterY;
@@ -1060,8 +1089,8 @@ void DrawRipplesDiligent() {
 
         // 用矩形裁剪限制像素工作量（与窗口裁剪区域取交集）
         const ImVec2 clipMin(std::max(currentBoundsX, windowClipMin.x), std::max(currentBoundsY, windowClipMin.y));
-        const ImVec2 clipMax(std::min(currentBoundsX + r.boundsW, windowClipMax.x),
-                             std::min(currentBoundsY + r.boundsH, windowClipMax.y));
+        const ImVec2 clipMax(std::min(currentBoundsX + boundsW, windowClipMax.x),
+                             std::min(currentBoundsY + boundsH, windowClipMax.y));
 
         // 如果裁剪区域无效（完全在窗口外），跳过此 ripple
         if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y) {
@@ -1078,9 +1107,9 @@ void DrawRipplesDiligent() {
         data->alpha        = r.alpha;
         data->boundsX      = currentBoundsX * fbScaleX;
         data->boundsY      = currentBoundsY * fbScaleY;
-        data->boundsW      = r.boundsW * fbScaleX;
-        data->boundsH      = r.boundsH * fbScaleY;
-        data->cornerRadius = r.cornerRadius * fbScaleR;
+        data->boundsW      = boundsW * fbScaleX;
+        data->boundsH      = boundsH * fbScaleY;
+        data->cornerRadius = cornerRadius * fbScaleR;
         data->colorR       = r.colorR;
         data->colorG       = r.colorG;
         data->colorB       = r.colorB;

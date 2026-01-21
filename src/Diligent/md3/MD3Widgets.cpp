@@ -153,6 +153,9 @@ bool Toggle(const char* label, bool* v) {
         TriggerRipple(id, knobX, knobY, pos.x, pos.y, trackWidth, trackHeight, trackRadius);
     }
 
+    // 更新控件边界（供 Ripple 动态跟踪）
+    ctx.widgetBounds[id] = {pos.x, pos.y, trackWidth, trackHeight, trackRadius};
+
     // 绘制标签
     SameLine();
     SetCursorPosX(GetCursorPosX() + 12.0f * dpi);
@@ -182,8 +185,11 @@ static bool ButtonInternal(const char* label, ImVec2 size, int buttonType) {
     // 获取或创建动画状态
     auto& state = ctx.buttonStates[id];
 
-    // 计算按钮尺寸
-    ImVec2 textSize  = CalcTextSize(label);
+    // 找到显示文本的结束位置（处理 ### 语法）
+    const char* labelEnd = FindRenderedTextEnd(label);
+
+    // 计算按钮尺寸（只计算显示部分）
+    ImVec2 textSize  = CalcTextSize(label, labelEnd);
     float  paddingH  = 24.0f * dpi;
     float  paddingV  = 10.0f * dpi;
     float  minHeight = 40.0f * dpi;
@@ -272,15 +278,18 @@ static bool ButtonInternal(const char* label, ImVec2 size, int buttonType) {
         dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), ColorToU32(borderColor), cornerRadius, 0, 1.0f * dpi);
     }
 
-    // 绘制文本
+    // 绘制文本（只绘制 ### 之前的部分）
     ImVec2 textPos(pos.x + (size.x - textSize.x) * 0.5f, pos.y + (size.y - textSize.y) * 0.5f);
-    dl->AddText(textPos, ColorToU32(textColor), label);
+    dl->AddText(textPos, ColorToU32(textColor), label, labelEnd);
 
     // 触发 Ripple
     if (pressed) {
         ImVec2 mousePos = GetIO().MousePos;
         TriggerRipple(id, mousePos.x, mousePos.y, pos.x, pos.y, size.x, size.y, cornerRadius);
     }
+
+    // 更新控件边界（供 Ripple 动态跟踪）
+    ctx.widgetBounds[id] = {pos.x, pos.y, size.x, size.y, cornerRadius};
 
     return pressed;
 }
@@ -717,6 +726,9 @@ bool BeginCombo(const char* label, const char* preview_value) {
         ImVec2 mousePos = GetIO().MousePos;
         TriggerRipple(id, mousePos.x, mousePos.y, itemMin.x, itemMin.y, width, height, cornerRadius);
     }
+
+    // 更新控件边界（供 Ripple 动态跟踪）
+    ctx.widgetBounds[id] = {itemMin.x, itemMin.y, width, height, cornerRadius};
 
     // 计算弹出位置（智能判断向上或向下）
     float maxMenuHeight = 200.0f * dpi;
@@ -1162,6 +1174,9 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
         ImVec2 mousePos = GetIO().MousePos;
         TriggerRipple(id, mousePos.x, mousePos.y, pos.x, pos.y, width, height, cornerRadius);
     }
+
+    // 更新控件边界（供 Ripple 动态跟踪）
+    ctx.widgetBounds[id] = {pos.x, pos.y, width, height, cornerRadius};
 
     // 如果展开或正在动画，开始内容区域
     if (isOpen || openT > 0.01f) {

@@ -216,6 +216,15 @@ struct RippleConfig {
     float maxAlpha       = 0.12f;  // 最大透明度
 };
 
+// 控件边界信息（用于 Ripple 动态跟踪控件尺寸变化）
+struct WidgetBounds {
+    float x            = 0.0f;
+    float y            = 0.0f;
+    float w            = 0.0f;
+    float h            = 0.0f;
+    float cornerRadius = 0.0f;
+};
+
 //=============================================================================
 // 控件动画状态
 //=============================================================================
@@ -407,6 +416,9 @@ struct MD3Context {
     std::unordered_map<ImGuiID, ScrollbarAnimState>        scrollbarStates;
     std::unordered_map<ImGuiID, ResizeAnimState>           resizeStates;
     std::unordered_map<ImGuiID, SmoothScrollState>         smoothScrollStates;
+
+    // 控件边界缓存（每帧更新，用于 Ripple 动态跟踪控件尺寸变化）
+    std::unordered_map<ImGuiID, WidgetBounds> widgetBounds;
 
     // 屏幕尺寸 (用于 Ripple shader)
     float screenWidth  = 1920.0f;

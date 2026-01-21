@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GraphicsTypes.h"
+#include "Shader.h"
 #include "RenderBackend.h"
 
 namespace ParticleSaturn::Render {

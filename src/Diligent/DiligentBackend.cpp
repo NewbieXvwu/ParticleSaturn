@@ -1258,42 +1258,22 @@ void DiligentBackend::Shutdown() {
     }
 
     // 保存着色器缓存到磁盘
-    // 写入日志文件（因为此时 ImGui 已关闭，std::cerr 无法显示）
-    auto logPath = ShaderCache::GetCacheDirectory() + L"\\shutdown_log.txt";
-    std::wofstream logFile(logPath, std::ios::app);  // 追加模式
-    logFile << L"[DiligentBackend] Shutdown called..." << std::endl;
-
     if (renderStateCache_) {
         const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
                                   : (backend_ == Backend::D3D12) ? "d3d12"
                                                                  : "vulkan";
         auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
-        logFile << L"[DiligentBackend] Cache path: " << cachePath << std::endl;
         if (!cachePath.empty()) {
             RefCntAutoPtr<IDataBlob> cacheBlob;
             // 使用固定 ContentVersion（由构建标识 + DiligentCore 版本 + 后端生成），避免跨版本缓存污染。
             const Uint32 cv = (renderStateCacheContentVersion_ != 0) ? renderStateCacheContentVersion_
                                                                      : ComputeRenderStateCacheContentVersion(backend_);
-            bool writeResult = renderStateCache_->WriteToBlob(cv, &cacheBlob);
-            logFile << L"[DiligentBackend] WriteToBlob returned: " << (writeResult ? L"true" : L"false") << std::endl;
-            if (writeResult && cacheBlob) {
-                logFile << L"[DiligentBackend] WriteToBlob succeeded, size: " << cacheBlob->GetSize() << L" bytes" << std::endl;
-                if (ShaderCache::WriteCache(cachePath, cacheBlob->GetConstDataPtr(), cacheBlob->GetSize())) {
-                    logFile << L"[DiligentBackend] RenderStateCache saved to disk" << std::endl;
-                } else {
-                    logFile << L"[DiligentBackend] WriteCache() failed, GetLastError=" << GetLastError() << std::endl;
-                }
-            } else {
-                logFile << L"[DiligentBackend] WriteToBlob() failed" << std::endl;
+            if (renderStateCache_->WriteToBlob(cv, &cacheBlob) && cacheBlob) {
+                ShaderCache::WriteCache(cachePath, cacheBlob->GetConstDataPtr(), cacheBlob->GetSize());
             }
-        } else {
-            logFile << L"[DiligentBackend] Cache path is empty!" << std::endl;
         }
         renderStateCache_.Release();
-    } else {
-        logFile << L"[DiligentBackend] renderStateCache_ is null, nothing to save" << std::endl;
     }
-    logFile.close();
 
     if (handTracker_) {
         handTracker_->Shutdown();
@@ -4607,13 +4587,17 @@ void DiligentBackend::RenderFrame() {
                 ImGui::Dummy(ImVec2(0, 8));
 
                 // 清除着色器缓存按钮
+                // 使用 ### 语法确保按钮 ID 不变，这样 Ripple 效果能正确跟踪尺寸变化
                 static bool shaderCacheCleared = false;
+                char btnLabel[256];
                 if (shaderCacheCleared) {
+                    snprintf(btnLabel, sizeof(btnLabel), "%s###ClearShaderCacheBtn", str.shaderCacheCleared);
                     ImGui::BeginDisabled();
-                    MD3::Button(str.shaderCacheCleared);
+                    MD3::Button(btnLabel);
                     ImGui::EndDisabled();
                 } else {
-                    if (MD3::Button(str.clearShaderCache)) {
+                    snprintf(btnLabel, sizeof(btnLabel), "%s###ClearShaderCacheBtn", str.clearShaderCache);
+                    if (MD3::Button(btnLabel)) {
                         ClearShaderCache();
                         shaderCacheCleared = true;
                     }

@@ -472,9 +472,23 @@ void DrawRipples() {
         float scrollDeltaX = window->Scroll.x - r.initialScrollX;
         float scrollDeltaY = window->Scroll.y - r.initialScrollY;
 
-        // 计算当前控件位置（补偿滚动）
+        // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
+        float boundsW       = r.boundsW;
+        float boundsH       = r.boundsH;
+        float cornerRadius  = r.cornerRadius;
         float currentBoundsX = r.initialBoundsX - scrollDeltaX;
         float currentBoundsY = r.initialBoundsY - scrollDeltaY;
+
+        auto it = g_context.widgetBounds.find(r.widgetId);
+        if (it != g_context.widgetBounds.end()) {
+            const auto& wb = it->second;
+            // widgetBounds 中的坐标已经是当前帧的屏幕坐标，不需要再补偿滚动
+            currentBoundsX = wb.x;
+            currentBoundsY = wb.y;
+            boundsW        = wb.w;
+            boundsH        = wb.h;
+            cornerRadius   = wb.cornerRadius;
+        }
 
         // 计算 ripple 中心的屏幕位置
         float centerX = currentBoundsX + r.relCenterX;
@@ -482,7 +496,7 @@ void DrawRipples() {
 
         // 保存裁剪区域（先用矩形裁剪把像素工作量限定在控件区域内）
         ImVec2 clipMin(currentBoundsX, currentBoundsY);
-        ImVec2 clipMax(currentBoundsX + r.boundsW, currentBoundsY + r.boundsH);
+        ImVec2 clipMax(currentBoundsX + boundsW, currentBoundsY + boundsH);
         dl->PushClipRect(clipMin, clipMax, true);
 
         if (useShader) {
@@ -494,9 +508,9 @@ void DrawRipples() {
             data->alpha        = r.alpha;
             data->boundsX      = currentBoundsX * fbScaleX;
             data->boundsY      = currentBoundsY * fbScaleY;
-            data->boundsW      = r.boundsW * fbScaleX;
-            data->boundsH      = r.boundsH * fbScaleY;
-            data->cornerRadius = r.cornerRadius * fbScaleR;
+            data->boundsW      = boundsW * fbScaleX;
+            data->boundsH      = boundsH * fbScaleY;
+            data->cornerRadius = cornerRadius * fbScaleR;
             data->colorR       = r.colorR;
             data->colorG       = r.colorG;
             data->colorB       = r.colorB;

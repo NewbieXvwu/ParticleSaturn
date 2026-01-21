@@ -772,7 +772,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     for (const char* fontPath : chineseFonts) {
         if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
             io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig,
-                                         io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+                                         io.Fonts->GetGlyphRangesChineseFull());
             break;
         }
     }

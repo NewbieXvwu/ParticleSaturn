@@ -341,6 +341,15 @@ struct RippleState {
     bool    fadeOut           = false;
 };
 
+// 控件边界信息（用于 Ripple 动态跟踪控件尺寸变化）
+struct WidgetBounds {
+    float x            = 0.0f;
+    float y            = 0.0f;
+    float w            = 0.0f;
+    float h            = 0.0f;
+    float cornerRadius = 0.0f;
+};
+
 // Ripple 系统配置
 struct RippleConfig {
     float expandDuration = 0.225f;
@@ -401,6 +410,9 @@ struct MD3Context {
     std::unordered_map<ImGuiID, ScrollbarAnimState>        scrollbarStates;
     std::unordered_map<ImGuiID, ResizeAnimState>           resizeStates;
     std::unordered_map<ImGuiID, SmoothScrollState>         smoothScrollStates;
+
+    // 控件边界缓存（每帧更新，用于 Ripple 动态跟踪控件尺寸变化）
+    std::unordered_map<ImGuiID, WidgetBounds> widgetBounds;
 
     float screenWidth  = 1920.0f;
     float screenHeight = 1080.0f;
