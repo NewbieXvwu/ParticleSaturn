@@ -426,6 +426,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     while (true) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
+                // 退出前保存会话状态
+                // 更新当前窗口位置（仅非全屏模式）
+                if (!appState.window.isFullscreen) {
+                    RECT wr;
+                    if (GetWindowRect(hwnd, &wr)) {
+                        appState.window.windowedX = wr.left;
+                        appState.window.windowedY = wr.top;
+                        appState.window.windowedW = wr.right - wr.left;
+                        appState.window.windowedH = wr.bottom - wr.top;
+                    }
+                }
+                Settings::SaveSession(appState, requestedBackend);
+
                 backend.Shutdown();
                 ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
                 return static_cast<int>(msg.wParam);
