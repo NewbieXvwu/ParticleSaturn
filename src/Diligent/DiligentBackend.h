@@ -79,6 +79,8 @@ class DiligentBackend final {
     bool CreateStarfieldPSO();
     bool CreateStarfieldBuffers(uint32_t starCount);
     bool CreateParticleBuffers(uint32_t maxParticles);
+    bool CreateParticleBuffersGPU(uint32_t maxParticles); // GPU 初始化版本
+    bool CreateParticleInitPSO();                          // GPU 初始化 PSO
     bool CreateParticlePSO();
     bool CreateParticleComputePSO();
     bool CreateSevenSegmentPSO();
@@ -236,6 +238,12 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleComputePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleComputeSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleComputeConstants_;
+
+    // GPU 粒子初始化（一次性执行，替代 CPU 初始化）
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleInitPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleInitSRB_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleInitConstants_;
+    bool                                                      useGPUParticleInit_ = true; // 优先使用 GPU 初始化
 
     Diligent::RefCntAutoPtr<Diligent::IBuffer>     particleBuffers_[kParticleBufferCount];
     Diligent::RefCntAutoPtr<Diligent::IBufferView> particleSRVs_[kParticleBufferCount];

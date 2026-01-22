@@ -1170,9 +1170,21 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     progressRenderer.IncrementCompleted();
     renderProgress();
 
-    // 阶段 3（第 1 步）：粒子数据通路（先 CPU 复刻初始化，后续再接 compute 三缓冲轮转）。
+    // 阶段 3（第 1 步）：粒子数据通路（优先 GPU 初始化，失败则回退到 CPU）。
     // 复刻 OpenGL 旧版默认粒子规模：120 万（视觉遮蔽/密度/"不透光感"强相关）。
-    if (!CreateParticleBuffers(kParticleCountMax)) {
+    bool particleInitSuccess = false;
+    if (useGPUParticleInit_) {
+        particleInitSuccess = CreateParticleBuffersGPU(kParticleCountMax);
+        if (!particleInitSuccess) {
+            DebugLog::Instance().Add(LogLevel::Warning,
+                                     "[Init] GPU particle init failed, falling back to CPU");
+        }
+    }
+    if (!particleInitSuccess) {
+        // CPU fallback
+        particleInitSuccess = CreateParticleBuffers(kParticleCountMax);
+    }
+    if (!particleInitSuccess) {
         if (lastError_.empty()) {
             SetLastError(L"CreateParticleBuffers() 失败。");
         }
@@ -2767,6 +2779,269 @@ bool DiligentBackend::CreateParticleBuffers(uint32_t maxParticles) {
         }
         immediateContext_->TransitionResourceStates(kParticleBufferCount, barriers);
     }
+
+    return true;
+}
+
+bool DiligentBackend::CreateParticleInitPSO() {
+    if (device_ == nullptr) {
+        return false;
+    }
+
+    const auto csSrc = GetSaturnInitComputeShaderSource(backend_);
+    if (csSrc.Source == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Error,
+                                 "[CreateParticleInitPSO] GetSaturnInitComputeShaderSource() returned nullptr");
+        return false;
+    }
+
+    const auto cs = CreateShaderFromSource(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language,
+                                           renderStateCache_);
+    if (cs == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] Compute shader compilation failed");
+        return false;
+    }
+
+    ComputePipelineStateCreateInfo psoCI;
+    psoCI.PSODesc.Name         = "Saturn Particle Init PSO";
+    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_COMPUTE;
+    psoCI.pCS                  = cs;
+
+    // 资源签名：UAV + Constants
+    ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_COMPUTE, "g_ParticlesOut", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+    };
+    psoCI.PSODesc.ResourceLayout.Variables    = vars;
+    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
+
+    particleInitPSO_.Release();
+    particleInitSRB_.Release();
+    CreateComputePSO(device_, psoCI, &particleInitPSO_, renderStateCache_);
+    if (particleInitPSO_ == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateComputePipelineState failed");
+        return false;
+    }
+
+    // 创建常量缓冲
+    {
+        struct InitConstants {
+            uint32_t particleCount;
+            uint32_t seed;
+            float    radius;
+            float    _pad;
+        };
+
+        BufferDesc cbDesc{};
+        cbDesc.Name           = "Particle Init Constants";
+        cbDesc.Size           = (sizeof(InitConstants) + 255) & ~255;
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+        particleInitConstants_.Release();
+        device_->CreateBuffer(cbDesc, nullptr, &particleInitConstants_);
+        if (particleInitConstants_ == nullptr) {
+            DebugLog::Instance().Add(LogLevel::Error,
+                                     "[CreateParticleInitPSO] CreateBuffer(Init Constants) failed");
+            return false;
+        }
+    }
+
+    // 绑定常量
+    auto var = particleInitPSO_->GetStaticVariableByName(SHADER_TYPE_COMPUTE, "InitConstants");
+    if (var != nullptr) {
+        var->Set(particleInitConstants_);
+    } else {
+        DebugLog::Instance().Add(LogLevel::Error,
+                                 "[CreateParticleInitPSO] GetStaticVariableByName(InitConstants) returned nullptr");
+        return false;
+    }
+
+    particleInitPSO_->CreateShaderResourceBinding(&particleInitSRB_, true);
+    if (particleInitSRB_ == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateShaderResourceBinding failed");
+        return false;
+    }
+
+    return true;
+}
+
+bool DiligentBackend::CreateParticleBuffersGPU(uint32_t maxParticles) {
+    if (device_ == nullptr || immediateContext_ == nullptr) {
+        SetLastError(L"CreateParticleBuffersGPU: device/context 为空。");
+        return false;
+    }
+    if (maxParticles == 0) {
+        SetLastError(L"CreateParticleBuffersGPU: maxParticles=0。");
+        return false;
+    }
+
+    const Uint64 bufferSize = static_cast<Uint64>(sizeof(SaturnParticle)) * static_cast<Uint64>(maxParticles);
+
+    // 创建空的粒子缓冲区（不初始化数据）
+    for (uint32_t i = 0; i < kParticleBufferCount; ++i) {
+        BufferDesc bufDesc{};
+        bufDesc.Name              = "Saturn Particles";
+        bufDesc.Size              = bufferSize;
+        bufDesc.BindFlags         = BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
+        bufDesc.Usage             = USAGE_DEFAULT;
+        bufDesc.Mode              = BUFFER_MODE_STRUCTURED;
+        bufDesc.ElementByteStride = sizeof(SaturnParticle);
+
+        particleUAVs_[i].Release();
+        particleSRVs_[i].Release();
+        particleBuffers_[i].Release();
+
+        device_->CreateBuffer(bufDesc, nullptr, &particleBuffers_[i]); // 无初始数据
+        if (particleBuffers_[i] == nullptr) {
+            SetLastError(L"CreateParticleBuffersGPU: CreateBuffer(Saturn Particles) 失败（可能显存不足）。");
+            return false;
+        }
+
+        particleSRVs_[i] = particleBuffers_[i]->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE);
+        particleUAVs_[i] = particleBuffers_[i]->GetDefaultView(BUFFER_VIEW_UNORDERED_ACCESS);
+        if (particleSRVs_[i] == nullptr || particleUAVs_[i] == nullptr) {
+            SetLastError(L"CreateParticleBuffersGPU: 获取粒子 SRV/UAV 失败。");
+            return false;
+        }
+    }
+
+    // 创建初始化 PSO
+    if (!CreateParticleInitPSO()) {
+        DebugLog::Instance().Add(LogLevel::Warning,
+                                 "[CreateParticleBuffersGPU] CreateParticleInitPSO failed, falling back to CPU");
+        return false;
+    }
+
+    // 使用 GPU Compute Shader 初始化所有粒子缓冲区
+    const uint32_t seed = static_cast<uint32_t>(std::time(nullptr));
+
+    struct InitConstants {
+        uint32_t particleCount;
+        uint32_t seed;
+        float    radius;
+        float    _pad;
+    };
+
+    InitConstants initConst{};
+    initConst.particleCount = maxParticles;
+    initConst.seed          = seed;
+    initConst.radius        = 18.0f;
+
+    {
+        MapHelper<InitConstants> mapped(immediateContext_, particleInitConstants_, MAP_WRITE, MAP_FLAG_DISCARD);
+        if (mapped) {
+            *mapped = initConst;
+        }
+    }
+
+    // 对每个缓冲区执行初始化
+    for (uint32_t i = 0; i < kParticleBufferCount; ++i) {
+        // 转换缓冲区到 UAV 状态
+        StateTransitionDesc barrier{};
+        barrier.pResource      = particleBuffers_[i];
+        barrier.OldState       = RESOURCE_STATE_UNKNOWN;
+        barrier.NewState       = RESOURCE_STATE_UNORDERED_ACCESS;
+        barrier.TransitionType = STATE_TRANSITION_TYPE_IMMEDIATE;
+        barrier.Flags          = STATE_TRANSITION_FLAG_UPDATE_STATE;
+        immediateContext_->TransitionResourceStates(1, &barrier);
+
+        // 绑定输出缓冲区
+        auto outVar = particleInitSRB_->GetVariableByName(SHADER_TYPE_COMPUTE, "g_ParticlesOut");
+        if (outVar != nullptr) {
+            outVar->Set(particleUAVs_[i]);
+        }
+
+        immediateContext_->SetPipelineState(particleInitPSO_);
+        immediateContext_->CommitShaderResources(particleInitSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        DispatchComputeAttribs dispatchAttribs;
+        dispatchAttribs.ThreadGroupCountX = (maxParticles + 255) / 256;
+        dispatchAttribs.ThreadGroupCountY = 1;
+        dispatchAttribs.ThreadGroupCountZ = 1;
+        immediateContext_->DispatchCompute(dispatchAttribs);
+
+        // 转换回 SRV 状态
+        barrier.OldState = RESOURCE_STATE_UNORDERED_ACCESS;
+        barrier.NewState = RESOURCE_STATE_SHADER_RESOURCE;
+        immediateContext_->TransitionResourceStates(1, &barrier);
+    }
+
+    // 等待 GPU 完成初始化
+    immediateContext_->Flush();
+
+    // 常量缓冲（与 CPU 版本相同）
+    {
+        BufferDesc cbDesc{};
+        cbDesc.Name           = "Particle Constants";
+        cbDesc.Size           = (sizeof(StarConstants) + 255) & ~255;
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+        particleConstants_.Release();
+        device_->CreateBuffer(cbDesc, nullptr, &particleConstants_);
+        if (particleConstants_ == nullptr) {
+            SetLastError(L"CreateParticleBuffersGPU: CreateBuffer(Particle Constants) 失败。");
+            return false;
+        }
+    }
+
+    // Compute 常量缓冲
+    {
+        BufferDesc cbDesc{};
+        cbDesc.Name           = "Particle Compute Constants";
+        cbDesc.Size           = (sizeof(ParticleComputeConstants) + 255) & ~255;
+        cbDesc.Usage          = USAGE_DYNAMIC;
+        cbDesc.BindFlags      = BIND_UNIFORM_BUFFER;
+        cbDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+        particleComputeConstants_.Release();
+        device_->CreateBuffer(cbDesc, nullptr, &particleComputeConstants_);
+        if (particleComputeConstants_ == nullptr) {
+            SetLastError(L"CreateParticleBuffersGPU: CreateBuffer(Particle Compute Constants) 失败。");
+            return false;
+        }
+    }
+
+    // Indirect draw args
+    {
+        uint32_t args[4] = {6u, maxParticles, 0u, 0u};
+
+        BufferDesc bufDesc{};
+        bufDesc.Name           = "Particle Indirect Draw Args";
+        bufDesc.Size           = sizeof(args);
+        bufDesc.BindFlags      = BIND_INDIRECT_DRAW_ARGS;
+        bufDesc.Usage          = USAGE_DEFAULT;
+        bufDesc.CPUAccessFlags = CPU_ACCESS_NONE;
+
+        BufferData init{};
+        init.pData    = args;
+        init.DataSize = sizeof(args);
+
+        particleIndirectArgs_.Release();
+        device_->CreateBuffer(bufDesc, &init, &particleIndirectArgs_);
+        if (particleIndirectArgs_ == nullptr) {
+            SetLastError(L"CreateParticleBuffersGPU: CreateBuffer(Indirect Draw Args) 失败。");
+            return false;
+        }
+
+        StateTransitionDesc barrier{};
+        barrier.pResource      = particleIndirectArgs_;
+        barrier.OldState       = RESOURCE_STATE_UNKNOWN;
+        barrier.NewState       = RESOURCE_STATE_INDIRECT_ARGUMENT;
+        barrier.TransitionType = STATE_TRANSITION_TYPE_IMMEDIATE;
+        barrier.Flags          = STATE_TRANSITION_FLAG_UPDATE_STATE;
+        immediateContext_->TransitionResourceStates(1, &barrier);
+    }
+
+    particleCount_     = maxParticles;
+    particleRenderIdx_ = 2;
+    particleReadIdx_   = 0;
+    particleWriteIdx_  = 1;
+
+    DebugLog::Instance().Add(LogLevel::Info, "[GPU] Particle initialization completed on GPU (" +
+                                                 std::to_string(maxParticles) + " particles)");
 
     return true;
 }

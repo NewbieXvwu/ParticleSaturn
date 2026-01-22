@@ -21,6 +21,7 @@ ShaderSources       GetBloomDownsampleShaderSources(Backend backend);
 ShaderSources       GetBloomBlurShaderSources(Backend backend);
 ShaderSources       GetAcrylicCompositeShaderSources(Backend backend);
 ComputeShaderSource GetSaturnComputeShaderSource(Backend backend);
+ComputeShaderSource GetSaturnInitComputeShaderSource(Backend backend); // GPU 粒子初始化
 ShaderSources       GetStarShaderSources(Backend backend);
 ShaderSources       GetSaturnParticleShaderSources(Backend backend);
 
