@@ -110,7 +110,9 @@ class DiligentBackend final {
     // DirectComposition SwapChain 辅助方法
     Diligent::ITextureView* GetCurrentBackBufferRTV();
     bool                    CreateDCompBackBufferRTVs();
-    bool                    UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
+    bool UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
+    bool InitD3D11NativeBlit();             // 初始化 D3D11 原生 blit 管线
+    void BlitOffscreenToBackBufferD3D11();  // D3D11 透明模式专用的原生 blit
     void                    PresentFrame(int syncInterval);
 
     // 运行时切换透明模式（D3D11/D3D12）
@@ -132,6 +134,29 @@ class DiligentBackend final {
     static constexpr uint32_t                       kDCompBufferCount  = 3;
     Diligent::RefCntAutoPtr<Diligent::ITexture>     dcompBackBuffers_[kDCompBufferCount];
     Diligent::RefCntAutoPtr<Diligent::ITextureView> dcompBackBufferRTVs_[kDCompBufferCount];
+
+    // ============================================================================
+    // D3D11 透明模式优化：使用原生 D3D11 API 避免每帧 Diligent 纹理包装开销
+    // 包括：原生着色器、状态对象、采样器、RTV 等
+    // ============================================================================
+    bool d3d11NativeBlitInitialized_ = false;
+    // 缓存上一帧的 D3D11 后缓冲指针，用于检测资源是否变化
+    void* d3d11LastBackBufferPtr_ = nullptr;
+
+    // 原生 D3D11 资源（仅在 D3D11 透明模式下使用）
+    Microsoft::WRL::ComPtr<ID3D11Device>             d3d11Device_;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext>      d3d11Context_;
+    Microsoft::WRL::ComPtr<ID3D11VertexShader>       d3d11BlitVS_;
+    Microsoft::WRL::ComPtr<ID3D11PixelShader>        d3d11BlitPS_;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState>       d3d11LinearSampler_;
+    Microsoft::WRL::ComPtr<ID3D11BlendState>         d3d11BlendState_;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState>    d3d11RasterizerState_;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilState>  d3d11DepthStencilState_;
+    Microsoft::WRL::ComPtr<ID3D11Buffer>             d3d11BloomCB_;         // 常量缓冲（bloom strength 等）
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   d3d11CachedRTV_;       // 缓存后缓冲 RTV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11OffscreenSRV_;    // offscreen 纹理的原生 SRV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11BloomSRV_;        // bloom 纹理的原生 SRV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11UISceneSRV_;      // UI scene 纹理的原生 SRV
 
     // Vulkan D3D12 互操作层（Vulkan 透明模式专用）
     std::unique_ptr<VulkanD3D12Interop> vkD3D12Interop_;

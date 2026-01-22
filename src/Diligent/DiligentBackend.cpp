@@ -38,6 +38,7 @@
 #include "NativeWindow.h"
 #include "RenderDeviceD3D11.h"
 #include "RenderDeviceD3D12.h"
+#include "TextureViewD3D11.h" // For ITextureViewD3D11 in native D3D11 blit
 #include "Sampler.h"
 #include "VulkanD3D12Interop.h"
 #include "Win32WindowManager.h"
@@ -51,6 +52,8 @@
 
 #include <d3d11.h>
 #include <d3d12.h>
+#include <d3dcompiler.h> // D3DCompile for native D3D11 blit shaders
+#pragma comment(lib, "d3dcompiler") // Link with d3dcompiler.lib for D3DCompile
 #include <dwmapi.h>
 #include <wrl/client.h> // For Microsoft::WRL::ComPtr
 
@@ -4843,7 +4846,22 @@ void DiligentBackend::RenderFrame() {
     }
 
     // 4. Blit to Backbuffer
-    BlitOffscreenToBackBuffer();
+    // D3D11 透明模式：使用原生 D3D11 API 路径避免每帧 Diligent 纹理包装开销
+    const bool useD3D11NativeBlit = (backend_ == Backend::D3D11 && useDCompSwapChain_ &&
+                                      dcompSwapChain_.IsInitialized());
+    if (useD3D11NativeBlit) {
+        // 首次使用时初始化原生 blit 管线
+        if (!d3d11NativeBlitInitialized_) {
+            InitD3D11NativeBlit();
+        }
+        if (d3d11NativeBlitInitialized_) {
+            BlitOffscreenToBackBufferD3D11();
+        } else {
+            BlitOffscreenToBackBuffer();
+        }
+    } else {
+        BlitOffscreenToBackBuffer();
+    }
 
     // 渲染七段数码管 FPS（在 BlitOffscreenToBackBuffer 之后）
     RenderSevenSegmentFPS();
@@ -5180,6 +5198,19 @@ bool DiligentBackend::UpdateD3D11CurrentBackBufferRTV() {
         return false;
     }
 
+    // ============================================================================
+    // 优化：检测后缓冲资源是否变化，如果相同则跳过 Diligent 纹理包装重建
+    // 在 VSync 开启或帧率较低时，DXGI 可能连续帧返回相同的后缓冲
+    // ============================================================================
+    void* currentPtr = static_cast<void*>(d3d11Texture.Get());
+    if (currentPtr == d3d11LastBackBufferPtr_ && dcompBackBufferRTVs_[0]) {
+        // 资源未变化，复用现有 RTV
+        return true;
+    }
+
+    // 资源变化了，必须重建
+    d3d11LastBackBufferPtr_ = currentPtr;
+
     // 释放旧资源并重新创建
     dcompBackBuffers_[0].Release();
     dcompBackBufferRTVs_[0].Release();
@@ -5195,6 +5226,340 @@ bool DiligentBackend::UpdateD3D11CurrentBackBufferRTV() {
     dcompBackBuffers_[0]->CreateView(rtvDesc, &dcompBackBufferRTVs_[0]);
 
     return dcompBackBufferRTVs_[0] != nullptr;
+}
+
+// ============================================================================
+// D3D11 原生 Blit 管线初始化
+// 使用原生 D3D11 API 创建着色器、状态对象和采样器，避免每帧 Diligent 包装开销
+// ============================================================================
+bool DiligentBackend::InitD3D11NativeBlit() {
+    if (d3d11NativeBlitInitialized_) {
+        return true;
+    }
+
+    if (backend_ != Backend::D3D11 || !device_) {
+        return false;
+    }
+
+    // 从 Diligent 设备获取原生 D3D11 设备
+    RefCntAutoPtr<IRenderDeviceD3D11> deviceD3D11;
+    device_->QueryInterface(IID_RenderDeviceD3D11,
+                            reinterpret_cast<IObject**>(static_cast<IRenderDeviceD3D11**>(&deviceD3D11)));
+    if (!deviceD3D11) {
+        OutputDebugStringA("[DiligentBackend] InitD3D11NativeBlit: Failed to get D3D11 device\n");
+        return false;
+    }
+
+    d3d11Device_ = deviceD3D11->GetD3D11Device();
+    if (!d3d11Device_) {
+        OutputDebugStringA("[DiligentBackend] InitD3D11NativeBlit: Failed to get native D3D11 device\n");
+        return false;
+    }
+
+    d3d11Device_->GetImmediateContext(&d3d11Context_);
+    if (!d3d11Context_) {
+        OutputDebugStringA("[DiligentBackend] InitD3D11NativeBlit: Failed to get D3D11 context\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 编译全屏 blit 着色器（内联 HLSL）
+    // ============================================================================
+    static const char* kBlitVS = R"(
+        void main(uint vid : SV_VertexID, out float4 pos : SV_Position, out float2 uv : TEXCOORD0) {
+            uv.x = (vid == 1 || vid == 3) ? 2.0 : 0.0;
+            uv.y = (vid == 2 || vid == 3) ? 2.0 : 0.0;
+            pos = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.5, 1.0);
+        }
+    )";
+
+    static const char* kBlitPS = R"(
+        cbuffer BloomCB : register(b0) {
+            float bloomStrength;
+            float isTransparent;
+            float isD3D11;
+            float pad;
+        };
+        Texture2D g_Texture : register(t0);
+        Texture2D g_BloomTexture : register(t1);
+        SamplerState g_Sampler : register(s0);
+
+        float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+            float3 scene = g_Texture.Sample(g_Sampler, uv).rgb;
+            float3 bloom = g_BloomTexture.Sample(g_Sampler, uv).rgb;
+            float3 color = scene + bloom * bloomStrength;
+
+            // HDR -> LDR tone mapping (与 Diligent PSO 保持一致)
+            color = color / (color + float3(1.0, 1.0, 1.0));
+
+            // D3D11 透明模式：预乘 alpha
+            float alpha = isTransparent > 0.5 ? saturate(dot(color, float3(0.299, 0.587, 0.114)) + 0.1) : 1.0;
+            if (isD3D11 > 0.5 && isTransparent > 0.5) {
+                color *= alpha;
+            }
+
+            return float4(color, alpha);
+        }
+    )";
+
+    // 编译顶点着色器
+    Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errorBlob;
+    HRESULT hr = D3DCompile(kBlitVS, strlen(kBlitVS), "BlitVS", nullptr, nullptr,
+                            "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &vsBlob, &errorBlob);
+    if (FAILED(hr)) {
+        if (errorBlob) {
+            OutputDebugStringA("[DiligentBackend] D3D11 VS compile error: ");
+            OutputDebugStringA(static_cast<const char*>(errorBlob->GetBufferPointer()));
+        }
+        return false;
+    }
+
+    hr = d3d11Device_->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(),
+                                           nullptr, &d3d11BlitVS_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 vertex shader\n");
+        return false;
+    }
+
+    // 编译像素着色器
+    hr = D3DCompile(kBlitPS, strlen(kBlitPS), "BlitPS", nullptr, nullptr,
+                    "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &psBlob, &errorBlob);
+    if (FAILED(hr)) {
+        if (errorBlob) {
+            OutputDebugStringA("[DiligentBackend] D3D11 PS compile error: ");
+            OutputDebugStringA(static_cast<const char*>(errorBlob->GetBufferPointer()));
+        }
+        return false;
+    }
+
+    hr = d3d11Device_->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(),
+                                          nullptr, &d3d11BlitPS_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 pixel shader\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 创建采样器
+    // ============================================================================
+    D3D11_SAMPLER_DESC samplerDesc{};
+    samplerDesc.Filter         = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDesc.AddressU       = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressV       = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressW       = D3D11_TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.MaxAnisotropy  = 1;
+    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samplerDesc.MaxLOD         = D3D11_FLOAT32_MAX;
+
+    hr = d3d11Device_->CreateSamplerState(&samplerDesc, &d3d11LinearSampler_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 sampler\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 创建混合状态（预乘 alpha 混合）
+    // ============================================================================
+    D3D11_BLEND_DESC blendDesc{};
+    blendDesc.RenderTarget[0].BlendEnable           = TRUE;
+    blendDesc.RenderTarget[0].SrcBlend              = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlend             = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+    hr = d3d11Device_->CreateBlendState(&blendDesc, &d3d11BlendState_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 blend state\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 创建光栅化状态
+    // ============================================================================
+    D3D11_RASTERIZER_DESC rasterizerDesc{};
+    rasterizerDesc.FillMode        = D3D11_FILL_SOLID;
+    rasterizerDesc.CullMode        = D3D11_CULL_NONE;
+    rasterizerDesc.FrontCounterClockwise = FALSE;
+    rasterizerDesc.DepthClipEnable = TRUE;
+
+    hr = d3d11Device_->CreateRasterizerState(&rasterizerDesc, &d3d11RasterizerState_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 rasterizer state\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 创建深度模板状态（禁用深度测试）
+    // ============================================================================
+    D3D11_DEPTH_STENCIL_DESC depthStencilDesc{};
+    depthStencilDesc.DepthEnable    = FALSE;
+    depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    depthStencilDesc.StencilEnable  = FALSE;
+
+    hr = d3d11Device_->CreateDepthStencilState(&depthStencilDesc, &d3d11DepthStencilState_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 depth stencil state\n");
+        return false;
+    }
+
+    // ============================================================================
+    // 创建常量缓冲
+    // ============================================================================
+    D3D11_BUFFER_DESC cbDesc{};
+    cbDesc.ByteWidth      = 16; // 4 floats
+    cbDesc.Usage          = D3D11_USAGE_DYNAMIC;
+    cbDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
+    cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    hr = d3d11Device_->CreateBuffer(&cbDesc, nullptr, &d3d11BloomCB_);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[DiligentBackend] Failed to create D3D11 constant buffer\n");
+        return false;
+    }
+
+    d3d11NativeBlitInitialized_ = true;
+    OutputDebugStringA("[DiligentBackend] D3D11 native blit pipeline initialized\n");
+    return true;
+}
+
+// ============================================================================
+// D3D11 透明模式专用的原生 Blit
+// 完全使用原生 D3D11 API，避免 Diligent 纹理包装开销
+// ============================================================================
+void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
+    if (!d3d11NativeBlitInitialized_ || !d3d11Context_ || !d3d11Device_) {
+        // 回退到标准路径
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    // 获取后缓冲并创建/更新 RTV
+    IDXGISwapChain3* swapChain = dcompSwapChain_.GetSwapChain();
+    if (!swapChain) {
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
+    HRESULT hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+    if (FAILED(hr) || !backBuffer) {
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    // 检测后缓冲是否变化，如果变化则重建 RTV
+    void* currentPtr = static_cast<void*>(backBuffer.Get());
+    if (currentPtr != d3d11LastBackBufferPtr_ || !d3d11CachedRTV_) {
+        d3d11LastBackBufferPtr_ = currentPtr;
+        d3d11CachedRTV_.Reset();
+        hr = d3d11Device_->CreateRenderTargetView(backBuffer.Get(), nullptr, &d3d11CachedRTV_);
+        if (FAILED(hr)) {
+            BlitOffscreenToBackBuffer();
+            return;
+        }
+    }
+
+    // 获取源纹理的原生 SRV
+    // 优化：当 UI Blur 启用时，复用 uiSceneSRV_
+    const bool useUISceneAsSource = (appState_ != nullptr && appState_->ui.enableBlur && uiSceneSRV_ != nullptr);
+    ITextureView* srcSRV = useUISceneAsSource ? uiSceneSRV_.RawPtr() : offscreenSRV_.RawPtr();
+    ITextureView* bloomSRV = bloomSRV_B_ ? bloomSRV_B_.RawPtr() : offscreenSRV_.RawPtr();
+
+    if (!srcSRV || !bloomSRV) {
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    // 从 Diligent ITextureView 获取原生 D3D11 SRV
+    RefCntAutoPtr<ITextureViewD3D11> srcViewD3D11, bloomViewD3D11;
+    srcSRV->QueryInterface(IID_TextureViewD3D11,
+                           reinterpret_cast<IObject**>(static_cast<ITextureViewD3D11**>(&srcViewD3D11)));
+    bloomSRV->QueryInterface(IID_TextureViewD3D11,
+                             reinterpret_cast<IObject**>(static_cast<ITextureViewD3D11**>(&bloomViewD3D11)));
+
+    if (!srcViewD3D11 || !bloomViewD3D11) {
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    ID3D11ShaderResourceView* srcD3D11SRV = srcViewD3D11->GetD3D11View();
+    ID3D11ShaderResourceView* bloomD3D11SRV = bloomViewD3D11->GetD3D11View();
+
+    if (!srcD3D11SRV || !bloomD3D11SRV) {
+        BlitOffscreenToBackBuffer();
+        return;
+    }
+
+    // ============================================================================
+    // 使用原生 D3D11 API 进行渲染
+    // ============================================================================
+
+    // 更新常量缓冲
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    hr = d3d11Context_->Map(d3d11BloomCB_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    if (SUCCEEDED(hr)) {
+        struct BloomCB {
+            float strength;
+            float transparent;
+            float isD3D11;
+            float pad;
+        };
+        auto* cb = static_cast<BloomCB*>(mapped.pData);
+        cb->strength    = useUISceneAsSource ? 0.0f : (bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f);
+        cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
+        cb->isD3D11     = 1.0f;
+        cb->pad         = 0.0f;
+        d3d11Context_->Unmap(d3d11BloomCB_.Get(), 0);
+    }
+
+    // 设置渲染目标
+    ID3D11RenderTargetView* rtvs[] = { d3d11CachedRTV_.Get() };
+    d3d11Context_->OMSetRenderTargets(1, rtvs, nullptr);
+
+    // 设置视口
+    D3D11_VIEWPORT vp{};
+    vp.TopLeftX = 0.0f;
+    vp.TopLeftY = 0.0f;
+    vp.Width    = static_cast<float>(surfaceSize_.Width);
+    vp.Height   = static_cast<float>(surfaceSize_.Height);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    d3d11Context_->RSSetViewports(1, &vp);
+
+    // 设置管线状态
+    d3d11Context_->VSSetShader(d3d11BlitVS_.Get(), nullptr, 0);
+    d3d11Context_->PSSetShader(d3d11BlitPS_.Get(), nullptr, 0);
+    d3d11Context_->RSSetState(d3d11RasterizerState_.Get());
+    d3d11Context_->OMSetDepthStencilState(d3d11DepthStencilState_.Get(), 0);
+
+    float blendFactor[4] = { 0, 0, 0, 0 };
+    d3d11Context_->OMSetBlendState(d3d11BlendState_.Get(), blendFactor, 0xFFFFFFFF);
+
+    // 绑定资源
+    ID3D11Buffer* cbs[] = { d3d11BloomCB_.Get() };
+    d3d11Context_->PSSetConstantBuffers(0, 1, cbs);
+
+    ID3D11ShaderResourceView* srvs[] = { srcD3D11SRV, bloomD3D11SRV };
+    d3d11Context_->PSSetShaderResources(0, 2, srvs);
+
+    ID3D11SamplerState* samplers[] = { d3d11LinearSampler_.Get() };
+    d3d11Context_->PSSetSamplers(0, 1, samplers);
+
+    // 设置图元拓扑和输入布局
+    d3d11Context_->IASetInputLayout(nullptr);
+    d3d11Context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+    // 绘制全屏四边形
+    d3d11Context_->Draw(4, 0);
+
+    // 清除绑定，避免资源冲突
+    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+    d3d11Context_->PSSetShaderResources(0, 2, nullSRVs);
+    ID3D11RenderTargetView* nullRTVs[1] = { nullptr };
+    d3d11Context_->OMSetRenderTargets(1, nullRTVs, nullptr);
 }
 
 void DiligentBackend::PresentFrame(int syncInterval) {
