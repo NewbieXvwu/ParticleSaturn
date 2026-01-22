@@ -82,6 +82,7 @@ class DiligentBackend final {
     bool CreateParticleBuffersGPU(uint32_t maxParticles); // GPU 初始化版本
     bool CreateParticleInitPSO();                          // GPU 初始化 PSO
     bool CreateParticlePSO();
+    bool CreateParticleMeshShaderPSO();                    // Mesh Shader 路径
     bool CreateParticleComputePSO();
     bool CreateSevenSegmentPSO();
     bool CreateSevenSegmentBuffers();
@@ -240,6 +241,12 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleConstants_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleIndirectArgs_;
+
+    // Mesh Shader 路径（硬件支持时使用，否则回退到 Vertex Pulling）
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleMeshPSO_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleMeshSRB_;
+    bool                                                      useMeshShaders_     = false; // 硬件是否支持 Mesh Shader
+    bool                                                      meshShadersChecked_ = false; // 是否已检测
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleComputePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleComputeSRB_;

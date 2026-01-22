@@ -1865,4 +1865,267 @@ void main()
     return {kHlslVS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
 }
 
+MeshShaderSources GetSaturnParticleMeshShaderSources(Backend backend) {
+    // Mesh Shader 版粒子渲染：每个 workgroup 处理多个粒子，直接生成顶点和图元
+    // 相比 Vertex Shader + Instancing，减少了 VS 调用次数和顶点属性获取开销
+    //
+    // 每个粒子生成 4 个顶点 + 2 个三角形（6 个索引）
+    // 线程组大小：32 粒子/组，最大输出 128 顶点 + 64 三角形
+
+    static constexpr char kHlslMS[] = R"(
+#define GROUP_SIZE 32
+#define VERTS_PER_PARTICLE 4
+#define PRIMS_PER_PARTICLE 2
+#define MAX_VERTS (GROUP_SIZE * VERTS_PER_PARTICLE)  // 128
+#define MAX_PRIMS (GROUP_SIZE * PRIMS_PER_PARTICLE)  // 64
+
+struct ParticleData
+{
+    float4 pos;
+    uint   color;
+    float  speed;
+    float  isRing;
+    float  pad;
+};
+
+StructuredBuffer<ParticleData> g_Particles;
+
+cbuffer ParticleConstants
+{
+    float4 uViewRow0;
+    float4 uViewRow1;
+    float4 uViewRow2;
+    float4 uViewRow3;
+
+    float4 uProjRow0;
+    float4 uProjRow1;
+    float4 uProjRow2;
+    float4 uProjRow3;
+
+    float4 uModelRow0;
+    float4 uModelRow1;
+    float4 uModelRow2;
+    float4 uModelRow3;
+
+    float4 uViewportParams;
+    float4 uTimeParams;
+    float4 uRenderParams;
+
+    uint   uParticleCount;
+    uint3  _pad;
+};
+
+struct VertexOutput
+{
+    float4 Pos         : SV_POSITION;
+    float2 UV          : TEXCOORD0;
+    float3 vColor      : TEXCOORD1;
+    float  vDist       : TEXCOORD2;
+    float  vOpacity    : TEXCOORD3;
+    float  vScaleFactor: TEXCOORD4;
+    float  vIsRing     : TEXCOORD5;
+};
+
+float4 MulRows(float4 v, float4 r0, float4 r1, float4 r2, float4 r3)
+{
+    return float4(dot(r0, v), dot(r1, v), dot(r2, v), dot(r3, v));
+}
+
+float4 UnpackRGBA8(uint c)
+{
+    return float4(
+        float((c      ) & 0xFF) / 255.0,
+        float((c >>  8) & 0xFF) / 255.0,
+        float((c >> 16) & 0xFF) / 255.0,
+        float((c >> 24) & 0xFF) / 255.0
+    );
+}
+
+float SmoothStep(float edge0, float edge1, float x)
+{
+    float t = saturate((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+float Hash(float n)
+{
+    uint x = asuint(n);
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = (x >> 16u) ^ x;
+    return float(x) * (1.0 / 4294967296.0);
+}
+
+[outputtopology("triangle")]
+[numthreads(GROUP_SIZE, 1, 1)]
+void main(
+    uint gtid : SV_GroupThreadID,
+    uint gid  : SV_GroupID,
+    out vertices VertexOutput verts[MAX_VERTS],
+    out indices uint3 tris[MAX_PRIMS])
+{
+    uint particleIdx = gid * GROUP_SIZE + gtid;
+
+    // 计算这个组实际要处理的粒子数
+    uint groupStart = gid * GROUP_SIZE;
+    uint groupEnd = min(groupStart + GROUP_SIZE, uParticleCount);
+    uint particlesInGroup = groupEnd - groupStart;
+
+    // 设置输出数量
+    SetMeshOutputCounts(particlesInGroup * VERTS_PER_PARTICLE, particlesInGroup * PRIMS_PER_PARTICLE);
+
+    if (particleIdx >= uParticleCount)
+        return;
+
+    ParticleData p = g_Particles[particleIdx];
+    float4 col = UnpackRGBA8(p.color);
+
+    float uScale        = uRenderParams.x;
+    float uPixelRatio   = uRenderParams.y;
+    float uScreenHeight = uRenderParams.z;
+
+    float4 worldPos   = MulRows(float4(p.pos.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
+    float4 mvPosition = MulRows(worldPos, uViewRow0, uViewRow1, uViewRow2, uViewRow3);
+
+    float dist = -mvPosition.z;
+
+    // 剔除相机后方的粒子
+    bool valid = (mvPosition.z < -0.001);
+
+    float3 vColor = float3(0, 0, 0);
+    float vOpacity = 0.0;
+    float vScaleFactor = 0.0;
+    float4 clipPos = float4(2, 2, 2, 1);
+    float halfSize = 0.0;
+
+    if (valid)
+    {
+        // 简化的点大小计算
+        float baseSize = p.pos.w * 350.0;
+        float distFactor = 1.0 / dist;
+        float screenScale = uScreenHeight / 1080.0;
+        float ringFactor = (p.isRing > 0.5) ? 0.85 : 1.0;
+        float pixelFactor = pow(abs(uPixelRatio), 0.8);
+
+        float pointSize = baseSize * distFactor * 0.55 * screenScale * ringFactor * pixelFactor;
+        pointSize = clamp(pointSize, 0.5, 100.0);
+        halfSize = pointSize * 0.5;
+
+        vScaleFactor = pointSize;
+        vOpacity = col.a;
+        vColor = col.rgb;
+
+        clipPos = MulRows(mvPosition, uProjRow0, uProjRow1, uProjRow2, uProjRow3);
+    }
+
+    // 四个角的偏移（屏幕空间）
+    float2 corners[4] = {
+        float2(-1, -1),
+        float2(-1,  1),
+        float2( 1,  1),
+        float2( 1, -1)
+    };
+
+    uint localIdx = gtid - (gid * GROUP_SIZE - groupStart); // 组内索引
+    uint baseVert = localIdx * VERTS_PER_PARTICLE;
+    uint basePrim = localIdx * PRIMS_PER_PARTICLE;
+
+    // 生成 4 个顶点
+    for (uint i = 0; i < VERTS_PER_PARTICLE; i++)
+    {
+        VertexOutput v;
+        v.UV = corners[i] * 0.5 + 0.5;
+        v.vColor = vColor;
+        v.vDist = dist;
+        v.vOpacity = valid ? vOpacity : 0.0;
+        v.vScaleFactor = vScaleFactor;
+        v.vIsRing = p.isRing;
+
+        if (valid)
+        {
+            float2 offset = corners[i] * halfSize;
+            v.Pos = clipPos;
+            v.Pos.xy += offset * uViewportParams.xy * clipPos.w;
+        }
+        else
+        {
+            v.Pos = float4(2, 2, 2, 1);
+        }
+
+        verts[baseVert + i] = v;
+    }
+
+    // 生成 2 个三角形
+    tris[basePrim + 0] = uint3(baseVert + 0, baseVert + 1, baseVert + 2);
+    tris[basePrim + 1] = uint3(baseVert + 0, baseVert + 2, baseVert + 3);
+}
+)";
+
+    // Mesh Shader 使用与 Vertex Shader 相同的 Pixel Shader
+    static constexpr char kHlslPS[] = R"(
+struct PSIn
+{
+    float4 Pos         : SV_POSITION;
+    float2 UV          : TEXCOORD0;
+    float3 vColor      : TEXCOORD1;
+    float  vDist       : TEXCOORD2;
+    float  vOpacity    : TEXCOORD3;
+    float  vScaleFactor: TEXCOORD4;
+    float  vIsRing     : TEXCOORD5;
+};
+
+cbuffer ParticleConstants
+{
+    float4 uViewRow0;
+    float4 uViewRow1;
+    float4 uViewRow2;
+    float4 uViewRow3;
+    float4 uProjRow0;
+    float4 uProjRow1;
+    float4 uProjRow2;
+    float4 uProjRow3;
+    float4 uModelRow0;
+    float4 uModelRow1;
+    float4 uModelRow2;
+    float4 uModelRow3;
+    float4 uViewportParams;
+    float4 uTimeParams;
+    float4 uRenderParams;
+};
+
+float4 main(PSIn pin) : SV_TARGET
+{
+    float2 uv = pin.UV * 2.0 - 1.0;
+    float r2 = dot(uv, uv);
+
+    if (r2 > 1.0)
+        discard;
+
+    float r = sqrt(r2);
+    float glow = 1.0 - r;
+    glow = glow * glow;
+
+    float t = saturate(pin.vScaleFactor / 40.0);
+    float3 finalColor = pin.vColor * (1.0 + glow * 0.5);
+
+    float depthAlpha = saturate(1.0 - pin.vDist / 200.0);
+    float densityComp = uRenderParams.w;
+    float finalAlpha = glow * pin.vOpacity * (0.25 + 0.45 * t) * depthAlpha * densityComp;
+
+    return float4(finalColor, finalAlpha);
+}
+)";
+
+    // 注意：Vulkan Mesh Shader 需要 VK_EXT_mesh_shader 扩展和不同的 GLSL 语法
+    // 暂时只支持 D3D12，Vulkan 返回空
+    if (backend == Backend::Vulkan) {
+        return {nullptr, nullptr, SHADER_SOURCE_LANGUAGE_GLSL};
+    }
+    if (backend == Backend::D3D11) {
+        // D3D11 不支持 Mesh Shader
+        return {nullptr, nullptr, SHADER_SOURCE_LANGUAGE_HLSL};
+    }
+    return {kHlslMS, kHlslPS, SHADER_SOURCE_LANGUAGE_HLSL};
+}
+
 } // namespace ParticleSaturn::Render

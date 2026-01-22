@@ -1212,6 +1212,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         }
         return false;
     }
+    // 尝试创建 Mesh Shader PSO（可选，失败时使用 Vertex Pulling 回退）
+    CreateParticleMeshShaderPSO();
     progressRenderer.IncrementCompleted();
     renderProgress();
 
@@ -3126,6 +3128,142 @@ bool DiligentBackend::CreateParticlePSO() {
     return particleSRB_ != nullptr;
 }
 
+bool DiligentBackend::CreateParticleMeshShaderPSO() {
+    // 检测 Mesh Shader 硬件支持
+    if (!meshShadersChecked_) {
+        meshShadersChecked_ = true;
+        useMeshShaders_     = false;
+
+        if (device_ != nullptr) {
+            const auto& features = device_->GetDeviceInfo().Features;
+            // Mesh Shader 仅 D3D12 支持（Vulkan 需要额外扩展，暂不启用）
+            if (backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
+                useMeshShaders_ = true;
+                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
+            } else {
+                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders not available, using Vertex Pulling");
+            }
+        }
+    }
+
+    if (!useMeshShaders_) {
+        return false; // 硬件不支持，使用 Vertex Pulling 回退
+    }
+
+    if (device_ == nullptr || particleConstants_ == nullptr) {
+        return false;
+    }
+
+    const auto sources = GetSaturnParticleMeshShaderSources(backend_);
+    if (sources.Mesh == nullptr || sources.Fragment == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Shader sources not available");
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    // 创建 Mesh Shader
+    ShaderCreateInfo msCI{};
+    msCI.SourceLanguage = sources.Language;
+    msCI.Desc.Name      = "SaturnParticle MS";
+    msCI.Desc.ShaderType = SHADER_TYPE_MESH;
+    msCI.Source         = sources.Mesh;
+    msCI.EntryPoint     = "main";
+    // Mesh Shader 需要 Shader Model 6.5
+    msCI.ShaderCompiler = SHADER_COMPILER_DXC;
+    msCI.HLSLVersion    = {6, 5};
+
+    RefCntAutoPtr<IShader> ms;
+    device_->CreateShader(msCI, &ms);
+    if (ms == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Mesh Shader compilation failed");
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    // 创建 Pixel Shader
+    ShaderCreateInfo psCI{};
+    psCI.SourceLanguage  = sources.Language;
+    psCI.Desc.Name       = "SaturnParticle PS (Mesh)";
+    psCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
+    psCI.Source          = sources.Fragment;
+    psCI.EntryPoint      = "main";
+    psCI.ShaderCompiler  = SHADER_COMPILER_DXC;
+    psCI.HLSLVersion     = {6, 5};
+
+    RefCntAutoPtr<IShader> ps;
+    device_->CreateShader(psCI, &ps);
+    if (ps == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Pixel Shader compilation failed");
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    // 创建 Mesh PSO
+    GraphicsPipelineStateCreateInfo psoCI{};
+    psoCI.PSODesc.Name         = "SaturnParticle Mesh PSO";
+    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_MESH;
+
+    psoCI.GraphicsPipeline.NumRenderTargets             = 1;
+    psoCI.GraphicsPipeline.RTVFormats[0]                = kOffscreenColorFormat;
+    psoCI.GraphicsPipeline.DSVFormat                    = TEX_FORMAT_UNKNOWN;
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
+
+    auto& blendRT          = psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    blendRT.BlendEnable    = True;
+    blendRT.SrcBlend       = BLEND_FACTOR_SRC_ALPHA;
+    blendRT.DestBlend      = BLEND_FACTOR_ONE;
+    blendRT.BlendOp        = BLEND_OPERATION_ADD;
+    blendRT.SrcBlendAlpha  = BLEND_FACTOR_ONE;
+    blendRT.DestBlendAlpha = BLEND_FACTOR_ONE;
+    blendRT.BlendOpAlpha   = BLEND_OPERATION_ADD;
+
+    const ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_MESH, "ParticleConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_PIXEL, "ParticleConstants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {SHADER_TYPE_MESH, "g_Particles", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+    };
+    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(vars);
+    psoCI.PSODesc.ResourceLayout.Variables    = vars;
+
+    psoCI.pMS = ms;
+    psoCI.pPS = ps;
+
+    particleMeshPSO_.Release();
+    device_->CreateGraphicsPipelineState(psoCI, &particleMeshPSO_);
+    if (particleMeshPSO_ == nullptr) {
+        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] PSO creation failed");
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    // 绑定常量缓冲
+    if (auto* varMS = particleMeshPSO_->GetStaticVariableByName(SHADER_TYPE_MESH, "ParticleConstants");
+        varMS != nullptr) {
+        varMS->Set(particleConstants_);
+    } else {
+        useMeshShaders_ = false;
+        return false;
+    }
+    if (auto* varPS = particleMeshPSO_->GetStaticVariableByName(SHADER_TYPE_PIXEL, "ParticleConstants");
+        varPS != nullptr) {
+        varPS->Set(particleConstants_);
+    } else {
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    particleMeshSRB_.Release();
+    particleMeshPSO_->CreateShaderResourceBinding(&particleMeshSRB_, true);
+    if (particleMeshSRB_ == nullptr) {
+        useMeshShaders_ = false;
+        return false;
+    }
+
+    DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader PSO created successfully");
+    return true;
+}
+
 bool DiligentBackend::CreateParticleComputePSO() {
     if (device_ == nullptr || immediateContext_ == nullptr || particleComputeConstants_ == nullptr) {
         return false;
@@ -3774,25 +3912,46 @@ void DiligentBackend::RenderOffscreen() {
             }
         }
 
-        immediateContext_->SetPipelineState(particlePSO_);
-        // 不使用顶点缓冲（SV_VertexID/InstanceID 生成），但需要清掉之前的绑定状态。
-        immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
-                                            SET_VERTEX_BUFFERS_FLAG_RESET);
+        // 使用 Mesh Shader 或 Vertex Pulling 渲染粒子
+        if (useMeshShaders_ && particleMeshPSO_ != nullptr && particleMeshSRB_ != nullptr) {
+            // Mesh Shader 路径
+            immediateContext_->SetPipelineState(particleMeshPSO_);
 
-        // 使用缓存的变量指针更新 DYNAMIC 变量 g_Particles（三缓冲轮转后指向新的渲染缓冲区）
-        if (particleSRVs_[particleRenderIdx_] != nullptr && particleSRVVar_ != nullptr) {
-            particleSRVVar_->Set(particleSRVs_[particleRenderIdx_]);
-        }
+            // 绑定粒子缓冲
+            if (auto* var = particleMeshSRB_->GetVariableByName(SHADER_TYPE_MESH, "g_Particles");
+                var != nullptr && particleSRVs_[particleRenderIdx_] != nullptr) {
+                var->Set(particleSRVs_[particleRenderIdx_]);
+            }
 
-        immediateContext_->CommitShaderResources(particleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            immediateContext_->CommitShaderResources(particleMeshSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-        // 复刻 OpenGL：glDrawArraysIndirect(GL_POINTS, nullptr)
-        if (particleIndirectArgs_ != nullptr) {
-            DrawIndirectAttribs ia{};
-            ia.pAttribsBuffer                   = particleIndirectArgs_;
-            ia.Flags                            = kDrawVerifyFlags;
-            ia.AttribsBufferStateTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-            immediateContext_->DrawIndirect(ia);
+            // Dispatch Mesh Shader：每组 32 粒子，总组数 = ceil(particleCount / 32)
+            DrawMeshAttribs drawAttribs;
+            drawAttribs.ThreadGroupCount = (activeParticleCount + 31) / 32;
+            drawAttribs.Flags            = kDrawVerifyFlags;
+            immediateContext_->DrawMesh(drawAttribs);
+        } else {
+            // Vertex Pulling 回退路径
+            immediateContext_->SetPipelineState(particlePSO_);
+            // 不使用顶点缓冲（SV_VertexID/InstanceID 生成），但需要清掉之前的绑定状态。
+            immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
+                                                SET_VERTEX_BUFFERS_FLAG_RESET);
+
+            // 使用缓存的变量指针更新 DYNAMIC 变量 g_Particles（三缓冲轮转后指向新的渲染缓冲区）
+            if (particleSRVs_[particleRenderIdx_] != nullptr && particleSRVVar_ != nullptr) {
+                particleSRVVar_->Set(particleSRVs_[particleRenderIdx_]);
+            }
+
+            immediateContext_->CommitShaderResources(particleSRB_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+            // 复刻 OpenGL：glDrawArraysIndirect(GL_POINTS, nullptr)
+            if (particleIndirectArgs_ != nullptr) {
+                DrawIndirectAttribs ia{};
+                ia.pAttribsBuffer                   = particleIndirectArgs_;
+                ia.Flags                            = kDrawVerifyFlags;
+                ia.AttribsBufferStateTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+                immediateContext_->DrawIndirect(ia);
+            }
         }
     }
 }
