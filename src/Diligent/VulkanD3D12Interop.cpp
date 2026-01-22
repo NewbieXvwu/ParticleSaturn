@@ -798,7 +798,11 @@ bool VulkanD3D12Interop::CreateFallbackTexture() {
 void VulkanD3D12Interop::FlushVulkan() {
     if (vkContext_) {
         vkContext_->Flush();
-        vkContext_->WaitForIdle();
+        // 注意：移除了 WaitForIdle() 以避免每帧 CPU 阻塞等待 GPU
+        // 同步由以下机制保证：
+        // 1. 共享纹理使用 D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS
+        // 2. D3D12 端 Present() 后通过 Fence 确保帧间同步
+        // 3. Flush() 已确保 Vulkan 命令提交到 GPU 队列
     }
 }
 
