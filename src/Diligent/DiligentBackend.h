@@ -144,6 +144,19 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         fullscreenQuadPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> fullscreenQuadSRB_;
 
+    // ============================================================================
+    // 热路径变量指针缓存（避免每帧 GetVariableByName 字符串查找）
+    // 在 PSO/SRB 创建成功后初始化，PSO 重建时更新
+    // ============================================================================
+    Diligent::IShaderResourceVariable* fullscreenTexVar_   = nullptr; // g_Texture
+    Diligent::IShaderResourceVariable* fullscreenBloomVar_ = nullptr; // g_BloomTexture
+    Diligent::IShaderResourceVariable* bloomDownTexVar_    = nullptr; // g_Texture (downsample)
+    Diligent::IShaderResourceVariable* bloomBlurTexVar_    = nullptr; // g_Texture (blur)
+    Diligent::IShaderResourceVariable* acrylicTexVar_      = nullptr; // g_Texture
+    Diligent::IShaderResourceVariable* particleInVar_      = nullptr; // g_ParticlesIn (compute)
+    Diligent::IShaderResourceVariable* particleOutVar_     = nullptr; // g_ParticlesOut (compute)
+    Diligent::IShaderResourceVariable* particleSRVVar_     = nullptr; // g_Particles (vertex)
+
     std::chrono::steady_clock::time_point startTime_    = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point lastAnimTime_ = std::chrono::steady_clock::time_point{};
     float                                 animAutoTime_ = 0.0f;
