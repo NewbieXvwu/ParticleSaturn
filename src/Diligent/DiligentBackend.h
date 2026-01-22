@@ -212,6 +212,12 @@ class DiligentBackend final {
     float                  fpsHistorySampleTimer_    = 0.0f;
     static constexpr float kFpsHistorySampleInterval = 0.05f; // 50ms 采样一次 (与 OpenGL 版一致)
 
+    // FPS 曲线增量更新缓存
+    float fpsHistoryCachedMin_     = 0.0f;   // 缓存的最小值
+    float fpsHistoryCachedMax_     = 120.0f; // 缓存的最大值
+    bool  fpsHistoryCacheDirty_    = true;   // 缓存是否需要重新计算
+    int   fpsHistoryValidCount_    = 0;      // 有效数据点数量
+
     // FPS 曲线动画
     float fpsGraphAnimMinVal_     = 0.0f;   // Y 轴最小值动画
     float fpsGraphAnimMaxVal_     = 120.0f; // Y 轴最大值动画

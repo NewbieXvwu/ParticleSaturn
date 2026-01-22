@@ -4105,8 +4105,40 @@ void DiligentBackend::RenderFrame() {
             if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
                 // 使用减法保留超出时间（与 OpenGL 版一致）
                 fpsHistorySampleTimer_ -= kFpsHistorySampleInterval;
-                fpsHistory_[fpsHistoryIndex_] = currentFps_;
+
+                // 获取即将被覆盖的旧值
+                const float oldValue = fpsHistory_[fpsHistoryIndex_];
+                const float newValue = currentFps_;
+
+                fpsHistory_[fpsHistoryIndex_] = newValue;
                 fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
+
+                // 增量更新 min/max 缓存
+                if (fpsHistoryValidCount_ < kFpsHistorySize) {
+                    // 还在填充阶段，直接更新
+                    fpsHistoryValidCount_++;
+                    if (fpsHistoryValidCount_ == 1) {
+                        fpsHistoryCachedMin_ = newValue;
+                        fpsHistoryCachedMax_ = newValue;
+                    } else {
+                        if (newValue < fpsHistoryCachedMin_) fpsHistoryCachedMin_ = newValue;
+                        if (newValue > fpsHistoryCachedMax_) fpsHistoryCachedMax_ = newValue;
+                    }
+                } else {
+                    // 缓冲区已满，需要检查旧值是否是极值
+                    bool wasMin = (oldValue <= fpsHistoryCachedMin_ + 0.001f);
+                    bool wasMax = (oldValue >= fpsHistoryCachedMax_ - 0.001f);
+
+                    if (wasMin || wasMax) {
+                        // 旧值是极值，需要重新遍历计算
+                        fpsHistoryCacheDirty_ = true;
+                    } else {
+                        // 旧值不是极值，只需检查新值
+                        if (newValue < fpsHistoryCachedMin_) fpsHistoryCachedMin_ = newValue;
+                        if (newValue > fpsHistoryCachedMax_) fpsHistoryCachedMax_ = newValue;
+                    }
+                }
+
                 // 滚动动画时间与采样计时器同步
                 fpsGraphScrollAnimTime_ = fpsHistorySampleTimer_;
             } else {
@@ -4387,19 +4419,34 @@ void DiligentBackend::RenderFrame() {
                     return fpsHistory_[actualIdx];
                 };
 
-                // 计算 Y 轴范围
-                float dataMin = getValue(0);
-                float dataMax = getValue(0);
-                for (int i = 1; i < kFpsHistorySize; i++) {
-                    float v = getValue(i);
-                    if (v > 0.0f) {
-                        if (v < dataMin || dataMin <= 0.0f) {
-                            dataMin = v;
-                        }
-                        if (v > dataMax) {
-                            dataMax = v;
+                // 使用增量更新的 min/max 缓存（仅在必要时重新遍历）
+                float dataMin, dataMax;
+                if (fpsHistoryCacheDirty_ || fpsHistoryValidCount_ == 0) {
+                    // 需要重新计算
+                    dataMin = 0.0f;
+                    dataMax = 0.0f;
+                    bool first = true;
+                    for (int i = 0; i < kFpsHistorySize; i++) {
+                        float v = getValue(i);
+                        if (v > 0.0f) {
+                            if (first) {
+                                dataMin = dataMax = v;
+                                first = false;
+                            } else {
+                                if (v < dataMin) dataMin = v;
+                                if (v > dataMax) dataMax = v;
+                            }
                         }
                     }
+                    if (!first) {
+                        fpsHistoryCachedMin_ = dataMin;
+                        fpsHistoryCachedMax_ = dataMax;
+                    }
+                    fpsHistoryCacheDirty_ = false;
+                } else {
+                    // 使用缓存值
+                    dataMin = fpsHistoryCachedMin_;
+                    dataMax = fpsHistoryCachedMax_;
                 }
 
                 // 设置最小显示范围
