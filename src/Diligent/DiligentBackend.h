@@ -256,7 +256,7 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleInitPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleInitSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleInitConstants_;
-    bool                                                      useGPUParticleInit_ = true; // 优先使用 GPU 初始化
+    bool                                                      useGPUParticleInit_ = false; // TODO: GPU init 有问题，暂时禁用
 
     Diligent::RefCntAutoPtr<Diligent::IBuffer>     particleBuffers_[kParticleBufferCount];
     Diligent::RefCntAutoPtr<Diligent::IBufferView> particleSRVs_[kParticleBufferCount];

@@ -1176,7 +1176,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     if (useGPUParticleInit_) {
         particleInitSuccess = CreateParticleBuffersGPU(kParticleCountMax);
         if (!particleInitSuccess) {
-            DebugLog::Instance().Add(LogLevel::Warning,
+            DebugLog::Instance().Add(LogLevel::Warn,
                                      "[Init] GPU particle init failed, falling back to CPU");
         }
     }
@@ -1439,13 +1439,19 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     if (useDCompSwapChain_ && dcompSwapChain_.IsInitialized()) {
         // DXGI ResizeBuffers 要求：必须先释放所有对旧 backbuffer 的引用，否则会返回 DXGI_ERROR_INVALID_CALL。
         // 除了 dcompSwapChain_ 内部缓存的原生 backbuffer，这里还持有 Diligent 侧包装后的纹理/RTV 引用，
-        // 并且 IDeviceContext 也可能缓存“当前渲染目标”引用。
+        // 并且 IDeviceContext 也可能缓存"当前渲染目标"引用。
         if (immediateContext_) {
             immediateContext_->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
             immediateContext_->SetVertexBuffers(0, 0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE,
                                                 SET_VERTEX_BUFFERS_FLAG_RESET);
             immediateContext_->SetIndexBuffer(nullptr, 0, RESOURCE_STATE_TRANSITION_MODE_NONE);
             immediateContext_->Flush();
+        }
+
+        // D3D11 native blit 使用单独的缓存 RTV，必须在 ResizeBuffers 之前释放！
+        if (backend_ == Backend::D3D11) {
+            d3d11CachedRTV_.Reset();
+            d3d11LastBackBufferPtr_ = nullptr;
         }
 
         for (auto& rtv : dcompBackBufferRTVs_) {
@@ -1502,6 +1508,18 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
 
     // 更新 MD3 屏幕尺寸
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
+
+    // DWM backdrop (Mica/Acrylic) 需要在 resize 后刷新
+    // 仅调用 DwmExtendFrameIntoClientArea 不够，需要重新调用 DwmSetWindowAttribute 设置 backdrop type
+    if (useDCompSwapChain_ && hwnd_ != nullptr && appState_ != nullptr) {
+        // 获取当前 backdrop 模式并重新应用
+        if (!appState_->backdrop.availableBackdrops.empty() &&
+            appState_->backdrop.backdropIndex >= 0 &&
+            appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
+            const int currentMode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
+            Win32WindowManager::SetBackdropMode(hwnd_, currentMode, *appState_);
+        }
+    }
 }
 
 void DiligentBackend::RequestResize(SurfaceSize newSize) {
@@ -2910,7 +2928,7 @@ bool DiligentBackend::CreateParticleBuffersGPU(uint32_t maxParticles) {
 
     // 创建初始化 PSO
     if (!CreateParticleInitPSO()) {
-        DebugLog::Instance().Add(LogLevel::Warning,
+        DebugLog::Instance().Add(LogLevel::Warn,
                                  "[CreateParticleBuffersGPU] CreateParticleInitPSO failed, falling back to CPU");
         return false;
     }
@@ -2931,9 +2949,11 @@ bool DiligentBackend::CreateParticleBuffersGPU(uint32_t maxParticles) {
     initConst.radius        = 18.0f;
 
     {
-        MapHelper<InitConstants> mapped(immediateContext_, particleInitConstants_, MAP_WRITE, MAP_FLAG_DISCARD);
-        if (mapped) {
-            *mapped = initConst;
+        PVoid mapped = nullptr;
+        immediateContext_->MapBuffer(particleInitConstants_, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
+        if (mapped != nullptr) {
+            *static_cast<InitConstants*>(mapped) = initConst;
+            immediateContext_->UnmapBuffer(particleInitConstants_, MAP_WRITE);
         }
     }
 
@@ -3137,7 +3157,8 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
         if (device_ != nullptr) {
             const auto& features = device_->GetDeviceInfo().Features;
             // Mesh Shader 仅 D3D12 支持（Vulkan 需要额外扩展，暂不启用）
-            if (backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
+            // TODO: Mesh Shader 实现有 bug，暂时禁用，使用 Vertex Pulling
+            if (false && backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
                 useMeshShaders_ = true;
                 DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
             } else {
@@ -3156,7 +3177,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
 
     const auto sources = GetSaturnParticleMeshShaderSources(backend_);
     if (sources.Mesh == nullptr || sources.Fragment == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Shader sources not available");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Shader sources not available");
         useMeshShaders_ = false;
         return false;
     }
@@ -3175,7 +3196,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     RefCntAutoPtr<IShader> ms;
     device_->CreateShader(msCI, &ms);
     if (ms == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Mesh Shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader compilation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3193,7 +3214,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     RefCntAutoPtr<IShader> ps;
     device_->CreateShader(psCI, &ps);
     if (ps == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] Pixel Shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader compilation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3232,7 +3253,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     particleMeshPSO_.Release();
     device_->CreateGraphicsPipelineState(psoCI, &particleMeshPSO_);
     if (particleMeshPSO_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warning, "[CreateParticleMeshShaderPSO] PSO creation failed");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] PSO creation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3927,8 +3948,10 @@ void DiligentBackend::RenderOffscreen() {
 
             // Dispatch Mesh Shader：每组 32 粒子，总组数 = ceil(particleCount / 32)
             DrawMeshAttribs drawAttribs;
-            drawAttribs.ThreadGroupCount = (activeParticleCount + 31) / 32;
-            drawAttribs.Flags            = kDrawVerifyFlags;
+            drawAttribs.ThreadGroupCountX = (particleCount_ + 31) / 32;
+            drawAttribs.ThreadGroupCountY = 1;
+            drawAttribs.ThreadGroupCountZ = 1;
+            drawAttribs.Flags             = kDrawVerifyFlags;
             immediateContext_->DrawMesh(drawAttribs);
         } else {
             // Vertex Pulling 回退路径
@@ -5765,21 +5788,35 @@ bool DiligentBackend::InitD3D11NativeBlit() {
         Texture2D g_BloomTexture : register(t1);
         SamplerState g_Sampler : register(s0);
 
+        // 精确的线性到 sRGB 转换（IEC 61966-2-1）
+        float3 LinearToSRGB(float3 color) {
+            float3 srgbLow = color * 12.92;
+            float3 srgbHigh = (pow(abs(color), 1.0/2.4) * 1.055) - 0.055;
+            float3 srgb = (color <= 0.0031308) ? srgbLow : srgbHigh;
+            return srgb;
+        }
+
         float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
             float3 scene = g_Texture.Sample(g_Sampler, uv).rgb;
             float3 bloom = g_BloomTexture.Sample(g_Sampler, uv).rgb;
             float3 color = scene + bloom * bloomStrength;
 
-            // HDR -> LDR tone mapping (与 Diligent PSO 保持一致)
-            color = color / (color + float3(1.0, 1.0, 1.0));
+            // 复刻标准着色器的 tone mapping（只对高光部分做压缩，强度 0.5）
+            float maxRGB = max(color.r, max(color.g, color.b));
+            float w = (maxRGB >= 1.0) ? 0.5 : 0.0;
+            float3 toneMapped = color / (color + float3(1.0, 1.0, 1.0));
+            color = lerp(color, toneMapped, w);
 
-            // D3D11 透明模式：预乘 alpha
-            float alpha = isTransparent > 0.5 ? saturate(dot(color, float3(0.299, 0.587, 0.114)) + 0.1) : 1.0;
-            if (isD3D11 > 0.5 && isTransparent > 0.5) {
-                color *= alpha;
+            // Alpha 计算（与标准着色器一致）
+            float alpha = lerp(1.0, maxRGB, isTransparent);
+
+            // D3D11 需要手动 gamma 校正（SwapChain 不支持 sRGB 格式）
+            if (isD3D11 > 0.5) {
+                color = LinearToSRGB(color);
             }
 
-            return float4(color, alpha);
+            // DirectComposition/DWM 要求预乘 alpha（premultiplied alpha）
+            return float4(color * alpha, alpha);
         }
     )";
 
@@ -5932,9 +5969,20 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     }
 
     // 检测后缓冲是否变化，如果变化则重建 RTV
-    void* currentPtr = static_cast<void*>(backBuffer.Get());
-    if (currentPtr != d3d11LastBackBufferPtr_ || !d3d11CachedRTV_) {
-        d3d11LastBackBufferPtr_ = currentPtr;
+    // 注意：不能只靠指针比较，因为 ResizeBuffers 后新后缓冲可能复用旧地址
+    // 需要检查尺寸是否匹配
+    bool needRecreateRTV = !d3d11CachedRTV_;
+    if (!needRecreateRTV && d3d11CachedRTV_) {
+        // 检查 RTV 对应的纹理尺寸是否与当前 SwapChain 尺寸匹配
+        D3D11_TEXTURE2D_DESC backBufferDesc{};
+        backBuffer->GetDesc(&backBufferDesc);
+        if (backBufferDesc.Width != dcompSwapChain_.GetWidth() ||
+            backBufferDesc.Height != dcompSwapChain_.GetHeight()) {
+            needRecreateRTV = true;
+        }
+    }
+    if (needRecreateRTV) {
+        d3d11LastBackBufferPtr_ = static_cast<void*>(backBuffer.Get());
         d3d11CachedRTV_.Reset();
         hr = d3d11Device_->CreateRenderTargetView(backBuffer.Get(), nullptr, &d3d11CachedRTV_);
         if (FAILED(hr)) {
@@ -5966,8 +6014,8 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
         return;
     }
 
-    ID3D11ShaderResourceView* srcD3D11SRV = srcViewD3D11->GetD3D11View();
-    ID3D11ShaderResourceView* bloomD3D11SRV = bloomViewD3D11->GetD3D11View();
+    ID3D11ShaderResourceView* srcD3D11SRV = static_cast<ID3D11ShaderResourceView*>(srcViewD3D11->GetD3D11View());
+    ID3D11ShaderResourceView* bloomD3D11SRV = static_cast<ID3D11ShaderResourceView*>(bloomViewD3D11->GetD3D11View());
 
     if (!srcD3D11SRV || !bloomD3D11SRV) {
         BlitOffscreenToBackBuffer();
@@ -6000,12 +6048,12 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     ID3D11RenderTargetView* rtvs[] = { d3d11CachedRTV_.Get() };
     d3d11Context_->OMSetRenderTargets(1, rtvs, nullptr);
 
-    // 设置视口
+    // 设置视口 - 使用 SwapChain 的实际尺寸，确保 resize 后正确
     D3D11_VIEWPORT vp{};
     vp.TopLeftX = 0.0f;
     vp.TopLeftY = 0.0f;
-    vp.Width    = static_cast<float>(surfaceSize_.Width);
-    vp.Height   = static_cast<float>(surfaceSize_.Height);
+    vp.Width    = static_cast<float>(dcompSwapChain_.GetWidth());
+    vp.Height   = static_cast<float>(dcompSwapChain_.GetHeight());
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     d3d11Context_->RSSetViewports(1, &vp);

@@ -220,6 +220,14 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
     }
 
     // 某些情况下（尤其是频繁 resize）需要额外 commit 以确保 DComp 及时刷新。
+    // 重新设置 visual 的内容以确保 DComp 正确更新 SwapChain 的新尺寸
+    if (dcompVisual_ && swapChain_) {
+        hr = dcompVisual_->SetContent(swapChain_.Get());
+        if (FAILED(hr)) {
+            std::cerr << "[DCompSwapChain] SetContent after resize failed: 0x" << std::hex << hr << std::dec
+                      << std::endl;
+        }
+    }
     if (dcompDevice_) {
         (void)dcompDevice_->Commit();
     }
