@@ -48,3 +48,4 @@ vcpkg_installed/
 OldCodeBackup/
 NUL
 .DS_Store
+.ace-tool/
