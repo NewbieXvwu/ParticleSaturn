@@ -6,6 +6,9 @@ bin/
 bin_diligent/
 out/
 
+# Build-time generated files
+src/generated/ShaderBytecodes.h
+
 # Visual Studio
 .vs/
 x64/
