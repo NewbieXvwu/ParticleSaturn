@@ -238,6 +238,7 @@ struct Strings {
 	const char* debugInfo;
 	const char* starCount;
 	const char* offscreen;
+	const char* meshShader;
 	const char* sectionLodControl;
 	const char* particleCount;
 	const char* densityCompensation;
@@ -249,8 +250,7 @@ struct Strings {
 	const char* smoothedAnimationValues;
 	const char* notAvailable;
 
-	// Shader cache (new)
-	const char* recompileShaders;
+	// Shader cache (OpenGL only)
 	const char* clearShaderCache;
 	const char* clearShaderCacheHint;
 	const char* shaderCacheCleared;
@@ -489,6 +489,7 @@ inline const Strings& GetChinese() {
 		.debugInfo            = "调试信息",
 		.starCount            = "星点数量",
 		.offscreen            = "离屏渲染",
+		.meshShader           = "Mesh Shader",
 		.sectionLodControl    = "LOD 控制",
 		.particleCount        = "粒子数量",
 		.densityCompensation  = "密度补偿",
@@ -500,11 +501,10 @@ inline const Strings& GetChinese() {
 		.smoothedAnimationValues = "平滑后的动画值",
 		.notAvailable         = "不可用",
 
-		// Shader cache (new)
-		.recompileShaders  = "重新编译着色器",
-		.clearShaderCache  = "清除着色器缓存",
+		// Shader cache (OpenGL only)
+		.clearShaderCache     = "清除着色器缓存",
 		.clearShaderCacheHint = "删除缓存文件，下次启动时将重新编译着色器",
-		.shaderCacheCleared = "已清除！",
+		.shaderCacheCleared   = "已清除！",
 
 		// Crash analyzer extras (Diligent)
 		.symbolResolutionUnavailable = "符号解析不可用：仍可查看地址，但无法解析到函数名。",
@@ -742,6 +742,7 @@ inline const Strings& GetEnglish() {
 		.debugInfo            = "Debug Info",
 		.starCount            = "Star Count",
 		.offscreen            = "Offscreen",
+		.meshShader           = "Mesh Shader",
 		.sectionLodControl    = "LOD Control",
 		.particleCount        = "Particle Count",
 		.densityCompensation  = "Density Compensation",
@@ -753,11 +754,10 @@ inline const Strings& GetEnglish() {
 		.smoothedAnimationValues = "Smoothed Animation Values",
 		.notAvailable         = "Not available",
 
-		// Shader cache (new)
-		.recompileShaders  = "Recompile Shaders",
-		.clearShaderCache  = "Clear Shader Cache",
+		// Shader cache (OpenGL only)
+		.clearShaderCache     = "Clear Shader Cache",
 		.clearShaderCacheHint = "Delete cache files, shaders will be recompiled on next startup",
-		.shaderCacheCleared = "Cleared!",
+		.shaderCacheCleared   = "Cleared!",
 
 		// Crash analyzer extras (Diligent)
 		.symbolResolutionUnavailable =
