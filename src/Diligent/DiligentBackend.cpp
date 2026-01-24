@@ -20,17 +20,18 @@
 #include "../Settings.h"
 #include "../ShaderCompileProgress.h"
 #include "../generated/LogControlIcons.h"
+#include "../generated/ShaderBytecodes.h"
+
 #include "ArchiverFactoryLoader.h"
 #include "CommandQueueD3D12.h"
 #include "CrashAnalyzer.h"
 #include "DataBlobImpl.hpp"
 #include "DeviceContextD3D12.h"
+#include "DiligentShaderSources.h"
 #include "EngineFactoryD3D11.h"
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
-#include "DiligentShaderSources.h"
-#include "../generated/ShaderBytecodes.h"
 #include "HandTracker.h"
 #include "HandTrackerController.h"
 #include "ImGuiDiligent.h"
@@ -38,8 +39,8 @@
 #include "NativeWindow.h"
 #include "RenderDeviceD3D11.h"
 #include "RenderDeviceD3D12.h"
-#include "TextureViewD3D11.h" // For ITextureViewD3D11 in native D3D11 blit
 #include "Sampler.h"
+#include "TextureViewD3D11.h" // For ITextureViewD3D11 in native D3D11 blit
 #include "VulkanD3D12Interop.h"
 #include "Win32WindowManager.h"
 #include "imgui.h"
@@ -52,7 +53,7 @@
 
 #include <d3d11.h>
 #include <d3d12.h>
-#include <d3dcompiler.h> // D3DCompile for native D3D11 blit shaders
+#include <d3dcompiler.h>            // D3DCompile for native D3D11 blit shaders
 #pragma comment(lib, "d3dcompiler") // Link with d3dcompiler.lib for D3DCompile
 #include <dwmapi.h>
 #include <wrl/client.h> // For Microsoft::WRL::ComPtr
@@ -126,8 +127,8 @@ float ComputeDensityComp(uint32_t particleCount, float pixelRatio) {
     return kDensityCompBase / std::pow(safeRatio, 0.7f) / std::pow(pr, 0.5f);
 }
 
-// Shader sources moved to DiligentShaderSources.cpp (reduce build time / file size).
-
+// Shader sources moved to DiligentShaderSources.cpp (reduce build time / file size).
+
 RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char* name, SHADER_TYPE type,
                                               const char* source, SHADER_SOURCE_LANGUAGE language) {
     ShaderCreateInfo shaderCI{};
@@ -144,14 +145,14 @@ RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char*
 
 // 从预编译字节码创建着色器（无需运行时编译）
 RefCntAutoPtr<IShader> CreateShaderFromBytecode(IRenderDevice* device, const char* name, SHADER_TYPE type,
-                                                 const void* bytecode, size_t bytecodeSize) {
+                                                const void* bytecode, size_t bytecodeSize) {
     ShaderCreateInfo shaderCI{};
     shaderCI.Desc.Name       = name;
     shaderCI.Desc.ShaderType = type;
     shaderCI.ByteCode        = bytecode;
     shaderCI.ByteCodeSize    = bytecodeSize;
     // 明确指定这是预编译字节码，让 Diligent 正确处理反射信息
-    shaderCI.SourceLanguage  = SHADER_SOURCE_LANGUAGE_BYTECODE;
+    shaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_BYTECODE;
 
     RefCntAutoPtr<IShader> shader;
     device->CreateShader(shaderCI, &shader);
@@ -159,15 +160,13 @@ RefCntAutoPtr<IShader> CreateShaderFromBytecode(IRenderDevice* device, const cha
 }
 
 // 创建 Graphics PSO 的辅助函数
-void CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI,
-                       IPipelineState** ppPSO) {
+void CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI, IPipelineState** ppPSO) {
     *ppPSO = nullptr;
     device->CreateGraphicsPipelineState(psoCI, ppPSO);
 }
 
 // 创建 Compute PSO 的辅助函数
-void CreateComputePSO(IRenderDevice* device, const ComputePipelineStateCreateInfo& psoCI,
-                      IPipelineState** ppPSO) {
+void CreateComputePSO(IRenderDevice* device, const ComputePipelineStateCreateInfo& psoCI, IPipelineState** ppPSO) {
     *ppPSO = nullptr;
     device->CreateComputePipelineState(psoCI, ppPSO);
 }
@@ -614,7 +613,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     // SwapChain 缓冲数固定为 3：
     // - VSync（Present sync interval）与缓冲数解耦，避免“切 VSync 导致帧队列深度变化”的隐式副作用。
     // - 历史上三缓冲也用于降低 D3D12 帧等待/超时风险。
-    scDesc.BufferCount       = 3;
+    scDesc.BufferCount = 3;
     // 阶段 1：引入深度缓冲（即便当下的全屏四边形不依赖深度测试，先把链路补齐）。
     scDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
 
@@ -873,8 +872,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     const bool needsCompile = false;
 
     // 提前初始化 ImGui（用于显示编译进度条）
-    hwnd_  = hwnd;
-    imgui_ = std::make_unique<UI::ImGuiDiligent>();
+    hwnd_        = hwnd;
+    imgui_       = std::make_unique<UI::ImGuiDiligent>();
     bool imguiOk = false;
     if (useDCompSwapChain_) {
         imguiOk = imgui_->Init(hwnd, backend, device_, TEX_FORMAT_RGBA8_UNORM, surfaceSize_.Width, surfaceSize_.Height);
@@ -894,15 +893,17 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     ShaderCompileProgress::ProgressRenderer progressRenderer;
     const int kTotalPSOSteps = 7; // FullscreenQuad, Bloom, Acrylic, Starfield, Particle, ParticleCompute, SevenSegment
     progressRenderer.SetTotal(kTotalPSOSteps);
-    const bool isDarkMode = Win32WindowManager::IsSystemDarkMode();
-    auto lastFrameTime = std::chrono::steady_clock::now();
+    const bool isDarkMode    = Win32WindowManager::IsSystemDarkMode();
+    auto       lastFrameTime = std::chrono::steady_clock::now();
 
     // 进度条渲染辅助 lambda
     auto renderProgress = [&]() {
-        if (!needsCompile) return; // 缓存命中时不显示进度条
+        if (!needsCompile) {
+            return; // 缓存命中时不显示进度条
+        }
 
-        auto now = std::chrono::steady_clock::now();
-        float dt = std::chrono::duration<float>(now - lastFrameTime).count();
+        auto  now     = std::chrono::steady_clock::now();
+        float dt      = std::chrono::duration<float>(now - lastFrameTime).count();
         lastFrameTime = now;
 
         // 开始 ImGui 帧
@@ -974,7 +975,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     }
     OutputDebugStringA("[DiligentBackend] AcrylicPSO OK\n");
     progressRenderer.IncrementCompleted();
-    renderProgress();;
+    renderProgress();
+    ;
 
     OutputDebugStringA("[DiligentBackend] Creating BloomTextures...\n");
     if (!CreateBloomTextures(surfaceSize_)) {
@@ -1019,8 +1021,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     if (useGPUParticleInit_) {
         particleInitSuccess = CreateParticleBuffersGPU(kParticleCountMax);
         if (!particleInitSuccess) {
-            DebugLog::Instance().Add(LogLevel::Warn,
-                                     "[Init] GPU particle init failed, falling back to CPU");
+            DebugLog::Instance().Add(LogLevel::Warn, "[Init] GPU particle init failed, falling back to CPU");
         }
     }
     if (!particleInitSuccess) {
@@ -1326,8 +1327,7 @@ void DiligentBackend::Resize(SurfaceSize newSize) {
     // 仅调用 DwmExtendFrameIntoClientArea 不够，需要重新调用 DwmSetWindowAttribute 设置 backdrop type
     if (useDCompSwapChain_ && hwnd_ != nullptr && appState_ != nullptr) {
         // 获取当前 backdrop 模式并重新应用
-        if (!appState_->backdrop.availableBackdrops.empty() &&
-            appState_->backdrop.backdropIndex >= 0 &&
+        if (!appState_->backdrop.availableBackdrops.empty() && appState_->backdrop.backdropIndex >= 0 &&
             appState_->backdrop.backdropIndex < static_cast<int>(appState_->backdrop.availableBackdrops.size())) {
             const int currentMode = appState_->backdrop.availableBackdrops[appState_->backdrop.backdropIndex];
             Win32WindowManager::SetBackdropMode(hwnd_, currentMode, *appState_);
@@ -1369,8 +1369,8 @@ bool DiligentBackend::SetBackdropMode(int mode) {
     if (canUseDComp) {
         // 只在“需要透明但当前没有 DComp”时切换到 DComp。
         // 一旦进入 DComp 模式，不再切回普通 HWND SwapChain：
-        // 在 Win11 的部分环境下，运行期反复销毁/重建 DComp SwapChain 会导致系统 Backdrop（Mica/Acrylic）后续再开启失效，
-        // 表现为：DWM 退化为纯色背景（用户侧观感：模糊彻底没了）。
+        // 在 Win11 的部分环境下，运行期反复销毁/重建 DComp SwapChain 会导致系统
+        // Backdrop（Mica/Acrylic）后续再开启失效， 表现为：DWM 退化为纯色背景（用户侧观感：模糊彻底没了）。
         if (wantTransparent && !useDCompSwapChain_) {
             if (!SwitchTransparentMode(true)) {
                 return false;
@@ -1380,9 +1380,10 @@ bool DiligentBackend::SetBackdropMode(int mode) {
 
     // 无论是否切换 SwapChain，都同步 DWM Backdrop（并更新 appState_->backdrop.useTransparent）
     std::cout << "[DiligentBackend] SetBackdropMode: backend="
-              << (backend_ == Backend::D3D11   ? "D3D11"
-                  : backend_ == Backend::D3D12 ? "D3D12"
-                   : backend_ == Backend::Vulkan ? "Vulkan" : "Unknown")
+              << (backend_ == Backend::D3D11    ? "D3D11"
+                  : backend_ == Backend::D3D12  ? "D3D12"
+                  : backend_ == Backend::Vulkan ? "Vulkan"
+                                                : "Unknown")
               << ", mode=" << mode << ", wantTransparent=" << (wantTransparent ? "true" : "false")
               << ", useDCompSwapChain_=" << (useDCompSwapChain_ ? "true" : "false") << std::endl;
     ParticleSaturn::Win32WindowManager::SetBackdropMode(hwnd_, mode, *appState_);
@@ -1399,16 +1400,16 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
     RefCntAutoPtr<IShader> vs, ps;
 
     if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX,
-                                       FullscreenQuad_VS_SPIRV, sizeof(FullscreenQuad_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL,
-                                       FullscreenQuad_PS_SPIRV, sizeof(FullscreenQuad_PS_SPIRV));
+        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, FullscreenQuad_VS_SPIRV,
+                                      sizeof(FullscreenQuad_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, FullscreenQuad_PS_SPIRV,
+                                      sizeof(FullscreenQuad_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX,
-                                       FullscreenQuad_VS_DXBC, sizeof(FullscreenQuad_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL,
-                                       FullscreenQuad_PS_DXBC, sizeof(FullscreenQuad_PS_DXBC));
+        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, FullscreenQuad_VS_DXBC,
+                                      sizeof(FullscreenQuad_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, FullscreenQuad_PS_DXBC,
+                                      sizeof(FullscreenQuad_PS_DXBC));
     }
 
     if (vs == nullptr || ps == nullptr) {
@@ -1517,24 +1518,24 @@ bool DiligentBackend::CreateBloomPSO() {
     RefCntAutoPtr<IShader> downVS, downPS, blurVS, blurPS;
 
     if (backend_ == Backend::Vulkan) {
-        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX,
-                                           BloomDownsample_VS_SPIRV, sizeof(BloomDownsample_VS_SPIRV));
-        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL,
-                                           BloomDownsample_PS_SPIRV, sizeof(BloomDownsample_PS_SPIRV));
-        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX,
-                                           BloomBlur_VS_SPIRV, sizeof(BloomBlur_VS_SPIRV));
-        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL,
-                                           BloomBlur_PS_SPIRV, sizeof(BloomBlur_PS_SPIRV));
+        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, BloomDownsample_VS_SPIRV,
+                                          sizeof(BloomDownsample_VS_SPIRV));
+        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, BloomDownsample_PS_SPIRV,
+                                          sizeof(BloomDownsample_PS_SPIRV));
+        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, BloomBlur_VS_SPIRV,
+                                          sizeof(BloomBlur_VS_SPIRV));
+        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, BloomBlur_PS_SPIRV,
+                                          sizeof(BloomBlur_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX,
-                                           BloomDownsample_VS_DXBC, sizeof(BloomDownsample_VS_DXBC));
-        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL,
-                                           BloomDownsample_PS_DXBC, sizeof(BloomDownsample_PS_DXBC));
-        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX,
-                                           BloomBlur_VS_DXBC, sizeof(BloomBlur_VS_DXBC));
-        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL,
-                                           BloomBlur_PS_DXBC, sizeof(BloomBlur_PS_DXBC));
+        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, BloomDownsample_VS_DXBC,
+                                          sizeof(BloomDownsample_VS_DXBC));
+        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, BloomDownsample_PS_DXBC,
+                                          sizeof(BloomDownsample_PS_DXBC));
+        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, BloomBlur_VS_DXBC,
+                                          sizeof(BloomBlur_VS_DXBC));
+        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, BloomBlur_PS_DXBC,
+                                          sizeof(BloomBlur_PS_DXBC));
     }
 
     if (downVS == nullptr || downPS == nullptr || blurVS == nullptr || blurPS == nullptr) {
@@ -1644,16 +1645,16 @@ bool DiligentBackend::CreateAcrylicPSO() {
     RefCntAutoPtr<IShader> vs, ps;
 
     if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX,
-                                       AcrylicComposite_VS_SPIRV, sizeof(AcrylicComposite_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL,
-                                       AcrylicComposite_PS_SPIRV, sizeof(AcrylicComposite_PS_SPIRV));
+        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, AcrylicComposite_VS_SPIRV,
+                                      sizeof(AcrylicComposite_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, AcrylicComposite_PS_SPIRV,
+                                      sizeof(AcrylicComposite_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX,
-                                       AcrylicComposite_VS_DXBC, sizeof(AcrylicComposite_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL,
-                                       AcrylicComposite_PS_DXBC, sizeof(AcrylicComposite_PS_DXBC));
+        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, AcrylicComposite_VS_DXBC,
+                                      sizeof(AcrylicComposite_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, AcrylicComposite_PS_DXBC,
+                                      sizeof(AcrylicComposite_PS_DXBC));
     }
 
     if (vs == nullptr || ps == nullptr) {
@@ -2415,16 +2416,13 @@ bool DiligentBackend::CreateStarfieldPSO() {
     RefCntAutoPtr<IShader> vs, ps;
 
     if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX,
-                                       Star_VS_SPIRV, sizeof(Star_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL,
-                                       Star_PS_SPIRV, sizeof(Star_PS_SPIRV));
+        vs =
+            CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX, Star_VS_SPIRV, sizeof(Star_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL, Star_PS_SPIRV, sizeof(Star_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX,
-                                       Star_VS_DXBC, sizeof(Star_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL,
-                                       Star_PS_DXBC, sizeof(Star_PS_DXBC));
+        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX, Star_VS_DXBC, sizeof(Star_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL, Star_PS_DXBC, sizeof(Star_PS_DXBC));
     }
 
     if (vs == nullptr || ps == nullptr) {
@@ -2660,12 +2658,12 @@ bool DiligentBackend::CreateParticleInitPSO() {
     RefCntAutoPtr<IShader> cs;
 
     if (backend_ == Backend::Vulkan) {
-        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE,
-                                       SaturnInit_CS_SPIRV, sizeof(SaturnInit_CS_SPIRV));
+        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, SaturnInit_CS_SPIRV,
+                                      sizeof(SaturnInit_CS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE,
-                                       SaturnInit_CS_DXBC, sizeof(SaturnInit_CS_DXBC));
+        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, SaturnInit_CS_DXBC,
+                                      sizeof(SaturnInit_CS_DXBC));
     }
 
     if (cs == nullptr) {
@@ -2712,8 +2710,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
         particleInitConstants_.Release();
         device_->CreateBuffer(cbDesc, nullptr, &particleInitConstants_);
         if (particleInitConstants_ == nullptr) {
-            DebugLog::Instance().Add(LogLevel::Error,
-                                     "[CreateParticleInitPSO] CreateBuffer(Init Constants) failed");
+            DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateBuffer(Init Constants) failed");
             return false;
         }
     }
@@ -2930,16 +2927,16 @@ bool DiligentBackend::CreateParticlePSO() {
     RefCntAutoPtr<IShader> vs, ps;
 
     if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX,
-                                       SaturnParticle_VS_SPIRV, sizeof(SaturnParticle_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL,
-                                       SaturnParticle_PS_SPIRV, sizeof(SaturnParticle_PS_SPIRV));
+        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, SaturnParticle_VS_SPIRV,
+                                      sizeof(SaturnParticle_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, SaturnParticle_PS_SPIRV,
+                                      sizeof(SaturnParticle_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX,
-                                       SaturnParticle_VS_DXBC, sizeof(SaturnParticle_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL,
-                                       SaturnParticle_PS_DXBC, sizeof(SaturnParticle_PS_DXBC));
+        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, SaturnParticle_VS_DXBC,
+                                      sizeof(SaturnParticle_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, SaturnParticle_PS_DXBC,
+                                      sizeof(SaturnParticle_PS_DXBC));
     }
 
     if (vs == nullptr || ps == nullptr) {
@@ -3018,8 +3015,8 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
             const auto& features = device_->GetDeviceInfo().Features;
 
             // 记录设备信息以便调试
-            DebugLog::Instance().Add(LogLevel::Info,
-                "[GPU] Mesh Shader feature state: " + std::to_string(static_cast<int>(features.MeshShaders)));
+            DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader feature state: " +
+                                                         std::to_string(static_cast<int>(features.MeshShaders)));
 
             // Mesh Shader 仅 D3D12 支持（Vulkan 需要额外扩展，暂不启用）
             if (backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
@@ -3028,7 +3025,8 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
                 DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
             } else {
                 std::string reason = (backend_ != Backend::D3D12) ? "not D3D12 backend" : "hardware not supported";
-                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders not available (" + reason + "), using Vertex Pulling");
+                DebugLog::Instance().Add(LogLevel::Info,
+                                         "[GPU] Mesh Shaders not available (" + reason + "), using Vertex Pulling");
             }
         }
     }
@@ -3044,16 +3042,17 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     using namespace ShaderBytecodes;
 
     // Mesh Shader 仅 D3D12 支持，使用 DXIL 格式
-    RefCntAutoPtr<IShader> ms = CreateShaderFromBytecode(device_, "SaturnParticle MS", SHADER_TYPE_MESH,
-                                                          SaturnParticleMesh_MS_DXIL, sizeof(SaturnParticleMesh_MS_DXIL));
+    RefCntAutoPtr<IShader> ms = CreateShaderFromBytecode(
+        device_, "SaturnParticle MS", SHADER_TYPE_MESH, SaturnParticleMesh_MS_DXIL, sizeof(SaturnParticleMesh_MS_DXIL));
     if (ms == nullptr) {
         DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader creation failed");
         useMeshShaders_ = false;
         return false;
     }
 
-    RefCntAutoPtr<IShader> ps = CreateShaderFromBytecode(device_, "SaturnParticle PS (Mesh)", SHADER_TYPE_PIXEL,
-                                                          SaturnParticleMesh_MeshPS_DXIL, sizeof(SaturnParticleMesh_MeshPS_DXIL));
+    RefCntAutoPtr<IShader> ps =
+        CreateShaderFromBytecode(device_, "SaturnParticle PS (Mesh)", SHADER_TYPE_PIXEL, SaturnParticleMesh_MeshPS_DXIL,
+                                 sizeof(SaturnParticleMesh_MeshPS_DXIL));
     if (ps == nullptr) {
         DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader creation failed");
         useMeshShaders_ = false;
@@ -3136,12 +3135,12 @@ bool DiligentBackend::CreateParticleComputePSO() {
     RefCntAutoPtr<IShader> cs;
 
     if (backend_ == Backend::Vulkan) {
-        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE,
-                                       SaturnCompute_CS_SPIRV, sizeof(SaturnCompute_CS_SPIRV));
+        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, SaturnCompute_CS_SPIRV,
+                                      sizeof(SaturnCompute_CS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE,
-                                       SaturnCompute_CS_DXBC, sizeof(SaturnCompute_CS_DXBC));
+        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, SaturnCompute_CS_DXBC,
+                                      sizeof(SaturnCompute_CS_DXBC));
     }
 
     if (cs == nullptr) {
@@ -3242,16 +3241,16 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
     RefCntAutoPtr<IShader> vs, ps;
 
     if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX,
-                                       SevenSeg_VS_SPIRV, sizeof(SevenSeg_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL,
-                                       SevenSeg_PS_SPIRV, sizeof(SevenSeg_PS_SPIRV));
+        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX, SevenSeg_VS_SPIRV,
+                                      sizeof(SevenSeg_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL, SevenSeg_PS_SPIRV,
+                                      sizeof(SevenSeg_PS_SPIRV));
     } else {
         // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX,
-                                       SevenSeg_VS_DXBC, sizeof(SevenSeg_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL,
-                                       SevenSeg_PS_DXBC, sizeof(SevenSeg_PS_DXBC));
+        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX, SevenSeg_VS_DXBC,
+                                      sizeof(SevenSeg_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL, SevenSeg_PS_DXBC,
+                                      sizeof(SevenSeg_PS_DXBC));
     }
 
     if (vs == nullptr || ps == nullptr) {
@@ -4048,7 +4047,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
                 float pad;
             };
 
-            auto* cb        = static_cast<BloomCB*>(mapped);
+            auto* cb = static_cast<BloomCB*>(mapped);
             // 当复用 uiSceneColor_ 时，bloom 已经在 RenderUISceneForUI() 中处理过，这里设为 0 避免二次叠加
             cb->strength    = useUISceneAsSource ? 0.0f : (bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f);
             cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
@@ -4141,8 +4140,12 @@ void DiligentBackend::RenderFrame() {
                         fpsHistoryCachedMin_ = newValue;
                         fpsHistoryCachedMax_ = newValue;
                     } else {
-                        if (newValue < fpsHistoryCachedMin_) fpsHistoryCachedMin_ = newValue;
-                        if (newValue > fpsHistoryCachedMax_) fpsHistoryCachedMax_ = newValue;
+                        if (newValue < fpsHistoryCachedMin_) {
+                            fpsHistoryCachedMin_ = newValue;
+                        }
+                        if (newValue > fpsHistoryCachedMax_) {
+                            fpsHistoryCachedMax_ = newValue;
+                        }
                     }
                 } else {
                     // 缓冲区已满，需要检查旧值是否是极值
@@ -4154,8 +4157,12 @@ void DiligentBackend::RenderFrame() {
                         fpsHistoryCacheDirty_ = true;
                     } else {
                         // 旧值不是极值，只需检查新值
-                        if (newValue < fpsHistoryCachedMin_) fpsHistoryCachedMin_ = newValue;
-                        if (newValue > fpsHistoryCachedMax_) fpsHistoryCachedMax_ = newValue;
+                        if (newValue < fpsHistoryCachedMin_) {
+                            fpsHistoryCachedMin_ = newValue;
+                        }
+                        if (newValue > fpsHistoryCachedMax_) {
+                            fpsHistoryCachedMax_ = newValue;
+                        }
                     }
                 }
 
@@ -4329,56 +4336,56 @@ void DiligentBackend::RenderFrame() {
             const auto&     str             = i18n::Get();
             MD3::WindowTitleBar(str.debugPanelTitle, &appState_->ui.showDebugWindow);
 
-                // 绘制窗口背景
-                {
-                    ImVec2      pos   = ImGui::GetWindowPos();
-                    ImVec2      size  = ImGui::GetWindowSize();
-                    ImDrawList* dl    = ImGui::GetWindowDrawList();
-                    ImGuiStyle& style = ImGui::GetStyle();
+            // 绘制窗口背景
+            {
+                ImVec2      pos   = ImGui::GetWindowPos();
+                ImVec2      size  = ImGui::GetWindowSize();
+                ImDrawList* dl    = ImGui::GetWindowDrawList();
+                ImGuiStyle& style = ImGui::GetStyle();
 
-                    auto&  colors       = MD3::GetContext().colors;
-                    auto&  ctx          = MD3::GetContext();
-                    float  cornerRadius = style.WindowRounding;
-                    ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
+                auto&  colors       = MD3::GetContext().colors;
+                auto&  ctx          = MD3::GetContext();
+                float  cornerRadius = style.WindowRounding;
+                ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
-                    // 模糊背景：如果启用且有有效纹理
-                    const bool wantBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : false;
-                    ITextureView* blurSRV =
-                        (wantBlur && uiAcrylicSRV_Strong_ != nullptr) ? uiAcrylicSRV_Strong_.RawPtr() : nullptr;
-                    if (wantBlur) {
-                        static bool s_warnedBlurSrvNull  = false;
-                        static bool s_warnedNoiseSrvNull = false;
-                        if (!s_warnedBlurSrvNull && uiAcrylicSRV_Strong_ == nullptr) {
-                            OutputDebugStringA("[DiligentBackend] UI blur enabled but uiAcrylicSRV_Strong_ is null\n");
-                            s_warnedBlurSrvNull = true;
-                        }
-                        if (!s_warnedNoiseSrvNull && uiNoiseSRV_ == nullptr) {
-                            OutputDebugStringA("[DiligentBackend] UI blur enabled but uiNoiseSRV_ is null\n");
-                            s_warnedNoiseSrvNull = true;
-                        }
+                // 模糊背景：如果启用且有有效纹理
+                const bool    wantBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : false;
+                ITextureView* blurSRV =
+                    (wantBlur && uiAcrylicSRV_Strong_ != nullptr) ? uiAcrylicSRV_Strong_.RawPtr() : nullptr;
+                if (wantBlur) {
+                    static bool s_warnedBlurSrvNull  = false;
+                    static bool s_warnedNoiseSrvNull = false;
+                    if (!s_warnedBlurSrvNull && uiAcrylicSRV_Strong_ == nullptr) {
+                        OutputDebugStringA("[DiligentBackend] UI blur enabled but uiAcrylicSRV_Strong_ is null\n");
+                        s_warnedBlurSrvNull = true;
+                    }
+                    if (!s_warnedNoiseSrvNull && uiNoiseSRV_ == nullptr) {
+                        OutputDebugStringA("[DiligentBackend] UI blur enabled but uiNoiseSRV_ is null\n");
+                        s_warnedNoiseSrvNull = true;
+                    }
+                }
+
+                if (blurSRV != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+                    // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
+                    ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+                    ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
+
+                    // 使用带圆角的图片绘制，避免黑边
+                    MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(blurSRV), pos, endPos, uv0, uv1,
+                                         IM_COL32(255, 255, 255, 255), cornerRadius);
+
+                    // 噪点层：防 banding + 增加“材质感”
+                    if (wantBlur && uiNoiseSRV_ != nullptr) {
+                        const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
+                        const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+                        const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
+                        MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(uiNoiseSRV_.RawPtr()), pos, endPos, uv0,
+                                             uv1, noiseCol, cornerRadius);
                     }
 
-                    if (blurSRV != nullptr && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
-                        // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下，无需翻转 Y）
-                        ImVec2 uv0 = ImVec2(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
-                        ImVec2 uv1 = ImVec2(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
-
-                        // 使用带圆角的图片绘制，避免黑边
-                        MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(blurSRV), pos, endPos, uv0, uv1,
-                                             IM_COL32(255, 255, 255, 255), cornerRadius);
-
-                        // 噪点层：防 banding + 增加“材质感”
-                        if (wantBlur && uiNoiseSRV_ != nullptr) {
-                            const float intensity = std::clamp(ctx.noiseIntensity, 0.0f, 0.1f);
-                            const int   a         = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
-                            const ImU32 noiseCol  = IM_COL32(255, 255, 255, a);
-                            MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(uiNoiseSRV_.RawPtr()), pos, endPos,
-                                                 uv0, uv1, noiseCol, cornerRadius);
-                        }
-
-                        // 高光边框
-                        ImU32 highlight =
-                            appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                    // 高光边框
+                    ImU32 highlight =
+                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                     dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
                 } else {
                     // 无模糊时的纯色背景
@@ -4425,7 +4432,10 @@ void DiligentBackend::RenderFrame() {
                     TwoColumnText(str.particles, "%u / %u", uiParticleCount, kParticleCountMax);
                     TwoColumnText(str.pixelRatio, "%.2f", uiPixelRatio);
                     TwoColumnText(str.resolution, "%u x %u", surfaceSize_.Width, surfaceSize_.Height);
-                    TwoColumnText(str.backend, "%s", backend_ == Backend::D3D11 ? "D3D11" : backend_ == Backend::D3D12 ? "D3D12" : "Vulkan");
+                    TwoColumnText(str.backend, "%s",
+                                  backend_ == Backend::D3D11   ? "D3D11"
+                                  : backend_ == Backend::D3D12 ? "D3D12"
+                                                               : "Vulkan");
 
                     ImGui::EndTable();
                 }
@@ -4443,18 +4453,22 @@ void DiligentBackend::RenderFrame() {
                 float dataMin, dataMax;
                 if (fpsHistoryCacheDirty_ || fpsHistoryValidCount_ == 0) {
                     // 需要重新计算
-                    dataMin = 0.0f;
-                    dataMax = 0.0f;
+                    dataMin    = 0.0f;
+                    dataMax    = 0.0f;
                     bool first = true;
                     for (int i = 0; i < kFpsHistorySize; i++) {
                         float v = getValue(i);
                         if (v > 0.0f) {
                             if (first) {
                                 dataMin = dataMax = v;
-                                first = false;
+                                first             = false;
                             } else {
-                                if (v < dataMin) dataMin = v;
-                                if (v > dataMax) dataMax = v;
+                                if (v < dataMin) {
+                                    dataMin = v;
+                                }
+                                if (v > dataMax) {
+                                    dataMax = v;
+                                }
                             }
                         }
                     }
@@ -4874,7 +4888,7 @@ void DiligentBackend::RenderFrame() {
             if (MD3::BeginCollapsingHeader(str.sectionWindow)) {
                 // 图形后端切换
                 ImGui::Text("%s:", str.switchBackend);
-                int backendIndex = static_cast<int>(backend_);
+                int         backendIndex   = static_cast<int>(backend_);
                 const char* backendNames[] = {"D3D11", "D3D12", "Vulkan"};
                 if (MD3::Combo("##BackendSwitch", &backendIndex, backendNames, 3)) {
                     if (backendIndex != static_cast<int>(backend_)) {
@@ -4894,7 +4908,8 @@ void DiligentBackend::RenderFrame() {
                         if (useMeshShaders_) {
                             DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader enabled by user");
                         } else {
-                            DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader disabled by user, using Vertex Pulling");
+                            DebugLog::Instance().Add(LogLevel::Info,
+                                                     "[GPU] Mesh Shader disabled by user, using Vertex Pulling");
                         }
                     }
                 }
@@ -4930,9 +4945,10 @@ void DiligentBackend::RenderFrame() {
                 ImGui::Dummy(ImVec2(0, 5));
 
                 // Backdrop/透明合成开关（简化版：开=使用 Mica，关=Solid）
-                // 注意：需要 Win10 1809+ 且窗口支持 DirectComposition；为保证运行期可反复切换不失效，DComp 一旦启用将保持启用。
-                // 仅 D3D12 和 D3D11 后端显示此选项。
-                if (appState_->backdrop.transparentSupported && (backend_ == Backend::D3D12 || backend_ == Backend::D3D11)) {
+                // 注意：需要 Win10 1809+ 且窗口支持 DirectComposition；为保证运行期可反复切换不失效，DComp
+                // 一旦启用将保持启用。 仅 D3D12 和 D3D11 后端显示此选项。
+                if (appState_->backdrop.transparentSupported &&
+                    (backend_ == Backend::D3D12 || backend_ == Backend::D3D11)) {
                     bool transparent = appState_->backdrop.useTransparent;
                     if (MD3::Toggle(str.transparent, &transparent)) {
                         // 透明时使用 Mica (mode=3)，不透明时使用 Solid (mode=0)
@@ -5179,8 +5195,8 @@ void DiligentBackend::RenderFrame() {
 
     // 4. Blit to Backbuffer
     // D3D11 透明模式：使用原生 D3D11 API 路径避免每帧 Diligent 纹理包装开销
-    const bool useD3D11NativeBlit = (backend_ == Backend::D3D11 && useDCompSwapChain_ &&
-                                      dcompSwapChain_.IsInitialized());
+    const bool useD3D11NativeBlit =
+        (backend_ == Backend::D3D11 && useDCompSwapChain_ && dcompSwapChain_.IsInitialized());
     if (useD3D11NativeBlit) {
         // 首次使用时初始化原生 blit 管线
         if (!d3d11NativeBlitInitialized_) {
@@ -5398,12 +5414,12 @@ bool DiligentBackend::CreateDCompBackBufferRTVs() {
         return false;
     }
 
-    const uint32_t bufferCount = dcompSwapChain_.GetBufferCount();
+    const uint32_t bufferCount  = dcompSwapChain_.GetBufferCount();
     const Backend  dcompBackend = dcompSwapChain_.GetBackendType();
 
     char dbgBuf[128];
-    sprintf_s(dbgBuf, "[DiligentBackend] CreateDCompBackBufferRTVs: bufferCount=%u, backend=%d\n",
-              bufferCount, static_cast<int>(dcompBackend));
+    sprintf_s(dbgBuf, "[DiligentBackend] CreateDCompBackBufferRTVs: bufferCount=%u, backend=%d\n", bufferCount,
+              static_cast<int>(dcompBackend));
     OutputDebugStringA(dbgBuf);
 
     if (dcompBackend == Backend::D3D12) {
@@ -5459,7 +5475,7 @@ bool DiligentBackend::CreateDCompBackBufferRTVs() {
 
         // D3D11 只创建当前后缓冲的纹理和 RTV
         const uint32_t currentIdx = dcompSwapChain_.GetCurrentBackBufferIndex();
-        char dbgBuf[128];
+        char           dbgBuf[128];
         sprintf_s(dbgBuf, "[DiligentBackend] D3D11: Creating RTV for current buffer %u only\n", currentIdx);
         OutputDebugStringA(dbgBuf);
 
@@ -5525,7 +5541,7 @@ bool DiligentBackend::UpdateD3D11CurrentBackBufferRTV() {
     }
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11Texture;
-    HRESULT hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&d3d11Texture));
+    HRESULT                                 hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&d3d11Texture));
     if (FAILED(hr) || !d3d11Texture) {
         return false;
     }
@@ -5547,7 +5563,8 @@ bool DiligentBackend::UpdateD3D11CurrentBackBufferRTV() {
     dcompBackBuffers_[0].Release();
     dcompBackBufferRTVs_[0].Release();
 
-    deviceD3D11->CreateTexture2DFromD3DResource(d3d11Texture.Get(), RESOURCE_STATE_RENDER_TARGET, &dcompBackBuffers_[0]);
+    deviceD3D11->CreateTexture2DFromD3DResource(d3d11Texture.Get(), RESOURCE_STATE_RENDER_TARGET,
+                                                &dcompBackBuffers_[0]);
     if (!dcompBackBuffers_[0]) {
         return false;
     }
@@ -5650,8 +5667,8 @@ bool DiligentBackend::InitD3D11NativeBlit() {
 
     // 编译顶点着色器
     Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errorBlob;
-    HRESULT hr = D3DCompile(kBlitVS, strlen(kBlitVS), "BlitVS", nullptr, nullptr,
-                            "main", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &vsBlob, &errorBlob);
+    HRESULT hr = D3DCompile(kBlitVS, strlen(kBlitVS), "BlitVS", nullptr, nullptr, "main", "vs_5_0",
+                            D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &vsBlob, &errorBlob);
     if (FAILED(hr)) {
         if (errorBlob) {
             OutputDebugStringA("[DiligentBackend] D3D11 VS compile error: ");
@@ -5660,16 +5677,15 @@ bool DiligentBackend::InitD3D11NativeBlit() {
         return false;
     }
 
-    hr = d3d11Device_->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(),
-                                           nullptr, &d3d11BlitVS_);
+    hr = d3d11Device_->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &d3d11BlitVS_);
     if (FAILED(hr)) {
         OutputDebugStringA("[DiligentBackend] Failed to create D3D11 vertex shader\n");
         return false;
     }
 
     // 编译像素着色器
-    hr = D3DCompile(kBlitPS, strlen(kBlitPS), "BlitPS", nullptr, nullptr,
-                    "main", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &psBlob, &errorBlob);
+    hr = D3DCompile(kBlitPS, strlen(kBlitPS), "BlitPS", nullptr, nullptr, "main", "ps_5_0",
+                    D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &psBlob, &errorBlob);
     if (FAILED(hr)) {
         if (errorBlob) {
             OutputDebugStringA("[DiligentBackend] D3D11 PS compile error: ");
@@ -5678,8 +5694,7 @@ bool DiligentBackend::InitD3D11NativeBlit() {
         return false;
     }
 
-    hr = d3d11Device_->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(),
-                                          nullptr, &d3d11BlitPS_);
+    hr = d3d11Device_->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &d3d11BlitPS_);
     if (FAILED(hr)) {
         OutputDebugStringA("[DiligentBackend] Failed to create D3D11 pixel shader\n");
         return false;
@@ -5726,10 +5741,10 @@ bool DiligentBackend::InitD3D11NativeBlit() {
     // 创建光栅化状态
     // ============================================================================
     D3D11_RASTERIZER_DESC rasterizerDesc{};
-    rasterizerDesc.FillMode        = D3D11_FILL_SOLID;
-    rasterizerDesc.CullMode        = D3D11_CULL_NONE;
+    rasterizerDesc.FillMode              = D3D11_FILL_SOLID;
+    rasterizerDesc.CullMode              = D3D11_CULL_NONE;
     rasterizerDesc.FrontCounterClockwise = FALSE;
-    rasterizerDesc.DepthClipEnable = TRUE;
+    rasterizerDesc.DepthClipEnable       = TRUE;
 
     hr = d3d11Device_->CreateRasterizerState(&rasterizerDesc, &d3d11RasterizerState_);
     if (FAILED(hr)) {
@@ -5790,7 +5805,7 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     }
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
-    HRESULT hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+    HRESULT                                 hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
     if (FAILED(hr) || !backBuffer) {
         BlitOffscreenToBackBuffer();
         return;
@@ -5821,9 +5836,9 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
 
     // 获取源纹理的原生 SRV
     // 优化：当 UI Blur 启用时，复用 uiSceneSRV_
-    const bool useUISceneAsSource = (appState_ != nullptr && appState_->ui.enableBlur && uiSceneSRV_ != nullptr);
-    ITextureView* srcSRV = useUISceneAsSource ? uiSceneSRV_.RawPtr() : offscreenSRV_.RawPtr();
-    ITextureView* bloomSRV = bloomSRV_B_ ? bloomSRV_B_.RawPtr() : offscreenSRV_.RawPtr();
+    const bool    useUISceneAsSource = (appState_ != nullptr && appState_->ui.enableBlur && uiSceneSRV_ != nullptr);
+    ITextureView* srcSRV             = useUISceneAsSource ? uiSceneSRV_.RawPtr() : offscreenSRV_.RawPtr();
+    ITextureView* bloomSRV           = bloomSRV_B_ ? bloomSRV_B_.RawPtr() : offscreenSRV_.RawPtr();
 
     if (!srcSRV || !bloomSRV) {
         BlitOffscreenToBackBuffer();
@@ -5842,7 +5857,7 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
         return;
     }
 
-    ID3D11ShaderResourceView* srcD3D11SRV = static_cast<ID3D11ShaderResourceView*>(srcViewD3D11->GetD3D11View());
+    ID3D11ShaderResourceView* srcD3D11SRV   = static_cast<ID3D11ShaderResourceView*>(srcViewD3D11->GetD3D11View());
     ID3D11ShaderResourceView* bloomD3D11SRV = static_cast<ID3D11ShaderResourceView*>(bloomViewD3D11->GetD3D11View());
 
     if (!srcD3D11SRV || !bloomD3D11SRV) {
@@ -5864,7 +5879,8 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
             float isD3D11;
             float pad;
         };
-        auto* cb = static_cast<BloomCB*>(mapped.pData);
+
+        auto* cb        = static_cast<BloomCB*>(mapped.pData);
         cb->strength    = useUISceneAsSource ? 0.0f : (bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f);
         cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
         cb->isD3D11     = 1.0f;
@@ -5873,7 +5889,7 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     }
 
     // 设置渲染目标
-    ID3D11RenderTargetView* rtvs[] = { d3d11CachedRTV_.Get() };
+    ID3D11RenderTargetView* rtvs[] = {d3d11CachedRTV_.Get()};
     d3d11Context_->OMSetRenderTargets(1, rtvs, nullptr);
 
     // 设置视口 - 使用 SwapChain 的实际尺寸，确保 resize 后正确
@@ -5892,17 +5908,17 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     d3d11Context_->RSSetState(d3d11RasterizerState_.Get());
     d3d11Context_->OMSetDepthStencilState(d3d11DepthStencilState_.Get(), 0);
 
-    float blendFactor[4] = { 0, 0, 0, 0 };
+    float blendFactor[4] = {0, 0, 0, 0};
     d3d11Context_->OMSetBlendState(d3d11BlendState_.Get(), blendFactor, 0xFFFFFFFF);
 
     // 绑定资源
-    ID3D11Buffer* cbs[] = { d3d11BloomCB_.Get() };
+    ID3D11Buffer* cbs[] = {d3d11BloomCB_.Get()};
     d3d11Context_->PSSetConstantBuffers(0, 1, cbs);
 
-    ID3D11ShaderResourceView* srvs[] = { srcD3D11SRV, bloomD3D11SRV };
+    ID3D11ShaderResourceView* srvs[] = {srcD3D11SRV, bloomD3D11SRV};
     d3d11Context_->PSSetShaderResources(0, 2, srvs);
 
-    ID3D11SamplerState* samplers[] = { d3d11LinearSampler_.Get() };
+    ID3D11SamplerState* samplers[] = {d3d11LinearSampler_.Get()};
     d3d11Context_->PSSetSamplers(0, 1, samplers);
 
     // 设置图元拓扑和输入布局
@@ -5913,9 +5929,9 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
     d3d11Context_->Draw(4, 0);
 
     // 清除绑定，避免资源冲突
-    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+    ID3D11ShaderResourceView* nullSRVs[2] = {nullptr, nullptr};
     d3d11Context_->PSSetShaderResources(0, 2, nullSRVs);
-    ID3D11RenderTargetView* nullRTVs[1] = { nullptr };
+    ID3D11RenderTargetView* nullRTVs[1] = {nullptr};
     d3d11Context_->OMSetRenderTargets(1, nullRTVs, nullptr);
 }
 
@@ -6030,8 +6046,8 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
     // 因此这里改为“只确保开启，不主动关闭”，让窗口在支持平台上始终保持该标志，
     // 从而保证透明/Backdrop 可以稳定在运行期反复切换。
     if (enableTransparent && hwnd_) {
-        const LONG_PTR exStyle  = GetWindowLongPtrW(hwnd_, GWL_EXSTYLE);
-        const LONG_PTR desired  = exStyle | static_cast<LONG_PTR>(WS_EX_NOREDIRECTIONBITMAP);
+        const LONG_PTR exStyle = GetWindowLongPtrW(hwnd_, GWL_EXSTYLE);
+        const LONG_PTR desired = exStyle | static_cast<LONG_PTR>(WS_EX_NOREDIRECTIONBITMAP);
         if (desired != exStyle) {
             SetWindowLongPtrW(hwnd_, GWL_EXSTYLE, desired);
             SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0,
@@ -6078,7 +6094,7 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
             ID3D12CommandQueue* cmdQueue = cmdQueueD3D12->GetD3D12CommandQueue();
 
             if (!dcompSwapChain_.InitD3D12(hwnd_, d3d12Device, cmdQueue, surfaceSize_.Width, surfaceSize_.Height,
-                                      kDCompBufferCount)) {
+                                           kDCompBufferCount)) {
                 immediateContext_->UnlockCommandQueue();
                 std::cerr << "[DiligentBackend] Failed to init DComp SwapChain" << std::endl;
                 return false;

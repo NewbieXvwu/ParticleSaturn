@@ -3,8 +3,9 @@
 
 #include "pch.h"
 
-#include "../ShaderCache.h"
 #include <unordered_map>
+
+#include "../ShaderCache.h"
 
 namespace Renderer {
 
@@ -14,9 +15,9 @@ namespace Renderer {
 
 // 缓存条目：存储单个程序的二进制数据
 struct ProgramCacheEntry {
-    uint32_t              keyHash    = 0;      // 着色器源码哈希
-    GLenum                format     = 0;      // 二进制格式
-    std::vector<uint8_t>  binary;              // 二进制数据
+    uint32_t             keyHash = 0; // 着色器源码哈希
+    GLenum               format  = 0; // 二进制格式
+    std::vector<uint8_t> binary;      // 二进制数据
 };
 
 // 缓存文件格式：
@@ -27,8 +28,8 @@ struct ProgramCacheEntry {
 
 // 全局缓存
 static std::unordered_map<uint32_t, ProgramCacheEntry> g_programCache;
-static bool g_cacheLoaded = false;
-static bool g_cacheDirty  = false;
+static bool                                            g_cacheLoaded = false;
+static bool                                            g_cacheDirty  = false;
 
 // 简单的字符串哈希（FNV-1a）
 static uint32_t HashString(const char* str) {
@@ -49,18 +50,24 @@ static uint32_t HashShaderSources(const char* vs, const char* fs) {
 
 // 加载缓存
 static void LoadCache() {
-    if (g_cacheLoaded) return;
+    if (g_cacheLoaded) {
+        return;
+    }
     g_cacheLoaded = true;
 
     auto cachePath = ShaderCache::GetOpenGLCachePath();
-    if (cachePath.empty()) return;
+    if (cachePath.empty()) {
+        return;
+    }
 
     std::vector<uint8_t> data;
     if (!ShaderCache::ReadCache(cachePath, data)) {
         return;
     }
 
-    if (data.size() < sizeof(uint32_t)) return;
+    if (data.size() < sizeof(uint32_t)) {
+        return;
+    }
 
     const uint8_t* ptr = data.data();
     const uint8_t* end = ptr + data.size();
@@ -70,11 +77,16 @@ static void LoadCache() {
 
     for (uint32_t i = 0; i < entryCount && ptr + 12 <= end; ++i) {
         ProgramCacheEntry entry;
-        entry.keyHash = *reinterpret_cast<const uint32_t*>(ptr); ptr += 4;
-        entry.format  = *reinterpret_cast<const uint32_t*>(ptr); ptr += 4;
-        uint32_t binSize = *reinterpret_cast<const uint32_t*>(ptr); ptr += 4;
+        entry.keyHash = *reinterpret_cast<const uint32_t*>(ptr);
+        ptr += 4;
+        entry.format = *reinterpret_cast<const uint32_t*>(ptr);
+        ptr += 4;
+        uint32_t binSize = *reinterpret_cast<const uint32_t*>(ptr);
+        ptr += 4;
 
-        if (ptr + binSize > end) break;
+        if (ptr + binSize > end) {
+            break;
+        }
 
         entry.binary.assign(ptr, ptr + binSize);
         ptr += binSize;
@@ -87,10 +99,14 @@ static void LoadCache() {
 
 // 保存缓存
 static void SaveCache() {
-    if (!g_cacheDirty) return;
+    if (!g_cacheDirty) {
+        return;
+    }
 
     auto cachePath = ShaderCache::GetOpenGLCachePath();
-    if (cachePath.empty()) return;
+    if (cachePath.empty()) {
+        return;
+    }
 
     std::vector<uint8_t> data;
 
@@ -102,8 +118,8 @@ static void SaveCache() {
     data.reserve(totalSize);
 
     // 写入条目数
-    uint32_t entryCount = static_cast<uint32_t>(g_programCache.size());
-    const uint8_t* countPtr = reinterpret_cast<const uint8_t*>(&entryCount);
+    uint32_t       entryCount = static_cast<uint32_t>(g_programCache.size());
+    const uint8_t* countPtr   = reinterpret_cast<const uint8_t*>(&entryCount);
     data.insert(data.end(), countPtr, countPtr + sizeof(uint32_t));
 
     // 写入每个条目
@@ -111,11 +127,11 @@ static void SaveCache() {
         const uint8_t* hashPtr = reinterpret_cast<const uint8_t*>(&entry.keyHash);
         data.insert(data.end(), hashPtr, hashPtr + 4);
 
-        uint32_t format = static_cast<uint32_t>(entry.format);
+        uint32_t       format    = static_cast<uint32_t>(entry.format);
         const uint8_t* formatPtr = reinterpret_cast<const uint8_t*>(&format);
         data.insert(data.end(), formatPtr, formatPtr + 4);
 
-        uint32_t binSize = static_cast<uint32_t>(entry.binary.size());
+        uint32_t       binSize = static_cast<uint32_t>(entry.binary.size());
         const uint8_t* sizePtr = reinterpret_cast<const uint8_t*>(&binSize);
         data.insert(data.end(), sizePtr, sizePtr + 4);
 
@@ -135,10 +151,9 @@ static unsigned int TryLoadFromCache(uint32_t keyHash) {
         return 0;
     }
 
-    const auto& entry = it->second;
+    const auto&  entry   = it->second;
     unsigned int program = glCreateProgram();
-    glProgramBinary(program, entry.format, entry.binary.data(),
-                    static_cast<GLsizei>(entry.binary.size()));
+    glProgramBinary(program, entry.format, entry.binary.data(), static_cast<GLsizei>(entry.binary.size()));
 
     GLint success = 0;
     glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -166,13 +181,12 @@ static void SaveToCache(unsigned int program, uint32_t keyHash) {
     entry.binary.resize(binaryLength);
 
     GLsizei actualLength = 0;
-    glGetProgramBinary(program, binaryLength, &actualLength, &entry.format,
-                       entry.binary.data());
+    glGetProgramBinary(program, binaryLength, &actualLength, &entry.format, entry.binary.data());
 
     if (actualLength > 0) {
         entry.binary.resize(actualLength);
         g_programCache[keyHash] = std::move(entry);
-        g_cacheDirty = true;
+        g_cacheDirty            = true;
     }
 }
 

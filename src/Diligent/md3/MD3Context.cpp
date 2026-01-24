@@ -814,9 +814,9 @@ void DrawRipples() {
         }
 
         // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
-        float boundsW       = r.boundsW;
-        float boundsH       = r.boundsH;
-        float cornerRadius  = r.cornerRadius;
+        float boundsW        = r.boundsW;
+        float boundsH        = r.boundsH;
+        float cornerRadius   = r.cornerRadius;
         float currentBoundsX = r.initialBoundsX - scrollDeltaX;
         float currentBoundsY = r.initialBoundsY - scrollDeltaY;
 
@@ -871,8 +871,7 @@ void DrawRipples() {
                 ImVec2 rippleMax(right, bottom);
 
                 // Calculate effective corner radius for the intersection region
-                float effectiveCorner =
-                    std::min(cornerRadius, std::min((right - left) * 0.5f, (bottom - top) * 0.5f));
+                float effectiveCorner = std::min(cornerRadius, std::min((right - left) * 0.5f, (bottom - top) * 0.5f));
 
                 // Draw as rounded rectangle to respect the control's corner radius
                 dl->AddRectFilled(rippleMin, rippleMax, col, effectiveCorner);
@@ -1059,9 +1058,9 @@ void DrawRipplesDiligent() {
         }
 
         // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
-        float boundsW       = r.boundsW;
-        float boundsH       = r.boundsH;
-        float cornerRadius  = r.cornerRadius;
+        float boundsW        = r.boundsW;
+        float boundsH        = r.boundsH;
+        float cornerRadius   = r.cornerRadius;
         float currentBoundsX = r.initialBoundsX - scrollDeltaX;
         float currentBoundsY = r.initialBoundsY - scrollDeltaY;
 

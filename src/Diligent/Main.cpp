@@ -1,8 +1,8 @@
 #include <windows.h>
 
-#include <imm.h>             // IME 控制
-#include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
+#include <imm.h> // IME 控制
 #include <iostream>
+#include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
 #include <string>
 
 #pragma comment(lib, "imm32.lib")
@@ -48,17 +48,17 @@ bool IsDirectCompositionSupported() {
     // Win10 1803+ (Build 17134+) 支持 WS_EX_NOREDIRECTIONBITMAP + DirectComposition
     // Win11 (Build 22000+) 支持 Mica
     // 保守起见，只在 Win10 1809+ (Build 17763+) 启用
-    const bool isWin10_1809OrLater = (osvi.dwMajorVersion > 10) ||
-                                     (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 17763);
+    const bool isWin10_1809OrLater =
+        (osvi.dwMajorVersion > 10) || (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 17763);
 
     if (isWin10_1809OrLater) {
-        std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
-                  << " Build " << osvi.dwBuildNumber << " - DirectComposition supported" << std::endl;
+        std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << " Build "
+                  << osvi.dwBuildNumber << " - DirectComposition supported" << std::endl;
         return true;
     }
 
-    std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion
-              << " Build " << osvi.dwBuildNumber << " - DirectComposition NOT supported" << std::endl;
+    std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << " Build "
+              << osvi.dwBuildNumber << " - DirectComposition NOT supported" << std::endl;
     return false;
 }
 
@@ -284,8 +284,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     std::cout << "[Main] Particle Saturn " << i18n::GetVersion() << " starting..." << std::endl;
     const auto requestedBackend = ParseBackendFromCmdLine(cmdLine);
     std::cout << "[Main] Backend: "
-              << (requestedBackend == ParticleSaturn::Render::Backend::D3D11 ? "D3D11"
-                  : requestedBackend == ParticleSaturn::Render::Backend::Vulkan ? "Vulkan" : "D3D12")
+              << (requestedBackend == ParticleSaturn::Render::Backend::D3D11    ? "D3D11"
+                  : requestedBackend == ParticleSaturn::Render::Backend::Vulkan ? "Vulkan"
+                                                                                : "D3D12")
               << std::endl;
 
     WNDCLASSEXW wc{};
@@ -330,8 +331,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AdjustWindowRectEx(&wr, style, FALSE, exStyle);
 
     OutputDebugStringW(L"[ParticleSaturn] Creating window\n");
-    HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, windowX, windowY,
-                                wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, hInstance, nullptr);
+    HWND hwnd = CreateWindowExW(exStyle, kWindowClassName, kWindowTitle, style, windowX, windowY, wr.right - wr.left,
+                                wr.bottom - wr.top, nullptr, nullptr, hInstance, nullptr);
     if (hwnd == nullptr) {
         OutputDebugStringW(L"[ParticleSaturn] Window creation FAILED\n");
         ErrorHandler::ShowEarlyFatalError(i18n::Get().windowCreateFailed, i18n::Get().detailWindowCreateFailed);

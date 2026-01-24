@@ -59,12 +59,13 @@ bool         CheckShaderCompileStatus(unsigned int shader, const char* type);
 bool         CheckProgramLinkStatus(unsigned int program);
 
 // 着色器缓存管理
-void FlushShaderCache();  // 保存缓存到磁盘（程序退出前调用）
-void ClearShaderCache();  // 清除所有缓存
-bool IsCacheEmpty();      // 检查缓存是否为空（用于判断是否需要编译）
+void FlushShaderCache(); // 保存缓存到磁盘（程序退出前调用）
+void ClearShaderCache(); // 清除所有缓存
+bool IsCacheEmpty();     // 检查缓存是否为空（用于判断是否需要编译）
 
 // Compute Shader 程序创建（支持缓存）
 unsigned int CreateComputeProgramImpl(const char* computeSrc);
+
 inline unsigned int CreateComputeProgram(const char* computeSrc) {
     return CreateComputeProgramImpl(computeSrc);
 }
@@ -76,7 +77,7 @@ inline unsigned int CreateProgram(const char* vertexSrc, const char* fragmentSrc
 
 // 初始化 Uniform 缓存
 inline void InitUniformCache(UniformCache& uc, unsigned int pComp, unsigned int pSaturn, unsigned int pStar,
-                              unsigned int pUI, unsigned int pBlur, unsigned int pAcrylic, unsigned int pQuad) {
+                             unsigned int pUI, unsigned int pBlur, unsigned int pAcrylic, unsigned int pQuad) {
     uc.comp_uDt            = glGetUniformLocation(pComp, "uDt");
     uc.comp_uHandScale     = glGetUniformLocation(pComp, "uHandScale");
     uc.comp_uHandHas       = glGetUniformLocation(pComp, "uHandHas");

@@ -16,35 +16,35 @@ namespace {
 
 #if !defined(HANDTRACKER_STATIC)
 // Function pointer types for runtime DLL loading.
-using FnInitTracker                     = bool (*)(int camera_id, const char* model_dir);
-using FnIsTrackerReady                  = int (*)();
-using FnGetTrackerLastError             = int (*)();
-using FnGetTrackerLastErrorMessage      = const char* (*)();
-using FnGetHandData                     = bool (*)(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand);
-using FnReleaseTracker                  = void (*)();
-using FnSetTrackerDebugMode             = void (*)(bool enabled);
-using FnGetTrackerDebugMode             = bool (*)();
-using FnSetTrackerSIMDMode              = void (*)(int mode);
-using FnGetTrackerSIMDMode              = int (*)();
-using FnGetTrackerSIMDImplementation    = const char* (*)();
-using FnSetHandLostDelayFrames          = void (*)(int frames);
-using FnGetHandLostDelayFrames          = int (*)();
+using FnInitTracker                = bool (*)(int camera_id, const char* model_dir);
+using FnIsTrackerReady             = int (*)();
+using FnGetTrackerLastError        = int (*)();
+using FnGetTrackerLastErrorMessage = const char* (*)();
+using FnGetHandData                = bool (*)(float* out_scale, float* out_rot_x, float* out_rot_y, bool* out_has_hand);
+using FnReleaseTracker             = void (*)();
+using FnSetTrackerDebugMode        = void (*)(bool enabled);
+using FnGetTrackerDebugMode        = bool (*)();
+using FnSetTrackerSIMDMode         = void (*)(int mode);
+using FnGetTrackerSIMDMode         = int (*)();
+using FnGetTrackerSIMDImplementation = const char* (*)();
+using FnSetHandLostDelayFrames       = void (*)(int frames);
+using FnGetHandLostDelayFrames       = int (*)();
 
 struct Api {
-    HMODULE                      module                   = nullptr;
-    FnInitTracker                InitTracker              = nullptr;
-    FnIsTrackerReady             IsTrackerReady           = nullptr;
-    FnGetTrackerLastError        GetTrackerLastError      = nullptr;
-    FnGetTrackerLastErrorMessage GetTrackerLastErrorMessage = nullptr;
-    FnGetHandData                GetHandData              = nullptr;
-    FnReleaseTracker             ReleaseTracker           = nullptr;
-    FnSetTrackerDebugMode        SetTrackerDebugMode      = nullptr;
-    FnGetTrackerDebugMode        GetTrackerDebugMode      = nullptr;
-    FnSetTrackerSIMDMode         SetTrackerSIMDMode       = nullptr;
-    FnGetTrackerSIMDMode         GetTrackerSIMDMode       = nullptr;
-    FnGetTrackerSIMDImplementation GetTrackerSIMDImplementation = nullptr;
-    FnSetHandLostDelayFrames     SetTrackerHandLostDelayFrames = nullptr;
-    FnGetHandLostDelayFrames     GetTrackerHandLostDelayFrames = nullptr;
+    HMODULE                        module                        = nullptr;
+    FnInitTracker                  InitTracker                   = nullptr;
+    FnIsTrackerReady               IsTrackerReady                = nullptr;
+    FnGetTrackerLastError          GetTrackerLastError           = nullptr;
+    FnGetTrackerLastErrorMessage   GetTrackerLastErrorMessage    = nullptr;
+    FnGetHandData                  GetHandData                   = nullptr;
+    FnReleaseTracker               ReleaseTracker                = nullptr;
+    FnSetTrackerDebugMode          SetTrackerDebugMode           = nullptr;
+    FnGetTrackerDebugMode          GetTrackerDebugMode           = nullptr;
+    FnSetTrackerSIMDMode           SetTrackerSIMDMode            = nullptr;
+    FnGetTrackerSIMDMode           GetTrackerSIMDMode            = nullptr;
+    FnGetTrackerSIMDImplementation GetTrackerSIMDImplementation  = nullptr;
+    FnSetHandLostDelayFrames       SetTrackerHandLostDelayFrames = nullptr;
+    FnGetHandLostDelayFrames       GetTrackerHandLostDelayFrames = nullptr;
 };
 
 // Keep the module loaded for the process lifetime:
@@ -52,8 +52,7 @@ struct Api {
 // - Unloading a module while its code may still be executing is unsafe.
 static Api g_api{};
 
-template <typename T>
-T LoadProc(HMODULE mod, const char* name) {
+template <typename T> T LoadProc(HMODULE mod, const char* name) {
     return reinterpret_cast<T>(GetProcAddress(mod, name));
 }
 #endif
@@ -113,19 +112,19 @@ bool Controller::EnsureApiLoaded() {
     }
 
     // Required functions (minimal set for core tracking).
-    g_api.InitTracker              = LoadProc<FnInitTracker>(g_api.module, "InitTracker");
-    g_api.IsTrackerReady           = LoadProc<FnIsTrackerReady>(g_api.module, "IsTrackerReady");
-    g_api.GetTrackerLastError      = LoadProc<FnGetTrackerLastError>(g_api.module, "GetTrackerLastError");
+    g_api.InitTracker         = LoadProc<FnInitTracker>(g_api.module, "InitTracker");
+    g_api.IsTrackerReady      = LoadProc<FnIsTrackerReady>(g_api.module, "IsTrackerReady");
+    g_api.GetTrackerLastError = LoadProc<FnGetTrackerLastError>(g_api.module, "GetTrackerLastError");
     g_api.GetTrackerLastErrorMessage =
         LoadProc<FnGetTrackerLastErrorMessage>(g_api.module, "GetTrackerLastErrorMessage");
-    g_api.GetHandData              = LoadProc<FnGetHandData>(g_api.module, "GetHandData");
-    g_api.ReleaseTracker           = LoadProc<FnReleaseTracker>(g_api.module, "ReleaseTracker");
+    g_api.GetHandData    = LoadProc<FnGetHandData>(g_api.module, "GetHandData");
+    g_api.ReleaseTracker = LoadProc<FnReleaseTracker>(g_api.module, "ReleaseTracker");
 
     // Optional functions (UI/debug).
-    g_api.SetTrackerDebugMode      = LoadProc<FnSetTrackerDebugMode>(g_api.module, "SetTrackerDebugMode");
-    g_api.GetTrackerDebugMode      = LoadProc<FnGetTrackerDebugMode>(g_api.module, "GetTrackerDebugMode");
-    g_api.SetTrackerSIMDMode       = LoadProc<FnSetTrackerSIMDMode>(g_api.module, "SetTrackerSIMDMode");
-    g_api.GetTrackerSIMDMode       = LoadProc<FnGetTrackerSIMDMode>(g_api.module, "GetTrackerSIMDMode");
+    g_api.SetTrackerDebugMode = LoadProc<FnSetTrackerDebugMode>(g_api.module, "SetTrackerDebugMode");
+    g_api.GetTrackerDebugMode = LoadProc<FnGetTrackerDebugMode>(g_api.module, "GetTrackerDebugMode");
+    g_api.SetTrackerSIMDMode  = LoadProc<FnSetTrackerSIMDMode>(g_api.module, "SetTrackerSIMDMode");
+    g_api.GetTrackerSIMDMode  = LoadProc<FnGetTrackerSIMDMode>(g_api.module, "GetTrackerSIMDMode");
     g_api.GetTrackerSIMDImplementation =
         LoadProc<FnGetTrackerSIMDImplementation>(g_api.module, "GetTrackerSIMDImplementation");
     g_api.SetTrackerHandLostDelayFrames =

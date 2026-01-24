@@ -425,9 +425,9 @@ struct MD3Context {
     float screenHeight = 1080.0f;
 
     // 模糊纹理（用于 Acrylic/玻璃背景）
-    unsigned int blurTextureID  = 0; // 1/6 分辨率强模糊（或已合成的 Acrylic 结果）
-    unsigned int blurTextureID2 = 0; // 1/12 分辨率弱模糊（折叠区域）
-    unsigned int noiseTextureID = 0; // 全分辨率噪点（防 banding + 质感）
+    unsigned int blurTextureID  = 0;     // 1/6 分辨率强模糊（或已合成的 Acrylic 结果）
+    unsigned int blurTextureID2 = 0;     // 1/12 分辨率弱模糊（折叠区域）
+    unsigned int noiseTextureID = 0;     // 全分辨率噪点（防 banding + 质感）
     float        noiseIntensity = 0.01f; // 噪点强度（建议 0.0~0.03）
     bool         blurEnabled    = false;
 };

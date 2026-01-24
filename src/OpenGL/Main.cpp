@@ -3,7 +3,7 @@
 
 #include "pch.h"
 
-#include <imm.h>             // IME 控制
+#include <imm.h> // IME 控制
 #pragma comment(lib, "imm32.lib")
 
 #ifdef EMBED_MODELS
@@ -24,8 +24,8 @@
 #include "Localization.h"
 #include "ParticleSystem.h"
 #include "Renderer.h"
-#include "Shaders.h"
 #include "ShaderCompileProgress.h"
+#include "Shaders.h"
 #include "UIManager.h"
 #include "Utils.h"
 #include "WindowManager.h"
@@ -441,14 +441,18 @@ int main() {
 
     // 进度条渲染函数
     auto renderProgress = [&]() {
-        if (!needsCompile) return;
+        if (!needsCompile) {
+            return;
+        }
 
-        auto  now = std::chrono::steady_clock::now();
-        float dt  = std::chrono::duration<float>(now - lastFrameTime).count();
+        auto  now     = std::chrono::steady_clock::now();
+        float dt      = std::chrono::duration<float>(now - lastFrameTime).count();
         lastFrameTime = now;
 
         // 限制 dt 避免跳跃
-        if (dt > 0.1f) dt = 0.1f;
+        if (dt > 0.1f) {
+            dt = 0.1f;
+        }
 
         // 渲染进度条
         ImGui_ImplOpenGL3_NewFrame();
@@ -935,11 +939,11 @@ int main() {
 
             // Kawase Blur：blurStrength 是 float，但旧实现把它强转成 int（导致“滑条无级、效果有级”）。
             // 这里改为固定迭代次数 + 连续缩放 offset，使 blurStrength 真正连续生效。
-            static constexpr float offsets[]      = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-            static constexpr int   kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
-            const float            strength       = std::clamp(appState.ui.blurStrength, 0.0f, 5.0f);
-            const float            scale          = strength / 5.0f; // 0..1
-            auto scaledOffset = [&](float base) -> float {
+            static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+            static constexpr int kMaxIterations = static_cast<int>(sizeof(offsets) / sizeof(offsets[0])); // 8（偶数）
+            const float strength     = std::clamp(appState.ui.blurStrength, 0.0f, 5.0f);
+            const float scale        = strength / 5.0f; // 0..1
+            auto        scaledOffset = [&](float base) -> float {
                 // Shader: off = uTexelSize * (uOffset + 0.5)
                 // 让 scale=0 时 off=0，scale=1 时保持旧行为：
                 // uOffset = scale*(base+0.5) - 0.5
@@ -1245,7 +1249,7 @@ int main() {
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
                     // 背景
-                    const auto& md3Ctx = MD3::GetContext();
+                    const auto& md3Ctx       = MD3::GetContext();
                     const float cornerRadius = 6.0f * appState.ui.dpiScale;
 
                     ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
@@ -1254,7 +1258,8 @@ int main() {
 
                     const ImVec2 plotEnd = ImVec2(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
                     // FPS 曲线背景：对齐 Diligent 版，使用 1/12 的弱 Acrylic 模糊
-                    if (md3Ctx.blurEnabled && md3Ctx.blurTextureID2 != 0 && md3Ctx.screenWidth > 0 && md3Ctx.screenHeight > 0) {
+                    if (md3Ctx.blurEnabled && md3Ctx.blurTextureID2 != 0 && md3Ctx.screenWidth > 0 &&
+                        md3Ctx.screenHeight > 0) {
                         ImVec2 uv0(plotPos.x / md3Ctx.screenWidth, 1.0f - plotPos.y / md3Ctx.screenHeight);
                         ImVec2 uv1(plotEnd.x / md3Ctx.screenWidth, 1.0f - plotEnd.y / md3Ctx.screenHeight);
 
@@ -1847,9 +1852,9 @@ int main() {
                     handTrackerCheckDone   = false;
 
                     ErrorHandler::SetStage(ErrorHandler::AppStage::HAND_TRACKER_INIT);
-                    HWND mainHwnd       = glfwGetWin32Window(window);
-                    int  selectedCamera = CameraSelector::ShowCameraSelectorDialog(mainHwnd, GetModuleHandle(nullptr),
-                                                                                   true);
+                    HWND mainHwnd = glfwGetWin32Window(window);
+                    int  selectedCamera =
+                        CameraSelector::ShowCameraSelectorDialog(mainHwnd, GetModuleHandle(nullptr), true);
                     if (selectedCamera < 0) {
                         std::cout << "[Main] Camera selection cancelled, falling back to camera 0" << std::endl;
                         selectedCamera = 0;
@@ -1936,7 +1941,7 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
             if (!appState.input.keyB_pressed) {
                 appState.input.keyB_pressed = true;
-                appState.ui.enableBlur = !appState.ui.enableBlur;
+                appState.ui.enableBlur      = !appState.ui.enableBlur;
             }
         } else {
             appState.input.keyB_pressed = false;
@@ -1966,7 +1971,7 @@ int main() {
     // ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
     std::cout << "[Main] Shutting down..." << std::endl;
     Renderer::FlushShaderCache(); // 保存着色器缓存到磁盘
-    asyncTracker.Stop(); // 停止异步追踪线程
+    asyncTracker.Stop();          // 停止异步追踪线程
     CrashAnalyzer::Shutdown();
     if (appState.ui.imguiInitialized) {
         MD3::Shutdown();

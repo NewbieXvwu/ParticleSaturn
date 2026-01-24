@@ -177,16 +177,16 @@ struct Strings {
     const char* statusBarHand;
     const char* statusBarNoHand;
 
-	// Hand tracking status card (new)
-	const char* trackerStatus;
-	const char* trackerNotStarted;
-	const char* trackerUnavailable;
-	const char* trackerInitializing;
-	const char* trackerReady;
-	const char* trackerFailed;
-	const char* trackerError;
-	const char* cameraInfo;
-	const char* frameTime;
+    // Hand tracking status card (new)
+    const char* trackerStatus;
+    const char* trackerNotStarted;
+    const char* trackerUnavailable;
+    const char* trackerInitializing;
+    const char* trackerReady;
+    const char* trackerFailed;
+    const char* trackerError;
+    const char* cameraInfo;
+    const char* frameTime;
 
     // Hand tracking parameters (new)
     const char* sensitivity;
@@ -196,16 +196,16 @@ struct Strings {
     const char* resetDefaults;
     const char* frames;
 
-	// Log filtering (new)
-	const char* logSearch;
-	const char* logLevel;
-	const char* logPause;
-	const char* logResume;
-	const char* logLevelAll;
-	const char* logLevelInfo;
-	const char* logLevelWarn;
-	const char* logLevelError;
-	const char* copySingleLine;
+    // Log filtering (new)
+    const char* logSearch;
+    const char* logLevel;
+    const char* logPause;
+    const char* logResume;
+    const char* logLevelAll;
+    const char* logLevelInfo;
+    const char* logLevelWarn;
+    const char* logLevelError;
+    const char* copySingleLine;
 
     // Diagnostics (new)
     const char* copyDiagnostics;
@@ -224,39 +224,39 @@ struct Strings {
     const char* lodLastDecision;
     const char* lodDecreaseParticles;
     const char* lodDecreasePixelRatio;
-	const char* lodIncreasePixelRatio;
-	const char* lodIncreaseParticles;
-	const char* lodStable;
+    const char* lodIncreasePixelRatio;
+    const char* lodIncreaseParticles;
+    const char* lodStable;
 
-	// Debug panel extras (Diligent)
-	const char* backend;
-	const char* switchBackend;
-	const char* switchBackendConfirm;
-	const char* bloom;
-	const char* bloomStrength;
-	const char* noise;
-	const char* debugInfo;
-	const char* starCount;
-	const char* offscreen;
-	const char* meshShader;
-	const char* sectionLodControl;
-	const char* particleCount;
-	const char* densityCompensation;
-	const char* selectedCamera;
-	const char* labelStatus;
-	const char* labelErrorCode;
-	const char* labelErrorMessage;
-	const char* rawHandTrackerValues;
-	const char* smoothedAnimationValues;
-	const char* notAvailable;
+    // Debug panel extras (Diligent)
+    const char* backend;
+    const char* switchBackend;
+    const char* switchBackendConfirm;
+    const char* bloom;
+    const char* bloomStrength;
+    const char* noise;
+    const char* debugInfo;
+    const char* starCount;
+    const char* offscreen;
+    const char* meshShader;
+    const char* sectionLodControl;
+    const char* particleCount;
+    const char* densityCompensation;
+    const char* selectedCamera;
+    const char* labelStatus;
+    const char* labelErrorCode;
+    const char* labelErrorMessage;
+    const char* rawHandTrackerValues;
+    const char* smoothedAnimationValues;
+    const char* notAvailable;
 
-	// Shader cache (OpenGL only)
-	const char* clearShaderCache;
-	const char* clearShaderCacheHint;
-	const char* shaderCacheCleared;
+    // Shader cache (OpenGL only)
+    const char* clearShaderCache;
+    const char* clearShaderCacheHint;
+    const char* shaderCacheCleared;
 
-	// Crash analyzer extras (Diligent)
-	const char* symbolResolutionUnavailable;
+    // Crash analyzer extras (Diligent)
+    const char* symbolResolutionUnavailable;
 };
 
 // Chinese strings
@@ -428,16 +428,16 @@ inline const Strings& GetChinese() {
         .statusBarHand   = "手势",
         .statusBarNoHand = "无手势",
 
-		// Hand tracking status card (new)
-		.trackerStatus       = "追踪器状态",
-		.trackerNotStarted   = "未启动",
-		.trackerUnavailable  = "不可用",
-		.trackerInitializing = "初始化中",
-		.trackerReady        = "就绪",
-		.trackerFailed       = "失败",
-		.trackerError        = "错误",
-		.cameraInfo          = "摄像头",
-		.frameTime           = "帧耗时",
+        // Hand tracking status card (new)
+        .trackerStatus       = "追踪器状态",
+        .trackerNotStarted   = "未启动",
+        .trackerUnavailable  = "不可用",
+        .trackerInitializing = "初始化中",
+        .trackerReady        = "就绪",
+        .trackerFailed       = "失败",
+        .trackerError        = "错误",
+        .cameraInfo          = "摄像头",
+        .frameTime           = "帧耗时",
 
         // Hand tracking parameters (new)
         .sensitivity   = "灵敏度",
@@ -447,16 +447,16 @@ inline const Strings& GetChinese() {
         .resetDefaults = "重置默认值",
         .frames        = "帧",
 
-		// Log filtering (new)
-		.logSearch      = "搜索",
-		.logLevel       = "级别",
-		.logPause       = "暂停",
-		.logResume      = "继续",
-		.logLevelAll    = "全部",
-		.logLevelInfo   = "信息",
-		.logLevelWarn   = "警告",
-		.logLevelError  = "错误",
-		.copySingleLine = "复制",
+        // Log filtering (new)
+        .logSearch      = "搜索",
+        .logLevel       = "级别",
+        .logPause       = "暂停",
+        .logResume      = "继续",
+        .logLevelAll    = "全部",
+        .logLevelInfo   = "信息",
+        .logLevelWarn   = "警告",
+        .logLevelError  = "错误",
+        .copySingleLine = "复制",
 
         // Diagnostics (new)
         .copyDiagnostics   = "复制诊断信息",
@@ -475,41 +475,41 @@ inline const Strings& GetChinese() {
         .lodLastDecision       = "上次决策",
         .lodDecreaseParticles  = "降低粒子数",
         .lodDecreasePixelRatio = "降低像素比例",
-		.lodIncreasePixelRatio = "提高像素比例",
-		.lodIncreaseParticles  = "提高粒子数",
-		.lodStable             = "稳定",
+        .lodIncreasePixelRatio = "提高像素比例",
+        .lodIncreaseParticles  = "提高粒子数",
+        .lodStable             = "稳定",
 
-		// Debug panel extras (Diligent)
-		.backend              = "后端",
-		.switchBackend        = "切换图形后端",
-		.switchBackendConfirm = "程序将重启以应用更改",
-		.bloom                = "辉光",
-		.bloomStrength        = "辉光强度",
-		.noise                = "噪点",
-		.debugInfo            = "调试信息",
-		.starCount            = "星点数量",
-		.offscreen            = "离屏渲染",
-		.meshShader           = "Mesh Shader",
-		.sectionLodControl    = "LOD 控制",
-		.particleCount        = "粒子数量",
-		.densityCompensation  = "密度补偿",
-		.selectedCamera       = "已选择",
-		.labelStatus          = "状态",
-		.labelErrorCode       = "错误码",
-		.labelErrorMessage    = "错误信息",
-		.rawHandTrackerValues = "HandTracker 原始值",
-		.smoothedAnimationValues = "平滑后的动画值",
-		.notAvailable         = "不可用",
+        // Debug panel extras (Diligent)
+        .backend                 = "后端",
+        .switchBackend           = "切换图形后端",
+        .switchBackendConfirm    = "程序将重启以应用更改",
+        .bloom                   = "辉光",
+        .bloomStrength           = "辉光强度",
+        .noise                   = "噪点",
+        .debugInfo               = "调试信息",
+        .starCount               = "星点数量",
+        .offscreen               = "离屏渲染",
+        .meshShader              = "Mesh Shader",
+        .sectionLodControl       = "LOD 控制",
+        .particleCount           = "粒子数量",
+        .densityCompensation     = "密度补偿",
+        .selectedCamera          = "已选择",
+        .labelStatus             = "状态",
+        .labelErrorCode          = "错误码",
+        .labelErrorMessage       = "错误信息",
+        .rawHandTrackerValues    = "HandTracker 原始值",
+        .smoothedAnimationValues = "平滑后的动画值",
+        .notAvailable            = "不可用",
 
-		// Shader cache (OpenGL only)
-		.clearShaderCache     = "清除着色器缓存",
-		.clearShaderCacheHint = "删除缓存文件，下次启动时将重新编译着色器",
-		.shaderCacheCleared   = "已清除！",
+        // Shader cache (OpenGL only)
+        .clearShaderCache     = "清除着色器缓存",
+        .clearShaderCacheHint = "删除缓存文件，下次启动时将重新编译着色器",
+        .shaderCacheCleared   = "已清除！",
 
-		// Crash analyzer extras (Diligent)
-		.symbolResolutionUnavailable = "符号解析不可用：仍可查看地址，但无法解析到函数名。",
-	};
-	return zh;
+        // Crash analyzer extras (Diligent)
+        .symbolResolutionUnavailable = "符号解析不可用：仍可查看地址，但无法解析到函数名。",
+    };
+    return zh;
 }
 
 // English strings
@@ -681,16 +681,16 @@ inline const Strings& GetEnglish() {
         .statusBarHand   = "Hand",
         .statusBarNoHand = "No Hand",
 
-		// Hand tracking status card (new)
-		.trackerStatus       = "Tracker Status",
-		.trackerNotStarted   = "Not Started",
-		.trackerUnavailable  = "Unavailable",
-		.trackerInitializing = "Initializing",
-		.trackerReady        = "Ready",
-		.trackerFailed       = "Failed",
-		.trackerError        = "Error",
-		.cameraInfo          = "Camera",
-		.frameTime           = "Frame Time",
+        // Hand tracking status card (new)
+        .trackerStatus       = "Tracker Status",
+        .trackerNotStarted   = "Not Started",
+        .trackerUnavailable  = "Unavailable",
+        .trackerInitializing = "Initializing",
+        .trackerReady        = "Ready",
+        .trackerFailed       = "Failed",
+        .trackerError        = "Error",
+        .cameraInfo          = "Camera",
+        .frameTime           = "Frame Time",
 
         // Hand tracking parameters (new)
         .sensitivity   = "Sensitivity",
@@ -700,16 +700,16 @@ inline const Strings& GetEnglish() {
         .resetDefaults = "Reset Defaults",
         .frames        = "frames",
 
-		// Log filtering (new)
-		.logSearch      = "Search",
-		.logLevel       = "Level",
-		.logPause       = "Pause",
-		.logResume      = "Resume",
-		.logLevelAll    = "All",
-		.logLevelInfo   = "Info",
-		.logLevelWarn   = "Warn",
-		.logLevelError  = "Error",
-		.copySingleLine = "Copy",
+        // Log filtering (new)
+        .logSearch      = "Search",
+        .logLevel       = "Level",
+        .logPause       = "Pause",
+        .logResume      = "Resume",
+        .logLevelAll    = "All",
+        .logLevelInfo   = "Info",
+        .logLevelWarn   = "Warn",
+        .logLevelError  = "Error",
+        .copySingleLine = "Copy",
 
         // Diagnostics (new)
         .copyDiagnostics   = "Copy Diagnostics",
@@ -728,42 +728,42 @@ inline const Strings& GetEnglish() {
         .lodLastDecision       = "Last Decision",
         .lodDecreaseParticles  = "Decrease Particles",
         .lodDecreasePixelRatio = "Decrease Pixel Ratio",
-		.lodIncreasePixelRatio = "Increase Pixel Ratio",
-		.lodIncreaseParticles  = "Increase Particles",
-		.lodStable             = "Stable",
+        .lodIncreasePixelRatio = "Increase Pixel Ratio",
+        .lodIncreaseParticles  = "Increase Particles",
+        .lodStable             = "Stable",
 
-		// Debug panel extras (Diligent)
-		.backend              = "Backend",
-		.switchBackend        = "Switch Graphics Backend",
-		.switchBackendConfirm = "Program will restart to apply changes",
-		.bloom                = "Bloom",
-		.bloomStrength        = "Bloom Strength",
-		.noise                = "Noise",
-		.debugInfo            = "Debug Info",
-		.starCount            = "Star Count",
-		.offscreen            = "Offscreen",
-		.meshShader           = "Mesh Shader",
-		.sectionLodControl    = "LOD Control",
-		.particleCount        = "Particle Count",
-		.densityCompensation  = "Density Compensation",
-		.selectedCamera       = "Selected",
-		.labelStatus          = "Status",
-		.labelErrorCode       = "Error Code",
-		.labelErrorMessage    = "Error Message",
-		.rawHandTrackerValues = "Raw HandTracker Values",
-		.smoothedAnimationValues = "Smoothed Animation Values",
-		.notAvailable         = "Not available",
+        // Debug panel extras (Diligent)
+        .backend                 = "Backend",
+        .switchBackend           = "Switch Graphics Backend",
+        .switchBackendConfirm    = "Program will restart to apply changes",
+        .bloom                   = "Bloom",
+        .bloomStrength           = "Bloom Strength",
+        .noise                   = "Noise",
+        .debugInfo               = "Debug Info",
+        .starCount               = "Star Count",
+        .offscreen               = "Offscreen",
+        .meshShader              = "Mesh Shader",
+        .sectionLodControl       = "LOD Control",
+        .particleCount           = "Particle Count",
+        .densityCompensation     = "Density Compensation",
+        .selectedCamera          = "Selected",
+        .labelStatus             = "Status",
+        .labelErrorCode          = "Error Code",
+        .labelErrorMessage       = "Error Message",
+        .rawHandTrackerValues    = "Raw HandTracker Values",
+        .smoothedAnimationValues = "Smoothed Animation Values",
+        .notAvailable            = "Not available",
 
-		// Shader cache (OpenGL only)
-		.clearShaderCache     = "Clear Shader Cache",
-		.clearShaderCacheHint = "Delete cache files, shaders will be recompiled on next startup",
-		.shaderCacheCleared   = "Cleared!",
+        // Shader cache (OpenGL only)
+        .clearShaderCache     = "Clear Shader Cache",
+        .clearShaderCacheHint = "Delete cache files, shaders will be recompiled on next startup",
+        .shaderCacheCleared   = "Cleared!",
 
-		// Crash analyzer extras (Diligent)
-		.symbolResolutionUnavailable =
-		    "Symbol resolution unavailable. You can still view addresses but cannot resolve them to function names.",
-	};
-	return en;
+        // Crash analyzer extras (Diligent)
+        .symbolResolutionUnavailable =
+            "Symbol resolution unavailable. You can still view addresses but cannot resolve them to function names.",
+    };
+    return en;
 }
 
 // Get strings for current system language

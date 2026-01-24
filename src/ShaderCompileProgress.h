@@ -103,7 +103,8 @@ class ProgressRenderer {
         // 绘制填充
         float fillWidth = barWidth * animator_.position;
         if (fillWidth > 0.1f) {
-            drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + fillWidth, barY + barHeight), fillColor, rounding);
+            drawList->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + fillWidth, barY + barHeight), fillColor,
+                                    rounding);
         }
 
         // 绘制文字 "正在编译着色器..."
@@ -114,7 +115,7 @@ class ProgressRenderer {
         drawList->AddText(ImVec2(titleX, titleY), textColor, titleText);
 
         // 绘制计数 "5 / 7"
-        char   countText[32];
+        char countText[32];
         snprintf(countText, sizeof(countText), "%d / %d", GetCompleted(), total_);
         ImVec2 countSize = ImGui::CalcTextSize(countText);
         float  countX    = (windowWidth - countSize.x) / 2.0f;

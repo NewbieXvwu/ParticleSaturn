@@ -20,4 +20,3 @@ void DetectAvailableBackdrops(HWND hwnd, AppState& state);
 void SetBackdropMode(HWND hwnd, int mode, AppState& state);
 
 } // namespace ParticleSaturn::Win32WindowManager
-

@@ -417,15 +417,19 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
             // 噪点层：防 banding + 增加“材质感”
             if (MD3::GetContext().noiseTextureID != nullptr) {
                 float intensity = MD3::GetContext().noiseIntensity;
-                if (intensity < 0.0f)
+                if (intensity < 0.0f) {
                     intensity = 0.0f;
-                if (intensity > 0.1f)
+                }
+                if (intensity > 0.1f) {
                     intensity = 0.1f;
+                }
                 int a = static_cast<int>(intensity * 255.0f + 0.5f);
-                if (a < 0)
+                if (a < 0) {
                     a = 0;
-                if (a > 64)
+                }
+                if (a > 64) {
                     a = 64;
+                }
                 const ImU32 noiseCol = IM_COL32(255, 255, 255, a);
                 MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(MD3::GetContext().noiseTextureID), pos,
                                      ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1, noiseCol, style.WindowRounding);
@@ -445,7 +449,8 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
 
         // Check DbgHelp availability
         if (!g_dbgHelp.Init()) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "%s: %s", str.warningTitle, g_dbgHelp.errorMessage.c_str());
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "%s: %s", str.warningTitle,
+                               g_dbgHelp.errorMessage.c_str());
             ImGui::TextWrapped("%s", str.symbolResolutionUnavailable);
             ImGui::Separator();
             ImGui::Spacing();

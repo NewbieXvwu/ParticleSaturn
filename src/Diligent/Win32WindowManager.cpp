@@ -1,8 +1,7 @@
 #include "Win32WindowManager.h"
 
-#include <dwmapi.h>
-
 #include <algorithm>
+#include <dwmapi.h>
 #include <iostream>
 
 #pragma comment(lib, "dwmapi.lib")
@@ -62,8 +61,8 @@ static bool IsColorDark(COLORREF c) {
 
 bool IsSystemDarkMode() {
     HKEY hKey = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ,
-                      &hKey) == ERROR_SUCCESS) {
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0,
+                      KEY_READ, &hKey) == ERROR_SUCCESS) {
         DWORD value = 1;
         DWORD size  = sizeof(value);
         if (RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr, reinterpret_cast<LPBYTE>(&value), &size) ==
@@ -114,7 +113,7 @@ void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
         return;
     }
 
-    const bool aeroSupported = IsDwmCompositionEnabled();
+    const bool aeroSupported    = IsDwmCompositionEnabled();
     bool       acrylicSupported = false;
     bool       micaSupported    = false;
 
@@ -125,14 +124,14 @@ void DetectAvailableBackdrops(HWND hwnd, AppState& state) {
     // Test Acrylic (DWMSBT_TRANSIENTWINDOW = 3)
     {
         int     backdropType = DWMSBT_TRANSIENTWINDOW_CUSTOM;
-        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+        HRESULT hr       = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         acrylicSupported = SUCCEEDED(hr);
     }
 
     // Test Mica (DWMSBT_MAINWINDOW = 2)
     {
         int     backdropType = DWMSBT_MAINWINDOW_CUSTOM;
-        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+        HRESULT hr    = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         micaSupported = SUCCEEDED(hr);
     }
 
@@ -175,8 +174,8 @@ void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
 
     // Reset system backdrop
     {
-        int resetType = DWMSBT_NONE_CUSTOM;
-        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
+        int     resetType = DWMSBT_NONE_CUSTOM;
+        HRESULT hr        = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &resetType, sizeof(resetType));
         std::cout << "[DWM] Reset backdrop: hr=0x" << std::hex << hr << std::dec << std::endl;
     }
 
@@ -188,21 +187,21 @@ void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
         std::cout << "[DWM] Solid mode: useTransparent=false" << std::endl;
     } else if (mode == 1) {
         // Aero - 传统毛玻璃
-        bool ok = EnableAeroBlur(hwnd);
+        bool ok                       = EnableAeroBlur(hwnd);
         state.backdrop.useTransparent = true;
         std::cout << "[DWM] Aero blur: enabled=" << (ok ? "true" : "false") << std::endl;
     } else {
         // Acrylic (mode=2) 或 Mica (mode=3)
-        MARGINS margins = {-1, -1, -1, -1};
+        MARGINS margins   = {-1, -1, -1, -1};
         HRESULT hrMargins = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
         // Acrylic: TRANSIENT(3), Mica: MAINWINDOW(2)
-        const int  backdropType = (mode == 2) ? DWMSBT_TRANSIENTWINDOW_CUSTOM : DWMSBT_MAINWINDOW_CUSTOM;
-        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
+        const int backdropType = (mode == 2) ? DWMSBT_TRANSIENTWINDOW_CUSTOM : DWMSBT_MAINWINDOW_CUSTOM;
+        HRESULT   hr = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &backdropType, sizeof(backdropType));
         state.backdrop.useTransparent = true;
 
-        std::cout << "[DWM] " << BackdropName(mode) << ": backdropType=" << backdropType
-                  << ", hr=0x" << std::hex << hr << ", hrMargins=0x" << hrMargins << std::dec << std::endl;
+        std::cout << "[DWM] " << BackdropName(mode) << ": backdropType=" << backdropType << ", hr=0x" << std::hex << hr
+                  << ", hrMargins=0x" << hrMargins << std::dec << std::endl;
     }
 
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);

@@ -68,7 +68,7 @@ bool DirectCompositionSwapChain::InitCommon(HWND hwnd, IUnknown* deviceOrQueue, 
 
     // 4. 创建 DXGI Factory
     Microsoft::WRL::ComPtr<IDXGIFactory4> dxgiFactory;
-    UINT dxgiFlags = 0;
+    UINT                                  dxgiFlags = 0;
 #ifdef _DEBUG
     dxgiFlags |= DXGI_CREATE_FACTORY_DEBUG;
 #endif
@@ -161,10 +161,10 @@ void DirectCompositionSwapChain::Shutdown() {
     dcompVisual_.Reset();
     dcompTarget_.Reset();
     dcompDevice_.Reset();
-    hwnd_        = nullptr;
-    width_       = 0;
-    height_      = 0;
-    bufferCount_ = 0;
+    hwnd_                        = nullptr;
+    width_                       = 0;
+    height_                      = 0;
+    bufferCount_                 = 0;
     d3d11CurrentBackBufferIndex_ = 0;
 }
 
@@ -201,8 +201,8 @@ bool DirectCompositionSwapChain::Resize(uint32_t width, uint32_t height) {
         return false;
     }
 
-    width_  = width;
-    height_ = height;
+    width_                       = width;
+    height_                      = height;
     d3d11CurrentBackBufferIndex_ = 0;
 
     // 重新获取后缓冲引用

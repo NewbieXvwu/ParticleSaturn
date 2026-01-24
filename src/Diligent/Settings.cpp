@@ -140,7 +140,7 @@ bool LoadSession(AppState& state) {
     state.ui.noiseIntensity  = static_cast<float>(GetDWORD(L"UI_NoiseIntensity", 100)) / 10000.0f;
 
     // 渲染状态
-    state.render.pixelRatio         = static_cast<float>(GetDWORD(L"Render_PixelRatio", 100)) / 100.0f;
+    state.render.pixelRatio          = static_cast<float>(GetDWORD(L"Render_PixelRatio", 100)) / 100.0f;
     state.render.activeParticleCount = GetDWORD(L"Render_ParticleCount", 1200000);
     // vsyncMode: 存储值 0, 1, 2 → 实际值 -1, 0, 1
     state.render.vsyncMode = static_cast<int>(GetDWORD(L"Render_VSync", 2)) - 1;
@@ -177,7 +177,7 @@ void SaveImGuiLayout() {
         return;
     }
 
-    size_t      size     = 0;
+    size_t      size    = 0;
     const char* iniData = ImGui::SaveIniSettingsToMemory(&size);
     if (iniData != nullptr && size > 0) {
         SetString(L"ImGui_Layout", std::string(iniData, size));

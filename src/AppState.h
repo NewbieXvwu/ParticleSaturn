@@ -34,12 +34,12 @@ struct AppState {
 
     // UI 状态
     struct {
-        bool  showDebugWindow  = false;
-        bool  showCameraDebug  = false;
-        float dpiScale         = 1.0f;
-        bool  isDarkMode       = true;
-        bool  enableBlur       = true;
-        float blurStrength     = 2.0f;
+        bool  showDebugWindow = false;
+        bool  showCameraDebug = false;
+        float dpiScale        = 1.0f;
+        bool  isDarkMode      = true;
+        bool  enableBlur      = true;
+        float blurStrength    = 2.0f;
         // Acrylic 噪点强度：用于防 banding，目标应“几乎不可见”
         // 建议范围：0.0 ~ 0.03（默认 0.01 左右）
         float noiseIntensity   = 0.01f;
