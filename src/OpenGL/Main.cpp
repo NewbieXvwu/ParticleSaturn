@@ -1659,12 +1659,16 @@ int main() {
 
                     // 清除着色器缓存按钮
                     static bool shaderCacheCleared = false;
+                    // 使用 ### 语法保持稳定的 ID，确保 ripple 效果在文本变化时能正确跟踪控件尺寸
+                    char shaderCacheBtnLabel[256];
+                    snprintf(shaderCacheBtnLabel, sizeof(shaderCacheBtnLabel), "%s###ClearShaderCacheBtn",
+                             shaderCacheCleared ? str.shaderCacheCleared : str.clearShaderCache);
                     if (shaderCacheCleared) {
                         ImGui::BeginDisabled();
-                        MD3::Button(str.shaderCacheCleared);
+                        MD3::Button(shaderCacheBtnLabel);
                         ImGui::EndDisabled();
                     } else {
-                        if (MD3::Button(str.clearShaderCache)) {
+                        if (MD3::Button(shaderCacheBtnLabel)) {
                             Renderer::ClearShaderCache();
                             shaderCacheCleared = true;
                         }
