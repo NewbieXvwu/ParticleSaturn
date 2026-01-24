@@ -59,11 +59,11 @@ class Controller final {
     bool GetDebugMode(bool* outEnabled) const;
     void SetDebugMode(bool enabled);
 
-    bool GetSIMDMode(int* outMode) const;
-    void SetSIMDMode(int mode);
+    bool        GetSIMDMode(int* outMode) const;
+    void        SetSIMDMode(int mode);
     std::string GetSIMDImplementation() const;
 
-    int GetLastErrorCode() const;
+    int         GetLastErrorCode() const;
     std::string GetLastErrorMessageUtf8() const;
 
     void ApplyHandParamsFromAppState(); // handLostDelay currently lives in HandTracker library
@@ -87,7 +87,7 @@ class Controller final {
     Sample             latestSample_;
     std::thread        readerThread_;
 
-    HWND     hwnd_     = nullptr;
+    HWND      hwnd_     = nullptr;
     AppState* appState_ = nullptr;
 
     // Cache hand params to avoid redundant API calls every frame.
@@ -98,4 +98,3 @@ class Controller final {
 };
 
 } // namespace ParticleSaturn::HandTracking
-

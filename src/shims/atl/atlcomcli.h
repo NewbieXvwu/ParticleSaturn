@@ -4,4 +4,3 @@
 // DiligentCore uses it primarily for CComPtr.
 
 #include <atlbase.h>
-

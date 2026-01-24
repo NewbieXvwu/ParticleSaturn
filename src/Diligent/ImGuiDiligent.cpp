@@ -157,8 +157,8 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
     return Init(hwnd, backend, device, scDesc.ColorBufferFormat, scDesc.Width, scDesc.Height);
 }
 
-bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* device,
-                         TEXTURE_FORMAT rtvFormat, uint32_t width, uint32_t height) {
+bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* device, TEXTURE_FORMAT rtvFormat,
+                         uint32_t width, uint32_t height) {
     if (initialized_) {
         return true;
     }
@@ -451,8 +451,8 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                 if (texView != currentTexture) {
                     currentTexture = texView;
                     // 根据当前 Stencil 模式选择正确的 SRB
-                    IShaderResourceBinding* currentSrb = srb_.RawPtr();
-                    IShaderResourceVariable* texVar    = texVar_;
+                    IShaderResourceBinding*  currentSrb = srb_.RawPtr();
+                    IShaderResourceVariable* texVar     = texVar_;
                     if (stencilMode_ == StencilMode::WriteIncr || stencilMode_ == StencilMode::WriteDecr) {
                         currentSrb = srbStencilWrite_.RawPtr();
                         texVar     = texVarStencilWrite_;
@@ -652,8 +652,9 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
             var->Set(constantBuffer_);
         }
         psoStencilWrite_->CreateShaderResourceBinding(&srbStencilWrite_, true);
-        texVarStencilWrite_ =
-            (srbStencilWrite_ != nullptr) ? srbStencilWrite_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture") : nullptr;
+        texVarStencilWrite_ = (srbStencilWrite_ != nullptr)
+                                ? srbStencilWrite_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture")
+                                : nullptr;
     }
 
     // ========== PSO 3: Stencil 测试（相等时通过）==========
@@ -771,8 +772,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
 
     for (const char* fontPath : chineseFonts) {
         if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
-            io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig,
-                                         io.Fonts->GetGlyphRangesChineseFull());
+            io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &chineseConfig, io.Fonts->GetGlyphRangesChineseFull());
             break;
         }
     }

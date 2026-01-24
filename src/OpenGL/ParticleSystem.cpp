@@ -3,6 +3,7 @@
 #include "pch.h"
 
 #include "ParticleSystem.h"
+
 #include "Renderer.h"
 
 namespace ParticleSystem {
@@ -124,13 +125,13 @@ void CreateStars(unsigned int& vao, unsigned int& vbo, int count) {
 
     std::vector<float> starData;
     for (int i = 0; i < count; i++) {
-        float     r  = 400 + rnd(gen) * 3000;
-        float     th = rnd(gen) * 6.28f;
-        float     ph = acos(2 * rnd(gen) - 1);
-        glm::vec3 c  = cols[i % 4];
+        float     r    = 400 + rnd(gen) * 3000;
+        float     th   = rnd(gen) * 6.28f;
+        float     ph   = acos(2 * rnd(gen) - 1);
+        glm::vec3 c    = cols[i % 4];
         float     seed = rnd(gen);
-        starData.insert(starData.end(),
-                        {r * sin(ph) * cos(th), r * cos(ph), r * sin(ph) * sin(th), c.x, c.y, c.z, 1 + rnd(gen) * 3, seed});
+        starData.insert(starData.end(), {r * sin(ph) * cos(th), r * cos(ph), r * sin(ph) * sin(th), c.x, c.y, c.z,
+                                         1 + rnd(gen) * 3, seed});
     }
 
     glGenVertexArrays(1, &vao);

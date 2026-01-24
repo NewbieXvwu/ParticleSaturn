@@ -76,9 +76,9 @@ class DiligentBackend final {
     bool CreateStarfieldBuffers(uint32_t starCount);
     bool CreateParticleBuffers(uint32_t maxParticles);
     bool CreateParticleBuffersGPU(uint32_t maxParticles); // GPU 初始化版本
-    bool CreateParticleInitPSO();                          // GPU 初始化 PSO
+    bool CreateParticleInitPSO();                         // GPU 初始化 PSO
     bool CreateParticlePSO();
-    bool CreateParticleMeshShaderPSO();                    // Mesh Shader 路径
+    bool CreateParticleMeshShaderPSO(); // Mesh Shader 路径
     bool CreateParticleComputePSO();
     bool CreateSevenSegmentPSO();
     bool CreateSevenSegmentBuffers();
@@ -109,9 +109,9 @@ class DiligentBackend final {
     // DirectComposition SwapChain 辅助方法
     Diligent::ITextureView* GetCurrentBackBufferRTV();
     bool                    CreateDCompBackBufferRTVs();
-    bool UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
-    bool InitD3D11NativeBlit();             // 初始化 D3D11 原生 blit 管线
-    void BlitOffscreenToBackBufferD3D11();  // D3D11 透明模式专用的原生 blit
+    bool                    UpdateD3D11CurrentBackBufferRTV(); // D3D11 每帧更新当前后缓冲 RTV
+    bool                    InitD3D11NativeBlit();             // 初始化 D3D11 原生 blit 管线
+    void                    BlitOffscreenToBackBufferD3D11();  // D3D11 透明模式专用的原生 blit
     void                    PresentFrame(int syncInterval);
 
     // 运行时切换透明模式（D3D11/D3D12）
@@ -151,11 +151,11 @@ class DiligentBackend final {
     Microsoft::WRL::ComPtr<ID3D11BlendState>         d3d11BlendState_;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState>    d3d11RasterizerState_;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState>  d3d11DepthStencilState_;
-    Microsoft::WRL::ComPtr<ID3D11Buffer>             d3d11BloomCB_;         // 常量缓冲（bloom strength 等）
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   d3d11CachedRTV_;       // 缓存后缓冲 RTV
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11OffscreenSRV_;    // offscreen 纹理的原生 SRV
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11BloomSRV_;        // bloom 纹理的原生 SRV
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11UISceneSRV_;      // UI scene 纹理的原生 SRV
+    Microsoft::WRL::ComPtr<ID3D11Buffer>             d3d11BloomCB_;      // 常量缓冲（bloom strength 等）
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   d3d11CachedRTV_;    // 缓存后缓冲 RTV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11OffscreenSRV_; // offscreen 纹理的原生 SRV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11BloomSRV_;     // bloom 纹理的原生 SRV
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> d3d11UISceneSRV_;   // UI scene 纹理的原生 SRV
 
     // Vulkan D3D12 互操作层（Vulkan 透明模式专用）
     std::unique_ptr<VulkanD3D12Interop> vkD3D12Interop_;
@@ -210,10 +210,10 @@ class DiligentBackend final {
     static constexpr float kFpsHistorySampleInterval = 0.05f; // 50ms 采样一次 (与 OpenGL 版一致)
 
     // FPS 曲线增量更新缓存
-    float fpsHistoryCachedMin_     = 0.0f;   // 缓存的最小值
-    float fpsHistoryCachedMax_     = 120.0f; // 缓存的最大值
-    bool  fpsHistoryCacheDirty_    = true;   // 缓存是否需要重新计算
-    int   fpsHistoryValidCount_    = 0;      // 有效数据点数量
+    float fpsHistoryCachedMin_  = 0.0f;   // 缓存的最小值
+    float fpsHistoryCachedMax_  = 120.0f; // 缓存的最大值
+    bool  fpsHistoryCacheDirty_ = true;   // 缓存是否需要重新计算
+    int   fpsHistoryValidCount_ = 0;      // 有效数据点数量
 
     // FPS 曲线动画
     float fpsGraphAnimMinVal_     = 0.0f;   // Y 轴最小值动画
@@ -241,9 +241,9 @@ class DiligentBackend final {
     // Mesh Shader 路径（硬件支持时使用，否则回退到 Vertex Pulling）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleMeshPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleMeshSRB_;
-    bool                                                      meshShaderSupported_ = false; // 硬件是否支持 Mesh Shader
-    bool                                                      useMeshShaders_      = false; // 实际是否启用（可调试切换）
-    bool                                                      meshShadersChecked_  = false; // 是否已检测
+    bool meshShaderSupported_ = false; // 硬件是否支持 Mesh Shader
+    bool useMeshShaders_      = false; // 实际是否启用（可调试切换）
+    bool meshShadersChecked_  = false; // 是否已检测
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleComputePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleComputeSRB_;
@@ -253,7 +253,7 @@ class DiligentBackend final {
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleInitPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleInitSRB_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer>                particleInitConstants_;
-    bool                                                      useGPUParticleInit_ = false; // TODO: GPU init 有问题，暂时禁用
+    bool useGPUParticleInit_ = false; // TODO: GPU init 有问题，暂时禁用
 
     Diligent::RefCntAutoPtr<Diligent::IBuffer>     particleBuffers_[kParticleBufferCount];
     Diligent::RefCntAutoPtr<Diligent::IBufferView> particleSRVs_[kParticleBufferCount];

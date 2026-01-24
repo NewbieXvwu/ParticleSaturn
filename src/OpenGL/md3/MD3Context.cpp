@@ -473,9 +473,9 @@ void DrawRipples() {
         float scrollDeltaY = window->Scroll.y - r.initialScrollY;
 
         // 动态获取控件当前边界（解决控件尺寸变化后 Ripple 仍按旧尺寸渲染的问题）
-        float boundsW       = r.boundsW;
-        float boundsH       = r.boundsH;
-        float cornerRadius  = r.cornerRadius;
+        float boundsW        = r.boundsW;
+        float boundsH        = r.boundsH;
+        float cornerRadius   = r.cornerRadius;
         float currentBoundsX = r.initialBoundsX - scrollDeltaX;
         float currentBoundsY = r.initialBoundsY - scrollDeltaY;
 

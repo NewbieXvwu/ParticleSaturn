@@ -21,8 +21,8 @@
 
 // 日志级别
 enum class LogLevel {
-    Info = 0,
-    Warn = 1,
+    Info  = 0,
+    Warn  = 1,
     Error = 2,
 };
 
@@ -61,9 +61,7 @@ class DebugLog {
     }
 
     // 便于 stdout/stderr 捕获：指定默认级别（仍会根据内容提升）
-    void AddFromStream(LogLevel defaultLevel, const std::string& msg) {
-        Add(defaultLevel, msg, true);
-    }
+    void AddFromStream(LogLevel defaultLevel, const std::string& msg) { Add(defaultLevel, msg, true); }
 
     // 绘制日志（带过滤和搜索）
     void Draw(const char* searchFilter, int levelFilter) {
@@ -74,9 +72,7 @@ class DebugLog {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f * dpi, 10.0f * dpi));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 12.0f * dpi);
 
-        ImGui::BeginChild("LogScroll",
-                          ImVec2(0, 200),
-                          ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+        ImGui::BeginChild("LogScroll", ImVec2(0, 200), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
                           ImGuiWindowFlags_NoScrollbar);
 
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -99,9 +95,7 @@ class DebugLog {
         }
 
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f * dpi, 2.0f * dpi));
-        if (ImGui::BeginTable("##LogTable",
-                              2,
-                              ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) {
+        if (ImGui::BeginTable("##LogTable", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) {
             ImGui::TableSetupColumn("##Time", ImGuiTableColumnFlags_WidthFixed, timeColWidth);
             ImGui::TableSetupColumn("##Msg", ImGuiTableColumnFlags_WidthStretch);
 
@@ -247,7 +241,7 @@ class DebugLog {
         size_t w = 0;
         for (size_t i = 0; i < s.size();) {
             const unsigned char c = static_cast<unsigned char>(s[i]);
-            if (c == 0x1B) { // ESC
+            if (c == 0x1B) {                               // ESC
                 if (i + 1 < s.size() && s[i + 1] == '[') { // CSI
                     i += 2;
                     // Parameter bytes 0x30-0x3F, intermediate bytes 0x20-0x2F, final byte 0x40-0x7E
@@ -363,8 +357,7 @@ class DebugLog {
             return 0;
         }
         const auto now = std::chrono::steady_clock::now();
-        return static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - m_startTime).count());
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_startTime).count());
     }
 
     static LogLevel DetectLevel(const std::string& msg) {
@@ -393,13 +386,13 @@ class DebugLog {
         out += "\n";
     }
 
-    std::deque<LogEntry>          m_entries;
-    std::mutex                    m_mutex;
-    bool                          m_scrollToBottom = false;
-    bool                          m_paused         = false;
+    std::deque<LogEntry>            m_entries;
+    std::mutex                      m_mutex;
+    bool                            m_scrollToBottom = false;
+    bool                            m_paused         = false;
     std::unordered_set<std::string> m_onceKeys;
 
-    bool                              m_startTimeInited = false;
+    bool                                  m_startTimeInited = false;
     std::chrono::steady_clock::time_point m_startTime{};
 
     static const size_t MAX_LINES = 2000;
@@ -411,9 +404,7 @@ class DebugStreamBuf : public std::streambuf {
     explicit DebugStreamBuf(std::streambuf* orig, LogLevel defaultLevel = LogLevel::Info)
         : m_orig(orig), m_defaultLevel(defaultLevel) {}
 
-    ~DebugStreamBuf() override {
-        FlushPending();
-    }
+    ~DebugStreamBuf() override { FlushPending(); }
 
   protected:
     int overflow(int c) override {

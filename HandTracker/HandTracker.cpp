@@ -659,8 +659,8 @@ HAND_API void ReleaseTracker() {
             // 使用 condition_variable 等待线程退出通知，最多等待 3 秒
             {
                 std::unique_lock<std::mutex> lock(g_ctx.exit_mutex);
-                bool exited = g_ctx.exit_cv.wait_for(lock, std::chrono::seconds(3),
-                                                     [] { return g_ctx.thread_exited.load(); });
+                bool                         exited =
+                    g_ctx.exit_cv.wait_for(lock, std::chrono::seconds(3), [] { return g_ctx.thread_exited.load(); });
                 if (exited) {
                     // 线程已正常退出，可以安全 join
                     g_ctx.worker_thread->join();

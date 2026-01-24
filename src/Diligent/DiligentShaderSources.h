@@ -1,19 +1,19 @@
 #pragma once
 
-#include "Shader.h"
 #include "RenderBackend.h"
+#include "Shader.h"
 
 namespace ParticleSaturn::Render {
 
 struct ShaderSources {
     const char*                      Vertex   = nullptr;
     const char*                      Fragment = nullptr;
-    Diligent::SHADER_SOURCE_LANGUAGE  Language = Diligent::SHADER_SOURCE_LANGUAGE_DEFAULT;
+    Diligent::SHADER_SOURCE_LANGUAGE Language = Diligent::SHADER_SOURCE_LANGUAGE_DEFAULT;
 };
 
 struct ComputeShaderSource {
     const char*                      Source   = nullptr;
-    Diligent::SHADER_SOURCE_LANGUAGE  Language = Diligent::SHADER_SOURCE_LANGUAGE_DEFAULT;
+    Diligent::SHADER_SOURCE_LANGUAGE Language = Diligent::SHADER_SOURCE_LANGUAGE_DEFAULT;
 };
 
 ShaderSources       GetFullscreenQuadShaderSources(Backend backend);
@@ -29,9 +29,10 @@ struct MeshShaderSources {
     const char*                      Fragment = nullptr;
     Diligent::SHADER_SOURCE_LANGUAGE Language = Diligent::SHADER_SOURCE_LANGUAGE_DEFAULT;
 };
+
 MeshShaderSources GetSaturnParticleMeshShaderSources(Backend backend);
 
-ShaderSources       GetStarShaderSources(Backend backend);
-ShaderSources       GetSaturnParticleShaderSources(Backend backend);
+ShaderSources GetStarShaderSources(Backend backend);
+ShaderSources GetSaturnParticleShaderSources(Backend backend);
 
 } // namespace ParticleSaturn::Render

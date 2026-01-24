@@ -45,8 +45,8 @@ class ImGuiDiligent final {
     bool Init(HWND hwnd, Render::Backend backend, Diligent::IRenderDevice* device, Diligent::ISwapChain* swapChain);
 
     // 初始化 ImGui（不依赖 SwapChain，用于 DirectComposition 模式）
-    bool Init(HWND hwnd, Render::Backend backend, Diligent::IRenderDevice* device,
-              Diligent::TEXTURE_FORMAT rtvFormat, uint32_t width, uint32_t height);
+    bool Init(HWND hwnd, Render::Backend backend, Diligent::IRenderDevice* device, Diligent::TEXTURE_FORMAT rtvFormat,
+              uint32_t width, uint32_t height);
     void Shutdown();
 
     // 每帧开始时调用
@@ -92,16 +92,16 @@ class ImGuiDiligent final {
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srbStencilTest_;
 
     // 频繁使用的 SRB 变量缓存：避免 Render() 热路径里反复 GetVariableByName() 字符串查找
-    Diligent::IShaderResourceVariable* texVar_            = nullptr;
-    Diligent::IShaderResourceVariable* texVarStencilWrite_ = nullptr;
-    Diligent::IShaderResourceVariable* texVarStencilTest_  = nullptr;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>                vertexBuffer_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>                indexBuffer_;
-    Diligent::RefCntAutoPtr<Diligent::IBuffer>                constantBuffer_;
-    Diligent::RefCntAutoPtr<Diligent::ITexture>               fontTexture_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView>           fontSRV_;
-    Diligent::RefCntAutoPtr<Diligent::ITexture>               depthStencilTexture_;
-    Diligent::RefCntAutoPtr<Diligent::ITextureView>           dsv_;
+    Diligent::IShaderResourceVariable*              texVar_             = nullptr;
+    Diligent::IShaderResourceVariable*              texVarStencilWrite_ = nullptr;
+    Diligent::IShaderResourceVariable*              texVarStencilTest_  = nullptr;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>      vertexBuffer_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>      indexBuffer_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer>      constantBuffer_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     fontTexture_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> fontSRV_;
+    Diligent::RefCntAutoPtr<Diligent::ITexture>     depthStencilTexture_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> dsv_;
 
     int vertexBufferSize_ = 0;
     int indexBufferSize_  = 0;

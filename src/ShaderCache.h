@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+
 #include <KnownFolders.h>
 #include <ShlObj.h>
 
@@ -25,10 +26,10 @@ static constexpr uint32_t kCacheMagic = 0x58435350;
 
 // 缓存文件头
 struct CacheHeader {
-    uint32_t magic       = kCacheMagic;
-    uint32_t version     = kCacheVersion;
-    uint32_t dataSize    = 0;
-    uint32_t reserved    = 0;
+    uint32_t magic    = kCacheMagic;
+    uint32_t version  = kCacheVersion;
+    uint32_t dataSize = 0;
+    uint32_t reserved = 0;
 };
 
 // 获取缓存目录路径
@@ -50,14 +51,18 @@ inline std::wstring GetCacheDirectory() {
 // 获取 OpenGL 着色器缓存路径
 inline std::wstring GetOpenGLCachePath() {
     std::wstring dir = GetCacheDirectory();
-    if (dir.empty()) return {};
+    if (dir.empty()) {
+        return {};
+    }
     return dir + L"\\shader_cache_opengl.bin";
 }
 
 // 获取 Diligent 缓存路径（按后端区分）
 inline std::wstring GetDiligentCachePath(const char* backend) {
     std::wstring dir = GetCacheDirectory();
-    if (dir.empty()) return {};
+    if (dir.empty()) {
+        return {};
+    }
 
     // 转换 backend 名称为宽字符
     std::wstring filename = L"\\shader_cache_";
@@ -72,7 +77,9 @@ inline std::wstring GetDiligentCachePath(const char* backend) {
 // 返回 true 并填充 outData（不含头部），如果缓存有效
 // 返回 false 如果缓存不存在、版本不匹配或损坏
 inline bool ReadCache(const std::wstring& path, std::vector<uint8_t>& outData) {
-    if (path.empty()) return false;
+    if (path.empty()) {
+        return false;
+    }
 
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {

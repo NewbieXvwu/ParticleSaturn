@@ -6,9 +6,9 @@
 #include <windows.h>
 
 #include <cstdint>
-#include <dcomp.h>
 #include <d3d11.h>
 #include <d3d12.h>
+#include <dcomp.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
 
@@ -75,7 +75,9 @@ class DirectCompositionSwapChain final {
     IDXGISwapChain3* GetSwapChain() const { return swapChain_.Get(); }
 
     uint32_t GetWidth() const { return width_; }
+
     uint32_t GetHeight() const { return height_; }
+
     uint32_t GetBufferCount() const { return bufferCount_; }
 
     bool IsInitialized() const { return swapChain_ != nullptr; }
@@ -86,16 +88,16 @@ class DirectCompositionSwapChain final {
     bool InitCommon(HWND hwnd, IUnknown* deviceOrQueue, uint32_t width, uint32_t height, uint32_t bufferCount,
                     Backend backend);
 
-    Microsoft::WRL::ComPtr<IDCompositionDevice>  dcompDevice_;
-    Microsoft::WRL::ComPtr<IDCompositionTarget>  dcompTarget_;
-    Microsoft::WRL::ComPtr<IDCompositionVisual>  dcompVisual_;
-    Microsoft::WRL::ComPtr<IDXGISwapChain3>      swapChain_;
+    Microsoft::WRL::ComPtr<IDCompositionDevice> dcompDevice_;
+    Microsoft::WRL::ComPtr<IDCompositionTarget> dcompTarget_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual> dcompVisual_;
+    Microsoft::WRL::ComPtr<IDXGISwapChain3>     swapChain_;
 
     // D3D12 后缓冲
-    Microsoft::WRL::ComPtr<ID3D12Resource>       d3d12BackBuffers_[3]; // 最多 3 缓冲
+    Microsoft::WRL::ComPtr<ID3D12Resource> d3d12BackBuffers_[3]; // 最多 3 缓冲
 
     // D3D11 后缓冲
-    Microsoft::WRL::ComPtr<ID3D11Texture2D>      d3d11BackBuffers_[3]; // 最多 3 缓冲
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11BackBuffers_[3]; // 最多 3 缓冲
 
     // D3D11 专用：用于跟踪当前后缓冲索引（因为 D3D11 没有 GetCurrentBackBufferIndex）
     uint32_t d3d11CurrentBackBufferIndex_ = 0;

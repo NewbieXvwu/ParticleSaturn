@@ -63,12 +63,12 @@ void LoadImGuiLayout();
 // ============================================================================
 
 struct WindowState {
-    int      x          = 100;
-    int      y          = 100;
-    int      w          = 1280;
-    int      h          = 720;
-    bool     fullscreen = false;
-    bool     valid      = false; // 是否成功从注册表加载
+    int  x          = 100;
+    int  y          = 100;
+    int  w          = 1280;
+    int  h          = 720;
+    bool fullscreen = false;
+    bool valid      = false; // 是否成功从注册表加载
 };
 
 // 保存窗口状态
