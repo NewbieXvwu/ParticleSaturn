@@ -183,6 +183,29 @@ if(MSVC)
     endforeach()
 endif()
 
+# ============================================================================
+# 着色器预编译：在构建前自动编译 HLSL/GLSL 到字节码
+# ============================================================================
+set(SHADER_COMPILE_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/compile_shaders.ps1")
+set(SHADER_BYTECODES_HEADER "${CMAKE_SOURCE_DIR}/src/generated/ShaderBytecodes.h")
+
+# 收集所有着色器源文件作为依赖
+file(GLOB HLSL_SHADER_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/hlsl/*.hlsl")
+file(GLOB GLSL_SHADER_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/glsl/*.glsl")
+
+add_custom_command(
+    OUTPUT "${SHADER_BYTECODES_HEADER}"
+    COMMAND PowerShell -NoProfile -ExecutionPolicy Bypass -File "${SHADER_COMPILE_SCRIPT}"
+    DEPENDS ${HLSL_SHADER_SOURCES} ${GLSL_SHADER_SOURCES} "${SHADER_COMPILE_SCRIPT}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Compiling shaders to bytecode..."
+    VERBATIM
+)
+
+add_custom_target(CompileShaders
+    DEPENDS "${SHADER_BYTECODES_HEADER}"
+)
+
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
@@ -244,6 +267,9 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     d3d11
     dxgi
 )
+
+# 确保着色器在编译 C++ 代码之前已预编译
+add_dependencies(ParticleSaturn.Diligent CompileShaders)
 
 if(PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")
     target_compile_definitions(ParticleSaturn.Diligent PRIVATE HANDTRACKER_STATIC)
