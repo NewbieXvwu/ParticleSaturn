@@ -1971,10 +1971,11 @@ void main(
     uint groupEnd = min(groupStart + GROUP_SIZE, uParticleCount);
     uint particlesInGroup = groupEnd - groupStart;
 
-    // 设置输出数量
+    // 设置输出数量（所有线程必须调用相同的值）
     SetMeshOutputCounts(particlesInGroup * VERTS_PER_PARTICLE, particlesInGroup * PRIMS_PER_PARTICLE);
 
-    if (particleIdx >= uParticleCount)
+    // 超出粒子数量的线程不需要生成输出
+    if (gtid >= particlesInGroup)
         return;
 
     ParticleData p = g_Particles[particleIdx];
@@ -2026,9 +2027,9 @@ void main(
         float2( 1, -1)
     };
 
-    uint localIdx = gtid - (gid * GROUP_SIZE - groupStart); // 组内索引
-    uint baseVert = localIdx * VERTS_PER_PARTICLE;
-    uint basePrim = localIdx * PRIMS_PER_PARTICLE;
+    // 组内索引直接使用线程 ID
+    uint baseVert = gtid * VERTS_PER_PARTICLE;
+    uint basePrim = gtid * PRIMS_PER_PARTICLE;
 
     // 生成 4 个顶点
     for (uint i = 0; i < VERTS_PER_PARTICLE; i++)
@@ -2061,7 +2062,7 @@ void main(
 }
 )";
 
-    // Mesh Shader 使用与 Vertex Shader 相同的 Pixel Shader
+    // Mesh Shader 使用与 Vertex Shader 类似的 Pixel Shader，但 vScaleFactor 语义不同
     static constexpr char kHlslPS[] = R"(
 struct PSIn
 {
@@ -2093,24 +2094,38 @@ cbuffer ParticleConstants
     float4 uRenderParams;
 };
 
-float4 main(PSIn pin) : SV_TARGET
+float SmoothStep(float edge0, float edge1, float x)
 {
-    float2 uv = pin.UV * 2.0 - 1.0;
-    float r2 = dot(uv, uv);
+    float t = (x - edge0) / (edge1 - edge0);
+    t = saturate(t);
+    return t * t * (3.0 - 2.0 * t);
+}
 
-    if (r2 > 1.0)
+float4 main(PSIn i) : SV_Target
+{
+    float2 c = 2.0 * i.UV - 1.0;
+    float  rr = dot(c, c);
+    if (rr > 1.0)
         discard;
 
-    float r = sqrt(r2);
-    float glow = 1.0 - r;
-    glow = glow * glow;
+    float glow = SmoothStep(1.0, 0.4, rr);
 
-    float t = saturate(pin.vScaleFactor / 40.0);
-    float3 finalColor = pin.vColor * (1.0 + glow * 0.5);
+    // vScaleFactor 在 Mesh Shader 中是 pointSize，需要转换为与 Vertex Shader 兼容的 t
+    float t = clamp((i.vScaleFactor - 0.5) / 40.0, 0.0, 1.0);
+    float tSmooth = SmoothStep(0.1, 0.9, t);
 
-    float depthAlpha = saturate(1.0 - pin.vDist / 200.0);
+    float3 baseColor  = lerp(float3(0.35, 0.22, 0.05), i.vColor, tSmooth);
+    float3 finalColor = baseColor * (0.2 + t);
+
+    float closeMix = SmoothStep(40.0, 0.0, i.vDist);
+    float3 closeRingColor = finalColor + float3(0.15, 0.12, 0.1) * closeMix;
+    float3 closeBodyColor = lerp(finalColor, pow(i.vColor, float3(1.4, 1.4, 1.4)) * 1.5, closeMix * 0.8);
+    finalColor = lerp(closeBodyColor, closeRingColor, i.vIsRing);
+
+    // 与 Vertex Pulling PS 保持一致：近处 alpha 低，远处 alpha 高
+    float depthAlpha = SmoothStep(0.0, 10.0, i.vDist);
     float densityComp = uRenderParams.w;
-    float finalAlpha = glow * pin.vOpacity * (0.25 + 0.45 * t) * depthAlpha * densityComp;
+    float finalAlpha = glow * i.vOpacity * (0.25 + 0.45 * SmoothStep(0.0, 0.5, t)) * depthAlpha * densityComp;
 
     return float4(finalColor, finalAlpha);
 }
