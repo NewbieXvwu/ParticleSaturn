@@ -14,7 +14,6 @@
 #include "RefCntAutoPtr.hpp"
 #include "RenderBackend.h"
 #include "RenderDevice.h"
-#include "RenderStateCache.h"
 #include "ShaderResourceBinding.h"
 #include "SwapChain.h"
 #include "Texture.h"
@@ -67,9 +66,6 @@ class DiligentBackend final {
     const std::wstring& GetLastError() const { return lastError_; }
 
     AppState* GetAppState() const { return appState_; }
-
-    // 清除着色器缓存（删除磁盘文件，下次启动时重新编译）
-    void ClearShaderCache();
 
   private:
     void SetLastError(const wchar_t* msg) { lastError_ = (msg != nullptr) ? msg : L""; }
@@ -245,8 +241,9 @@ class DiligentBackend final {
     // Mesh Shader 路径（硬件支持时使用，否则回退到 Vertex Pulling）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleMeshPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleMeshSRB_;
-    bool                                                      useMeshShaders_     = false; // 硬件是否支持 Mesh Shader
-    bool                                                      meshShadersChecked_ = false; // 是否已检测
+    bool                                                      meshShaderSupported_ = false; // 硬件是否支持 Mesh Shader
+    bool                                                      useMeshShaders_      = false; // 实际是否启用（可调试切换）
+    bool                                                      meshShadersChecked_  = false; // 是否已检测
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         particleComputePSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> particleComputeSRB_;
@@ -363,10 +360,6 @@ class DiligentBackend final {
 
     // Hand tracking (MediaPipe/TFLite via HandTracker library)
     std::unique_ptr<HandTracking::Controller> handTracker_;
-
-    // 着色器缓存（RenderStateCache）
-    Diligent::RefCntAutoPtr<Diligent::IRenderStateCache> renderStateCache_;
-    Diligent::Uint32                                     renderStateCacheContentVersion_ = 0;
 
     // 全局应用状态（由外部传入，生命周期由调用方管理）
     AppState* appState_ = nullptr;

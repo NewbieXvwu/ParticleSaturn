@@ -18,7 +18,6 @@
 #include "../ErrorHandler.h"
 #include "../Localization.h"
 #include "../Settings.h"
-#include "../ShaderCache.h"
 #include "../ShaderCompileProgress.h"
 #include "../generated/LogControlIcons.h"
 #include "ArchiverFactoryLoader.h"
@@ -30,7 +29,8 @@
 #include "EngineFactoryD3D12.h"
 #include "EngineFactoryVk.h"
 #include "GraphicsTypes.h"
-#include "DiligentShaderSources.h"
+#include "DiligentShaderSources.h"
+#include "../generated/ShaderBytecodes.h"
 #include "HandTracker.h"
 #include "HandTrackerController.h"
 #include "ImGuiDiligent.h"
@@ -118,35 +118,6 @@ static const char* GetBackendName(Backend backend) {
     }
 }
 
-static Uint32 ComputeRenderStateCacheContentVersion(Backend backend) {
-    // ContentVersion 参与 Diligent RenderStateCache 的版本检查：
-    // - 写入：WriteToBlob(ContentVersion)
-    // - 读取：Load(blob, ContentVersion)
-    //
-    // 这里用“应用构建标识 + DiligentCore 版本 + 后端”生成 32-bit hash，
-    // 保证任一发生变化时缓存自动失效（避免 ~0u 跳过版本检查导致的缓存污染）。
-    uint32_t h = 2166136261u;
-    h          = HashFNV1a32Append(h, "ParticleSaturn.Diligent.RenderStateCache|");
-    h          = HashFNV1a32Append(h, GetBackendName(backend));
-    h          = HashFNV1a32Append(h, "|");
-#ifdef APP_BUILD_ID
-    h = HashFNV1a32Append(h, APP_BUILD_ID);
-#else
-    h = HashFNV1a32Append(h, "unknown-build");
-#endif
-    h = HashFNV1a32Append(h, "|");
-#ifdef DILIGENTCORE_COMMIT
-    h = HashFNV1a32Append(h, DILIGENTCORE_COMMIT);
-#else
-    h = HashFNV1a32Append(h, "unknown-diligentcore");
-#endif
-
-    if (h == 0) {
-        h = 1;
-    }
-    return static_cast<Uint32>(h);
-}
-
 float ComputeDensityComp(uint32_t particleCount, float pixelRatio) {
     const float pr = (pixelRatio > 0.0f) ? pixelRatio : 1.0f;
     const float ratio =
@@ -158,8 +129,7 @@ float ComputeDensityComp(uint32_t particleCount, float pixelRatio) {
 // Shader sources moved to DiligentShaderSources.cpp (reduce build time / file size).
 
 RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char* name, SHADER_TYPE type,
-                                              const char* source, SHADER_SOURCE_LANGUAGE language,
-                                              IRenderStateCache* cache = nullptr) {
+                                              const char* source, SHADER_SOURCE_LANGUAGE language) {
     ShaderCreateInfo shaderCI{};
     shaderCI.Desc.Name       = name;
     shaderCI.Desc.ShaderType = type;
@@ -168,57 +138,38 @@ RefCntAutoPtr<IShader> CreateShaderFromSource(IRenderDevice* device, const char*
     shaderCI.Source          = source;
 
     RefCntAutoPtr<IShader> shader;
-
-    // 优先使用缓存创建着色器
-    if (cache != nullptr) {
-        cache->CreateShader(shaderCI, &shader);
-    }
-
-    // 如果缓存未命中或缓存不可用，直接创建
-    if (shader == nullptr) {
-        device->CreateShader(shaderCI, &shader);
-    }
-
+    device->CreateShader(shaderCI, &shader);
     return shader;
 }
 
-// 通过缓存创建 Graphics PSO 的辅助函数
-// 如果缓存可用且命中则返回 true，否则通过 device 创建并返回 false
-bool CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI,
-                       IPipelineState** ppPSO, IRenderStateCache* cache = nullptr) {
-    *ppPSO = nullptr;
+// 从预编译字节码创建着色器（无需运行时编译）
+RefCntAutoPtr<IShader> CreateShaderFromBytecode(IRenderDevice* device, const char* name, SHADER_TYPE type,
+                                                 const void* bytecode, size_t bytecodeSize) {
+    ShaderCreateInfo shaderCI{};
+    shaderCI.Desc.Name       = name;
+    shaderCI.Desc.ShaderType = type;
+    shaderCI.ByteCode        = bytecode;
+    shaderCI.ByteCodeSize    = bytecodeSize;
+    // 明确指定这是预编译字节码，让 Diligent 正确处理反射信息
+    shaderCI.SourceLanguage  = SHADER_SOURCE_LANGUAGE_BYTECODE;
 
-    // 优先使用缓存创建 PSO
-    if (cache != nullptr) {
-        cache->CreateGraphicsPipelineState(psoCI, ppPSO);
-    }
-
-    // 如果缓存未命中或缓存不可用，直接创建
-    if (*ppPSO == nullptr) {
-        device->CreateGraphicsPipelineState(psoCI, ppPSO);
-        return false;
-    }
-
-    return true;
+    RefCntAutoPtr<IShader> shader;
+    device->CreateShader(shaderCI, &shader);
+    return shader;
 }
 
-// 通过缓存创建 Compute PSO 的辅助函数
-bool CreateComputePSO(IRenderDevice* device, const ComputePipelineStateCreateInfo& psoCI,
-                      IPipelineState** ppPSO, IRenderStateCache* cache = nullptr) {
+// 创建 Graphics PSO 的辅助函数
+void CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI,
+                       IPipelineState** ppPSO) {
     *ppPSO = nullptr;
+    device->CreateGraphicsPipelineState(psoCI, ppPSO);
+}
 
-    // 优先使用缓存创建 PSO
-    if (cache != nullptr) {
-        cache->CreateComputePipelineState(psoCI, ppPSO);
-    }
-
-    // 如果缓存未命中或缓存不可用，直接创建
-    if (*ppPSO == nullptr) {
-        device->CreateComputePipelineState(psoCI, ppPSO);
-        return false;
-    }
-
-    return true;
+// 创建 Compute PSO 的辅助函数
+void CreateComputePSO(IRenderDevice* device, const ComputePipelineStateCreateInfo& psoCI,
+                      IPipelineState** ppPSO) {
+    *ppPSO = nullptr;
+    device->CreateComputePipelineState(psoCI, ppPSO);
 }
 
 struct StarInstance {
@@ -446,6 +397,10 @@ struct StarConstants {
 
     // 复用给粒子：x=uScale, y=uPixelRatio, z=uScreenHeight, w=uDensityComp
     float RenderParams[4] = {1, 1, 1080, 1};
+
+    // Mesh Shader 需要的额外字段
+    uint32_t ParticleCount = 0;
+    uint32_t _pad[3]       = {0, 0, 0};
 };
 
 struct ParticleComputeConstants {
@@ -622,74 +577,6 @@ constexpr int kDigits[10][7] = {
     {1, 1, 1, 1, 0, 1, 1}, // 9
 };
 
-static constexpr char kSevenSegHlslVS[] = R"(
-cbuffer SevenSegCB : register(b0)
-{
-    float4x4 Projection;
-    float4 Transform; // x, y, scaleX, scaleY
-    float3 Color;
-    float _pad;
-};
-
-struct VSOut
-{
-    float4 Pos : SV_POSITION;
-    float3 Col : COLOR;
-};
-
-VSOut main(float2 inPos : ATTRIB0)
-{
-    // 应用变换: position = (inPos * scale) + offset
-    float2 worldPos = inPos * Transform.zw + Transform.xy;
-    VSOut o;
-    o.Pos = mul(Projection, float4(worldPos, 0.0, 1.0));
-    o.Col = Color;
-    return o;
-}
-)";
-
-static constexpr char kSevenSegHlslPS[] = R"(
-struct PSIn
-{
-    float4 Pos : SV_POSITION;
-    float3 Col : COLOR;
-};
-
-float4 main(PSIn i) : SV_Target
-{
-    return float4(i.Col, 1.0);
-}
-)";
-
-static constexpr char kSevenSegGlslVS[] = R"(
-layout(std140) uniform SevenSegCB
-{
-    mat4 Projection;
-    vec4 Transform; // x, y, scaleX, scaleY
-    vec4 Color;     // rgb + pad
-};
-
-layout(location = 0) in vec2 inPos;
-layout(location = 0) out vec3 vColor;
-
-void main()
-{
-    vec2 worldPos = inPos * Transform.zw + Transform.xy;
-    gl_Position = Projection * vec4(worldPos, 0.0, 1.0);
-    vColor = Color.rgb;
-}
-)";
-
-static constexpr char kSevenSegGlslPS[] = R"(
-layout(location = 0) in vec3 vColor;
-layout(location = 0) out vec4 outColor;
-
-void main()
-{
-    outColor = vec4(vColor, 1.0);
-}
-)";
-
 } // namespace
 
 bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, AppState* state) {
@@ -745,6 +632,11 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         // 增加 GPU 描述符堆大小，避免动态描述符耗尽
         engineCI.GPUDescriptorHeapDynamicSize[0] = 32768; // CBV_SRV_UAV
         engineCI.GPUDescriptorHeapDynamicSize[1] = 2048;  // SAMPLER
+
+        // 请求 Mesh Shader 特性（可选）
+        // 如果硬件支持（Turing+），特性会被启用；不支持则保持禁用
+        engineCI.Features.MeshShaders = DEVICE_FEATURE_STATE_OPTIONAL;
+
         factory->CreateDeviceAndContextsD3D12(engineCI, &device_, &immediateContext_);
 
         if (device_ == nullptr || immediateContext_ == nullptr) {
@@ -977,57 +869,8 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     animRotX_     = 0.4f;
     animRotY_     = 0.0f;
 
-    // 初始化着色器缓存
-    renderStateCacheContentVersion_ = ComputeRenderStateCacheContentVersion(backend_);
-    std::cerr << "[DiligentBackend] RenderStateCache ContentVersion (expected) = " << renderStateCacheContentVersion_
-              << " (0x" << std::hex << renderStateCacheContentVersion_ << std::dec << ")" << std::endl;
-
-    std::cerr << "[DiligentBackend] Initializing RenderStateCache..." << std::endl;
-    bool cacheLoadedOk = false;
-    {
-        IArchiverFactory* archiverFactory = Diligent::GetArchiverFactory();
-        if (archiverFactory != nullptr) {
-            RenderStateCacheCreateInfo cacheCI{};
-            cacheCI.pDevice          = device_;
-            cacheCI.pArchiverFactory = archiverFactory;
-            cacheCI.LogLevel         = RENDER_STATE_CACHE_LOG_LEVEL_NORMAL;
-            cacheCI.EnableHotReload  = false;
-
-            CreateRenderStateCache(cacheCI, &renderStateCache_);
-
-            if (renderStateCache_) {
-                // 尝试加载现有缓存
-                const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
-                                          : (backend_ == Backend::D3D12) ? "d3d12"
-                                                                         : "vulkan";
-                auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
-                if (!cachePath.empty()) {
-                    std::vector<uint8_t> cacheData;
-                    if (ShaderCache::ReadCache(cachePath, cacheData)) {
-                        std::cerr << "[DiligentBackend] Read cache data: " << cacheData.size() << " bytes" << std::endl;
-                        auto dataBlob = Diligent::DataBlobImpl::Create(cacheData.size(), cacheData.data());
-                        if (dataBlob && renderStateCache_->Load(dataBlob, renderStateCacheContentVersion_, false)) {
-                            std::cerr << "[DiligentBackend] RenderStateCache loaded from disk" << std::endl;
-                            cacheLoadedOk = true;
-                        } else {
-                            std::cerr << "[DiligentBackend] RenderStateCache Load() failed" << std::endl;
-                            // 避免每次启动都反复尝试加载同一个坏缓存
-                            ShaderCache::InvalidateCache(cachePath);
-                        }
-                    } else {
-                        std::cerr << "[DiligentBackend] No cache file found or version mismatch" << std::endl;
-                    }
-                }
-            } else {
-                std::cerr << "[DiligentBackend] CreateRenderStateCache() failed" << std::endl;
-            }
-        } else {
-            std::cerr << "[DiligentBackend] ArchiverFactory not available, shader caching disabled" << std::endl;
-        }
-    }
-
-    // 检测是否需要编译着色器（缓存未命中时）
-    const bool needsCompile = !cacheLoadedOk;
+    // 预编译字节码模式：着色器创建是瞬时的，不需要显示进度条
+    const bool needsCompile = false;
 
     // 提前初始化 ImGui（用于显示编译进度条）
     hwnd_  = hwnd;
@@ -1274,24 +1117,6 @@ void DiligentBackend::Shutdown() {
         Settings::SaveSession(*appState_, backend_);
     }
 
-    // 保存着色器缓存到磁盘
-    if (renderStateCache_) {
-        const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
-                                  : (backend_ == Backend::D3D12) ? "d3d12"
-                                                                 : "vulkan";
-        auto        cachePath   = ShaderCache::GetDiligentCachePath(backendName);
-        if (!cachePath.empty()) {
-            RefCntAutoPtr<IDataBlob> cacheBlob;
-            // 使用固定 ContentVersion（由构建标识 + DiligentCore 版本 + 后端生成），避免跨版本缓存污染。
-            const Uint32 cv = (renderStateCacheContentVersion_ != 0) ? renderStateCacheContentVersion_
-                                                                     : ComputeRenderStateCacheContentVersion(backend_);
-            if (renderStateCache_->WriteToBlob(cv, &cacheBlob) && cacheBlob) {
-                ShaderCache::WriteCache(cachePath, cacheBlob->GetConstDataPtr(), cacheBlob->GetSize());
-            }
-        }
-        renderStateCache_.Release();
-    }
-
     if (handTracker_) {
         handTracker_->Shutdown();
         handTracker_.reset();
@@ -1409,18 +1234,6 @@ void DiligentBackend::Shutdown() {
     swapChain_.Release();
     immediateContext_.Release();
     device_.Release();
-}
-
-void DiligentBackend::ClearShaderCache() {
-    // 删除当前后端的缓存文件
-    const char* backendName = (backend_ == Backend::D3D11)  ? "d3d11"
-                              : (backend_ == Backend::D3D12) ? "d3d12"
-                                                             : "vulkan";
-    auto cachePath = ShaderCache::GetDiligentCachePath(backendName);
-    if (!cachePath.empty()) {
-        ShaderCache::InvalidateCache(cachePath);
-        OutputDebugStringA("[DiligentBackend] Shader cache cleared\n");
-    }
 }
 
 void DiligentBackend::Resize(SurfaceSize newSize) {
@@ -1581,15 +1394,23 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
         return false;
     }
 
-    const auto sources = GetFullscreenQuadShaderSources(backend_);
-    if (sources.Vertex == nullptr || sources.Fragment == nullptr) {
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> vs, ps;
+
+    if (backend_ == Backend::Vulkan) {
+        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX,
+                                       FullscreenQuad_VS_SPIRV, sizeof(FullscreenQuad_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL,
+                                       FullscreenQuad_PS_SPIRV, sizeof(FullscreenQuad_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX,
+                                       FullscreenQuad_VS_DXBC, sizeof(FullscreenQuad_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL,
+                                       FullscreenQuad_PS_DXBC, sizeof(FullscreenQuad_PS_DXBC));
     }
 
-    const auto vs =
-        CreateShaderFromSource(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
-    const auto ps =
-        CreateShaderFromSource(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -1652,7 +1473,7 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 
     fullscreenQuadPSO_.Release();
     fullscreenQuadSRB_.Release();
-    CreateGraphicsPSO(device_, psoCI, &fullscreenQuadPSO_, renderStateCache_);
+    CreateGraphicsPSO(device_, psoCI, &fullscreenQuadPSO_);
     if (fullscreenQuadPSO_ == nullptr) {
         return false;
     }
@@ -1691,21 +1512,31 @@ bool DiligentBackend::CreateBloomPSO() {
         return false;
     }
 
-    const auto downSources = GetBloomDownsampleShaderSources(backend_);
-    const auto blurSources = GetBloomBlurShaderSources(backend_);
-    if (downSources.Vertex == nullptr || downSources.Fragment == nullptr || blurSources.Vertex == nullptr ||
-        blurSources.Fragment == nullptr) {
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> downVS, downPS, blurVS, blurPS;
+
+    if (backend_ == Backend::Vulkan) {
+        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX,
+                                           BloomDownsample_VS_SPIRV, sizeof(BloomDownsample_VS_SPIRV));
+        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL,
+                                           BloomDownsample_PS_SPIRV, sizeof(BloomDownsample_PS_SPIRV));
+        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX,
+                                           BloomBlur_VS_SPIRV, sizeof(BloomBlur_VS_SPIRV));
+        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL,
+                                           BloomBlur_PS_SPIRV, sizeof(BloomBlur_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX,
+                                           BloomDownsample_VS_DXBC, sizeof(BloomDownsample_VS_DXBC));
+        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL,
+                                           BloomDownsample_PS_DXBC, sizeof(BloomDownsample_PS_DXBC));
+        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX,
+                                           BloomBlur_VS_DXBC, sizeof(BloomBlur_VS_DXBC));
+        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL,
+                                           BloomBlur_PS_DXBC, sizeof(BloomBlur_PS_DXBC));
     }
 
-    const auto downVS = CreateShaderFromSource(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, downSources.Vertex,
-                                               downSources.Language, renderStateCache_);
-    const auto downPS = CreateShaderFromSource(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, downSources.Fragment,
-                                               downSources.Language, renderStateCache_);
-    const auto blurVS =
-        CreateShaderFromSource(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, blurSources.Vertex, blurSources.Language, renderStateCache_);
-    const auto blurPS =
-        CreateShaderFromSource(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, blurSources.Fragment, blurSources.Language, renderStateCache_);
     if (downVS == nullptr || downPS == nullptr || blurVS == nullptr || blurPS == nullptr) {
         return false;
     }
@@ -1770,7 +1601,7 @@ bool DiligentBackend::CreateBloomPSO() {
 
         outPso.Release();
         outSrb.Release();
-        CreateGraphicsPSO(device_, psoCI, &outPso, renderStateCache_);
+        CreateGraphicsPSO(device_, psoCI, &outPso);
         if (outPso == nullptr) {
             return false;
         }
@@ -1808,15 +1639,23 @@ bool DiligentBackend::CreateAcrylicPSO() {
         return false;
     }
 
-    const auto sources = GetAcrylicCompositeShaderSources(backend_);
-    if (sources.Vertex == nullptr || sources.Fragment == nullptr) {
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> vs, ps;
+
+    if (backend_ == Backend::Vulkan) {
+        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX,
+                                       AcrylicComposite_VS_SPIRV, sizeof(AcrylicComposite_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL,
+                                       AcrylicComposite_PS_SPIRV, sizeof(AcrylicComposite_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        vs = CreateShaderFromBytecode(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX,
+                                       AcrylicComposite_VS_DXBC, sizeof(AcrylicComposite_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL,
+                                       AcrylicComposite_PS_DXBC, sizeof(AcrylicComposite_PS_DXBC));
     }
 
-    const auto vs =
-        CreateShaderFromSource(device_, "AcrylicComposite VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
-    const auto ps =
-        CreateShaderFromSource(device_, "AcrylicComposite PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -1874,7 +1713,7 @@ bool DiligentBackend::CreateAcrylicPSO() {
 
     acrylicPSO_.Release();
     acrylicSRB_.Release();
-    CreateGraphicsPSO(device_, psoCI, &acrylicPSO_, renderStateCache_);
+    CreateGraphicsPSO(device_, psoCI, &acrylicPSO_);
     if (acrylicPSO_ == nullptr) {
         return false;
     }
@@ -2571,15 +2410,23 @@ bool DiligentBackend::CreateStarfieldPSO() {
         return false;
     }
 
-    const auto sources = GetStarShaderSources(backend_);
-    if (sources.Vertex == nullptr || sources.Fragment == nullptr) {
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> vs, ps;
+
+    if (backend_ == Backend::Vulkan) {
+        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX,
+                                       Star_VS_SPIRV, sizeof(Star_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL,
+                                       Star_PS_SPIRV, sizeof(Star_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX,
+                                       Star_VS_DXBC, sizeof(Star_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL,
+                                       Star_PS_DXBC, sizeof(Star_PS_DXBC));
     }
 
-    const auto vs =
-        CreateShaderFromSource(device_, "Starfield VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
-    const auto ps =
-        CreateShaderFromSource(device_, "Starfield PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -2630,7 +2477,7 @@ bool DiligentBackend::CreateStarfieldPSO() {
     psoCI.pPS = ps;
 
     starPSO_.Release();
-    CreateGraphicsPSO(device_, psoCI, &starPSO_, renderStateCache_);
+    CreateGraphicsPSO(device_, psoCI, &starPSO_);
     if (starPSO_ == nullptr) {
         return false;
     }
@@ -2808,17 +2655,21 @@ bool DiligentBackend::CreateParticleInitPSO() {
         return false;
     }
 
-    const auto csSrc = GetSaturnInitComputeShaderSource(backend_);
-    if (csSrc.Source == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error,
-                                 "[CreateParticleInitPSO] GetSaturnInitComputeShaderSource() returned nullptr");
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> cs;
+
+    if (backend_ == Backend::Vulkan) {
+        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE,
+                                       SaturnInit_CS_SPIRV, sizeof(SaturnInit_CS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE,
+                                       SaturnInit_CS_DXBC, sizeof(SaturnInit_CS_DXBC));
     }
 
-    const auto cs = CreateShaderFromSource(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language,
-                                           renderStateCache_);
     if (cs == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] Compute shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] Compute shader creation failed");
         return false;
     }
 
@@ -2836,7 +2687,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
 
     particleInitPSO_.Release();
     particleInitSRB_.Release();
-    CreateComputePSO(device_, psoCI, &particleInitPSO_, renderStateCache_);
+    CreateComputePSO(device_, psoCI, &particleInitPSO_);
     if (particleInitPSO_ == nullptr) {
         DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateComputePipelineState failed");
         return false;
@@ -3074,15 +2925,23 @@ bool DiligentBackend::CreateParticlePSO() {
         return false;
     }
 
-    const auto sources = GetSaturnParticleShaderSources(backend_);
-    if (sources.Vertex == nullptr || sources.Fragment == nullptr) {
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> vs, ps;
+
+    if (backend_ == Backend::Vulkan) {
+        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX,
+                                       SaturnParticle_VS_SPIRV, sizeof(SaturnParticle_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL,
+                                       SaturnParticle_PS_SPIRV, sizeof(SaturnParticle_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX,
+                                       SaturnParticle_VS_DXBC, sizeof(SaturnParticle_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL,
+                                       SaturnParticle_PS_DXBC, sizeof(SaturnParticle_PS_DXBC));
     }
 
-    const auto vs =
-        CreateShaderFromSource(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, sources.Vertex, sources.Language, renderStateCache_);
-    const auto ps =
-        CreateShaderFromSource(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, sources.Fragment, sources.Language, renderStateCache_);
     if (vs == nullptr || ps == nullptr) {
         return false;
     }
@@ -3120,7 +2979,7 @@ bool DiligentBackend::CreateParticlePSO() {
     psoCI.pPS = ps;
 
     particlePSO_.Release();
-    CreateGraphicsPSO(device_, psoCI, &particlePSO_, renderStateCache_);
+    CreateGraphicsPSO(device_, psoCI, &particlePSO_);
     if (particlePSO_ == nullptr) {
         return false;
     }
@@ -3151,70 +3010,52 @@ bool DiligentBackend::CreateParticlePSO() {
 bool DiligentBackend::CreateParticleMeshShaderPSO() {
     // 检测 Mesh Shader 硬件支持
     if (!meshShadersChecked_) {
-        meshShadersChecked_ = true;
-        useMeshShaders_     = false;
+        meshShadersChecked_  = true;
+        meshShaderSupported_ = false;
+        useMeshShaders_      = false;
 
         if (device_ != nullptr) {
             const auto& features = device_->GetDeviceInfo().Features;
+
+            // 记录设备信息以便调试
+            DebugLog::Instance().Add(LogLevel::Info,
+                "[GPU] Mesh Shader feature state: " + std::to_string(static_cast<int>(features.MeshShaders)));
+
             // Mesh Shader 仅 D3D12 支持（Vulkan 需要额外扩展，暂不启用）
-            // TODO: Mesh Shader 实现有 bug，暂时禁用，使用 Vertex Pulling
-            if (false && backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
-                useMeshShaders_ = true;
+            if (backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
+                meshShaderSupported_ = true;
+                useMeshShaders_      = true; // 默认启用
                 DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
             } else {
-                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders not available, using Vertex Pulling");
+                std::string reason = (backend_ != Backend::D3D12) ? "not D3D12 backend" : "hardware not supported";
+                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders not available (" + reason + "), using Vertex Pulling");
             }
         }
     }
 
     if (!useMeshShaders_) {
-        return false; // 硬件不支持，使用 Vertex Pulling 回退
+        return false; // 硬件不支持或已禁用，使用 Vertex Pulling 回退
     }
 
     if (device_ == nullptr || particleConstants_ == nullptr) {
         return false;
     }
 
-    const auto sources = GetSaturnParticleMeshShaderSources(backend_);
-    if (sources.Mesh == nullptr || sources.Fragment == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Shader sources not available");
-        useMeshShaders_ = false;
-        return false;
-    }
+    using namespace ShaderBytecodes;
 
-    // 创建 Mesh Shader
-    ShaderCreateInfo msCI{};
-    msCI.SourceLanguage = sources.Language;
-    msCI.Desc.Name      = "SaturnParticle MS";
-    msCI.Desc.ShaderType = SHADER_TYPE_MESH;
-    msCI.Source         = sources.Mesh;
-    msCI.EntryPoint     = "main";
-    // Mesh Shader 需要 Shader Model 6.5
-    msCI.ShaderCompiler = SHADER_COMPILER_DXC;
-    msCI.HLSLVersion    = {6, 5};
-
-    RefCntAutoPtr<IShader> ms;
-    device_->CreateShader(msCI, &ms);
+    // Mesh Shader 仅 D3D12 支持，使用 DXIL 格式
+    RefCntAutoPtr<IShader> ms = CreateShaderFromBytecode(device_, "SaturnParticle MS", SHADER_TYPE_MESH,
+                                                          SaturnParticleMesh_MS_DXIL, sizeof(SaturnParticleMesh_MS_DXIL));
     if (ms == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader creation failed");
         useMeshShaders_ = false;
         return false;
     }
 
-    // 创建 Pixel Shader
-    ShaderCreateInfo psCI{};
-    psCI.SourceLanguage  = sources.Language;
-    psCI.Desc.Name       = "SaturnParticle PS (Mesh)";
-    psCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
-    psCI.Source          = sources.Fragment;
-    psCI.EntryPoint      = "main";
-    psCI.ShaderCompiler  = SHADER_COMPILER_DXC;
-    psCI.HLSLVersion     = {6, 5};
-
-    RefCntAutoPtr<IShader> ps;
-    device_->CreateShader(psCI, &ps);
+    RefCntAutoPtr<IShader> ps = CreateShaderFromBytecode(device_, "SaturnParticle PS (Mesh)", SHADER_TYPE_PIXEL,
+                                                          SaturnParticleMesh_MeshPS_DXIL, sizeof(SaturnParticleMesh_MeshPS_DXIL));
     if (ps == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader creation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3290,17 +3131,21 @@ bool DiligentBackend::CreateParticleComputePSO() {
         return false;
     }
 
-    const auto csSrc = GetSaturnComputeShaderSource(backend_);
-    if (csSrc.Source == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error,
-                                 "[CreateParticleComputePSO] GetSaturnComputeShaderSource() returned nullptr");
-        return false;
+    using namespace ShaderBytecodes;
+
+    RefCntAutoPtr<IShader> cs;
+
+    if (backend_ == Backend::Vulkan) {
+        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE,
+                                       SaturnCompute_CS_SPIRV, sizeof(SaturnCompute_CS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE,
+                                       SaturnCompute_CS_DXBC, sizeof(SaturnCompute_CS_DXBC));
     }
 
-    const auto cs =
-        CreateShaderFromSource(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, csSrc.Source, csSrc.Language, renderStateCache_);
     if (cs == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] Compute shader compilation failed");
+        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] Compute shader creation failed");
         return false;
     }
 
@@ -3325,7 +3170,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
 
     particleComputePSO_.Release();
     particleComputeSRB_.Release();
-    CreateComputePSO(device_, psoCI, &particleComputePSO_, renderStateCache_);
+    CreateComputePSO(device_, psoCI, &particleComputePSO_);
     if (particleComputePSO_ == nullptr) {
         DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateComputePipelineState failed");
         return false;
@@ -3392,35 +3237,25 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
         return false;
     }
 
-    const bool  isVulkan = (backend_ == Backend::Vulkan);
-    const char* vsSource = isVulkan ? kSevenSegGlslVS : kSevenSegHlslVS;
-    const char* psSource = isVulkan ? kSevenSegGlslPS : kSevenSegHlslPS;
-    const auto  lang     = isVulkan ? SHADER_SOURCE_LANGUAGE_GLSL : SHADER_SOURCE_LANGUAGE_HLSL;
+    using namespace ShaderBytecodes;
 
     RefCntAutoPtr<IShader> vs, ps;
-    {
-        ShaderCreateInfo sci{};
-        sci.SourceLanguage  = lang;
-        sci.Desc.ShaderType = SHADER_TYPE_VERTEX;
-        sci.Desc.Name       = "SevenSegment VS";
-        sci.EntryPoint      = "main";
-        sci.Source          = vsSource;
-        device_->CreateShader(sci, &vs);
-        if (vs == nullptr) {
-            return false;
-        }
+
+    if (backend_ == Backend::Vulkan) {
+        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX,
+                                       SevenSeg_VS_SPIRV, sizeof(SevenSeg_VS_SPIRV));
+        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL,
+                                       SevenSeg_PS_SPIRV, sizeof(SevenSeg_PS_SPIRV));
+    } else {
+        // D3D11/D3D12 use DXBC
+        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX,
+                                       SevenSeg_VS_DXBC, sizeof(SevenSeg_VS_DXBC));
+        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL,
+                                       SevenSeg_PS_DXBC, sizeof(SevenSeg_PS_DXBC));
     }
-    {
-        ShaderCreateInfo sci{};
-        sci.SourceLanguage  = lang;
-        sci.Desc.ShaderType = SHADER_TYPE_PIXEL;
-        sci.Desc.Name       = "SevenSegment PS";
-        sci.EntryPoint      = "main";
-        sci.Source          = psSource;
-        device_->CreateShader(sci, &ps);
-        if (ps == nullptr) {
-            return false;
-        }
+
+    if (vs == nullptr || ps == nullptr) {
+        return false;
     }
 
     GraphicsPipelineStateCreateInfo psoCI{};
@@ -3470,7 +3305,7 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
     psoCI.pVS = vs;
     psoCI.pPS = ps;
 
-    CreateGraphicsPSO(device_, psoCI, &sevenSegPSO_, renderStateCache_);
+    CreateGraphicsPSO(device_, psoCI, &sevenSegPSO_);
     if (sevenSegPSO_ == nullptr) {
         return false;
     }
@@ -3928,6 +3763,9 @@ void DiligentBackend::RenderOffscreen() {
                 cb->RenderParams[1] = pixelRatio;
                 cb->RenderParams[2] = static_cast<float>(rtH);
                 cb->RenderParams[3] = densityComp;
+
+                // Mesh Shader 需要 ParticleCount
+                cb->ParticleCount = particleCount_;
 
                 immediateContext_->UnmapBuffer(particleConstants_, MAP_WRITE);
             }
@@ -5049,6 +4887,18 @@ void DiligentBackend::RenderFrame() {
                 }
                 ImGui::TextDisabled("%s", str.switchBackendConfirm);
 
+                // Mesh Shader 开关（仅在 D3D12 且硬件支持时显示）
+                if (meshShaderSupported_) {
+                    ImGui::Dummy(ImVec2(0, 5));
+                    if (MD3::Toggle(str.meshShader, &useMeshShaders_)) {
+                        if (useMeshShaders_) {
+                            DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader enabled by user");
+                        } else {
+                            DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader disabled by user, using Vertex Pulling");
+                        }
+                    }
+                }
+
                 ImGui::Dummy(ImVec2(0, 5));
 
                 // VSync 模式选择 - 使用 MD3 Combo
@@ -5113,28 +4963,6 @@ void DiligentBackend::RenderFrame() {
                 ImGui::TextDisabled("%s:", str.debugInfo);
                 ImGui::Text("%s: %u", str.starCount, starCount_);
                 ImGui::Text("%s: %u x %u", str.offscreen, surfaceSize_.Width, surfaceSize_.Height);
-
-                ImGui::Dummy(ImVec2(0, 8));
-
-                // 清除着色器缓存按钮
-                // 使用 ### 语法确保按钮 ID 不变，这样 Ripple 效果能正确跟踪尺寸变化
-                static bool shaderCacheCleared = false;
-                char btnLabel[256];
-                if (shaderCacheCleared) {
-                    snprintf(btnLabel, sizeof(btnLabel), "%s###ClearShaderCacheBtn", str.shaderCacheCleared);
-                    ImGui::BeginDisabled();
-                    MD3::Button(btnLabel);
-                    ImGui::EndDisabled();
-                } else {
-                    snprintf(btnLabel, sizeof(btnLabel), "%s###ClearShaderCacheBtn", str.clearShaderCache);
-                    if (MD3::Button(btnLabel)) {
-                        ClearShaderCache();
-                        shaderCacheCleared = true;
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("%s", str.clearShaderCacheHint);
-                    }
-                }
 
                 MD3::EndCollapsingHeader();
             }
