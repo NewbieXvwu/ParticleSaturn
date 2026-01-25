@@ -110,10 +110,10 @@ jobs:
       # Build HandTracker first (shared dependency)
       # ============================================================================
       - name: Build HandTracker Release
-        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /m
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
 
       - name: Build HandTracker Release_Static
-        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /m
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
 
       # ============================================================================
       # OpenGL version builds
