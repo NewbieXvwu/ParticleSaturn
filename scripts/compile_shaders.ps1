@@ -168,8 +168,14 @@ function Compile-HLSL {
         Write-Host "  $compiler $($args -join ' ')"
     }
 
-    $process = Start-Process -FilePath $compiler -ArgumentList $args -NoNewWindow -Wait -PassThru -RedirectStandardError (New-TemporaryFile).FullName
-    return $process.ExitCode -eq 0
+    # Use [System.IO.Path]::GetTempFileName() for PowerShell 4.0 compatibility
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $process = Start-Process -FilePath $compiler -ArgumentList $args -NoNewWindow -Wait -PassThru -RedirectStandardError $stderrFile
+        return $process.ExitCode -eq 0
+    } finally {
+        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Compile-GLSL {
@@ -187,8 +193,14 @@ function Compile-GLSL {
         Write-Host "  $GLSLANG $($args -join ' ')"
     }
 
-    $process = Start-Process -FilePath $GLSLANG -ArgumentList $args -NoNewWindow -Wait -PassThru -RedirectStandardError (New-TemporaryFile).FullName
-    return $process.ExitCode -eq 0
+    # Use [System.IO.Path]::GetTempFileName() for PowerShell 4.0 compatibility
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $process = Start-Process -FilePath $GLSLANG -ArgumentList $args -NoNewWindow -Wait -PassThru -RedirectStandardError $stderrFile
+        return $process.ExitCode -eq 0
+    } finally {
+        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Convert-ToByteArray {
