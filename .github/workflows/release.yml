@@ -159,7 +159,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $releaseDir
 
           # Copy Release build files
-          Copy-Item "bin/x64/Release/ParticleSaturn.exe" $releaseDir/
+          Copy-Item "bin/x64/Release/ParticleSaturn.OpenGL.exe" $releaseDir/
           Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
           Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
 
@@ -214,7 +214,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ParticleSaturn-OpenGL-Static-${{ steps.version.outputs.name }}
-          path: bin/x64/Release_Static/ParticleSaturn.exe
+          path: bin/x64/Release_Static/ParticleSaturn.OpenGL.exe
 
       - name: Upload artifact (Diligent Static)
         uses: actions/upload-artifact@v4
@@ -227,9 +227,9 @@ jobs:
         with:
           name: PDB-${{ steps.version.outputs.name }}
           path: |
-            bin/x64/Release/ParticleSaturn.pdb
+            bin/x64/Release/ParticleSaturn.OpenGL.pdb
             bin/x64/Release/HandTracker.pdb
-            bin/x64/Release_Static/ParticleSaturn.pdb
+            bin/x64/Release_Static/ParticleSaturn.OpenGL.pdb
             bin_diligent/x64/Release/ParticleSaturn.Diligent.pdb
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
 
@@ -245,7 +245,7 @@ jobs:
             ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.zip
             ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z
             ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip
-            bin/x64/Release_Static/ParticleSaturn.exe
+            bin/x64/Release_Static/ParticleSaturn.OpenGL.exe
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.exe
 
       - name: Upload PDB to Release
@@ -253,5 +253,5 @@ jobs:
         uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
-            bin/x64/Release_Static/ParticleSaturn.pdb
+            bin/x64/Release_Static/ParticleSaturn.OpenGL.pdb
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
