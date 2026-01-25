@@ -127,8 +127,14 @@ jobs:
       # ============================================================================
       # Diligent version builds (uses CMake via PowerShell script)
       # ============================================================================
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: latest
+          cache: true
+
       - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@v1.13.0
         with:
           arch: amd64
 
@@ -232,7 +238,7 @@ jobs:
       # ============================================================================
       - name: Upload Release assets
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
             ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.7z
@@ -244,7 +250,7 @@ jobs:
 
       - name: Upload PDB to Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
             bin/x64/Release_Static/ParticleSaturn.pdb
