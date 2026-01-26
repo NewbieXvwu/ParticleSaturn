@@ -15,40 +15,9 @@ jobs:
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v4
-
-      - name: Compute submodule cache key
-        id: submodule-key
-        run: |
-          # Key must change when the expected submodule SHAs change (even if .gitmodules stays the same).
-          echo "sha=$(git submodule status --recursive | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-        shell: bash
-
-      - name: Cache submodules
-        id: cache-submodules
-        uses: actions/cache@v4
         with:
-          path: |
-            HandTracker/libs/opencv
-            HandTracker/libs/tensorflow
-            libs/imgui
-            libs/DiligentCore
-          key: submodules-${{ hashFiles('.gitmodules') }}-${{ steps.submodule-key.outputs.sha }}
-          restore-keys: |
-            submodules-${{ hashFiles('.gitmodules') }}-
-            submodules-
-
-      - name: Initialize submodules (cache miss)
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
-        run: |
-          git submodule update --init --recursive --depth 1
-        shell: bash
-
-      - name: Verify submodules (cache hit)
-        if: steps.cache-submodules.outputs.cache-hit == 'true'
-        run: |
-          # Ensure .git directories are properly linked
-          git submodule update --init --recursive --depth 1 2>/dev/null || true
-        shell: bash
+          submodules: recursive
+          fetch-depth: 1
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -71,13 +40,8 @@ jobs:
         id: cache-tflite
         uses: actions/cache@v4
         with:
-          path: |
-            HandTracker/libs/tensorflow/tflite_build/install
-            HandTracker/libs/tensorflow/tflite_build/MinSizeRel
-            HandTracker/libs/tensorflow/tflite_build/_deps/abseil-cpp-build
+          path: HandTracker/libs/tensorflow/tflite_build/install
           key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}
-          restore-keys: |
-            tflite-vs2022-static-
 
       - name: Apply TFLite patch
         if: steps.cache-tflite.outputs.cache-hit != 'true'
@@ -94,20 +58,11 @@ jobs:
         with:
           path: HandTracker/libs/opencv/build/install
           key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
-          restore-keys: |
-            opencv-4130-vs2022-static-
 
       - name: Build OpenCV
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: scripts\build_opencv.cmd
         shell: cmd
-
-      - name: Ensure imgui submodule is at correct commit
-        run: |
-          # 缓存恢复后可能缺少 .git 元数据，需要先清理再重新初始化
-          rm -rf libs/imgui
-          git submodule update --init --force libs/imgui
-        shell: bash
 
       - name: Apply ImGui MD3 patch
         run: git apply scripts/imgui_md3.patch --directory=libs/imgui
