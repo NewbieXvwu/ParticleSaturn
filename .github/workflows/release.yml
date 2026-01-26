@@ -102,6 +102,13 @@ jobs:
         run: scripts\build_opencv.cmd
         shell: cmd
 
+      - name: Ensure imgui submodule is at correct commit
+        run: |
+          # 缓存恢复后可能缺少 .git 元数据，需要先清理再重新初始化
+          rm -rf libs/imgui
+          git submodule update --init --force libs/imgui
+        shell: bash
+
       - name: Apply ImGui MD3 patch
         run: git apply scripts/imgui_md3.patch --directory=libs/imgui
         shell: bash
