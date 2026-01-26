@@ -102,6 +102,10 @@ jobs:
         run: scripts\build_opencv.cmd
         shell: cmd
 
+      - name: Ensure imgui submodule is at correct commit
+        run: git submodule update --init --force libs/imgui
+        shell: bash
+
       - name: Apply ImGui MD3 patch
         run: git apply scripts/imgui_md3.patch --directory=libs/imgui
         shell: bash
