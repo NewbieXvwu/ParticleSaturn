@@ -4,14 +4,180 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - 'scripts/build_tflite.cmd'
+      - 'scripts/build_opencv.cmd'
+      - 'scripts/tflite-prune.patch'
+      - 'HandTracker/libs/tensorflow/tensorflow/lite/**'
+      - 'HandTracker/libs/opencv/modules/core/**'
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  # ============================================================================
+  # Job 1: Build TensorFlow Lite
+  # ============================================================================
+  build-tflite:
     runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      cache-hit: ${{ steps.cache-tflite.outputs.cache-hit }}
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
+      - name: Cache TFLite build
+        id: cache-tflite
+        uses: actions/cache@v4
+        with:
+          path: HandTracker/libs/tensorflow/tflite_build/install
+          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'scripts/tflite-prune.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
+          restore-keys: |
+            tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}-
+            tflite-vs2022-static-
+
+      - name: Apply TFLite patch
+        if: steps.cache-tflite.outputs.cache-hit != 'true'
+        run: git apply scripts/tflite-prune.patch --directory=HandTracker/libs/tensorflow
+
+      - name: Build TFLite
+        if: steps.cache-tflite.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}
+        run: scripts\build_tflite.cmd
+        shell: cmd
+
+      - name: Save TFLite Cache
+        if: steps.cache-tflite.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: HandTracker/libs/tensorflow/tflite_build/install
+          key: ${{ steps.cache-tflite.outputs.cache-primary-key }}
+
+  # ============================================================================
+  # Job 2: Build OpenCV
+  # ============================================================================
+  build-opencv:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      cache-hit: ${{ steps.cache-opencv.outputs.cache-hit }}
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache OpenCV build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: HandTracker/libs/opencv/build/install
+          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd', 'HandTracker/libs/opencv/modules/core/**/*.cpp', 'HandTracker/libs/opencv/modules/core/**/*.hpp') }}
+          restore-keys: |
+            opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}-
+            opencv-4130-vs2022-static-
+
+      - name: Build OpenCV
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}
+        run: scripts\build_opencv.cmd
+        shell: cmd
+
+      - name: Save OpenCV Cache
+        if: steps.cache-opencv.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: HandTracker/libs/opencv/build/install
+          key: ${{ steps.cache-opencv.outputs.cache-primary-key }}
+
+  # ============================================================================
+  # Job 3: Build Base Components (HandTracker)
+  # ============================================================================
+  build-base:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: [build-tflite, build-opencv]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set version name
+        id: version
+        run: |
+          if ("${{ github.event_name }}" -eq "release") {
+            echo "name=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
+          } else {
+            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            echo "name=$shortSha" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Restore TFLite Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: HandTracker/libs/tensorflow/tflite_build/install
+          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'scripts/tflite-prune.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
+          fail-on-cache-miss: true
+
+      - name: Restore OpenCV Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: HandTracker/libs/opencv/build/install
+          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd', 'HandTracker/libs/opencv/modules/core/**/*.cpp', 'HandTracker/libs/opencv/modules/core/**/*.hpp') }}
+          fail-on-cache-miss: true
+
+      - name: Setup vcpkg
+        run: vcpkg integrate install
+
+      - name: Ensure imgui submodule is at correct commit
+        run: git submodule update --init --force libs/imgui
+        shell: bash
+
+      - name: Apply ImGui MD3 patch
+        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        shell: bash
+
+      - name: Build HandTracker Release
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+
+      - name: Build HandTracker Release_Static
+        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
+
+      - name: Upload HandTracker Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: handtracker-build
+          path: |
+            bin/x64/
+            HandTracker/models/
+          retention-days: 1
+
+  # ============================================================================
+  # Job 4: Build OpenGL Version
+  # ============================================================================
+  build-opengl:
+    needs: build-base
+    runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v4
@@ -25,44 +191,11 @@ jobs:
       - name: Setup vcpkg
         run: vcpkg integrate install
 
-      - name: Set version name
-        id: version
-        run: |
-          if ("${{ github.event_name }}" -eq "release") {
-            echo "name=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
-          } else {
-            # Use short hash (7 chars) for manual builds
-            $shortSha = "${{ github.sha }}".Substring(0, 7)
-            echo "name=$shortSha" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Cache TFLite build
-        id: cache-tflite
-        uses: actions/cache@v4
+      - name: Download HandTracker Artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: HandTracker/libs/tensorflow/tflite_build/install
-          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}
-
-      - name: Apply TFLite patch
-        if: steps.cache-tflite.outputs.cache-hit != 'true'
-        run: git apply scripts/tflite-prune.patch --directory=HandTracker/libs/tensorflow
-
-      - name: Build TFLite
-        if: steps.cache-tflite.outputs.cache-hit != 'true'
-        run: scripts\build_tflite.cmd
-        shell: cmd
-
-      - name: Cache OpenCV build
-        id: cache-opencv
-        uses: actions/cache@v4
-        with:
-          path: HandTracker/libs/opencv/build/install
-          key: opencv-4130-vs2022-static-${{ hashFiles('scripts/build_opencv.cmd') }}
-
-      - name: Build OpenCV
-        if: steps.cache-opencv.outputs.cache-hit != 'true'
-        run: scripts\build_opencv.cmd
-        shell: cmd
+          name: handtracker-build
+          path: ${{ github.workspace }}
 
       - name: Ensure imgui submodule is at correct commit
         run: git submodule update --init --force libs/imgui
@@ -72,27 +205,74 @@ jobs:
         run: git apply scripts/imgui_md3.patch --directory=libs/imgui
         shell: bash
 
-      # ============================================================================
-      # Build HandTracker first (shared dependency)
-      # ============================================================================
-      - name: Build HandTracker Release
-        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
-
-      - name: Build HandTracker Release_Static
-        run: msbuild HandTracker\HandTracker.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /m
-
-      # ============================================================================
-      # OpenGL version builds
-      # ============================================================================
       - name: Build OpenGL Release
-        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ needs.build-base.outputs.name }} /m
 
       - name: Build OpenGL ReleaseStatic
-        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ steps.version.outputs.name }} /m
+        run: msbuild ParticleSaturn.OpenGL.vcxproj /p:Configuration=Release_Static /p:Platform=x64 /p:PlatformToolset=v143 /p:OpenCVRuntime=vc17 /p:VcpkgEnableManifest=true /p:AppVersion=${{ needs.build-base.outputs.name }} /m
 
-      # ============================================================================
-      # Diligent version builds (uses CMake via PowerShell script)
-      # ============================================================================
+      - name: Prepare OpenGL Release artifacts
+        run: |
+          $releaseDir = "release_artifacts_opengl"
+          New-Item -ItemType Directory -Force -Path $releaseDir
+          Copy-Item "bin/x64/Release/ParticleSaturn.OpenGL.exe" $releaseDir/
+          Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
+          Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
+          Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
+          Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
+
+      - name: Create OpenGL archives
+        run: |
+          7z a -t7z -mx=9 ParticleSaturn-OpenGL-${{ needs.build-base.outputs.name }}.7z ./release_artifacts_opengl/*
+          7z a -tzip -mx=9 ParticleSaturn-OpenGL-${{ needs.build-base.outputs.name }}.zip ./release_artifacts_opengl/*
+
+      - name: Upload OpenGL Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-OpenGL-${{ needs.build-base.outputs.name }}
+          path: release_artifacts_opengl/
+
+      - name: Upload OpenGL Static Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParticleSaturn-OpenGL-Static-${{ needs.build-base.outputs.name }}
+          path: bin/x64/Release_Static/ParticleSaturn.OpenGL.exe
+
+      - name: Upload OpenGL PDBs
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDB-OpenGL-${{ needs.build-base.outputs.name }}
+          path: |
+            bin/x64/Release/ParticleSaturn.OpenGL.pdb
+            bin/x64/Release/HandTracker.pdb
+            bin/x64/Release_Static/ParticleSaturn.OpenGL.pdb
+
+  # ============================================================================
+  # Job 5: Build Diligent Version
+  # ============================================================================
+  build-diligent:
+    needs: build-base
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set version name
+        id: version
+        run: |
+          echo "name=${{ needs.build-base.outputs.name }}" >> $env:GITHUB_OUTPUT
+
+      - name: Download HandTracker Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: handtracker-build
+          path: ${{ github.workspace }}
+
       - name: Install Vulkan SDK
         uses: humbletim/install-vulkan-sdk@v1.2
         with:
@@ -103,6 +283,14 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1.13.0
         with:
           arch: amd64
+
+      - name: Ensure imgui submodule is at correct commit
+        run: git submodule update --init --force libs/imgui
+        shell: bash
+
+      - name: Apply ImGui MD3 patch
+        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        shell: bash
 
       - name: Build Diligent Release
         run: .\scripts\build_diligent.ps1 -Action build -SrcDir . -BuildDir bin_diligent\x64\Release -Config Release -HandTrackerLinkMode dll
@@ -116,108 +304,71 @@ jobs:
         run: .\scripts\build_diligent.ps1 -Action build -SrcDir . -BuildDir bin_diligent\x64\Release_Static -Config Release -HandTrackerLinkMode static
         shell: pwsh
 
-      # ============================================================================
-      # Prepare artifacts
-      # ============================================================================
-      - name: Prepare OpenGL Release artifacts
-        run: |
-          $releaseDir = "release_artifacts_opengl"
-          New-Item -ItemType Directory -Force -Path $releaseDir
-
-          # Copy Release build files
-          Copy-Item "bin/x64/Release/ParticleSaturn.OpenGL.exe" $releaseDir/
-          Copy-Item "bin/x64/Release/HandTracker.dll" $releaseDir/
-          Copy-Item "bin/x64/Release/glfw3.dll" $releaseDir/
-
-          # Copy model files
-          Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
-          Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
-
       - name: Prepare Diligent Release artifacts
         run: |
           $releaseDir = "release_artifacts_diligent"
           New-Item -ItemType Directory -Force -Path $releaseDir
-
-          # Copy Diligent Release build files
           Copy-Item "bin_diligent/x64/Release/ParticleSaturn.Diligent.exe" $releaseDir/
           Copy-Item "bin_diligent/x64/Release/HandTracker.dll" $releaseDir/
-
-          # Copy model files
           Copy-Item "HandTracker/models/palm_detection_full.tflite" $releaseDir/
           Copy-Item "HandTracker/models/hand_landmark_full.tflite" $releaseDir/
 
-      # ============================================================================
-      # Create archives
-      # ============================================================================
-      - name: Create OpenGL 7z archive
-        run: 7z a -t7z -mx=9 ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.7z ./release_artifacts_opengl/*
+      - name: Create Diligent archives
+        run: |
+          7z a -t7z -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z ./release_artifacts_diligent/*
+          7z a -tzip -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip ./release_artifacts_diligent/*
 
-      - name: Create OpenGL zip archive
-        run: 7z a -tzip -mx=9 ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.zip ./release_artifacts_opengl/*
-
-      - name: Create Diligent 7z archive
-        run: 7z a -t7z -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z ./release_artifacts_diligent/*
-
-      - name: Create Diligent zip archive
-        run: 7z a -tzip -mx=9 ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip ./release_artifacts_diligent/*
-
-      # ============================================================================
-      # Upload artifacts
-      # ============================================================================
-      - name: Upload artifact (OpenGL Release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}
-          path: release_artifacts_opengl/
-
-      - name: Upload artifact (Diligent Release)
+      - name: Upload Diligent Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ParticleSaturn-Diligent-${{ steps.version.outputs.name }}
           path: release_artifacts_diligent/
 
-      - name: Upload artifact (OpenGL Static)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ParticleSaturn-OpenGL-Static-${{ steps.version.outputs.name }}
-          path: bin/x64/Release_Static/ParticleSaturn.OpenGL.exe
-
-      - name: Upload artifact (Diligent Static)
+      - name: Upload Diligent Static Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ParticleSaturn-Diligent-Static-${{ steps.version.outputs.name }}
           path: bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.exe
 
-      - name: Upload PDB artifacts
+      - name: Upload Diligent PDBs
         uses: actions/upload-artifact@v4
         with:
-          name: PDB-${{ steps.version.outputs.name }}
+          name: PDB-Diligent-${{ steps.version.outputs.name }}
           path: |
-            bin/x64/Release/ParticleSaturn.OpenGL.pdb
-            bin/x64/Release/HandTracker.pdb
-            bin/x64/Release_Static/ParticleSaturn.OpenGL.pdb
             bin_diligent/x64/Release/ParticleSaturn.Diligent.pdb
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
 
-      # ============================================================================
-      # Upload to GitHub Release
-      # ============================================================================
+  # ============================================================================
+  # Job 6: Upload to Release (Final job for dependency management)
+  # ============================================================================
+  upload-release:
+    needs: [build-base, build-opengl, build-diligent]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - name: Download OpenGL artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ParticleSaturn-OpenGL-${{ needs.build-base.outputs.name }}
+          path: ./release_artifacts_opengl/
+
+      - name: Download Diligent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ParticleSaturn-Diligent-${{ needs.build-base.outputs.name }}
+          path: ./release_artifacts_diligent/
+
       - name: Upload Release assets
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
-            ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.7z
-            ParticleSaturn-OpenGL-${{ steps.version.outputs.name }}.zip
-            ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.7z
-            ParticleSaturn-Diligent-${{ steps.version.outputs.name }}.zip
+            ParticleSaturn-OpenGL-*.7z
+            ParticleSaturn-OpenGL-*.zip
+            ParticleSaturn-Diligent-*.7z
+            ParticleSaturn-Diligent-*.zip
             bin/x64/Release_Static/ParticleSaturn.OpenGL.exe
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.exe
-
-      - name: Upload PDB to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2.5.0
-        with:
-          files: |
             bin/x64/Release_Static/ParticleSaturn.OpenGL.pdb
             bin_diligent/x64/Release_Static/ParticleSaturn.Diligent.pdb
