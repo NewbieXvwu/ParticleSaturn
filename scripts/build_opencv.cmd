@@ -96,4 +96,14 @@ echo.
 echo Build done, installing...
 cmake --install "%BUILD_DIR%" --config Release --prefix "%BUILD_DIR%\install"
 
+echo.
+echo Consolidating .lib files to install/lib for CI caching...
+if not exist "%BUILD_DIR%\install\lib" mkdir "%BUILD_DIR%\install\lib"
+:: OpenCV puts static libs in install/x64/vc17/staticlib, move them to install/lib
+xcopy /s /y "%BUILD_DIR%\install\x64\vc17\staticlib\*.lib" "%BUILD_DIR%\install\lib\" >nul
+:: Also copy 3rdparty libs which might be in build tree (zlib, libjpeg-turbo, libpng)
+for /r "%BUILD_DIR%\3rdparty" %%f in (*.lib) do (
+    copy /y "%%f" "%BUILD_DIR%\install\lib\" >nul
+)
+
 if "%CI%"=="" pause
