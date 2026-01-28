@@ -48,7 +48,7 @@ if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 echo Configuring CMake...
 cmake -S "%TFLITE_SRC%" -B "%BUILD_DIR%" ^
     -G Ninja ^
-    -DCMAKE_OBJECT_PATH_MAX=180 ^
+    -DCMAKE_OBJECT_PATH_MAX=400 ^
     -DTENSORFLOW_SOURCE_DIR="%CD%\%TENSORFLOW_ROOT%" ^
     -DCMAKE_BUILD_TYPE=MinSizeRel ^
     -DCMAKE_CXX_FLAGS_MINSIZEREL="/O1 /Ob1 /DNDEBUG /GL /Gy /Gw" ^
@@ -58,7 +58,7 @@ cmake -S "%TFLITE_SRC%" -B "%BUILD_DIR%" ^
     -DCMAKE_MODULE_LINKER_FLAGS_MINSIZEREL="/LTCG /OPT:REF /OPT:ICF" ^
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
     -DBUILD_SHARED_LIBS=OFF ^
-    -DTFLITE_ENABLE_INSTALL=ON ^
+    -DTFLITE_ENABLE_INSTALL=OFF ^
     -DTFLITE_ENABLE_XNNPACK=ON ^
     -DTFLITE_ENABLE_RUY=ON ^
     -DTFLITE_ENABLE_GPU=OFF ^
@@ -75,11 +75,6 @@ if errorlevel 1 exit /b %errorlevel%
 echo.
 echo CMake done, building (MinSizeRel)...
 cmake --build "%BUILD_DIR%" --config MinSizeRel --parallel
-if errorlevel 1 exit /b %errorlevel%
-
-echo.
-echo Build done, installing...
-cmake --install "%BUILD_DIR%" --config MinSizeRel --prefix "%BUILD_DIR%\install"
 if errorlevel 1 exit /b %errorlevel%
 
 echo.

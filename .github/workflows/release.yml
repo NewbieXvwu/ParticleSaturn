@@ -43,6 +43,10 @@ jobs:
             tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}-
             tflite-vs2022-static-
 
+      - name: Enable long paths
+        if: steps.cache-tflite.outputs.cache-hit != 'true'
+        run: reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+
       - name: Apply TFLite patch
         if: steps.cache-tflite.outputs.cache-hit != 'true'
         run: git apply scripts/tflite-prune.patch --directory=HandTracker/libs/tensorflow
