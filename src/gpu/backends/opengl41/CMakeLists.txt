@@ -1,0 +1,5 @@
+add_library(ParticleSaturnOpenGL41Backend STATIC OpenGL41Surface.mm)
+add_library(ParticleSaturn.Backend.OpenGL41 ALIAS ParticleSaturnOpenGL41Backend)
+target_include_directories(ParticleSaturnOpenGL41Backend PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../..")
+target_compile_definitions(ParticleSaturnOpenGL41Backend PRIVATE GL_SILENCE_DEPRECATION=1)
+target_link_libraries(ParticleSaturnOpenGL41Backend PUBLIC "-framework Cocoa" "-framework OpenGL")
