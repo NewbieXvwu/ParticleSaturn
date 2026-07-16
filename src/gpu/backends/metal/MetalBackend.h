@@ -113,4 +113,10 @@ private:
     void* bloomWeak_ = nullptr;
 };
 
+class MetalToneMapper {
+public:
+    bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* outputTexture,
+               std::uint32_t width, std::uint32_t height);
+};
+
 } // namespace ParticleSaturn::Gpu::Metal
