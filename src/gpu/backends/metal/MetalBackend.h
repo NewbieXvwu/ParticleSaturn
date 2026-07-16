@@ -60,4 +60,22 @@ private:
     void* commandBuffer_ = nullptr;
 };
 
+class MetalParticleSystem {
+public:
+    static constexpr std::uint32_t ParticleCount = 1200000;
+
+    bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
+    bool Simulate(float deltaTime, float handScale, bool handTracked);
+    void* RenderBuffer() const noexcept;
+
+private:
+    void* commandQueue_ = nullptr;
+    void* initializePipeline_ = nullptr;
+    void* simulationPipeline_ = nullptr;
+    void* buffers_[3]{};
+    std::uint32_t renderIndex_ = 0;
+    std::uint32_t readIndex_ = 1;
+    std::uint32_t writeIndex_ = 2;
+};
+
 } // namespace ParticleSaturn::Gpu::Metal

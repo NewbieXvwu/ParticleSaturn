@@ -1,4 +1,11 @@
 add_library(ParticleSaturnMetalBackend STATIC MetalBackend.mm)
 add_library(ParticleSaturn.Backend.Metal ALIAS ParticleSaturnMetalBackend)
 target_include_directories(ParticleSaturnMetalBackend PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../..")
-target_link_libraries(ParticleSaturnMetalBackend PUBLIC "-framework Metal" "-framework QuartzCore")
+target_link_libraries(ParticleSaturnMetalBackend PUBLIC "-framework Foundation" "-framework Metal" "-framework QuartzCore")
+
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnMetalParticleTests "${CMAKE_SOURCE_DIR}/tests/MetalParticleSystemTests.mm")
+    target_link_libraries(ParticleSaturnMetalParticleTests PRIVATE ParticleSaturnMetalBackend)
+    add_dependencies(ParticleSaturnMetalParticleTests ParticleSaturnMetalShaders)
+    add_test(NAME ParticleSaturnMetalParticleTests COMMAND ParticleSaturnMetalParticleTests "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib")
+endif()

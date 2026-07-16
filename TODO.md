@@ -848,8 +848,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化和三缓冲计算模拟。CMake 已通过 Xcode Metal 工具链将其编译为 `metallib` 并复制到 macOS 应用包资源目录；渲染通道接入待继续完成。
 
-- [ ] 120 万粒子初始化（Metal 计算管线）
-- [ ] 三缓冲计算模拟
+- [x] 120 万粒子初始化（Metal 计算管线）
+- [x] 三缓冲计算模拟
 - [ ] 50,000 星体
 - [ ] 间接绘制
 - [ ] HDR 离屏渲染
