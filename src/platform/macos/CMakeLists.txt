@@ -28,6 +28,19 @@ add_custom_target(ParticleSaturnMacOSMetalResource ALL
     DEPENDS ParticleSaturnMetalShaders
     VERBATIM)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMacOSMetalResource)
+set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs directory containing the driver and ICD")
+if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+    set(PARTICLESATURN_KOSMICKRISP_DRIVER "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
+    set(PARTICLESATURN_KOSMICKRISP_ICD "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/kosmickrisp_mesa_icd.json")
+    if(NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_DRIVER}" OR NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_ICD}")
+        message(FATAL_ERROR "PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR must contain libvulkan_kosmickrisp.dylib and kosmickrisp_mesa_icd.json")
+    endif()
+    file(READ "${PARTICLESATURN_KOSMICKRISP_ICD}" PARTICLESATURN_KOSMICKRISP_ICD_CONTENT)
+    string(REPLACE "./libvulkan_kosmickrisp.dylib" "../../../lib/libvulkan_kosmickrisp.dylib"
+        PARTICLESATURN_KOSMICKRISP_ICD_CONTENT "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
+    set(PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD "${CMAKE_CURRENT_BINARY_DIR}/KosmicKrisp_icd.json")
+    file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
+endif()
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
@@ -45,3 +58,11 @@ add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "/opt/homebrew/opt/molten-vk/etc/vulkan/icd.d/MoltenVK_icd.json"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d/MoltenVK_icd.json"
 )
+if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+    add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PARTICLESATURN_KOSMICKRISP_DRIVER}"
+            "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib/libvulkan_kosmickrisp.dylib"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}"
+            "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json"
+        VERBATIM)
+endif()

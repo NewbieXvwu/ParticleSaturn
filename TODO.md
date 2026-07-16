@@ -897,13 +897,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
-进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`，并可按新选择启动替代进程供调用方结束当前进程。
+进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；包内 ICD 已由 `vulkaninfo` 实测枚举为 `DRIVER_ID_MESA_KOSMICKRISP`。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
 - [x] 跟随 KosmicKrisp 最新提交（不锁定）
-- [ ] KosmicKrisp 接入
+- [x] KosmicKrisp 接入
 - [ ] `DiligentVulkanAdapter` 兼容修复
 - [x] 驱动切换 + 重启
 - [x] 日志记录 ICD 信息
