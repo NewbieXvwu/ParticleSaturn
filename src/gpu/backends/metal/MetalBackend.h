@@ -125,6 +125,9 @@ public:
     void* UiOverlay() const noexcept;
     void* UiBlur() const noexcept;
     void* Composite() const noexcept;
+    void* UiBlurWeak() const noexcept;
+    void* UiBlurWeakPingPong() const noexcept;
+    void* UiOverlayWeak() const noexcept;
 
 private:
     void* sceneHdr_ = nullptr;
@@ -135,6 +138,9 @@ private:
     void* uiOverlay_ = nullptr;
     void* uiBlur_ = nullptr;
     void* composite_ = nullptr;
+    void* uiBlurWeak_ = nullptr;
+    void* uiBlurWeakPingPong_ = nullptr;
+    void* uiOverlayWeak_ = nullptr;
 };
 
 class MetalToneMapper {
@@ -152,7 +158,8 @@ public:
 class MetalAcrylic {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
-               void* outputTexture, std::uint32_t width, std::uint32_t height, float blurStrength);
+               void* blurWeakA, void* blurWeakB, void* outputTexture, void* weakOutputTexture,
+               std::uint32_t width, std::uint32_t height, float blurStrength);
 };
 
 class MetalSevenSegmentFps {

@@ -220,22 +220,47 @@ void VerifyBloomThresholdAndAcrylicIsolation(ParticleSaturn::Gpu::Metal::MetalDe
 
     id<MTLTexture> blurA = CreateSharedTexture(nativeDevice, 2, 2);
     id<MTLTexture> blurB = CreateSharedTexture(nativeDevice, 2, 2);
+    id<MTLTexture> blurWeakA = CreateSharedTexture(nativeDevice, 1, 1);
+    id<MTLTexture> blurWeakB = CreateSharedTexture(nativeDevice, 1, 1);
     id<MTLTexture> acrylic = CreateSharedTexture(nativeDevice, 2, 2);
-    assert(blurA != nil && blurB != nil && acrylic != nil);
+    id<MTLTexture> acrylicWeak = CreateSharedTexture(nativeDevice, 1, 1);
+    assert(blurA != nil && blurB != nil && blurWeakA != nil && blurWeakB != nil && acrylic != nil && acrylicWeak != nil);
     float before[12 * 12 * 4]{};
     [scene getBytes:before bytesPerRow:12 * 4 * sizeof(float) fromRegion:sceneRegion mipmapLevel:0];
     ParticleSaturn::Gpu::Metal::MetalAcrylic compositor;
-    assert(compositor.Apply(device, libraryPath, scene, blurA, blurB, acrylic, 12, 12, 2.0f));
+    assert(compositor.Apply(device, libraryPath, scene, blurA, blurB, blurWeakA, blurWeakB, acrylic, acrylicWeak, 12, 12, 2.0f));
     float after[12 * 12 * 4]{};
     [scene getBytes:after bytesPerRow:12 * 4 * sizeof(float) fromRegion:sceneRegion mipmapLevel:0];
     assert(std::memcmp(before, after, sizeof(before)) == 0);
+    // A uniform scene intentionally has identical blur samples.  A local HDR
+    // highlight proves the 1/6 and 1/12 Acrylic products run independently.
+    for (std::uint32_t y = 0; y < 12U; ++y) {
+        for (std::uint32_t x = 0; x < 12U; ++x) {
+            const std::size_t pixel = (y * 12U + x) * 4U;
+            darkScene[pixel + 0U] = static_cast<float>(x) * (4.0f / 11.0f);
+            darkScene[pixel + 1U] = static_cast<float>(y) * (2.0f / 11.0f);
+            darkScene[pixel + 2U] = 0.25f;
+            darkScene[pixel + 3U] = 1.0f;
+        }
+    }
+    [scene replaceRegion:sceneRegion mipmapLevel:0 withBytes:darkScene bytesPerRow:12 * 4 * sizeof(float)];
+    assert(compositor.Apply(device, libraryPath, scene, blurA, blurB, blurWeakA, blurWeakB, acrylic, acrylicWeak, 12, 12, 2.0f));
+    float strongPixels[2 * 2 * 4]{};
+    float weakPixels[4]{};
+    [acrylic getBytes:strongPixels bytesPerRow:2 * 4 * sizeof(float) fromRegion:MTLRegionMake2D(0, 0, 2, 2) mipmapLevel:0];
+    [acrylicWeak getBytes:weakPixels bytesPerRow:4 * sizeof(float) fromRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0];
+    assert(strongPixels[0] > 0.0f && weakPixels[0] > 0.0f);
+    assert(std::fabs(strongPixels[0] - weakPixels[0]) > 0.0001f);
 
     [scene release];
     [bloomA release];
     [bloomB release];
     [blurA release];
     [blurB release];
+    [blurWeakA release];
+    [blurWeakB release];
     [acrylic release];
+    [acrylicWeak release];
 }
 
 } // namespace
@@ -264,6 +289,9 @@ int main(int argc, char* argv[]) {
     assert(targets.UiOverlay() != nullptr);
     assert(targets.UiBlur() != nullptr);
     assert(targets.Composite() != nullptr);
+    assert(targets.UiBlurWeak() != nullptr);
+    assert(targets.UiBlurWeakPingPong() != nullptr);
+    assert(targets.UiOverlayWeak() != nullptr);
     assert(targets.Create(device, 640, 360));
     assert(targets.SceneHdr() != nullptr);
     assert(targets.BloomPingPong() != nullptr);
@@ -276,7 +304,8 @@ int main(int argc, char* argv[]) {
     VerifyDiligentFpsGeometry(device, argv[1]);
     VerifyBloomThresholdAndAcrylicIsolation(device, argv[1]);
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
-    assert(acrylic.Apply(device, argv[1], targets.UiScene(), targets.UiBlur(), targets.Composite(), targets.UiOverlay(),
+    assert(acrylic.Apply(device, argv[1], targets.UiScene(), targets.UiBlur(), targets.Composite(),
+                         targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
                          320, 180, 3.0f));
     ParticleSaturn::Gpu::Metal::MetalSevenSegmentFps fps;
     assert(fps.Render(device, argv[1], targets.UiScene(), 320, 180, 120));
