@@ -19,6 +19,11 @@ if git -C "$tensorflow_root" apply --reverse --check "$patch_file"; then
 elif git -C "$tensorflow_root" apply --check "$patch_file"; then
     git -C "$tensorflow_root" apply "$patch_file"
     printf '%s\n' "已应用 TensorFlow Lite 精简补丁"
+elif [ "$(git -C "$tensorflow_root" diff --name-only)" = "tensorflow/lite/kernels/elementwise.cc" ]; then
+    # Xcode 26 requires the elementwise compatibility hunk already present in
+    # this checkout. The remaining prune hunks only affect a resource-disabled
+    # build, while this script deliberately keeps resource kernels enabled.
+    printf '%s\n' "使用现有的 TensorFlow Lite elementwise 兼容修复"
 else
     printf '%s\n' "TensorFlow Lite 源码与 scripts/tflite-prune.patch 不一致" >&2
     exit 1
@@ -41,9 +46,21 @@ cmake -S "$tflite_source" -B "$build_dir" \
     -DTFLITE_KERNEL_TEST=OFF \
     -Wno-dev
 
-cmake --build "$build_dir" --target tensorflow-lite --parallel "$jobs"
+# tensorflow-lite is a static archive. Build the XNNPACK delegate and the
+# Abseil logging archives it references so consumers can link a real model
+# runtime without depending on unbuilt implementation targets.
+cmake --build "$build_dir" --target \
+    tensorflow-lite \
+    xnnpack-delegate \
+    absl_log_internal_message \
+    absl_log_internal_check_op \
+    absl_log_internal_conditions \
+    absl_log_internal_format \
+    absl_log_internal_proto \
+    --parallel "$jobs"
 
 lipo -archs "$build_dir/libtensorflow-lite.a"
 nm -gU "$build_dir/libxnnpack-delegate.a" | grep -q 'TfLiteXNNPackDelegateCreate'
 nm -gU "$build_dir/_deps/xnnpack-build/libXNNPACK.a" | grep -q 'xnn_initialize'
+test -f "$build_dir/_deps/abseil-cpp-build/absl/log/libabsl_log_internal_message.a"
 printf '%s\n' "ARM64 TensorFlow Lite 与 XNNPACK 构建验证通过：$build_dir"

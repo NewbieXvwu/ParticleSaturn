@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <iostream>
+#include <string>
 
 #include "imgui.h"
 #include "imgui_impl_metal.h"
@@ -17,6 +19,8 @@
 #include "gpu/backends/metal/MetalBackend.h"
 #include "services/camera/macos/AVFoundationCamera.h"
 #include "services/camera/macos/CameraSelectorWindow.h"
+#include "services/hand_tracking/macos/XnnpackRuntime.h"
+#include "services/resources/macos/BundleResources.h"
 
 namespace {
 
@@ -64,6 +68,15 @@ int main() {
         ParticleSaturn::App::FrameCoordinator coordinator;
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+        ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTracking;
+        std::string handTrackingError;
+        const auto palmModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
+        const auto landmarkModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
+        if (!handTracking.Load(palmModel, landmarkModel, handTrackingError)) {
+            std::clog << "[HandTracking] " << handTrackingError << '\n';
+        }
+#endif
         FpsMeter fpsMeter;
         auto lastFrameTime = std::chrono::steady_clock::now();
         if (!particleRenderer.Initialize(device, libraryPath)) return 1;
@@ -78,6 +91,12 @@ int main() {
             lastFrameTime = now;
             const auto frame = coordinator.Advance(controller, deltaTime);
             fpsMeter.AddSample(deltaTime);
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            ParticleSaturn::Services::Camera::Frame cameraFrame;
+            if (handTracking.IsLoaded() && camera.LatestFrame(cameraFrame) && !handTracking.Invoke(cameraFrame, handTrackingError)) {
+                std::clog << "[HandTracking] " << handTrackingError << '\n';
+            }
+#endif
             const auto drawableSize = host.CurrentDrawableSize();
             if (drawableSize.width != size.width || drawableSize.height != size.height) {
                 if (!targets.Create(device, drawableSize.width, drawableSize.height)) return;
