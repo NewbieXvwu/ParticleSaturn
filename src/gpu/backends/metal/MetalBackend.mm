@@ -367,7 +367,7 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sce
 }
 
 bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture,
-                                  std::uint32_t width, std::uint32_t height) {
+                                  std::uint32_t width, std::uint32_t height, float backingScale) {
     if (outputTexture == nullptr || width == 0 || height == 0) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
@@ -378,7 +378,10 @@ bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, 
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
     id<MTLCommandBuffer> commands = [queue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    struct PanelMask { float left, top, width, height; } mask{80.0f * backingScale, 80.0f * backingScale,
+                                                               210.0f * backingScale, 95.0f * backingScale};
     [encoder setComputePipelineState:pipeline]; [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
+    [encoder setBytes:&mask length:sizeof(mask) atIndex:0];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
     [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted]; [pipeline release]; [queue release];
     return [commands status] == MTLCommandBufferStatusCompleted;
@@ -437,7 +440,7 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                                 MetalParticleRenderer& particleRenderer,
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
-                                std::uint32_t height, float deltaTime, std::uint32_t framesPerSecond,
+                                std::uint32_t height, float backingScale, float deltaTime, std::uint32_t framesPerSecond,
                                 const std::function<void(void*, void*, void*)>& uiRenderer) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
     if (!particles.Simulate(deltaTime, 1.0f, false)) return false;
@@ -455,13 +458,15 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
     MetalAcrylic acrylic;
-    if (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height) ||
+    if (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height, backingScale) ||
         !acrylic.Apply(device, libraryPath, targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(), width, height, 3.0f, 0.75f)) return false;
     MetalBloom bloom;
-    if (!bloom.Apply(device, libraryPath, targets.Composite(), targets.BloomStrong(), targets.BloomWeak(),
+    if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(),
                      std::max(1U, width / 6U), std::max(1U, height / 6U), std::max(1U, width / 12U), std::max(1U, height / 12U))) return false;
     MetalToneMapper toneMapper;
-    if (!toneMapper.Apply(device, libraryPath, targets.Composite(), targets.BloomWeak(),
+    // The UI path receives its own tone-mapped acrylic texture. The scene path remains untouched.
+    if (!toneMapper.Apply(device, libraryPath, targets.Composite(), targets.BloomWeak(), targets.UiOverlay(), width, height) ||
+        !toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomWeak(),
                           [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;

@@ -136,7 +136,7 @@ public:
 class MetalAcrylic {
 public:
     bool BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
-                        std::uint32_t height);
+                        std::uint32_t height, float backingScale);
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
                void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
                float blurRadius, float opacity);
@@ -164,7 +164,7 @@ public:
     bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                 MetalParticleRenderer& particleRenderer,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
-                float deltaTime, std::uint32_t framesPerSecond,
+                float backingScale, float deltaTime, std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});
 
 private:

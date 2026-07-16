@@ -183,11 +183,12 @@ kernel void AcrylicComposite(texture2d<float, access::read> scene [[texture(0)]]
     output.write(float4(mix(background, overlayColor.rgb, overlayColor.a), 1.0f), id);
 }
 
-kernel void BuildAcrylicPanelMask(texture2d<float, access::write> output [[texture(0)]], uint2 id [[thread_position_in_grid]]) {
+struct PanelMask { float left; float top; float width; float height; };
+
+kernel void BuildAcrylicPanelMask(texture2d<float, access::write> output [[texture(0)]], constant PanelMask& panel [[buffer(0)]], uint2 id [[thread_position_in_grid]]) {
     if (id.x >= output.get_width() || id.y >= output.get_height()) return;
-    // The Cocoa host renders to a Retina drawable at 2x while ImGui uses logical points.
-    // This matches the 80x80, 210x95 ImGui panel configured by Main.mm.
-    const bool inside = id.x >= 160U && id.x < 580U && id.y >= 160U && id.y < 350U;
+    const bool inside = float(id.x) >= panel.left && float(id.x) < panel.left + panel.width &&
+                        float(id.y) >= panel.top && float(id.y) < panel.top + panel.height;
     output.write(inside ? float4(0.078f, 0.078f, 0.098f, 1.0f) : float4(0.0f), id);
 }
 

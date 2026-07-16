@@ -40,7 +40,7 @@ int main() {
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            1.0f / 60.0f, 60, [&](void* commands, void* encoder, void* pass) {
+                            drawableSize.scale, 1.0f / 60.0f, 60, [&](void* commands, void* encoder, void* pass) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
@@ -48,6 +48,15 @@ int main() {
                 ImGui::SetNextWindowSize(ImVec2(210.0f, 95.0f), ImGuiCond_Always);
                 ImGui::SetNextWindowBgAlpha(0.0f);
                 ImGui::Begin("Particle Saturn");
+                const ImVec2 panelPosition = ImGui::GetWindowPos();
+                const ImVec2 panelSize = ImGui::GetWindowSize();
+                const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
+                const float panelTop = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.height);
+                const float panelRight = (80.0f + 210.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                const float panelBottom = (80.0f + 95.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
+                                                      ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
+                                                      ImVec2(panelLeft, panelTop), ImVec2(panelRight, panelBottom));
                 ImGui::Text("Metal reference path");
                 ImGui::Text("Particles: %u", ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount);
                 ImGui::End();
