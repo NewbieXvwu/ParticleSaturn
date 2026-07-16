@@ -441,12 +441,13 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
 }
 
 void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
-                                 std::uint32_t height, const App::SceneState& scene, std::uint32_t particleCount) const {
+                                 std::uint32_t height, const App::AppState& state) const {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
-    struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY; } constants{
+    struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY, pixelRatio, densityCompensation; } constants{
         static_cast<float>(width) / static_cast<float>(height), static_cast<float>(height),
-        static_cast<float>(scene.simulationTimeSeconds), scene.zoom, scene.rotationX, scene.rotationY};
+        static_cast<float>(state.scene.simulationTimeSeconds), state.scene.zoom, state.scene.rotationX, state.scene.rotationY,
+        state.render.pixelRatio, state.render.densityCompensation};
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)starPipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)starBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
@@ -455,7 +456,7 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
     [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0
-                 vertexCount:std::clamp(particleCount, 1U, MetalParticleSystem::ParticleCount)];
+                 vertexCount:std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount)];
 }
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
@@ -474,7 +475,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state.scene, state.render.particleCount);
+    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;

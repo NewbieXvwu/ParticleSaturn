@@ -155,7 +155,7 @@ class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
-              const App::SceneState& scene, std::uint32_t particleCount) const;
+              const App::AppState& state) const;
 
 private:
     void* particlePipeline_ = nullptr;

@@ -255,9 +255,19 @@ struct PointVertex {
     float distance;
     float scale;
     float isRing;
+    float densityCompensation;
 };
 
-struct RenderConstants { float aspect; float screenHeight; float time; float scale; float rotationX; float rotationY; };
+struct RenderConstants {
+    float aspect;
+    float screenHeight;
+    float time;
+    float scale;
+    float rotationX;
+    float rotationY;
+    float pixelRatio;
+    float densityCompensation;
+};
 
 float4 UnpackColor(uint color) {
     return float4(float(color & 255U), float((color >> 8U) & 255U), float((color >> 16U) & 255U), float((color >> 24U) & 255U)) / 255.0f;
@@ -273,19 +283,54 @@ float3 RotateSaturn(float3 position, float rotationX, float rotationY) {
     return float3(yRotated.x, yRotated.y * cx - yRotated.z * sx, yRotated.y * sx + yRotated.z * cx);
 }
 
+float ParticleHash(float value) {
+    uint bits = as_type<uint>(value);
+    bits = ((bits >> 16U) ^ bits) * 0x45d9f3bU;
+    bits = ((bits >> 16U) ^ bits) * 0x45d9f3bU;
+    bits = (bits >> 16U) ^ bits;
+    return float(bits) * (1.0f / 4294967296.0f);
+}
+
+float FastSin(float value) {
+    constexpr float twoPi = 6.28318530718f;
+    constexpr float pi = 3.14159265359f;
+    value = fmod(value, twoPi);
+    value = value > pi ? value - twoPi : value;
+    const float squared = value * value;
+    return value * (1.0f - squared * (0.16666667f - squared * (0.00833333f - squared * 0.0001984f)));
+}
+
 vertex PointVertex ParticleVertex(const device Particle* particles [[buffer(0)]], constant RenderConstants& constants [[buffer(1)]],
                                   uint id [[vertex_id]]) {
     const Particle particle = particles[id];
     const float3 position = RotateSaturn(particle.position.xyz * constants.scale, constants.rotationX, constants.rotationY);
     const float distance = 100.0f - position.z;
     const float focalLength = 1.0f / tan(1.047f * 0.5f);
+    float3 viewPosition = float3(position.x, position.y, position.z - 100.0f);
+    float chaos = smoothstep(25.0f, 0.1f, distance);
+    chaos = chaos * chaos * chaos;
+    if (chaos > 0.001f) {
+        const float highFrequencyTime = constants.time * 40.0f;
+        const float3 scaledPosition = particle.position.xyz * 10.0f;
+        const float3 noise = float3(FastSin(highFrequencyTime + scaledPosition.x) * ParticleHash(particle.position.y * 43758.5f) * 0.5f,
+                                    FastSin(highFrequencyTime + scaledPosition.y + 1.5708f) * ParticleHash(particle.position.x * 43758.5f) * 0.5f,
+                                    FastSin(highFrequencyTime * 0.5f) * ParticleHash(particle.position.z * 43758.5f) * 0.5f) * 3.0f;
+        viewPosition += noise * chaos;
+    }
+    const float projectedDistance = max(-viewPosition.z, 0.001f);
     PointVertex output;
-    output.position = float4(position.x * focalLength / (constants.aspect * distance), position.y * focalLength / distance, 0.0f, 1.0f);
+    output.position = float4(viewPosition.x * focalLength / (constants.aspect * projectedDistance),
+                             viewPosition.y * focalLength / projectedDistance, 0.0f, 1.0f);
     output.color = UnpackColor(particle.color);
-    output.pointSize = clamp(particle.position.w * 350.0f * 0.55f / distance * (constants.screenHeight / 1080.0f), 0.0f, 300.0f);
+    const float nearMask = distance <= 50.0f ? 1.0f : 0.0f;
+    const float ringFactor = mix(mix(1.0f, 0.8f, nearMask), 1.0f, float(particle.isRing));
+    const float pointSize = particle.position.w * 350.0f * 0.55f / max(distance, 0.1f) *
+                            (constants.screenHeight / 1080.0f) * ringFactor * pow(max(constants.pixelRatio, 0.0001f), 0.8f);
+    output.pointSize = clamp(pointSize, 0.0f, 300.0f * (constants.screenHeight / 1080.0f));
     output.distance = distance;
     output.scale = constants.scale;
     output.isRing = float(particle.isRing);
+    output.densityCompensation = constants.densityCompensation;
     return output;
 }
 
@@ -301,7 +346,7 @@ fragment float4 ParticleFragment(PointVertex input [[stage_in]], float2 point [[
     const float3 bodyColor = mix(color, pow(input.color.rgb, float3(1.4f)) * 1.5f, closeMix * 0.8f);
     color = mix(bodyColor, ringColor, input.isRing);
     const float depthAlpha = smoothstep(0.0f, 10.0f, input.distance);
-    const float alpha = glow * input.color.a * (0.25f + 0.45f * smoothstep(0.0f, 0.5f, t)) * depthAlpha;
+    const float alpha = glow * input.color.a * (0.25f + 0.45f * smoothstep(0.0f, 0.5f, t)) * depthAlpha * input.densityCompensation;
     return float4(color, alpha);
 }
 
@@ -321,6 +366,7 @@ vertex PointVertex StarVertex(const device Star* stars [[buffer(0)]], constant R
     output.color = float4(float3(star.color), star.randomSeed);
     output.pointSize = clamp(star.size * 1000.0f / distance, 1.0f, 8.0f);
     output.distance = distance; output.scale = constants.time; output.isRing = 0.0f;
+    output.densityCompensation = 1.0f;
     return output;
 }
 
