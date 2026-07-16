@@ -102,6 +102,13 @@ add_subdirectory(src/gpu)
 add_subdirectory(src/render)
 add_subdirectory(src/shaders/abi)
 
+if(APPLE)
+    enable_language(OBJCXX)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "" FORCE)
+    add_subdirectory(src/gpu/backends/metal)
+    add_subdirectory(src/platform/macos)
+endif()
+
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})
 
 if(PARTICLESATURN_BUILD_LEGACY_DILIGENT AND NOT WIN32)

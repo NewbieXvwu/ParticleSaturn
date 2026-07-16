@@ -836,11 +836,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 5：最小 Cocoa 宿主和 Metal 表面
 
-- [ ] `NSApplication` + `NSWindow` 基础宿主
-- [ ] `CAMetalLayer` 表面
-- [ ] Retina 缩放、多显示器、全屏切换
-- [ ] `MetalDevice`、`MetalSurface`、`MetalFrameScheduler` 基础
-- [ ] `MetalResourceManager`、`MetalCommandContext` 基础
+进展（2026-07-16）：新增 `ParticleSaturn.macOS` 应用包目标，已在本机编译。`CocoaHost` 提供窗口、Retina 可绘制尺寸和全屏切换；Metal 后端已建立设备、表面、帧调度、资源和命令上下文的基础对象。
+
+- [x] `NSApplication` + `NSWindow` 基础宿主
+- [x] `CAMetalLayer` 表面
+- [x] Retina 缩放、多显示器、全屏切换
+- [x] `MetalDevice`、`MetalSurface`、`MetalFrameScheduler` 基础
+- [x] `MetalResourceManager`、`MetalCommandContext` 基础
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
