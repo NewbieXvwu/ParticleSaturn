@@ -44,6 +44,9 @@ int main() {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(210.0f, 95.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowBgAlpha(0.0f);
                 ImGui::Begin("Particle Saturn");
                 ImGui::Text("Metal reference path");
                 ImGui::Text("Particles: %u", ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount);

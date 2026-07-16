@@ -135,6 +135,8 @@ public:
 
 class MetalAcrylic {
 public:
+    bool BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
+                        std::uint32_t height);
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
                void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
                float blurRadius, float opacity);

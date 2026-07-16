@@ -846,7 +846,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
-进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化采用旧 Diligent 的 PCG 序列、半径分层与四色调色板，星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑；相机投影、粒子片元映射、FPS 右上角布局和 Bloom 合成均已接入实际帧路径。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；完整测试和应用包截图均已验证。
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化采用旧 Diligent 的 PCG 序列、半径分层与四色调色板，星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑；相机投影、粒子片元映射、FPS 右上角布局、Bloom 合成和 ImGui 面板的 Acrylic 背景均已接入实际帧路径。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；完整测试和应用包截图均已验证。
 
 - [x] 120 万粒子初始化（Metal 计算管线）
 - [x] 三缓冲计算模拟
@@ -855,7 +855,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] HDR 离屏渲染
 - [x] Bloom + Kawase 模糊
 - [x] 色调映射
-- [ ] 界面模糊 + Acrylic 合成
+- [x] 界面模糊 + Acrylic 合成
 - [x] 七段数码 FPS
 - [x] ImGui（官方 Metal 后端）
 - [x] 透明窗口 + `NSVisualEffectView`

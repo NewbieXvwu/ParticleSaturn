@@ -366,6 +366,24 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sce
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
+bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture,
+                                  std::uint32_t width, std::uint32_t height) {
+    if (outputTexture == nullptr || width == 0 || height == 0) return false;
+    NSError* error = nil;
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
+        newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"BuildAcrylicPanelMask");
+    [library release]; if (pipeline == nil) return false;
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:pipeline]; [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
+    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted]; [pipeline release]; [queue release];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
 bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, void* outputTexture,
                                   std::uint32_t width, std::uint32_t height, std::uint32_t framesPerSecond) {
     if (outputTexture == nullptr || width == 0 || height == 0 || framesPerSecond > 999) return false;
@@ -436,11 +454,14 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
+    MetalAcrylic acrylic;
+    if (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height) ||
+        !acrylic.Apply(device, libraryPath, targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(), width, height, 3.0f, 0.75f)) return false;
     MetalBloom bloom;
-    if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(),
+    if (!bloom.Apply(device, libraryPath, targets.Composite(), targets.BloomStrong(), targets.BloomWeak(),
                      std::max(1U, width / 6U), std::max(1U, height / 6U), std::max(1U, width / 12U), std::max(1U, height / 12U))) return false;
     MetalToneMapper toneMapper;
-    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomWeak(),
+    if (!toneMapper.Apply(device, libraryPath, targets.Composite(), targets.BloomWeak(),
                           [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
