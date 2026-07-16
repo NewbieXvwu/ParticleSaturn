@@ -890,7 +890,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 色调映射
 - [ ] 透明窗口
 - [ ] ImGui
-- [ ] GLSL 410 着色器编写
+- [x] GLSL 410 着色器编写
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
