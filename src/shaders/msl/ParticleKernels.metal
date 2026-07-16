@@ -72,3 +72,25 @@ kernel void ToneMap(texture2d<float, access::read> hdr [[texture(0)]],
     color = (color * (2.51f * color + 0.03f)) / (color * (2.43f * color + 0.59f) + 0.14f);
     ldr.write(float4(clamp(color, 0.0f, 1.0f), 1.0f), id);
 }
+
+kernel void BloomDownsample(texture2d<float, access::read> source [[texture(0)]],
+                            texture2d<float, access::write> target [[texture(1)]],
+                            uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= target.get_width() || id.y >= target.get_height()) return;
+    const uint2 base = id * 6U;
+    float3 color = source.read(base).rgb;
+    target.write(float4(max(color - 1.0f, 0.0f), 1.0f), id);
+}
+
+kernel void KawaseBlur(texture2d<float, access::read> source [[texture(0)]],
+                       texture2d<float, access::write> target [[texture(1)]],
+                       uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= target.get_width() || id.y >= target.get_height()) return;
+    const int2 p = int2(id);
+    const int2 size = int2(source.get_width() - 1, source.get_height() - 1);
+    float4 color = source.read(uint2(clamp(p + int2(-1, -1), int2(0), size))) +
+                   source.read(uint2(clamp(p + int2(1, -1), int2(0), size))) +
+                   source.read(uint2(clamp(p + int2(-1, 1), int2(0), size))) +
+                   source.read(uint2(clamp(p + int2(1, 1), int2(0), size)));
+    target.write(color * 0.25f, id);
+}

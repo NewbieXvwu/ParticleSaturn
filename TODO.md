@@ -853,7 +853,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 50,000 星体
 - [x] 间接绘制
 - [x] HDR 离屏渲染
-- [ ] Bloom + Kawase 模糊
+- [x] Bloom + Kawase 模糊
 - [x] 色调映射
 - [ ] 界面模糊 + Acrylic 合成
 - [ ] 七段数码 FPS
