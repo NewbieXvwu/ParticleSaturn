@@ -721,6 +721,8 @@ normalize_arm_i8mm.cpp
 
 ## 14. 构建系统
 
+进展（2026-07-16）：顶层 CMake 已可在非 Windows 平台构建通用应用核心和 GPU 接口测试；旧 `ParticleSaturn.Diligent` 目标继续默认仅在 Windows 启用。
+
 ### 14.1 CMake 目标
 
 ```
@@ -813,10 +815,12 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 > 此阶段**不引入 MoltenVK**。先以 Windows 三后端（D3D11/D3D12/Vulkan）建立一致性基线，避免 macOS Vulkan 栈的 portability 差异干扰 DiligentAdapter 重构。MoltenVK 和 KosmicKrisp 分别在阶段 8/9 接入，届时以已完成阶段 6 的 Metal 为 macOS 参考路径进行逐帧对比。
 
-- [ ] 定义 GPU API 核心对象（设备、资源、管线、绑定、命令、同步）
-- [ ] 定义能力表
+进展（2026-07-16）：`src/gpu/interface/` 已提供不透明资源句柄、资源状态、命令列表和设备契约；`ParticleSimulationStrategy` 已按能力表选择计算、变换反馈或解析式路径。Diligent 适配和渲染通道迁移待原生后端完成后接入。
+
+- [x] 定义 GPU API 核心对象（设备、资源、管线、绑定、命令、同步）
+- [x] 定义能力表
 - [ ] 实现 `DiligentAdapter`（D3D11/D3D12/Vulkan）
-- [ ] 定义粒子模拟策略接口
+- [x] 定义粒子模拟策略接口
 - [ ] 按通道逐步迁移：星空 → 粒子 → Bloom → 界面模糊 → 最终合成
 
 ### 阶段 4：建立共享渲染图和 GPU ABI
@@ -1037,4 +1041,3 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 - [x] ~~对整个目标使用 `-march=native`~~ — 按变体隔离编译
 - [x] ~~通过 SPIRV-Cross 生成正式 Metal 着色器~~ — 手写 MSL
 - [x] ~~一次性重写替换 Windows~~ — 分阶段迁移保持可运行
-

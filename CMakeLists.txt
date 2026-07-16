@@ -98,6 +98,18 @@ message(STATUS "App build id: ${APP_BUILD_ID}")
 
 include(CTest)
 add_subdirectory(src/app)
+add_subdirectory(src/gpu)
+
+option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})
+
+if(PARTICLESATURN_BUILD_LEGACY_DILIGENT AND NOT WIN32)
+    message(FATAL_ERROR "ParticleSaturn.Diligent is a Windows-only legacy target")
+endif()
+
+if(NOT PARTICLESATURN_BUILD_LEGACY_DILIGENT)
+    message(STATUS "Skipping Windows-only legacy Diligent renderer")
+    return()
+endif()
 
 # ============================================================================
 # DiligentCore 子模块版本（用于缓存失效判定）
