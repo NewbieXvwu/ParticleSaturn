@@ -23,6 +23,9 @@ int main(int argc, char* argv[]) {
     assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), 320, 180));
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(), 320, 180, 160, 90));
+    ParticleSaturn::Gpu::Metal::MetalIndirectDraw indirect;
+    assert(indirect.Create(device, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
+    assert(indirect.Buffer() != nullptr);
     const auto cachePath = std::filesystem::temp_directory_path() / "ParticleSaturnTests.metallibarchive";
     std::filesystem::remove(cachePath);
     ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;

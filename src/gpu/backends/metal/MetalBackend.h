@@ -125,4 +125,13 @@ public:
                std::uint32_t strongWidth, std::uint32_t strongHeight, std::uint32_t weakWidth, std::uint32_t weakHeight);
 };
 
+class MetalIndirectDraw {
+public:
+    bool Create(MetalDevice& device, std::uint32_t vertexCount);
+    void* Buffer() const noexcept;
+
+private:
+    void* buffer_ = nullptr;
+};
+
 } // namespace ParticleSaturn::Gpu::Metal

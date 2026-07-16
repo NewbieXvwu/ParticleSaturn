@@ -275,4 +275,14 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
+bool MetalIndirectDraw::Create(MetalDevice& device, std::uint32_t vertexCount) {
+    struct Arguments { std::uint32_t vertexCount, instanceCount, vertexStart, baseInstance; };
+    const Arguments arguments{vertexCount, 1, 0, 0};
+    buffer_ = [(id<MTLDevice>)device.NativeDevice() newBufferWithBytes:&arguments length:sizeof(arguments)
+        options:MTLResourceStorageModeShared];
+    return buffer_ != nullptr;
+}
+
+void* MetalIndirectDraw::Buffer() const noexcept { return buffer_; }
+
 } // namespace ParticleSaturn::Gpu::Metal
