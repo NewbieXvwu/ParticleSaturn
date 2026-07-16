@@ -901,7 +901,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
-进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；包内 ICD 已由 `vulkaninfo` 实测枚举为 `DRIVER_ID_MESA_KOSMICKRISP`。
+进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；包内 ICD 已由 `vulkaninfo` 实测枚举为 `DRIVER_ID_MESA_KOSMICKRISP`。DiligentCore 的 Vulkan 静态后端在 macOS 配置时仍缺少 SPIRV-Tools、glslang、SPIRV-Cross 与 volk 的嵌套构建树，且其中 SPIRV-Cross/Headers 有现存用户改动，故未递归初始化或覆盖子模块；`DiligentVulkanAdapter` 保持未完成。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
