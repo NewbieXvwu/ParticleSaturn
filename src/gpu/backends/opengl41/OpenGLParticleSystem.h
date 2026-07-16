@@ -1,14 +1,30 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace ParticleSaturn::Gpu::OpenGL41 {
 
 class OpenGLParticleSystem {
 public:
     static constexpr std::uint32_t ParticleCount = 1200000;
-    bool Initialize(const char* transformFeedbackVertexShader, const char* renderVertexShader, const char* renderFragmentShader);
+    struct ParticleSnapshot {
+        float position[4]{};
+        std::uint32_t color = 0;
+        float speed = 0.0f;
+        float isRing = 0.0f;
+        float padding = 0.0f;
+    };
+
+    OpenGLParticleSystem() = default;
+    ~OpenGLParticleSystem();
+    OpenGLParticleSystem(const OpenGLParticleSystem&) = delete;
+    OpenGLParticleSystem& operator=(const OpenGLParticleSystem&) = delete;
+
+    bool Initialize(const char* transformFeedbackVertexShader, const char* renderVertexShader, const char* renderFragmentShader,
+                    std::uint32_t seed = 0x53415455U);
     void Simulate(float deltaTime, float handScale, bool handTracked);
+    bool ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const;
     std::uint32_t RenderVertexArray() const noexcept;
     std::uint32_t IndirectBuffer() const noexcept;
     void DrawIndirect() const;

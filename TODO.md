@@ -888,11 +888,11 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
-进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。后端含有变换反馈、间接绘制、HDR、Bloom 和色调映射的初步代码，现有测试仅覆盖空缓冲的离屏图形调用与色调映射读回，尚未建立真实窗口、粒子初始化数据和截图验收。因此这些视觉通道保持未完成，不能作为 Metal 对照路径。
+进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，前四个粒子的完整字段作为读回基线；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。间接参数缓冲使用 `glDrawArraysIndirect` 参与实际绘制，测试已验证两帧后的位置旋转。HDR、Bloom 和色调映射仍只覆盖离屏调用与色调映射读回，未建立真实窗口、星空和截图验收，不能作为 Metal 对照路径。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
-- [ ] 变换反馈粒子更新（三缓冲轮转）
-- [ ] 间接绘制
+- [x] 变换反馈粒子更新（三缓冲轮转，固定种子读回基线）
+- [x] 间接绘制（`glDrawArraysIndirect`）
 - [ ] HDR 离屏缓冲
 - [ ] Bloom + Kawase 模糊
 - [ ] 色调映射

@@ -7,6 +7,45 @@
 #include "gpu/backends/opengl41/OpenGLToneMapper.h"
 
 #include <cassert>
+#include <cmath>
+#include <vector>
+
+namespace {
+
+void AssertNear(float actual, float expected) {
+    assert(std::abs(actual - expected) < 0.0001f);
+}
+
+void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem& particles) {
+    std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> snapshots;
+    assert(particles.ReadBack(snapshots, 64));
+    assert(snapshots.size() == 64);
+    using Snapshot = ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot;
+    const Snapshot expected[] = {
+        {{7.55536461f, 8.98992634f, 12.9282703f, 1.78891587f}, 0xcce3dac5U, 0.0f, 0.0f, 0.0f},
+        {{-1.69500279f, -16.1162949f, -0.682979405f, 1.37864661f}, 0xccc9a070U, 0.0f, 0.0f, 0.0f},
+        {{15.9242182f, -0.907382071f, 8.3308363f, 1.67867303f}, 0xcce3dac5U, 0.0f, 0.0f, 0.0f},
+        {{3.47033906f, -0.0189455301f, -27.8411579f, 1.26095307f}, 0xd9cec0a2U, 1.51033187f, 1.0f, 0.0f},
+    };
+    for (std::size_t index = 0; index < std::size(expected); ++index) {
+        const auto& actual = snapshots[index];
+        for (std::size_t component = 0; component < 4; ++component) AssertNear(actual.position[component], expected[index].position[component]);
+        assert(actual.color == expected[index].color);
+        AssertNear(actual.speed, expected[index].speed);
+        AssertNear(actual.isRing, expected[index].isRing);
+        AssertNear(actual.padding, expected[index].padding);
+    }
+    for (const auto& particle : snapshots) {
+        assert(std::isfinite(particle.position[0]));
+        assert(std::isfinite(particle.position[1]));
+        assert(std::isfinite(particle.position[2]));
+        assert(particle.position[3] > 0.0f);
+        assert(particle.color != 0U);
+        assert(particle.isRing == 0.0f || particle.isRing == 1.0f);
+    }
+}
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     assert(argc == 5);
@@ -22,6 +61,7 @@ int main(int argc, char* argv[]) {
         [context makeCurrentContext];
         ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem particles;
         assert(particles.Initialize(argv[1], argv[2], argv[3]));
+        VerifyInitializedParticles(particles);
         ParticleSaturn::Gpu::OpenGL41::OpenGLRenderTargets targets;
         assert(targets.Create(1920, 1080));
         assert(targets.SceneFramebuffer() != 0);
@@ -35,6 +75,14 @@ int main(int argc, char* argv[]) {
         assert(glGetError() == GL_NO_ERROR);
         assert(particles.RenderVertexArray() != 0);
         assert(particles.IndirectBuffer() != 0);
+        std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> firstFrame;
+        assert(particles.ReadBack(firstFrame, 1));
+        particles.Simulate(1.0f / 120.0f, 1.0f, false);
+        std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> secondFrame;
+        assert(particles.ReadBack(secondFrame, 1));
+        AssertNear(secondFrame[0].position[1], firstFrame[0].position[1]);
+        assert(std::abs(secondFrame[0].position[0] - firstFrame[0].position[0]) > 0.000001f ||
+               std::abs(secondFrame[0].position[2] - firstFrame[0].position[2]) > 0.000001f);
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);
         glClearColor(3.0f, 2.0f, 1.0f, 1.0f);
