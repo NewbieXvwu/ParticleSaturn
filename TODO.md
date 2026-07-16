@@ -852,7 +852,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 三缓冲计算模拟
 - [x] 50,000 星体
 - [x] 间接绘制
-- [ ] HDR 离屏渲染
+- [x] HDR 离屏渲染
 - [ ] Bloom + Kawase 模糊
 - [ ] 色调映射
 - [ ] 界面模糊 + Acrylic 合成

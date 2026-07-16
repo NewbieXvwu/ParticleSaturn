@@ -14,6 +14,11 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalStarField stars;
     assert(stars.Initialize(device, argv[1], 0x53544152U));
     assert(stars.Buffer() != nullptr);
+    ParticleSaturn::Gpu::Metal::MetalRenderTargets targets;
+    assert(targets.Create(device, 1920, 1080));
+    assert(targets.SceneHdr() != nullptr);
+    assert(targets.BloomStrong() != nullptr);
+    assert(targets.BloomWeak() != nullptr);
     const auto cachePath = std::filesystem::temp_directory_path() / "ParticleSaturnTests.metallibarchive";
     std::filesystem::remove(cachePath);
     ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;

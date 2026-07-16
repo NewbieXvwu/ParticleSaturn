@@ -212,4 +212,26 @@ bool MetalStarField::Initialize(MetalDevice& device, const char* libraryPath, st
 
 void* MetalStarField::Buffer() const noexcept { return buffer_; }
 
+bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height) {
+    if (width == 0 || height == 0) return false;
+    auto* descriptor = [[MTLTextureDescriptor alloc] init];
+    [descriptor setTextureType:MTLTextureType2D];
+    [descriptor setPixelFormat:MTLPixelFormatRGBA16Float];
+    [descriptor setUsage:MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite];
+    [descriptor setStorageMode:MTLStorageModePrivate];
+    auto create = ^id<MTLTexture>(std::uint32_t textureWidth, std::uint32_t textureHeight) {
+        [descriptor setWidth:textureWidth]; [descriptor setHeight:textureHeight];
+        return [(id<MTLDevice>)device.NativeDevice() newTextureWithDescriptor:descriptor];
+    };
+    sceneHdr_ = create(width, height);
+    bloomStrong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
+    bloomWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
+    [descriptor release];
+    return sceneHdr_ != nullptr && bloomStrong_ != nullptr && bloomWeak_ != nullptr;
+}
+
+void* MetalRenderTargets::SceneHdr() const noexcept { return sceneHdr_; }
+void* MetalRenderTargets::BloomStrong() const noexcept { return bloomStrong_; }
+void* MetalRenderTargets::BloomWeak() const noexcept { return bloomWeak_; }
+
 } // namespace ParticleSaturn::Gpu::Metal

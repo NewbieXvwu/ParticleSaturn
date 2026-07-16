@@ -100,4 +100,17 @@ private:
     void* buffer_ = nullptr;
 };
 
+class MetalRenderTargets {
+public:
+    bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height);
+    void* SceneHdr() const noexcept;
+    void* BloomStrong() const noexcept;
+    void* BloomWeak() const noexcept;
+
+private:
+    void* sceneHdr_ = nullptr;
+    void* bloomStrong_ = nullptr;
+    void* bloomWeak_ = nullptr;
+};
+
 } // namespace ParticleSaturn::Gpu::Metal
