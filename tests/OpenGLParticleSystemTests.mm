@@ -9,7 +9,7 @@
 #include <cassert>
 
 int main(int argc, char* argv[]) {
-    assert(argc == 3);
+    assert(argc == 5);
     @autoreleasepool {
         const NSOpenGLPixelFormatAttribute attributes[] = {
             NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion4_1Core,
@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
         assert(context != nil);
         [context makeCurrentContext];
         ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem particles;
-        assert(particles.Initialize(argv[1]));
+        assert(particles.Initialize(argv[1], argv[2], argv[3]));
         ParticleSaturn::Gpu::OpenGL41::OpenGLRenderTargets targets;
         assert(targets.Create(1920, 1080));
         assert(targets.SceneFramebuffer() != 0);
@@ -35,14 +35,16 @@ int main(int argc, char* argv[]) {
         assert(glGetError() == GL_NO_ERROR);
         assert(particles.RenderVertexArray() != 0);
         assert(particles.IndirectBuffer() != 0);
+        particles.DrawIndirect();
+        assert(glGetError() == GL_NO_ERROR);
         glClearColor(3.0f, 2.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         assert(glGetError() == GL_NO_ERROR);
         ParticleSaturn::Gpu::OpenGL41::OpenGLBloom bloom;
-        assert(bloom.Initialize(argv[2]));
+        assert(bloom.Initialize(argv[4]));
         assert(bloom.Apply(targets));
         ParticleSaturn::Gpu::OpenGL41::OpenGLToneMapper toneMapper;
-        assert(toneMapper.Initialize(argv[2]));
+        assert(toneMapper.Initialize(argv[4]));
         assert(toneMapper.Apply(targets));
         float color[4]{};
         glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
