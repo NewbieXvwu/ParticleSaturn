@@ -130,3 +130,37 @@ kernel void AcrylicComposite(texture2d<float, access::read> scene [[texture(0)]]
     const float3 background = mix(sceneColor.rgb, acrylic, mask);
     output.write(float4(mix(background, overlayColor.rgb, overlayColor.a), 1.0f), id);
 }
+
+bool IsSevenSegmentPixel(uint2 pixel, uint digit, uint digitIndex, uint scale) {
+    constexpr uint SegmentMasks[10] = {0x3fU, 0x06U, 0x5bU, 0x4fU, 0x66U, 0x6dU, 0x7dU, 0x07U, 0x7fU, 0x6fU};
+    const uint x = pixel.x - (8U + digitIndex * 10U * scale);
+    const uint y = pixel.y - 8U;
+    const uint thickness = scale;
+    const uint width = 7U * scale;
+    const uint height = 14U * scale;
+    if (x >= width || y >= height) return false;
+    const uint mask = SegmentMasks[digit];
+    const bool top = (mask & 0x01U) != 0U && y < thickness && x >= thickness && x + thickness < width;
+    const bool upperRight = (mask & 0x02U) != 0U && x + thickness >= width && y >= thickness && y + thickness < height / 2U;
+    const bool lowerRight = (mask & 0x04U) != 0U && x + thickness >= width && y > height / 2U && y + thickness < height;
+    const bool bottom = (mask & 0x08U) != 0U && y + thickness >= height && x >= thickness && x + thickness < width;
+    const bool lowerLeft = (mask & 0x10U) != 0U && x < thickness && y > height / 2U && y + thickness < height;
+    const bool upperLeft = (mask & 0x20U) != 0U && x < thickness && y >= thickness && y + thickness < height / 2U;
+    const bool middle = (mask & 0x40U) != 0U && y >= height / 2U - thickness / 2U && y <= height / 2U + thickness / 2U &&
+                        x >= thickness && x + thickness < width;
+    return top || upperRight || lowerRight || bottom || lowerLeft || upperLeft || middle;
+}
+
+kernel void RenderSevenSegmentFps(texture2d<float, access::write> output [[texture(0)]],
+                                  constant uint& framesPerSecond [[buffer(0)]],
+                                  uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= output.get_width() || id.y >= output.get_height()) return;
+    const uint scale = max(1U, output.get_height() / 180U);
+    for (uint digitIndex = 0U; digitIndex < 3U; ++digitIndex) {
+        const uint divisor = digitIndex == 0U ? 100U : (digitIndex == 1U ? 10U : 1U);
+        if (IsSevenSegmentPixel(id, (framesPerSecond / divisor) % 10U, digitIndex, scale)) {
+            output.write(float4(0.85f, 0.97f, 1.0f, 1.0f), id);
+            return;
+        }
+    }
+}

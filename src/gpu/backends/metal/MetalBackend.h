@@ -138,6 +138,12 @@ public:
                float blurRadius, float opacity);
 };
 
+class MetalSevenSegmentFps {
+public:
+    bool Render(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
+                std::uint32_t height, std::uint32_t framesPerSecond);
+};
+
 class MetalIndirectDraw {
 public:
     bool Create(MetalDevice& device, std::uint32_t vertexCount);

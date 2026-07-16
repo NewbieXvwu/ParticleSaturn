@@ -29,6 +29,8 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
     assert(acrylic.Apply(device, argv[1], targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
                          320, 180, 3.0f, 0.75f));
+    ParticleSaturn::Gpu::Metal::MetalSevenSegmentFps fps;
+    assert(fps.Render(device, argv[1], targets.Composite(), 320, 180, 120));
     ParticleSaturn::Gpu::Metal::MetalIndirectDraw indirect;
     assert(indirect.Create(device, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(indirect.Buffer() != nullptr);

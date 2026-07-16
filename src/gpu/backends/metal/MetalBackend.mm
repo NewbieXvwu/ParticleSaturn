@@ -324,6 +324,29 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sce
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
+bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, void* outputTexture,
+                                  std::uint32_t width, std::uint32_t height, std::uint32_t framesPerSecond) {
+    if (outputTexture == nullptr || width == 0 || height == 0 || framesPerSecond > 999) return false;
+    NSError* error = nil;
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
+        newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"RenderSevenSegmentFps");
+    [library release];
+    if (pipeline == nil) return false;
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:pipeline];
+    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
+    [encoder setBytes:&framesPerSecond length:sizeof(framesPerSecond) atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
+      threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
+    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
+    [pipeline release]; [queue release];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
 bool MetalIndirectDraw::Create(MetalDevice& device, std::uint32_t vertexCount) {
     struct Arguments { std::uint32_t vertexCount, instanceCount, vertexStart, baseInstance; };
     const Arguments arguments{vertexCount, 1, 0, 0};
