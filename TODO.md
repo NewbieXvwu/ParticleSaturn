@@ -865,13 +865,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
-进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。摄像头、推理和设置服务仍待迁移。
+进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、设备枚举、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。设备热插拔通知、原生选择界面和 TensorFlow Lite 仍待迁移。
 
-- [ ] `AVCaptureSession` 实现 `ICameraCapture`
-- [ ] 摄像头权限请求
+- [x] `AVCaptureSession` 实现 `ICameraCapture`
+- [x] 摄像头权限请求
 - [ ] 设备唯一标识、热插拔、占用错误
 - [ ] 原生设备选择窗口（预览、记住选择、主动重选）
-- [ ] `CVPixelBuffer` → 推理格式转换（Accelerate/NEON）
+- [x] `CVPixelBuffer` → 推理格式转换（Accelerate/NEON）
 - [x] NEON 归一化实现
 - [x] SIMD 调度系统重构（能力检测、内核注册、自动选择）
 - [ ] TensorFlow Lite XNNPACK ARM64 内核启用
