@@ -885,7 +885,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转）
 - [ ] 间接绘制
-- [ ] HDR 离屏缓冲
+- [x] HDR 离屏缓冲
 - [ ] Bloom + Kawase 模糊
 - [ ] 色调映射
 - [x] 透明窗口

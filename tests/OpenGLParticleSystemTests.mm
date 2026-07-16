@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 
 #include "gpu/backends/opengl41/OpenGLParticleSystem.h"
+#include "gpu/backends/opengl41/OpenGLRenderTargets.h"
 
 #include <cassert>
 
@@ -21,6 +22,11 @@ int main(int argc, char* argv[]) {
         particles.Simulate(1.0f / 120.0f, 1.0f, false);
         assert(particles.RenderVertexArray() != 0);
         assert(particles.IndirectBuffer() != 0);
+        ParticleSaturn::Gpu::OpenGL41::OpenGLRenderTargets targets;
+        assert(targets.Create(1920, 1080));
+        assert(targets.SceneFramebuffer() != 0);
+        assert(targets.BloomStrongFramebuffer() != 0);
+        assert(targets.BloomWeakFramebuffer() != 0);
         [context release];
     }
     return 0;
