@@ -10,11 +10,16 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/ParticleKernels.metallib"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/palm_detection_full.tflite"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/hand_landmark_full.tflite"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
