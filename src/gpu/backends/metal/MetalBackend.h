@@ -23,6 +23,7 @@ class MetalSurface {
 public:
     MetalSurface(MetalDevice& device, void* nativeLayer);
     bool AcquireDrawable();
+    bool Present(MetalDevice& device);
     void* NativeDrawable() const noexcept;
 
 private:
@@ -142,6 +143,13 @@ class MetalSevenSegmentFps {
 public:
     bool Render(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
                 std::uint32_t height, std::uint32_t framesPerSecond);
+};
+
+class MetalFrameRenderer {
+public:
+    bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
+                MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
+                float deltaTime, std::uint32_t framesPerSecond);
 };
 
 class MetalIndirectDraw {

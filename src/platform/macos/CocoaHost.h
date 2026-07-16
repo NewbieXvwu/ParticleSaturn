@@ -3,6 +3,7 @@
 #include "app/state/AppStates.h"
 
 #include <cstdint>
+#include <functional>
 
 namespace ParticleSaturn::Platform::MacOS {
 
@@ -21,7 +22,7 @@ public:
     CocoaHost& operator=(const CocoaHost&) = delete;
 
     void Show();
-    void Run();
+    void Run(const std::function<void()>& frameCallback = {});
     void ToggleFullscreen();
     void SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;

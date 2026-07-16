@@ -38,7 +38,7 @@ MetalSurface::MetalSurface(MetalDevice& device, void* nativeLayer) : device_{dev
     auto* layer = (CAMetalLayer*)layer_;
     [layer setDevice:(id<MTLDevice>)device_.NativeDevice()];
     [layer setPixelFormat:MTLPixelFormatBGRA8Unorm];
-    [layer setFramebufferOnly:YES];
+    [layer setFramebufferOnly:NO];
 }
 
 bool MetalSurface::AcquireDrawable() {
@@ -48,6 +48,17 @@ bool MetalSurface::AcquireDrawable() {
 
 void* MetalSurface::NativeDrawable() const noexcept {
     return drawable_;
+}
+
+bool MetalSurface::Present(MetalDevice& device) {
+    if (drawable_ == nullptr) return false;
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    [commands presentDrawable:(id<CAMetalDrawable>)drawable_];
+    [commands commit];
+    [queue release];
+    drawable_ = nullptr;
+    return true;
 }
 
 std::uint64_t MetalFrameScheduler::BeginFrame() {
@@ -345,6 +356,29 @@ bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, 
     [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
     [pipeline release]; [queue release];
     return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
+                                MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
+                                std::uint32_t height, float deltaTime, std::uint32_t framesPerSecond) {
+    if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
+    if (!particles.Simulate(deltaTime, 1.0f, false)) return false;
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = (id<MTLTexture>)targets.SceneHdr();
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
+    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+    [encoder endEncoding];
+    [commands commit]; [commands waitUntilCompleted]; [queue release];
+    if ([commands status] != MTLCommandBufferStatusCompleted) return false;
+    MetalToneMapper toneMapper;
+    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
+    MetalSevenSegmentFps fps;
+    if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
+    return surface.Present(device);
 }
 
 bool MetalIndirectDraw::Create(MetalDevice& device, std::uint32_t vertexCount) {

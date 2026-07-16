@@ -43,7 +43,18 @@ void CocoaHost::Show() {
     [NSApp activateIgnoringOtherApps:YES];
 }
 
-void CocoaHost::Run() {
+void CocoaHost::Run(const std::function<void()>& frameCallback) {
+    if (frameCallback) {
+        auto* callback = new std::function<void()>{frameCallback};
+        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer* timer) {
+            if (![NSApp isRunning]) {
+                [timer invalidate];
+                delete callback;
+                return;
+            }
+            (*callback)();
+        }];
+    }
     [NSApp run];
 }
 
