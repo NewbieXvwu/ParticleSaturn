@@ -9,9 +9,18 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/ParticleKernels.metallib"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "/opt/homebrew/opt/vulkan-loader/lib/libvulkan.1.dylib"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib/libvulkan.1.dylib"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "/opt/homebrew/opt/molten-vk/lib/libMoltenVK.dylib"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib/libMoltenVK.dylib"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "/opt/homebrew/opt/molten-vk/etc/vulkan/icd.d/MoltenVK_icd.json"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d/MoltenVK_icd.json"
 )

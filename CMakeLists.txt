@@ -121,6 +121,7 @@ if(APPLE)
     add_subdirectory(src/platform/macos)
     add_subdirectory(src/services/settings/macos)
     add_subdirectory(src/services/camera/macos)
+    add_subdirectory(src/services/vulkan)
 endif()
 
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})

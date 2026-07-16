@@ -894,9 +894,11 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
-- [ ] 应用包内 Vulkan Loader + ICD 布局
-- [ ] `VK_DRIVER_FILES` 运行时设置
-- [ ] MoltenVK 接入 + `VK_KHR_portability_enumeration`
+进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`。
+
+- [x] 应用包内 Vulkan Loader + ICD 布局
+- [x] `VK_DRIVER_FILES` 运行时设置
+- [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
 - [x] 跟随 KosmicKrisp 最新提交（不锁定）
 - [ ] KosmicKrisp 接入
 - [ ] `DiligentVulkanAdapter` 兼容修复
