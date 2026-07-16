@@ -1,0 +1,16 @@
+diff --git a/volk.c b/volk.c
+index d60422d..6137fc8 100644
+--- a/volk.c
++++ b/volk.c
+@@ -90,7 +90,10 @@ VkResult volkInitialize(void)
+ 	// note: function pointer is cast through void function pointer to silence cast-function-type warning on gcc8
+ 	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)(void(*)(void))GetProcAddress(module, "vkGetInstanceProcAddr");
+ #elif defined(__APPLE__)
+-	void* module = dlopen("libvulkan.dylib", RTLD_NOW | RTLD_LOCAL);
++	const char* loaderPath = getenv("PARTICLESATURN_VULKAN_LOADER");
++	void* module = loaderPath ? dlopen(loaderPath, RTLD_NOW | RTLD_LOCAL) : NULL;
++	if (!module)
++		module = dlopen("libvulkan.dylib", RTLD_NOW | RTLD_LOCAL);
+ 	if (!module)
+ 		module = dlopen("libvulkan.1.dylib", RTLD_NOW | RTLD_LOCAL);
+ 	// modern versions of macOS don't search /usr/local/lib automatically contrary to what man dlopen says

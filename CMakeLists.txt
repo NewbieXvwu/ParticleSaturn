@@ -124,6 +124,29 @@ if(APPLE)
     add_subdirectory(src/services/hand_tracking/macos)
     add_subdirectory(src/services/resources/macos)
     add_subdirectory(src/services/vulkan)
+
+    # macOS Vulkan uses the public Diligent Vulkan backend with the packaged
+    # loader and one selected ICD. The legacy Diligent application remains
+    # Windows-only below.
+    set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_DIRECT3D11 ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_DIRECT3D12 ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_METAL ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_VULKAN OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_ARCHIVER ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_HLSL ON CACHE BOOL "" FORCE)
+    set(SPIRV_WERROR OFF CACHE BOOL "" FORCE)
+    execute_process(
+        COMMAND "${CMAKE_SOURCE_DIR}/scripts/apply_third_party_patch.sh" diligent-volk-loader-path
+        RESULT_VARIABLE PARTICLESATURN_DILIGENT_PATCH_RESULT
+    )
+    if(NOT PARTICLESATURN_DILIGENT_PATCH_RESULT EQUAL 0)
+        message(FATAL_ERROR "Unable to apply Diligent volk loader patch")
+    endif()
+    add_subdirectory(libs/DiligentCore)
+    add_subdirectory(src/gpu/backends/diligent)
 endif()
 
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})

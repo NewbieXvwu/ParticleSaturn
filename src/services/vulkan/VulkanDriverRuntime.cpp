@@ -21,6 +21,24 @@ bool ConfigureDriver(App::VulkanDriver driver, const std::string& bundleResource
         error = "unable to set VK_DRIVER_FILES";
         return false;
     }
+    const auto loaderDirectory = (std::filesystem::path{bundleResources} / "Vulkan" / "lib").string();
+    const auto loaderPath = (std::filesystem::path{loaderDirectory} / "libvulkan.1.dylib").string();
+    if (!std::filesystem::is_regular_file(loaderPath)) {
+        error = "packaged Vulkan loader is missing: " + loaderPath;
+        return false;
+    }
+    if (setenv("PARTICLESATURN_VULKAN_LOADER", loaderPath.c_str(), 1) != 0) {
+        error = "unable to set PARTICLESATURN_VULKAN_LOADER";
+        return false;
+    }
+    const char* fallbackPath = std::getenv("DYLD_FALLBACK_LIBRARY_PATH");
+    const std::string loaderSearchPath = fallbackPath == nullptr || fallbackPath[0] == '\0'
+        ? loaderDirectory
+        : loaderDirectory + ':' + fallbackPath;
+    if (setenv("DYLD_FALLBACK_LIBRARY_PATH", loaderSearchPath.c_str(), 1) != 0) {
+        error = "unable to set DYLD_FALLBACK_LIBRARY_PATH";
+        return false;
+    }
     std::clog << "[Vulkan] selected ICD " << name << " at " << path << '\n';
     error.clear();
     return true;

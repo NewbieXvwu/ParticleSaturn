@@ -65,7 +65,8 @@ scripts/
 ├── compile_shaders.ps1                # PowerShell，DXBC/DXIL + SPIR-V，无 Metal
 ├── build_diligent.ps1 / build_opencv.cmd / build_tflite.cmd
 ├── stage_handtracker.ps1
-└── imgui_md3.patch / tflite-prune.patch
+└── apply_third_party_patch.sh          # 幂等应用项目维护的第三方补丁
+patches/                                # ImGui、TensorFlow Lite 与 Diligent 的受控补丁
 ```
 
 ### 1.2 硬约束清单
@@ -901,14 +902,14 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
-进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；包内 ICD 已由 `vulkaninfo` 实测枚举为 `DRIVER_ID_MESA_KOSMICKRISP`。DiligentCore 的 Vulkan 静态后端在 macOS 配置时仍缺少 SPIRV-Tools、glslang、SPIRV-Cross 与 volk 的嵌套构建树，且其中 SPIRV-Cross/Headers 有现存用户改动，故未递归初始化或覆盖子模块；`DiligentVulkanAdapter` 保持未完成。
+进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`、包内 Loader 绝对路径与动态库回退路径，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；包内 ICD 已由 `vulkaninfo` 实测枚举为 `DRIVER_ID_MESA_KOSMICKRISP`。DiligentCore 的 Vulkan 静态后端已在 macOS 完整构建。其锁定的 `glslang` 提交 `a57276b` 已不再由上游远端提供，构建使用当前可获取的 Diligent 维护分支提交 `b5782e52`；其余嵌套依赖均恢复父仓库锁定版本。`patches/diligent-volk-loader-path.patch` 由 CMake 配置阶段通过 `scripts/apply_third_party_patch.sh` 幂等应用，使旧 volk 从 `PARTICLESATURN_VULKAN_LOADER` 读取包内 Loader 的绝对路径。`DiligentVulkanAdapter` 会在选择 ICD 后创建带 portability 枚举的无表面设备、读取适配器信息并映射计算、存储缓冲、间接绘制等能力；测试以独立进程分别实际创建 MoltenVK 和 KosmicKrisp 设备。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
 - [x] 跟随 KosmicKrisp 最新提交（不锁定）
 - [x] KosmicKrisp 接入
-- [ ] `DiligentVulkanAdapter` 兼容修复
+- [x] `DiligentVulkanAdapter` 兼容修复（双 ICD 独立进程设备创建测试）
 - [x] 驱动切换 + 重启
 - [x] 日志记录 ICD 信息
 

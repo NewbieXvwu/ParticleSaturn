@@ -5,7 +5,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tensorflow_root="$repo_root/HandTracker/libs/tensorflow"
 tflite_source="$tensorflow_root/tensorflow/lite"
-patch_file="$repo_root/scripts/tflite-prune.patch"
+patch_file="$repo_root/patches/tflite-prune.patch"
 build_dir=${PARTICLESATURN_TFLITE_ARM64_DIR:-/tmp/particlesaturn-tflite-arm64}
 jobs=${CMAKE_BUILD_PARALLEL_LEVEL:-$(sysctl -n hw.ncpu)}
 
@@ -25,7 +25,7 @@ elif [ "$(git -C "$tensorflow_root" diff --name-only)" = "tensorflow/lite/kernel
     # build, while this script deliberately keeps resource kernels enabled.
     printf '%s\n' "使用现有的 TensorFlow Lite elementwise 兼容修复"
 else
-    printf '%s\n' "TensorFlow Lite 源码与 scripts/tflite-prune.patch 不一致" >&2
+    printf '%s\n' "TensorFlow Lite 源码与 patches/tflite-prune.patch 不一致" >&2
     exit 1
 fi
 
