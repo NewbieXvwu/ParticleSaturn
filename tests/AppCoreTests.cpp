@@ -22,6 +22,7 @@ int main() {
 
     controller.Dispatch(SetBlurStrength{99.0f});
     assert(controller.State().ui.blurStrength == 5.0f);
+    assert(controller.State().render.bloomBlurStrength == 2.0f);
 
     FrameCoordinator coordinator{0.01};
     const auto frame = coordinator.Advance(controller, 0.025, {true, 2.0f, -1.0f, 0.5f});

@@ -122,8 +122,13 @@ kernel void ToneMapWithBloom(texture2d<float, access::read> hdr [[texture(0)]],
     if (id.x >= ldr.get_width() || id.y >= ldr.get_height()) return;
     const float2 uv = (float2(id) + 0.5f) / float2(ldr.get_width(), ldr.get_height());
     float3 color = hdr.read(id).rgb + SampleBilinear(bloom, uv) * bloomStrength;
-    color = (color * (2.51f * color + 0.03f)) / (color * (2.43f * color + 0.59f) + 0.14f);
-    ldr.write(float4(clamp(color, 0.0f, 1.0f), 1.0f), id);
+    // Keep the Diligent fullscreen composition curve.  The old implementation
+    // only compresses HDR highlights and leaves ordinary scene color linear.
+    const float maximum = max(color.r, max(color.g, color.b));
+    const float highlightWeight = maximum >= 1.0f ? 0.5f : 0.0f;
+    const float3 compressed = color / (color + float3(1.0f));
+    color = mix(color, compressed, highlightWeight);
+    ldr.write(float4(color, 1.0f), id);
 }
 
 struct BloomConstants { float texelX; float texelY; float offset; float threshold; };

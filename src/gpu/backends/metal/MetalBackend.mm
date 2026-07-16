@@ -487,7 +487,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
     MetalBloom bloom;
     if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
-                     width, height, state.ui.blurStrength)) return false;
+                     width, height, state.render.bloomBlurStrength)) return false;
     MetalToneMapper toneMapper;
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
     if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),

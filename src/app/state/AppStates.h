@@ -43,6 +43,9 @@ struct RenderSettings {
     float densityCompensation    = 0.6f;
     int vsyncMode                = -1;
     bool bloomEnabled            = true;
+    // Bloom is a scene post-process.  Keep its blur radius independent from
+    // the Acrylic control, which only affects ImGui window backgrounds.
+    float bloomBlurStrength      = 2.0f;
     GraphicsApi graphicsApi      = GraphicsApi::Vulkan;
     VulkanDriver vulkanDriver    = VulkanDriver::MoltenVK;
 };
