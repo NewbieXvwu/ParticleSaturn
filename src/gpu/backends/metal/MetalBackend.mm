@@ -107,6 +107,28 @@ id<MTLComputePipelineState> CreateComputePipeline(id<MTLLibrary> library, NSStri
     return error == nil ? pipeline : nil;
 }
 
+id<MTLRenderPipelineState> CreateRenderPipeline(id<MTLDevice> device, id<MTLLibrary> library, NSString* vertexName,
+                                                  NSString* fragmentName) {
+    id<MTLFunction> vertex = [library newFunctionWithName:vertexName];
+    id<MTLFunction> fragment = [library newFunctionWithName:fragmentName];
+    if (vertex == nil || fragment == nil) { [vertex release]; [fragment release]; return nil; }
+    MTLRenderPipelineDescriptor* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = vertex;
+    descriptor.fragmentFunction = fragment;
+    descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+    descriptor.colorAttachments[0].blendingEnabled = YES;
+    descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+    descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
+    descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    NSError* error = nil;
+    id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
+    [descriptor release]; [vertex release]; [fragment release];
+    return error == nil ? pipeline : nil;
+}
+
 void Dispatch(id<MTLComputeCommandEncoder> encoder, id<MTLComputePipelineState> pipeline, std::uint32_t count) {
     const NSUInteger width = [pipeline threadExecutionWidth];
     [encoder dispatchThreads:MTLSizeMake(count, 1, 1) threadsPerThreadgroup:MTLSizeMake(width, 1, 1)];
@@ -358,7 +380,34 @@ bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, 
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
-bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
+bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryPath) {
+    NSError* error = nil;
+    id<MTLDevice> nativeDevice = (id<MTLDevice>)device.NativeDevice();
+    id<MTLLibrary> library = [nativeDevice newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    particlePipeline_ = CreateRenderPipeline(nativeDevice, library, @"ParticleVertex", @"ParticleFragment");
+    starPipeline_ = CreateRenderPipeline(nativeDevice, library, @"StarVertex", @"StarFragment");
+    [library release];
+    return particlePipeline_ != nullptr && starPipeline_ != nullptr;
+}
+
+void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
+                                 std::uint32_t height) const {
+    if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
+    id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
+    const float aspect = static_cast<float>(width) / static_cast<float>(height);
+    [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)starPipeline_];
+    [encoder setVertexBuffer:(id<MTLBuffer>)starBuffer offset:0 atIndex:0];
+    [encoder setVertexBytes:&aspect length:sizeof(aspect) atIndex:1];
+    [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalStarField::StarCount];
+    [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
+    [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
+    [encoder setVertexBytes:&aspect length:sizeof(aspect) atIndex:1];
+    [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalParticleSystem::ParticleCount];
+}
+
+bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
+                                MetalParticleRenderer& particleRenderer,
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
                                 std::uint32_t height, float deltaTime, std::uint32_t framesPerSecond,
                                 const std::function<void(void*, void*, void*)>& uiRenderer) {
@@ -372,6 +421,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height);
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;

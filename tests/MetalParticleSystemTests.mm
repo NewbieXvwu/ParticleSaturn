@@ -14,6 +14,8 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalStarField stars;
     assert(stars.Initialize(device, argv[1], 0x53544152U));
     assert(stars.Buffer() != nullptr);
+    ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
+    assert(particleRenderer.Initialize(device, argv[1]));
     ParticleSaturn::Gpu::Metal::MetalRenderTargets targets;
     assert(targets.Create(device, 320, 180));
     assert(targets.SceneHdr() != nullptr);

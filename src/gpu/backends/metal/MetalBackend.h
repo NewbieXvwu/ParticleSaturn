@@ -146,9 +146,20 @@ public:
                 std::uint32_t height, std::uint32_t framesPerSecond);
 };
 
+class MetalParticleRenderer {
+public:
+    bool Initialize(MetalDevice& device, const char* libraryPath);
+    void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height) const;
+
+private:
+    void* particlePipeline_ = nullptr;
+    void* starPipeline_ = nullptr;
+};
+
 class MetalFrameRenderer {
 public:
-    bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
+    bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
+                MetalParticleRenderer& particleRenderer,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
                 float deltaTime, std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});

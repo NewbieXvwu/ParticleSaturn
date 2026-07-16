@@ -164,3 +164,44 @@ kernel void RenderSevenSegmentFps(texture2d<float, access::write> output [[textu
         }
     }
 }
+
+struct PointVertex {
+    float4 position [[position]];
+    float4 color;
+    float pointSize [[point_size]];
+};
+
+float4 UnpackColor(uint color) {
+    return float4(float(color & 255U), float((color >> 8U) & 255U), float((color >> 16U) & 255U), float((color >> 24U) & 255U)) / 255.0f;
+}
+
+vertex PointVertex ParticleVertex(const device Particle* particles [[buffer(0)]], constant float& aspect [[buffer(1)]],
+                                  uint id [[vertex_id]]) {
+    const Particle particle = particles[id];
+    PointVertex output;
+    output.position = float4(particle.position.x / (7.0f * aspect), particle.position.y / 4.0f, 0.0f, 1.0f);
+    output.color = mix(float4(0.95f, 0.72f, 0.35f, 0.7f), float4(0.5f, 0.72f, 1.0f, 0.8f), float(particle.isRing == 0U));
+    output.color *= UnpackColor(particle.color);
+    output.pointSize = particle.isRing == 0U ? 2.5f : 1.5f;
+    return output;
+}
+
+fragment float4 ParticleFragment(PointVertex input [[stage_in]], float2 point [[point_coord]]) {
+    const float alpha = smoothstep(1.0f, 0.0f, dot(point * 2.0f - 1.0f, point * 2.0f - 1.0f));
+    return input.color * alpha;
+}
+
+vertex PointVertex StarVertex(const device float4* stars [[buffer(0)]], constant float& aspect [[buffer(1)]],
+                              uint id [[vertex_id]]) {
+    PointVertex output;
+    const float3 position = stars[id].xyz;
+    output.position = float4(position.x / (130.0f * aspect), position.y / 130.0f, 0.0f, 1.0f);
+    output.color = float4(0.45f, 0.62f, 1.0f, 0.5f);
+    output.pointSize = 1.2f;
+    return output;
+}
+
+fragment float4 StarFragment(PointVertex input [[stage_in]], float2 point [[point_coord]]) {
+    const float alpha = smoothstep(1.0f, 0.0f, dot(point * 2.0f - 1.0f, point * 2.0f - 1.0f));
+    return input.color * alpha;
+}

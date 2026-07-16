@@ -21,10 +21,13 @@ int main() {
         auto size = host.CurrentDrawableSize();
         const auto libraryPath = [[[NSBundle mainBundle] pathForResource:@"ParticleKernels" ofType:@"metallib"] UTF8String];
         ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;
+        ParticleSaturn::Gpu::Metal::MetalStarField stars;
         ParticleSaturn::Gpu::Metal::MetalRenderTargets targets;
         if (libraryPath == nullptr || !particles.Initialize(device, libraryPath, 0x53415455U) ||
-            !targets.Create(device, size.width, size.height)) return 1;
+            !stars.Initialize(device, libraryPath, 0x53544152U) || !targets.Create(device, size.width, size.height)) return 1;
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
+        ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
+        if (!particleRenderer.Initialize(device, libraryPath)) return 1;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGui::StyleColorsDark();
@@ -36,7 +39,7 @@ int main() {
                 if (!targets.Create(device, drawableSize.width, drawableSize.height)) return;
                 size = drawableSize;
             }
-            renderer.Render(device, surface, particles, targets, libraryPath, drawableSize.width, drawableSize.height,
+            renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
                             1.0f / 60.0f, 60, [&](void* commands, void* encoder, void* pass) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
