@@ -4,6 +4,7 @@
 #include "MetalBackend.h"
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <random>
 #include <vector>
@@ -187,6 +188,28 @@ bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTr
     readIndex_ = writeIndex_;
     writeIndex_ = previousRender;
     return true;
+}
+
+bool MetalParticleSystem::ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const {
+    if (commandQueue_ == nullptr || buffers_[renderIndex_] == nullptr || count == 0 || count > ParticleCount) return false;
+    id<MTLBuffer> source = (id<MTLBuffer>)buffers_[renderIndex_];
+    id<MTLDevice> device = [source device];
+    const NSUInteger length = static_cast<NSUInteger>(count) * sizeof(ParticleSnapshot);
+    id<MTLBuffer> staging = [device newBufferWithLength:length options:MTLResourceStorageModeShared];
+    if (staging == nil) return false;
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+    id<MTLBlitCommandEncoder> encoder = [commands blitCommandEncoder];
+    [encoder copyFromBuffer:source sourceOffset:0 toBuffer:staging destinationOffset:0 size:length];
+    [encoder endEncoding];
+    [commands commit];
+    [commands waitUntilCompleted];
+    const bool completed = [commands status] == MTLCommandBufferStatusCompleted;
+    if (completed) {
+        particles.resize(count);
+        std::memcpy(particles.data(), [staging contents], length);
+    }
+    [staging release];
+    return completed;
 }
 
 void* MetalParticleSystem::RenderBuffer() const noexcept { return buffers_[renderIndex_]; }

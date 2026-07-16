@@ -1,8 +1,10 @@
 #include "gpu/backends/metal/MetalBackend.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <filesystem>
+#include <vector>
 
 #import <Metal/Metal.h>
 
@@ -10,6 +12,109 @@ namespace {
 
 void AssertNear(float actual, float expected) {
     assert(std::abs(actual - expected) < 0.002f);
+}
+
+std::uint32_t PcgHash(std::uint32_t input) {
+    const std::uint32_t state = input * 747796405U + 2891336453U;
+    const std::uint32_t word = ((state >> ((state >> 28U) + 4U)) ^ state) * 277803737U;
+    return (word >> 22U) ^ word;
+}
+
+float Random01(std::uint32_t& state) {
+    state = PcgHash(state);
+    return static_cast<float>(state) * (1.0f / 4294967296.0f);
+}
+
+std::uint32_t PackColor(float red, float green, float blue, float alpha) {
+    const auto pack = [](float value) { return static_cast<std::uint32_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f); };
+    return pack(red) | (pack(green) << 8U) | (pack(blue) << 16U) | (pack(alpha) << 24U);
+}
+
+void UnpackColor(std::uint32_t color, float& red, float& green, float& blue) {
+    red = static_cast<float>((color >> 16U) & 0xffU) / 255.0f;
+    green = static_cast<float>((color >> 8U) & 0xffU) / 255.0f;
+    blue = static_cast<float>(color & 0xffU) / 255.0f;
+}
+
+ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleSnapshot InitializeDiligentParticle(std::uint32_t id, std::uint32_t seed) {
+    using Snapshot = ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleSnapshot;
+    constexpr float radius = 18.0f;
+    std::uint32_t rng = id * 1973U + seed * 9277U + 26699U;
+    Snapshot particle{};
+    float red = 1.0f;
+    float green = 1.0f;
+    float blue = 1.0f;
+    float alpha = 1.0f;
+    if (Random01(rng) < 0.25f) {
+        const float theta = 6.28318f * Random01(rng);
+        const float phi = std::acos(2.0f * Random01(rng) - 1.0f);
+        particle.position[0] = radius * std::sin(phi) * std::cos(theta);
+        particle.position[1] = radius * std::cos(phi) * 0.9f;
+        particle.position[2] = radius * std::sin(phi) * std::sin(theta);
+        const float latitude = (particle.position[1] / (0.9f * radius) + 1.0f) * 0.5f;
+        const int paletteIndex = static_cast<int>(latitude * 4.0f + std::cos(latitude * 40.0f) * 0.8f +
+                                                  std::cos(latitude * 15.0f) * 0.4f);
+        constexpr std::uint32_t palette[4] = {0xE3DAC5U, 0xC9A070U, 0xE3DAC5U, 0xB08D55U};
+        UnpackColor(palette[(paletteIndex % 4 + 4) % 4], red, green, blue);
+        particle.position[3] = 1.0f + Random01(rng) * 0.8f;
+        alpha = 0.8f;
+    } else {
+        const float zone = Random01(rng);
+        float ringRadius = 0.0f;
+        float size = 1.0f;
+        if (zone < 0.15f) {
+            ringRadius = radius * (1.235f + Random01(rng) * 0.29f);
+            UnpackColor(0x2A2520U, red, green, blue);
+            size = 0.5f;
+            alpha = 0.3f;
+        } else if (zone < 0.65f) {
+            const float mix = Random01(rng);
+            ringRadius = radius * (1.525f + mix * 0.425f);
+            red = (205.0f + (220.0f - 205.0f) * mix) / 255.0f;
+            green = (191.0f + (203.0f - 191.0f) * mix) / 255.0f;
+            blue = (160.0f + (186.0f - 160.0f) * mix) / 255.0f;
+            size = 0.8f + Random01(rng) * 0.6f;
+            alpha = std::sin(ringRadius * 2.0f) > 0.8f ? 1.02f : 0.85f;
+        } else if (zone < 0.69f) {
+            ringRadius = radius * (1.95f + Random01(rng) * 0.075f);
+            UnpackColor(0x050505U, red, green, blue);
+            size = 0.3f;
+            alpha = 0.1f;
+        } else if (zone < 0.99f) {
+            ringRadius = radius * (2.025f + Random01(rng) * 0.245f);
+            UnpackColor(0x989085U, red, green, blue);
+            size = 0.7f;
+            alpha = ringRadius > radius * 2.2f && ringRadius < radius * 2.21f ? 0.1f : 0.6f;
+        } else {
+            ringRadius = radius * (2.32f + Random01(rng) * 0.02f);
+            UnpackColor(0xAFAFA0U, red, green, blue);
+            alpha = 0.7f;
+        }
+        const float theta = Random01(rng) * 6.28318f;
+        particle.position[0] = ringRadius * std::cos(theta);
+        particle.position[1] = (Random01(rng) - 0.5f) * (ringRadius > radius * 2.3f ? 0.4f : 0.15f);
+        particle.position[2] = ringRadius * std::sin(theta);
+        particle.position[3] = size;
+        particle.speed = 8.0f / std::sqrt(ringRadius);
+        particle.isRing = 1;
+    }
+    particle.color = PackColor(red, green, blue, alpha);
+    return particle;
+}
+
+void VerifyDiligentParticleInitialization(ParticleSaturn::Gpu::Metal::MetalParticleSystem& particles) {
+    using Snapshot = ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleSnapshot;
+    std::vector<Snapshot> actual;
+    assert(particles.ReadBack(actual, 64));
+    assert(actual.size() == 64);
+    for (std::uint32_t index = 0; index < actual.size(); ++index) {
+        const Snapshot expected = InitializeDiligentParticle(index, 0x53415455U);
+        for (std::size_t component = 0; component < 4; ++component) AssertNear(actual[index].position[component], expected.position[component]);
+        AssertNear(actual[index].speed, expected.speed);
+        assert(actual[index].color == expected.color);
+        assert(actual[index].isRing == expected.isRing);
+        assert(actual[index].padding == expected.padding);
+    }
 }
 
 void VerifyDiligentToneMapping(ParticleSaturn::Gpu::Metal::MetalDevice& device, const char* libraryPath) {
@@ -59,6 +164,7 @@ int main(int argc, char* argv[]) {
     assert(device.Initialize());
     ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;
     assert(particles.Initialize(device, argv[1], 0x53415455U));
+    VerifyDiligentParticleInitialization(particles);
     assert(particles.Simulate(1.0f / 120.0f, 1.0f, false, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(particles.RenderBuffer() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalStarField stars;
