@@ -63,3 +63,12 @@ kernel void InitializeStars(device float4* stars [[buffer(0)]],
     const float z = float((value >> 20) & 0x3ffU) / 512.0f - 1.0f;
     stars[id] = float4(normalize(float3(x, y, z)) * 100.0f, 1.0f);
 }
+
+kernel void ToneMap(texture2d<float, access::read> hdr [[texture(0)]],
+                    texture2d<float, access::write> ldr [[texture(1)]],
+                    uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= ldr.get_width() || id.y >= ldr.get_height()) return;
+    float3 color = hdr.read(id).rgb;
+    color = (color * (2.51f * color + 0.03f)) / (color * (2.43f * color + 0.59f) + 0.14f);
+    ldr.write(float4(clamp(color, 0.0f, 1.0f), 1.0f), id);
+}
