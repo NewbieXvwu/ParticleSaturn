@@ -3,7 +3,14 @@ add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")
 target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore")
 
-add_executable(ParticleSaturn.macOS MACOSX_BUNDLE Main.mm)
+add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
+    Main.mm
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_metal.mm")
 set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
@@ -11,6 +18,8 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
+target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
+target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController")
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"

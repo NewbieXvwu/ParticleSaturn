@@ -1,6 +1,11 @@
 #import <Cocoa/Cocoa.h>
+#import <Metal/Metal.h>
 
 #include <CoreFoundation/CoreFoundation.h>
+
+#include "imgui.h"
+#include "imgui_impl_metal.h"
+#include "imgui_impl_osx.h"
 
 #include "CocoaHost.h"
 #include "gpu/backends/metal/MetalBackend.h"
@@ -20,6 +25,10 @@ int main() {
         if (libraryPath == nullptr || !particles.Initialize(device, libraryPath, 0x53415455U) ||
             !targets.Create(device, size.width, size.height)) return 1;
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+        if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
         host.Show();
         host.Run([&] {
             const auto drawableSize = host.CurrentDrawableSize();
@@ -28,8 +37,22 @@ int main() {
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            1.0f / 60.0f, 60);
+                            1.0f / 60.0f, 60, [&](void* commands, void* encoder, void* pass) {
+                ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
+                ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
+                ImGui::NewFrame();
+                ImGui::Begin("Particle Saturn");
+                ImGui::Text("Metal reference path");
+                ImGui::Text("Particles: %u", ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount);
+                ImGui::End();
+                ImGui::Render();
+                ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
+                                               (id<MTLRenderCommandEncoder>)encoder);
+            });
         });
+        ImGui_ImplMetal_Shutdown();
+        ImGui_ImplOSX_Shutdown();
+        ImGui::DestroyContext();
     }
     return 0;
 }

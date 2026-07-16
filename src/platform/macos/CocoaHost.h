@@ -27,6 +27,7 @@ public:
     void SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;
     void* NativeMetalLayer() const noexcept;
+    void* NativeView() const noexcept;
 
 private:
     void* window_ = nullptr;

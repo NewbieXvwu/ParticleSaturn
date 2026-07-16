@@ -360,7 +360,8 @@ bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, 
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
-                                std::uint32_t height, float deltaTime, std::uint32_t framesPerSecond) {
+                                std::uint32_t height, float deltaTime, std::uint32_t framesPerSecond,
+                                const std::function<void(void*, void*, void*)>& uiRenderer) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
     if (!particles.Simulate(deltaTime, 1.0f, false)) return false;
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
@@ -378,6 +379,18 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
+    if (uiRenderer) {
+        queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+        commands = [queue commandBuffer];
+        pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
+        pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        encoder = [commands renderCommandEncoderWithDescriptor:pass];
+        uiRenderer(commands, encoder, pass);
+        [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted]; [queue release];
+        if ([commands status] != MTLCommandBufferStatusCompleted) return false;
+    }
     return surface.Present(device);
 }
 

@@ -104,4 +104,8 @@ void* CocoaHost::NativeMetalLayer() const noexcept {
     return layer_;
 }
 
+void* CocoaHost::NativeView() const noexcept {
+    return metalView_;
+}
+
 } // namespace ParticleSaturn::Platform::MacOS

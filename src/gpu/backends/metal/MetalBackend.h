@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace ParticleSaturn::Gpu::Metal {
@@ -149,7 +150,8 @@ class MetalFrameRenderer {
 public:
     bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
-                float deltaTime, std::uint32_t framesPerSecond);
+                float deltaTime, std::uint32_t framesPerSecond,
+                const std::function<void(void*, void*, void*)>& uiRenderer = {});
 };
 
 class MetalIndirectDraw {
