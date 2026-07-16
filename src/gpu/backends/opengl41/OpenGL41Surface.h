@@ -11,6 +11,8 @@ public:
     OpenGL41Surface& operator=(const OpenGL41Surface&) = delete;
 
     bool MakeCurrent();
+    bool SetView(void* nativeView);
+    bool SetTransparent(bool transparent);
     void Present();
 
 private:

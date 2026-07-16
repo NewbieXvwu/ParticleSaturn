@@ -225,6 +225,19 @@ int main(int argc, char* argv[]) {
         assert(color[0] > 0.99f && color[1] < 0.3f);
         glReadPixels(1830, 1057, 1, 1, GL_RGBA, GL_FLOAT, color);
         assert(color[0] > 0.99f && color[1] < 0.3f);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.SceneFramebuffer());
+        glClearColor(0.1f, 0.05f, 0.02f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.BloomPingPongFramebuffer());
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        assert(toneMapper.Apply(targets, 0.0f, true));
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
+        glReadPixels(960, 540, 1, 1, GL_RGBA, GL_FLOAT, color);
+        assert(color[3] > 0.09f && color[3] < 0.11f);
+        assert(color[0] > 0.005f && color[0] < 0.015f);
+        assert(color[1] > 0.0f && color[1] < color[0]);
         [context release];
     }
     return 0;

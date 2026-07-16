@@ -60,7 +60,7 @@ bool OpenGLToneMapper::Initialize(const char* shaderDirectory) {
     return false;
 }
 
-bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStrength) const {
+bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStrength, bool transparent) const {
     if (program_ == 0 || targets.Width() == 0 || targets.Height() == 0) return false;
     glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
     glViewport(0, 0, targets.Width(), targets.Height());
@@ -72,6 +72,7 @@ bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStre
     glBindTexture(GL_TEXTURE_2D, targets.BloomPingPongTexture());
     glUniform1i(glGetUniformLocation(program_, "uBloom"), 1);
     glUniform1f(glGetUniformLocation(program_, "uBloomStrength"), std::max(0.0f, bloomStrength));
+    glUniform1f(glGetUniformLocation(program_, "uTransparent"), transparent ? 1.0f : 0.0f);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return glGetError() == GL_NO_ERROR;
 }

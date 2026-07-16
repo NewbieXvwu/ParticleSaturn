@@ -49,6 +49,57 @@ private:
     float framesPerSecond_ = 60.0f;
 };
 
+class WindowGlass {
+public:
+    WindowGlass(NSWindow* window, NSView* openGlView,
+                ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface& surface)
+        : window_{window}, openGlView_{openGlView}, surface_{surface} {}
+
+    ~WindowGlass() { SetEnabled(false); }
+
+    void SetEnabled(bool enabled) {
+        if (enabled == enabled_) return;
+        if (enabled) {
+            visualEffect_ = [[NSVisualEffectView alloc] initWithFrame:[[window_ contentView] bounds]];
+            [visualEffect_ setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+            [visualEffect_ setMaterial:NSVisualEffectMaterialHUDWindow];
+            [visualEffect_ setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
+            [visualEffect_ setState:NSVisualEffectStateActive];
+            [window_ setOpaque:NO];
+            [window_ setBackgroundColor:NSColor.clearColor];
+            [window_ setContentView:visualEffect_];
+            [visualEffect_ addSubview:openGlView_];
+            [openGlView_ setFrame:[visualEffect_ bounds]];
+            [openGlView_ setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+            [openGlView_ setWantsLayer:YES];
+            [[openGlView_ layer] setOpaque:NO];
+            surface_.SetView(openGlView_);
+            surface_.SetTransparent(true);
+        } else {
+            if (visualEffect_ != nil) {
+                [openGlView_ removeFromSuperview];
+                [window_ setContentView:openGlView_];
+                [visualEffect_ release];
+                visualEffect_ = nil;
+                surface_.SetView(openGlView_);
+            }
+            [window_ setOpaque:YES];
+            [window_ setBackgroundColor:NSColor.blackColor];
+            [openGlView_ setWantsLayer:YES];
+            [[openGlView_ layer] setOpaque:YES];
+            surface_.SetTransparent(false);
+        }
+        enabled_ = enabled;
+    }
+
+private:
+    NSWindow* window_ = nil;
+    NSView* openGlView_ = nil;
+    ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface& surface_;
+    NSVisualEffectView* visualEffect_ = nil;
+    bool enabled_ = false;
+};
+
 } // namespace
 
 int main() {
@@ -68,6 +119,7 @@ int main() {
 
         auto surface = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface>(view);
         if (!surface->MakeCurrent()) return 1;
+        auto glass = std::make_shared<WindowGlass>(window, view, *surface);
         const auto shaderDirectory = ShaderDirectory();
         auto particles = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem>();
         auto stars = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLStarField>();
@@ -124,8 +176,9 @@ int main() {
                                     state.render.pixelRatio, state.render.densityCompensation,
                                     state.render.particleCount);
             glDisable(GL_BLEND);
+            const bool transparent = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
             if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
-                !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f)) return;
+                !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
             if (state.ui.blurEnabled && !bloom->ApplyUiBlur(*targets, state.ui.blurStrength)) return;
 
             glBindFramebuffer(GL_READ_FRAMEBUFFER, targets->ToneMappedFramebuffer());
@@ -171,6 +224,13 @@ int main() {
             if (ImGui::Checkbox("UI blur", &blurEnabled)) {
                 controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
             }
+            bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
+            if (ImGui::Checkbox("Window glass", &glassEnabled)) {
+                const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
+                                                   : ParticleSaturn::App::WindowMaterial::Solid;
+                controller->Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
+                glass->SetEnabled(glassEnabled);
+            }
             float blurStrength = state.ui.blurStrength;
             if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
                 controller->Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
@@ -198,6 +258,8 @@ int main() {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplOSX_Shutdown();
         ImGui::DestroyContext();
+        glass->SetEnabled(false);
+        glass.reset();
         [view release];
         [window release];
     }

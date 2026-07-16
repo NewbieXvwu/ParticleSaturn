@@ -6,6 +6,7 @@ layout(location = 0) out vec4 outColor;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
 uniform float uBloomStrength;
+uniform float uTransparent;
 
 vec3 sampleBilinear(sampler2D source, vec2 uv) {
     ivec2 size = textureSize(source, 0);
@@ -27,5 +28,7 @@ void main() {
     vec3 color = texelFetch(uScene, scenePixel, 0).rgb + sampleBilinear(uBloom, vTexCoord) * uBloomStrength;
     float maximum = max(color.r, max(color.g, color.b));
     if (maximum >= 1.0) color = mix(color, color / (color + vec3(1.0)), 0.5);
-    outColor = vec4(color, 1.0);
+    float alpha = mix(1.0, maximum, uTransparent);
+    alpha = clamp(alpha, 0.0, 1.0);
+    outColor = vec4(color * alpha, alpha);
 }

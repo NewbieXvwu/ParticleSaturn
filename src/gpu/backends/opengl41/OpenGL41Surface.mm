@@ -32,6 +32,21 @@ bool OpenGL41Surface::MakeCurrent() {
     return true;
 }
 
+bool OpenGL41Surface::SetView(void* nativeView) {
+    if (context_ == nullptr || nativeView == nullptr) return false;
+    [(NSOpenGLContext*)context_ setView:(NSView*)nativeView];
+    [(NSOpenGLContext*)context_ update];
+    return true;
+}
+
+bool OpenGL41Surface::SetTransparent(bool transparent) {
+    if (context_ == nullptr) return false;
+    GLint opaque = transparent ? 0 : 1;
+    [(NSOpenGLContext*)context_ setValues:&opaque forParameter:NSOpenGLContextParameterSurfaceOpacity];
+    [(NSOpenGLContext*)context_ update];
+    return true;
+}
+
 void OpenGL41Surface::Present() {
     [(NSOpenGLContext*)context_ flushBuffer];
 }
