@@ -851,7 +851,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 120 万粒子初始化（Metal 计算管线）
 - [x] 三缓冲计算模拟
 - [ ] 50,000 星体
-- [ ] 间接绘制
+- [x] 间接绘制
 - [ ] HDR 离屏渲染
 - [ ] Bloom + Kawase 模糊
 - [ ] 色调映射

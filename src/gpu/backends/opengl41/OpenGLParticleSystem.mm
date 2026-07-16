@@ -11,6 +11,13 @@ namespace {
 
 constexpr GLsizeiptr ParticleBytes = 32;
 
+struct DrawArraysIndirectCommand {
+    GLuint count;
+    GLuint instanceCount;
+    GLuint first;
+    GLuint baseInstance;
+};
+
 GLuint BuildProgram(const char* path) {
     std::ifstream stream{path};
     std::stringstream source;
@@ -57,6 +64,10 @@ bool OpenGLParticleSystem::Initialize(const char* transformFeedbackVertexShader)
         ConfigureVertexArray(vertexArrays_[index], buffers_[index]);
     }
     glGenTransformFeedbacks(1, &transformFeedback_);
+    const DrawArraysIndirectCommand draw{ParticleCount, 1, 0, 0};
+    glGenBuffers(1, &indirectBuffer_);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
+    glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(draw), &draw, GL_STATIC_DRAW);
     return glGetError() == GL_NO_ERROR;
 }
 
@@ -80,5 +91,12 @@ void OpenGLParticleSystem::Simulate(float deltaTime, float handScale, bool handT
 }
 
 std::uint32_t OpenGLParticleSystem::RenderVertexArray() const noexcept { return vertexArrays_[renderIndex_]; }
+std::uint32_t OpenGLParticleSystem::IndirectBuffer() const noexcept { return indirectBuffer_; }
+
+void OpenGLParticleSystem::DrawIndirect() const {
+    glBindVertexArray(vertexArrays_[renderIndex_]);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
+    glDrawArraysIndirect(GL_POINTS, nullptr);
+}
 
 } // namespace ParticleSaturn::Gpu::OpenGL41

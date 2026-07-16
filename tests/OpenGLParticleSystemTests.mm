@@ -20,6 +20,7 @@ int main(int argc, char* argv[]) {
         assert(particles.Initialize(argv[1]));
         particles.Simulate(1.0f / 120.0f, 1.0f, false);
         assert(particles.RenderVertexArray() != 0);
+        assert(particles.IndirectBuffer() != 0);
         [context release];
     }
     return 0;
