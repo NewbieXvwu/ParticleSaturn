@@ -863,6 +863,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 透明窗口 + `NSVisualEffectView`
 - [x] 管线缓存（`MTLBinaryArchive`）
 - [x] MSL 着色器编写 + `metallib` 编译
+- [x] Metal 离屏纹理缩放重建释放旧资源
 - [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
 - [ ] Metal 成为 macOS 参考路径
 

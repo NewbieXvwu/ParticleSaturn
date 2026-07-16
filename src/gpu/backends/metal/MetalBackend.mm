@@ -256,6 +256,20 @@ void* MetalStarField::Buffer() const noexcept { return buffer_; }
 
 bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height) {
     if (width == 0 || height == 0) return false;
+    auto releaseTexture = [](void*& texture) {
+        if (texture != nullptr) {
+            [(id<MTLTexture>)texture release];
+            texture = nullptr;
+        }
+    };
+    releaseTexture(sceneHdr_);
+    releaseTexture(bloomStrong_);
+    releaseTexture(bloomPingPong_);
+    releaseTexture(bloomWeak_);
+    releaseTexture(uiScene_);
+    releaseTexture(uiOverlay_);
+    releaseTexture(uiBlur_);
+    releaseTexture(composite_);
     auto* descriptor = [[MTLTextureDescriptor alloc] init];
     [descriptor setTextureType:MTLTextureType2D];
     [descriptor setPixelFormat:MTLPixelFormatRGBA16Float];

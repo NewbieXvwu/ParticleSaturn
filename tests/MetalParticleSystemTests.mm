@@ -76,6 +76,9 @@ int main(int argc, char* argv[]) {
     assert(targets.UiOverlay() != nullptr);
     assert(targets.UiBlur() != nullptr);
     assert(targets.Composite() != nullptr);
+    assert(targets.Create(device, 640, 360));
+    assert(targets.SceneHdr() != nullptr);
+    assert(targets.BloomPingPong() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
