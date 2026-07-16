@@ -35,6 +35,8 @@ CameraSelectorWindow::CameraSelectorWindow(AVFoundationCamera& camera) : camera_
                                                  defer:NO];
     [panel setTitle:@"Camera"];
     [panel setReleasedWhenClosed:NO];
+    [panel setHidesOnDeactivate:NO];
+    [panel setLevel:NSFloatingWindowLevel];
     auto* content = [panel contentView];
     auto* popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20, 312, 300, 28) pullsDown:NO];
     auto* refresh = [[NSButton alloc] initWithFrame:NSMakeRect(330, 312, 110, 28)];
@@ -70,6 +72,7 @@ CameraSelectorWindow::~CameraSelectorWindow() {
 
 void CameraSelectorWindow::Show() {
     Refresh();
+    [(NSPanel*)panel_ center];
     [(NSPanel*)panel_ makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }
