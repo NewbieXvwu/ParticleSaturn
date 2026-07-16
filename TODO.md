@@ -919,7 +919,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 摄像头异常状态验证
 - [ ] Retina 与外接显示器
 - [ ] 睡眠唤醒
-- [ ] 应用包启动验证
+- [x] 应用包启动验证（2026-07-16：`ParticleSaturn.macOS.app` 已实际启动并完成场景截图）
 
 ---
 
