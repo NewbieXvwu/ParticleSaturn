@@ -16,24 +16,105 @@ void AssertNear(float actual, float expected) {
     assert(std::abs(actual - expected) < 0.0001f);
 }
 
+std::uint32_t PcgHash(std::uint32_t input) {
+    const std::uint32_t state = input * 747796405U + 2891336453U;
+    const std::uint32_t word = ((state >> ((state >> 28U) + 4U)) ^ state) * 277803737U;
+    return (word >> 22U) ^ word;
+}
+
+float Random01(std::uint32_t& state) {
+    state = PcgHash(state);
+    return static_cast<float>(state) * (1.0f / 4294967296.0f);
+}
+
+void UnpackColor(std::uint32_t color, float& red, float& green, float& blue) {
+    red = static_cast<float>((color >> 16U) & 0xffU) / 255.0f;
+    green = static_cast<float>((color >> 8U) & 0xffU) / 255.0f;
+    blue = static_cast<float>(color & 0xffU) / 255.0f;
+}
+
+std::uint32_t PackColor(float red, float green, float blue, float alpha) {
+    const auto pack = [](float value) {
+        return static_cast<std::uint32_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
+    };
+    return pack(red) | (pack(green) << 8U) | (pack(blue) << 16U) | (pack(alpha) << 24U);
+}
+
+ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot ExpectedDiligentParticle(std::uint32_t id,
+                                                                                                   std::uint32_t seed) {
+    using Snapshot = ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot;
+    constexpr float radius = 18.0f;
+    std::uint32_t rng = id * 1973U + seed * 9277U + 26699U;
+    Snapshot particle{};
+    float red = 1.0f, green = 1.0f, blue = 1.0f, alpha = 1.0f;
+    if (Random01(rng) < 0.25f) {
+        const float theta = 6.28318f * Random01(rng);
+        const float phi = std::acos(2.0f * Random01(rng) - 1.0f);
+        particle.position[0] = radius * std::sin(phi) * std::cos(theta);
+        particle.position[1] = radius * std::cos(phi) * 0.9f;
+        particle.position[2] = radius * std::sin(phi) * std::sin(theta);
+        const float latitude = (particle.position[1] / (0.9f * radius) + 1.0f) * 0.5f;
+        const int paletteIndex = static_cast<int>(latitude * 4.0f + std::cos(latitude * 40.0f) * 0.8f +
+                                                  std::cos(latitude * 15.0f) * 0.4f);
+        constexpr std::uint32_t palette[4] = {0xE3DAC5U, 0xC9A070U, 0xE3DAC5U, 0xB08D55U};
+        UnpackColor(palette[(paletteIndex % 4 + 4) % 4], red, green, blue);
+        particle.position[3] = 1.0f + Random01(rng) * 0.8f;
+        alpha = 0.8f;
+    } else {
+        const float zone = Random01(rng);
+        float ringRadius = 0.0f;
+        float size = 1.0f;
+        if (zone < 0.15f) {
+            ringRadius = radius * (1.235f + Random01(rng) * 0.29f);
+            UnpackColor(0x2A2520U, red, green, blue);
+            size = 0.5f; alpha = 0.3f;
+        } else if (zone < 0.65f) {
+            const float mix = Random01(rng);
+            ringRadius = radius * (1.525f + mix * 0.425f);
+            red = (205.0f + 15.0f * mix) / 255.0f;
+            green = (191.0f + 12.0f * mix) / 255.0f;
+            blue = (160.0f + 26.0f * mix) / 255.0f;
+            size = 0.8f + Random01(rng) * 0.6f;
+            alpha = std::sin(ringRadius * 2.0f) > 0.8f ? 1.02f : 0.85f;
+        } else if (zone < 0.69f) {
+            ringRadius = radius * (1.95f + Random01(rng) * 0.075f);
+            UnpackColor(0x050505U, red, green, blue);
+            size = 0.3f; alpha = 0.1f;
+        } else if (zone < 0.99f) {
+            ringRadius = radius * (2.025f + Random01(rng) * 0.245f);
+            UnpackColor(0x989085U, red, green, blue);
+            size = 0.7f;
+            alpha = ringRadius > radius * 2.2f && ringRadius < radius * 2.21f ? 0.1f : 0.6f;
+        } else {
+            ringRadius = radius * (2.32f + Random01(rng) * 0.02f);
+            UnpackColor(0xAFAFA0U, red, green, blue);
+            alpha = 0.7f;
+        }
+        const float theta = Random01(rng) * 6.28318f;
+        particle.position[0] = ringRadius * std::cos(theta);
+        particle.position[1] = (Random01(rng) - 0.5f) * (ringRadius > radius * 2.3f ? 0.4f : 0.15f);
+        particle.position[2] = ringRadius * std::sin(theta);
+        particle.position[3] = size;
+        particle.speed = 8.0f / std::sqrt(ringRadius);
+        particle.isRing = 1.0f;
+    }
+    particle.color = PackColor(red, green, blue, alpha);
+    return particle;
+}
+
 void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem& particles) {
     std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> snapshots;
     assert(particles.ReadBack(snapshots, 64));
     assert(snapshots.size() == 64);
     using Snapshot = ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot;
-    const Snapshot expected[] = {
-        {{7.55536461f, 8.98992634f, 12.9282703f, 1.78891587f}, 0xccc5dae3U, 0.0f, 0.0f, 0.0f},
-        {{-1.69500279f, -16.1162949f, -0.682979405f, 1.37864661f}, 0xcc70a0c9U, 0.0f, 0.0f, 0.0f},
-        {{15.9242182f, -0.907382071f, 8.3308363f, 1.67867303f}, 0xccc5dae3U, 0.0f, 0.0f, 0.0f},
-        {{3.47033906f, -0.0189455301f, -27.8411579f, 1.26095307f}, 0xd9a2c0ceU, 1.51033187f, 1.0f, 0.0f},
-    };
-    for (std::size_t index = 0; index < std::size(expected); ++index) {
+    for (std::size_t index = 0; index < snapshots.size(); ++index) {
         const auto& actual = snapshots[index];
-        for (std::size_t component = 0; component < 4; ++component) AssertNear(actual.position[component], expected[index].position[component]);
-        assert(actual.color == expected[index].color);
-        AssertNear(actual.speed, expected[index].speed);
-        AssertNear(actual.isRing, expected[index].isRing);
-        AssertNear(actual.padding, expected[index].padding);
+        const Snapshot expected = ExpectedDiligentParticle(static_cast<std::uint32_t>(index), 0x53415455U);
+        for (std::size_t component = 0; component < 4; ++component) AssertNear(actual.position[component], expected.position[component]);
+        assert(actual.color == expected.color);
+        AssertNear(actual.speed, expected.speed);
+        AssertNear(actual.isRing, expected.isRing);
+        AssertNear(actual.padding, expected.padding);
     }
     for (const auto& particle : snapshots) {
         assert(std::isfinite(particle.position[0]));
@@ -75,6 +156,18 @@ int main(int argc, char* argv[]) {
         assert(glGetError() == GL_NO_ERROR);
         assert(particles.RenderVertexArray() != 0);
         assert(particles.IndirectBuffer() != 0);
+        struct DrawArraysIndirectCommand {
+            std::uint32_t count;
+            std::uint32_t instanceCount;
+            std::uint32_t first;
+            std::uint32_t baseInstance;
+        } indirect{};
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particles.IndirectBuffer());
+        glGetBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(indirect), &indirect);
+        assert(indirect.count == 6);
+        assert(indirect.instanceCount == ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleCount);
+        assert(indirect.first == 0);
+        assert(indirect.baseInstance == 0);
         std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> firstFrame;
         assert(particles.ReadBack(firstFrame, 1));
         particles.Simulate(1.0f / 120.0f, 1.0f, false);

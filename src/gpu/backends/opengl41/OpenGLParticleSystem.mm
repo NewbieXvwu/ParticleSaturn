@@ -23,10 +23,10 @@ struct DrawArraysIndirectCommand {
 };
 
 float Random01(std::uint32_t& state) {
-    state = state * 747796405U + 2891336453U;
-    std::uint32_t result = ((state >> ((state >> 28U) + 4U)) ^ state) * 277803737U;
-    result = (result >> 22U) ^ result;
-    return static_cast<float>(result) / 4294967295.0f;
+    const std::uint32_t pcgState = state * 747796405U + 2891336453U;
+    const std::uint32_t word = ((pcgState >> ((pcgState >> 28U) + 4U)) ^ pcgState) * 277803737U;
+    state = (word >> 22U) ^ word;
+    return static_cast<float>(state) * (1.0f / 4294967296.0f);
 }
 
 void UnpackColor(std::uint32_t color, float& red, float& green, float& blue) {
@@ -195,7 +195,9 @@ bool OpenGLParticleSystem::Initialize(const char* transformFeedbackVertexShader,
         ConfigureVertexArray(vertexArrays_[index], buffers_[index]);
     }
     glGenTransformFeedbacks(1, &transformFeedback_);
-    const DrawArraysIndirectCommand draw{ParticleCount, 1, 0, 0};
+    // Match the Diligent vertex-pulling path: six vertices form one particle
+    // quad and the indirect instance count selects the active particles.
+    const DrawArraysIndirectCommand draw{6, ParticleCount, 0, 0};
     glGenBuffers(1, &indirectBuffer_);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
     glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(draw), &draw, GL_STATIC_DRAW);
@@ -250,8 +252,10 @@ void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, 
     setFloat("uPixelRatio", pixelRatio);
     setFloat("uDensityCompensation", densityCompensation);
     glBindVertexArray(vertexArrays_[renderIndex_]);
+    for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 1);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
-    glDrawArraysIndirect(GL_POINTS, nullptr);
+    glDrawArraysIndirect(GL_TRIANGLES, nullptr);
+    for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 0);
 }
 
 } // namespace ParticleSaturn::Gpu::OpenGL41

@@ -81,7 +81,7 @@ bool OpenGLBloom::Initialize(const char* shaderDirectory) {
     return downsampleProgram_ != 0 && blurProgram_ != 0;
 }
 
-bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets) const {
+bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets, float blurStrength) const {
     if (downsampleProgram_ == 0 || blurProgram_ == 0 || targets.Width() == 0 || targets.Height() == 0) return false;
     const std::uint32_t strongWidth = std::max(1U, targets.Width() / 6U);
     const std::uint32_t strongHeight = std::max(1U, targets.Height() / 6U);
@@ -90,12 +90,14 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets) const {
     Draw(downsampleProgram_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
          targets.Width(), targets.Height(), 0.0f, 1.0f);
 
-    static constexpr float offsets[] = {1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const float scale = std::clamp(blurStrength, 0.0f, 5.0f) / 5.0f;
     GLuint source = targets.BloomStrongTexture();
-    for (std::size_t index = 0; index < std::size(offsets); ++index) {
-        const bool writePingPong = (index % 2U) == 0U;
+    for (std::size_t index = 1; index < std::size(offsets); ++index) {
+        const bool writePingPong = (index % 2U) == 1U;
+        const float offset = scale * (offsets[index] + 0.5f) - 0.5f;
         Draw(blurProgram_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
-             strongWidth, strongHeight, strongWidth, strongHeight, offsets[index], 0.0f);
+             strongWidth, strongHeight, strongWidth, strongHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
     }
 

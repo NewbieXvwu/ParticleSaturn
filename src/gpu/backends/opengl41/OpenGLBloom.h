@@ -7,7 +7,7 @@ class OpenGLRenderTargets;
 class OpenGLBloom {
 public:
     bool Initialize(const char* shaderDirectory);
-    bool Apply(const OpenGLRenderTargets& targets) const;
+    bool Apply(const OpenGLRenderTargets& targets, float blurStrength = 2.0f) const;
 
 private:
     unsigned int downsampleProgram_ = 0;

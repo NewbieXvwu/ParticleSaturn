@@ -18,6 +18,7 @@ out float vDistance;
 out float vScale;
 out float vIsRing;
 out float vDensityCompensation;
+out vec2 vPointCoord;
 
 float hash(float value) {
     uint bits = floatBitsToUint(value);
@@ -47,6 +48,10 @@ vec3 rotateSaturn(vec3 position) {
 }
 
 void main() {
+    const vec2 corners[6] = vec2[6](
+        vec2(-1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0),
+        vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(1.0, -1.0));
+    vec2 corner = corners[gl_VertexID % 6];
     vec3 position = rotateSaturn(inPosition.xyz * uScale);
     float distance = 100.0 - position.z;
     vec3 viewPosition = vec3(position.xy, position.z - 100.0);
@@ -62,17 +67,20 @@ void main() {
     }
     float projectedDistance = max(-viewPosition.z, 0.001);
     float focalLength = 1.0 / tan(1.047 * 0.5);
-    gl_Position = vec4(viewPosition.x * focalLength / (uAspect * projectedDistance),
-                       viewPosition.y * focalLength / projectedDistance, 0.0, 1.0);
+    vec2 ndcCenter = vec2(viewPosition.x * focalLength / (uAspect * projectedDistance),
+                          viewPosition.y * focalLength / projectedDistance);
     float nearMask = distance <= 50.0 ? 1.0 : 0.0;
     float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, inIsRing);
     float pointSize = inPosition.w * 350.0 * 0.55 / max(distance, 0.1) * (uScreenHeight / 1080.0) * ringFactor *
                       pow(max(uPixelRatio, 0.0001), 0.8);
-    gl_PointSize = clamp(pointSize, 0.0, 300.0 * (uScreenHeight / 1080.0));
+    float pixelSize = clamp(pointSize, 0.0, 300.0 * (uScreenHeight / 1080.0));
+    vec2 ndcOffset = corner * (pixelSize * 0.5) * vec2(2.0 / (uAspect * uScreenHeight), 2.0 / uScreenHeight);
+    gl_Position = vec4(ndcCenter + ndcOffset, 0.0, 1.0);
     vColor = vec4(float((inColor >> 0u) & 255u), float((inColor >> 8u) & 255u),
                   float((inColor >> 16u) & 255u), float((inColor >> 24u) & 255u)) / 255.0;
     vDistance = distance;
     vScale = uScale;
     vIsRing = inIsRing;
     vDensityCompensation = uDensityCompensation;
+    vPointCoord = corner * 0.5 + 0.5;
 }

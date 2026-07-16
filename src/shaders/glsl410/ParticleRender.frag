@@ -5,10 +5,11 @@ in float vDistance;
 in float vScale;
 in float vIsRing;
 in float vDensityCompensation;
+in vec2 vPointCoord;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    vec2 point = gl_PointCoord * 2.0 - 1.0;
+    vec2 point = vPointCoord * 2.0 - 1.0;
     float radiusSquared = dot(point, point);
     if (radiusSquared > 1.0) discard;
     float glow = smoothstep(1.0, 0.4, radiusSquared);

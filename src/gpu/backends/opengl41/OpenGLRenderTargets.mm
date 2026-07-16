@@ -52,14 +52,16 @@ bool OpenGLRenderTargets::Create(std::uint32_t width, std::uint32_t height) {
     const auto strongHeight = std::max(1U, height / 6U);
     const auto weakWidth = std::max(1U, width / 12U);
     const auto weakHeight = std::max(1U, height / 12U);
-    const bool scene = CreateTarget(width, height, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT, sceneFramebuffer_, sceneTexture_);
-    const bool strong = CreateTarget(strongWidth, strongHeight, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT,
+    // Match the Metal reference path. R11G11B10F produces visible quantization
+    // steps after the 1.2M-particle additive blend on the macOS OpenGL driver.
+    const bool scene = CreateTarget(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, sceneFramebuffer_, sceneTexture_);
+    const bool strong = CreateTarget(strongWidth, strongHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT,
                                     bloomStrongFramebuffer_, bloomStrongTexture_);
-    const bool strongPingPong = CreateTarget(strongWidth, strongHeight, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT,
+    const bool strongPingPong = CreateTarget(strongWidth, strongHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT,
                                              bloomPingPongFramebuffer_, bloomPingPongTexture_);
-    const bool weak = CreateTarget(weakWidth, weakHeight, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT,
+    const bool weak = CreateTarget(weakWidth, weakHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT,
                                   bloomWeakFramebuffer_, bloomWeakTexture_);
-    const bool weakPingPong = CreateTarget(weakWidth, weakHeight, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT,
+    const bool weakPingPong = CreateTarget(weakWidth, weakHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT,
                                            bloomWeakPingPongFramebuffer_, bloomWeakPingPongTexture_);
     const bool toneMapped = CreateTarget(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE,
                                          toneMappedFramebuffer_, toneMappedTexture_);
