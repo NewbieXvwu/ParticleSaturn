@@ -205,19 +205,19 @@ bool IsSevenSegmentPixel(uint2 pixel, uint digit, uint digitIndex, uint viewport
     if (pixel.x < originX || pixel.y < originY) return false;
     const uint x = pixel.x - originX;
     const uint y = pixel.y - originY;
-    constexpr uint thickness = 2U;
     constexpr uint width = 20U;
     constexpr uint height = 36U;
     if (x >= width || y >= height) return false;
     const uint mask = SegmentMasks[digit];
-    const bool top = (mask & 0x01U) != 0U && y < thickness && x >= thickness && x + thickness < width;
-    const bool upperRight = (mask & 0x02U) != 0U && x + thickness >= width && y >= thickness && y + thickness < height / 2U;
-    const bool lowerRight = (mask & 0x04U) != 0U && x + thickness >= width && y > height / 2U && y + thickness < height;
-    const bool bottom = (mask & 0x08U) != 0U && y + thickness >= height && x >= thickness && x + thickness < width;
-    const bool lowerLeft = (mask & 0x10U) != 0U && x < thickness && y > height / 2U && y + thickness < height;
-    const bool upperLeft = (mask & 0x20U) != 0U && x < thickness && y >= thickness && y + thickness < height / 2U;
-    const bool middle = (mask & 0x40U) != 0U && y >= height / 2U - thickness / 2U && y <= height / 2U + thickness / 2U &&
-                        x >= thickness && x + thickness < width;
+    // Diligent renders a 20 by 36 line list.  Keep individual one-pixel
+    // segments instead of turning those lines into wider filled rectangles.
+    const bool top = (mask & 0x01U) != 0U && y == 0U;
+    const bool upperRight = (mask & 0x02U) != 0U && x == width - 1U && y <= height / 2U;
+    const bool lowerRight = (mask & 0x04U) != 0U && x == width - 1U && y >= height / 2U;
+    const bool bottom = (mask & 0x08U) != 0U && y == height - 1U;
+    const bool lowerLeft = (mask & 0x10U) != 0U && x == 0U && y >= height / 2U;
+    const bool upperLeft = (mask & 0x20U) != 0U && x == 0U && y <= height / 2U;
+    const bool middle = (mask & 0x40U) != 0U && y == height / 2U;
     return top || upperRight || lowerRight || bottom || lowerLeft || upperLeft || middle;
 }
 

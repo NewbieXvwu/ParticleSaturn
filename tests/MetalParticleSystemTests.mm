@@ -156,6 +156,30 @@ void VerifyDiligentToneMapping(ParticleSaturn::Gpu::Metal::MetalDevice& device, 
     [output release];
 }
 
+void VerifyDiligentFpsGeometry(ParticleSaturn::Gpu::Metal::MetalDevice& device, const char* libraryPath) {
+    id<MTLDevice> nativeDevice = (id<MTLDevice>)device.NativeDevice();
+    MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+                                                                                            width:120
+                                                                                           height:50
+                                                                                        mipmapped:NO];
+    descriptor.usage = MTLTextureUsageShaderWrite;
+    descriptor.storageMode = MTLStorageModeShared;
+    id<MTLTexture> output = [nativeDevice newTextureWithDescriptor:descriptor];
+    assert(output != nil);
+    ParticleSaturn::Gpu::Metal::MetalSevenSegmentFps fps;
+    assert(fps.Render(device, libraryPath, output, 120, 50, 29));
+    float pixels[120 * 50 * 4]{};
+    const MTLRegion region = MTLRegionMake2D(0, 0, 120, 50);
+    [output getBytes:pixels bytesPerRow:120 * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    const auto redAt = [&](std::uint32_t x, std::uint32_t y) { return pixels[(y * 120 + x) * 4]; };
+    // Diligent places the units digit at width-60 and tens digit 30 pixels to its left.
+    AssertNear(redAt(60, 4), 1.0f);
+    AssertNear(redAt(79, 39), 1.0f);
+    AssertNear(redAt(30, 4), 1.0f);
+    assert(redAt(30, 22) > 0.99f);
+    [output release];
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -190,6 +214,7 @@ int main(int argc, char* argv[]) {
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
     assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(), 320, 180, 0.5f));
     VerifyDiligentToneMapping(device, argv[1]);
+    VerifyDiligentFpsGeometry(device, argv[1]);
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
     assert(acrylic.Apply(device, argv[1], targets.UiScene(), targets.UiBlur(), targets.Composite(), targets.UiOverlay(),
                          320, 180, 3.0f));
