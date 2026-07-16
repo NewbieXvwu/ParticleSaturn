@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/state/AppStates.h"
 #include "gpu/interface/GpuCapabilities.h"
 
 #include <cstddef>
@@ -107,6 +108,7 @@ public:
     bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height);
     void* SceneHdr() const noexcept;
     void* BloomStrong() const noexcept;
+    void* BloomPingPong() const noexcept;
     void* BloomWeak() const noexcept;
     void* UiOverlay() const noexcept;
     void* UiBlur() const noexcept;
@@ -115,6 +117,7 @@ public:
 private:
     void* sceneHdr_ = nullptr;
     void* bloomStrong_ = nullptr;
+    void* bloomPingPong_ = nullptr;
     void* bloomWeak_ = nullptr;
     void* uiOverlay_ = nullptr;
     void* uiBlur_ = nullptr;
@@ -129,8 +132,8 @@ public:
 
 class MetalBloom {
 public:
-    bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* strongBloom, void* weakBloom,
-               std::uint32_t strongWidth, std::uint32_t strongHeight, std::uint32_t weakWidth, std::uint32_t weakHeight);
+    bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* bloomA, void* bloomB,
+               std::uint32_t width, std::uint32_t height, float blurStrength);
 };
 
 class MetalAcrylic {
@@ -152,7 +155,7 @@ class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
-              float timeSeconds) const;
+              const App::SceneState& scene) const;
 
 private:
     void* particlePipeline_ = nullptr;
@@ -164,11 +167,9 @@ public:
     bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                 MetalParticleRenderer& particleRenderer,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
-                float backingScale, float deltaTime, std::uint32_t framesPerSecond,
+                float backingScale, const App::SceneState& scene, bool handTracked, float deltaTime,
+                std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});
-
-private:
-    float elapsedTime_ = 0.0f;
 };
 
 class MetalIndirectDraw {

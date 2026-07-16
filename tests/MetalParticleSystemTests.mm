@@ -20,6 +20,7 @@ int main(int argc, char* argv[]) {
     assert(targets.Create(device, 320, 180));
     assert(targets.SceneHdr() != nullptr);
     assert(targets.BloomStrong() != nullptr);
+    assert(targets.BloomPingPong() != nullptr);
     assert(targets.BloomWeak() != nullptr);
     assert(targets.UiOverlay() != nullptr);
     assert(targets.UiBlur() != nullptr);
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
     assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomWeak(), targets.UiOverlay(), 320, 180));
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
-    assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(), 320, 180, 160, 90));
+    assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
     assert(acrylic.Apply(device, argv[1], targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
                          320, 180, 3.0f, 0.75f));

@@ -28,8 +28,25 @@ int main() {
     assert(frame.frameIndex == 1);
     assert(frame.state == &controller.State());
     assert(std::abs(controller.State().scene.simulationTimeSeconds - 0.02) < 0.0001);
-    assert(std::abs(controller.State().scene.rotationX - 4.0f) < 0.0001f);
+    assert(std::abs(controller.State().scene.rotationX - 4.4f) < 0.0001f);
     assert(std::abs(controller.State().scene.rotationY + 2.0f) < 0.0001f);
+
+    AppController diligentController;
+    FrameCoordinator diligentCoordinator{1.0 / 180.0};
+    diligentCoordinator.Advance(diligentController, 1.0 / 180.0);
+    const auto& automatic = diligentController.State().scene;
+    const float automaticAlpha = 0.08f;
+    const float automaticTime = 0.005f;
+    assert(std::abs(automatic.autoAnimationTime - automaticTime) < 0.0001f);
+    assert(std::abs(automatic.zoom - (1.0f + std::sin(automaticTime) * 0.2f * automaticAlpha)) < 0.0001f);
+
+    AppController handController;
+    FrameCoordinator handCoordinator{1.0 / 180.0};
+    handCoordinator.Advance(handController, 1.0 / 180.0, {true, 0.0f, 0.0f, 0.0f, true, 1.5f, 0.25f, 0.75f});
+    const auto& hand = handController.State().scene;
+    assert(std::abs(hand.zoom - 1.125f) < 0.0001f);
+    assert(std::abs(hand.rotationX - 0.45f) < 0.0001f);
+    assert(std::abs(hand.rotationY + 0.125f) < 0.0001f);
 
     controller.Dispatch(TogglePause{});
     coordinator.Advance(controller, 0.01, {true, 1.0f, 1.0f, 1.0f});

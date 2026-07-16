@@ -3,12 +3,43 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 
+#include <algorithm>
+#include <array>
+#include <chrono>
+
 #include "imgui.h"
 #include "imgui_impl_metal.h"
 #include "imgui_impl_osx.h"
 
 #include "CocoaHost.h"
+#include "app/AppController.h"
+#include "app/FrameCoordinator.h"
 #include "gpu/backends/metal/MetalBackend.h"
+
+namespace {
+
+class FpsMeter {
+public:
+    void AddSample(float deltaTime) {
+        if (deltaTime <= 0.0f || deltaTime >= 1.0f) return;
+        samples_[next_] = deltaTime;
+        next_ = (next_ + 1U) % samples_.size();
+        float total = 0.0f;
+        for (const float sample : samples_) total += sample;
+        framesPerSecond_ = total > 0.0f ? static_cast<float>(samples_.size()) / total : 60.0f;
+    }
+
+    std::uint32_t Value() const {
+        return static_cast<std::uint32_t>(std::clamp(framesPerSecond_, 0.0f, 999.0f));
+    }
+
+private:
+    std::array<float, 60> samples_{};
+    std::size_t next_ = 0;
+    float framesPerSecond_ = 60.0f;
+};
+
+} // namespace
 
 int main() {
     @autoreleasepool {
@@ -27,6 +58,10 @@ int main() {
             !stars.Initialize(device, libraryPath, 0x53544152U) || !targets.Create(device, size.width, size.height)) return 1;
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
+        ParticleSaturn::App::AppController controller;
+        ParticleSaturn::App::FrameCoordinator coordinator;
+        FpsMeter fpsMeter;
+        auto lastFrameTime = std::chrono::steady_clock::now();
         if (!particleRenderer.Initialize(device, libraryPath)) return 1;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -34,13 +69,18 @@ int main() {
         if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
         host.Show();
         host.Run([&] {
+            const auto now = std::chrono::steady_clock::now();
+            const float deltaTime = std::clamp(std::chrono::duration<float>(now - lastFrameTime).count(), 0.0f, 0.25f);
+            lastFrameTime = now;
+            const auto frame = coordinator.Advance(controller, deltaTime);
+            fpsMeter.AddSample(deltaTime);
             const auto drawableSize = host.CurrentDrawableSize();
             if (drawableSize.width != size.width || drawableSize.height != size.height) {
                 if (!targets.Create(device, drawableSize.width, drawableSize.height)) return;
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            drawableSize.scale, 1.0f / 60.0f, 60, [&](void* commands, void* encoder, void* pass) {
+                            drawableSize.scale, frame.state->scene, false, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();

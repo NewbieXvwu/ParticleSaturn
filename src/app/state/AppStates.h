@@ -25,9 +25,11 @@ enum class WindowMaterial : std::uint8_t {
 
 struct SceneState {
     double simulationTimeSeconds = 0.0;
-    float rotationX              = 0.0f;
+    // 与旧 OpenGL/Diligent 渲染器的初始姿态一致。
+    float rotationX              = 0.4f;
     float rotationY              = 0.0f;
     float zoom                   = 1.0f;
+    float autoAnimationTime      = 0.0f;
     std::uint32_t randomSeed     = 0x53415455U;
     bool paused                   = false;
 };

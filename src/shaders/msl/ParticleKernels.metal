@@ -125,26 +125,40 @@ kernel void ToneMapWithBloom(texture2d<float, access::read> hdr [[texture(0)]],
     ldr.write(float4(clamp(color, 0.0f, 1.0f), 1.0f), id);
 }
 
+struct BloomConstants { float texelX; float texelY; float offset; float threshold; };
+
+float3 BrightPass(float3 color, float threshold) {
+    const float maximum = max(color.r, max(color.g, color.b));
+    if (threshold <= 0.0001f) return color;
+    return color * smoothstep(threshold, threshold * 2.0f, maximum);
+}
+
 kernel void BloomDownsample(texture2d<float, access::read> source [[texture(0)]],
                             texture2d<float, access::write> target [[texture(1)]],
+                            constant BloomConstants& constants [[buffer(0)]],
                             uint2 id [[thread_position_in_grid]]) {
     if (id.x >= target.get_width() || id.y >= target.get_height()) return;
-    const uint2 base = id * 6U;
-    float3 color = source.read(base).rgb;
-    target.write(float4(max(color - 1.0f, 0.0f), 1.0f), id);
+    const float2 uv = (float2(id) + 0.5f) / float2(target.get_width(), target.get_height());
+    const float2 halfPixel = float2(constants.texelX, constants.texelY) * 0.5f;
+    const float3 color = (SampleBilinear(source, uv + float2(-halfPixel.x, -halfPixel.y)) +
+                          SampleBilinear(source, uv + float2( halfPixel.x, -halfPixel.y)) +
+                          SampleBilinear(source, uv + float2(-halfPixel.x,  halfPixel.y)) +
+                          SampleBilinear(source, uv + float2( halfPixel.x,  halfPixel.y))) * 0.25f;
+    target.write(float4(BrightPass(color, constants.threshold), 1.0f), id);
 }
 
 kernel void KawaseBlur(texture2d<float, access::read> source [[texture(0)]],
                        texture2d<float, access::write> target [[texture(1)]],
+                       constant BloomConstants& constants [[buffer(0)]],
                        uint2 id [[thread_position_in_grid]]) {
     if (id.x >= target.get_width() || id.y >= target.get_height()) return;
-    const int2 p = int2(id) * 2;
-    const int2 size = int2(source.get_width() - 1, source.get_height() - 1);
-    float4 color = source.read(uint2(clamp(p + int2(-1, -1), int2(0), size))) +
-                   source.read(uint2(clamp(p + int2(1, -1), int2(0), size))) +
-                   source.read(uint2(clamp(p + int2(-1, 1), int2(0), size))) +
-                   source.read(uint2(clamp(p + int2(1, 1), int2(0), size)));
-    target.write(color * 0.25f, id);
+    const float2 uv = (float2(id) + 0.5f) / float2(target.get_width(), target.get_height());
+    const float2 offset = float2(constants.texelX, constants.texelY) * (constants.offset + 0.5f);
+    const float3 color = (SampleBilinear(source, uv + float2(-offset.x, -offset.y)) +
+                          SampleBilinear(source, uv + float2( offset.x, -offset.y)) +
+                          SampleBilinear(source, uv + float2(-offset.x,  offset.y)) +
+                          SampleBilinear(source, uv + float2( offset.x,  offset.y))) * 0.25f;
+    target.write(float4(color, 1.0f), id);
 }
 
 struct AcrylicConstants {
@@ -242,23 +256,26 @@ struct PointVertex {
     float isRing;
 };
 
-struct RenderConstants { float aspect; float screenHeight; float time; float scale; };
+struct RenderConstants { float aspect; float screenHeight; float time; float scale; float rotationX; float rotationY; };
 
 float4 UnpackColor(uint color) {
     return float4(float(color & 255U), float((color >> 8U) & 255U), float((color >> 16U) & 255U), float((color >> 24U) & 255U)) / 255.0f;
 }
 
-float3 RotateSaturn(float3 position) {
+float3 RotateSaturn(float3 position, float rotationX, float rotationY) {
     const float cz = cos(0.466f); const float sz = sin(0.466f);
-    const float cx = cos(0.4f); const float sx = sin(0.4f);
+    const float cy = cos(rotationY); const float sy = sin(rotationY);
+    const float cx = cos(rotationX); const float sx = sin(rotationX);
     const float3 zRotated = float3(position.x * cz - position.y * sz, position.x * sz + position.y * cz, position.z);
-    return float3(zRotated.x, zRotated.y * cx - zRotated.z * sx, zRotated.y * sx + zRotated.z * cx);
+    const float3 yRotated = float3(zRotated.x * cy + zRotated.z * sy, zRotated.y,
+                                   -zRotated.x * sy + zRotated.z * cy);
+    return float3(yRotated.x, yRotated.y * cx - yRotated.z * sx, yRotated.y * sx + yRotated.z * cx);
 }
 
 vertex PointVertex ParticleVertex(const device Particle* particles [[buffer(0)]], constant RenderConstants& constants [[buffer(1)]],
                                   uint id [[vertex_id]]) {
     const Particle particle = particles[id];
-    const float3 position = RotateSaturn(particle.position.xyz * constants.scale);
+    const float3 position = RotateSaturn(particle.position.xyz * constants.scale, constants.rotationX, constants.rotationY);
     const float distance = 100.0f - position.z;
     const float focalLength = 1.0f / tan(1.047f * 0.5f);
     PointVertex output;
@@ -293,7 +310,10 @@ vertex PointVertex StarVertex(const device Star* stars [[buffer(0)]], constant R
                               uint id [[vertex_id]]) {
     PointVertex output;
     const Star star = stars[id];
-    const float3 position = float3(star.position);
+    const float starRotation = constants.time * 0.005f;
+    const float3 position = float3(star.position.x * cos(starRotation) + star.position.z * sin(starRotation),
+                                   star.position.y,
+                                   -star.position.x * sin(starRotation) + star.position.z * cos(starRotation));
     const float distance = 100.0f - position.z;
     const float focalLength = 1.0f / tan(1.047f * 0.5f);
     output.position = float4(position.x * focalLength / (constants.aspect * distance), position.y * focalLength / distance, 0.0f, 1.0f);

@@ -846,7 +846,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
-进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化采用旧 Diligent 的 PCG 序列、半径分层与四色调色板，星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑；相机投影、粒子片元映射、FPS 右上角布局和 Bloom 合成均已接入实际帧路径。UI 路径先单独生成 Acrylic 纹理，再由 ImGui 面板背景采样，主场景不会被 UI 模糊合成覆盖。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；完整测试和应用包截图均已验证。
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化采用旧 Diligent 的 PCG 序列、半径分层与四色调色板，星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑；相机投影、粒子片元映射和 FPS 右上角布局均已接入实际帧路径。Bloom 已改为旧 Diligent 的 `1/6` 分辨率亮部提取与七轮 Kawase 乒乓链，最终合成采样该链的结果，不再把 `1/12` 纹理放大到全屏。UI 路径先单独生成 Acrylic 纹理，再由 ImGui 面板背景采样，主场景不会被 UI 模糊合成覆盖。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；完整测试和应用包截图均已验证。旧 MD3/ImGui 命令界面与跨路径画面基准尚未完成，因此 Metal 参考路径验收保持未完成。
 
 - [x] 120 万粒子初始化（Metal 计算管线）
 - [x] 三缓冲计算模拟
@@ -861,7 +861,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 透明窗口 + `NSVisualEffectView`
 - [x] 管线缓存（`MTLBinaryArchive`）
 - [x] MSL 着色器编写 + `metallib` 编译
-- [x] Metal 成为 macOS 参考路径
+- [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
+- [ ] Metal 成为 macOS 参考路径
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
