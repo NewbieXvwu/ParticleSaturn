@@ -19,12 +19,15 @@ public:
     bool LatestFrame(Frame& frame) override;
     std::string LastError() const override;
     void PublishPixelBuffer(void* pixelBuffer, std::uint64_t timestampNanoseconds);
+    void HandleDeviceDisconnected(const char* deviceId);
 
 private:
     mutable std::mutex mutex_;
     void* session_ = nullptr;
     void* output_ = nullptr;
     void* delegate_ = nullptr;
+    void* disconnectObserver_ = nullptr;
+    std::string activeDeviceId_;
     Frame latestFrame_;
     bool hasFrame_ = false;
     std::string error_;

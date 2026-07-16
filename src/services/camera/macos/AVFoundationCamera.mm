@@ -35,8 +35,18 @@ Authorization ConvertAuthorization(AVAuthorizationStatus status) {
 
 } // namespace
 
-AVFoundationCamera::AVFoundationCamera() = default;
-AVFoundationCamera::~AVFoundationCamera() { Stop(); }
+AVFoundationCamera::AVFoundationCamera() {
+    disconnectObserver_ = [[NSNotificationCenter defaultCenter]
+        addObserverForName:AVCaptureDeviceWasDisconnectedNotification object:nil queue:nil
+        usingBlock:^(NSNotification* notification) {
+            AVCaptureDevice* device = [notification object];
+            if (device != nil) HandleDeviceDisconnected([[device uniqueID] UTF8String]);
+        }];
+}
+AVFoundationCamera::~AVFoundationCamera() {
+    Stop();
+    if (disconnectObserver_ != nullptr) [[NSNotificationCenter defaultCenter] removeObserver:(id)disconnectObserver_];
+}
 
 Authorization AVFoundationCamera::Permission() const { return ConvertAuthorization([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo]); }
 void AVFoundationCamera::RequestPermission() { [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL) {}]; }
@@ -89,7 +99,7 @@ bool AVFoundationCamera::Start(const std::string& deviceId, std::uint32_t width,
     [session startRunning];
     {
         std::lock_guard lock{mutex_};
-        session_ = session; output_ = output; delegate_ = delegate; hasFrame_ = false; error_.clear();
+        session_ = session; output_ = output; delegate_ = delegate; activeDeviceId_ = deviceId; hasFrame_ = false; error_.clear();
     }
     (void)width; (void)height;
     return true;
@@ -101,12 +111,20 @@ void AVFoundationCamera::Stop() {
     if (delegate_ != nullptr) { ((ParticleSaturnVideoDelegate*)delegate_)->owner = nullptr; [(id)delegate_ release]; }
     if (output_ != nullptr) [(id)output_ release];
     if (session_ != nullptr) [(id)session_ release];
-    session_ = output_ = delegate_ = nullptr; hasFrame_ = false;
+    session_ = output_ = delegate_ = nullptr; activeDeviceId_.clear(); hasFrame_ = false;
 }
 
 bool AVFoundationCamera::IsRunning() const { std::lock_guard lock{mutex_}; return session_ != nullptr && [(AVCaptureSession*)session_ isRunning]; }
 bool AVFoundationCamera::LatestFrame(Frame& frame) { std::lock_guard lock{mutex_}; if (!hasFrame_) return false; frame = latestFrame_; hasFrame_ = false; return true; }
 std::string AVFoundationCamera::LastError() const { std::lock_guard lock{mutex_}; return error_; }
+
+void AVFoundationCamera::HandleDeviceDisconnected(const char* deviceId) {
+    std::lock_guard lock{mutex_};
+    if (session_ == nullptr || deviceId == nullptr || activeDeviceId_ != deviceId) return;
+    [(AVCaptureSession*)session_ stopRunning];
+    error_ = "active camera was disconnected";
+    hasFrame_ = false;
+}
 
 void AVFoundationCamera::PublishPixelBuffer(void* pixelBuffer, std::uint64_t timestampNanoseconds) {
     auto buffer = (CVPixelBufferRef)pixelBuffer;
