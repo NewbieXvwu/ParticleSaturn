@@ -167,9 +167,10 @@ bool MetalParticleSystem::Initialize(MetalDevice& device, const char* libraryPat
     return [commandBuffer status] == MTLCommandBufferStatusCompleted;
 }
 
-bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTracked) {
+bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount) {
     if (commandQueue_ == nil) return false;
-    const SimulationConstants constants{deltaTime, handScale, handTracked ? 1.0f : 0.0f, ParticleCount};
+    const SimulationConstants constants{deltaTime, handScale, handTracked ? 1.0f : 0.0f,
+                                        std::clamp(particleCount, 1U, ParticleCount)};
     id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     [encoder setComputePipelineState:(id<MTLComputePipelineState>)simulationPipeline_];
@@ -285,7 +286,7 @@ void* MetalRenderTargets::UiBlur() const noexcept { return uiBlur_; }
 void* MetalRenderTargets::Composite() const noexcept { return composite_; }
 
 bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
-                            std::uint32_t width, std::uint32_t height) {
+                            std::uint32_t width, std::uint32_t height, float bloomStrength) {
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
@@ -301,6 +302,8 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     [encoder setTexture:(id<MTLTexture>)hdrTexture atIndex:0];
     [encoder setTexture:(id<MTLTexture>)bloomTexture atIndex:1];
     [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:2];
+    const float clampedBloomStrength = std::max(0.0f, bloomStrength);
+    [encoder setBytes:&clampedBloomStrength length:sizeof(clampedBloomStrength) atIndex:0];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1)
       threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
     [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
@@ -382,7 +385,8 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sce
 }
 
 bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture,
-                                  std::uint32_t width, std::uint32_t height, float backingScale) {
+                                  std::uint32_t width, std::uint32_t height, float backingScale,
+                                  float left, float top, float panelWidth, float panelHeight) {
     if (outputTexture == nullptr || width == 0 || height == 0) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
@@ -393,8 +397,8 @@ bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, 
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
     id<MTLCommandBuffer> commands = [queue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    struct PanelMask { float left, top, width, height; } mask{80.0f * backingScale, 80.0f * backingScale,
-                                                               210.0f * backingScale, 95.0f * backingScale};
+    struct PanelMask { float left, top, width, height; } mask{left * backingScale, top * backingScale,
+                                                               panelWidth * backingScale, panelHeight * backingScale};
     [encoder setComputePipelineState:pipeline]; [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
     [encoder setBytes:&mask length:sizeof(mask) atIndex:0];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
@@ -437,7 +441,7 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
 }
 
 void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
-                                 std::uint32_t height, const App::SceneState& scene) const {
+                                 std::uint32_t height, const App::SceneState& scene, std::uint32_t particleCount) const {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
     struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY; } constants{
@@ -450,17 +454,18 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
-    [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalParticleSystem::ParticleCount];
+    [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0
+                 vertexCount:std::clamp(particleCount, 1U, MetalParticleSystem::ParticleCount)];
 }
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                                 MetalParticleRenderer& particleRenderer,
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
-                                std::uint32_t height, float backingScale, const App::SceneState& scene, bool handTracked,
+                                std::uint32_t height, float backingScale, const App::AppState& state, bool handTracked,
                                 float deltaTime, std::uint32_t framesPerSecond,
                                 const std::function<void(void*, void*, void*)>& uiRenderer) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
-    if (!particles.Simulate(deltaTime, scene.zoom, handTracked)) return false;
+    if (!state.scene.paused && !particles.Simulate(deltaTime, state.scene.zoom, handTracked, state.render.particleCount)) return false;
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
     id<MTLCommandBuffer> commands = [queue commandBuffer];
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -469,21 +474,31 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, scene);
+    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state.scene, state.render.particleCount);
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
-    MetalAcrylic acrylic;
-    if (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height, backingScale) ||
-        !acrylic.Apply(device, libraryPath, targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(), width, height, 3.0f, 0.75f)) return false;
     MetalBloom bloom;
     if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
-                     std::max(1U, width / 6U), std::max(1U, height / 6U), 2.0f)) return false;
+                     std::max(1U, width / 6U), std::max(1U, height / 6U), state.ui.blurStrength)) return false;
+    MetalAcrylic acrylic;
+    constexpr float panelLeft = 80.0f;
+    constexpr float panelTop = 80.0f;
+    constexpr float panelWidth = 320.0f;
+    constexpr float panelHeight = 280.0f;
+    if (state.ui.blurEnabled &&
+        (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height, backingScale,
+                                 panelLeft, panelTop, panelWidth, panelHeight) ||
+         !acrylic.Apply(device, libraryPath, targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
+                        width, height, state.ui.blurStrength, 0.75f))) return false;
     MetalToneMapper toneMapper;
     // The UI path receives its own tone-mapped acrylic texture. The scene path remains untouched.
-    if (!toneMapper.Apply(device, libraryPath, targets.Composite(), targets.BloomPingPong(), targets.UiOverlay(), width, height) ||
+    void* uiSource = state.ui.blurEnabled ? targets.Composite() : targets.SceneHdr();
+    const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
+    if (!toneMapper.Apply(device, libraryPath, uiSource, targets.BloomPingPong(), targets.UiOverlay(),
+                          width, height, bloomStrength) ||
         !toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
-                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
+                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength)) return false;
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
     if (uiRenderer) {

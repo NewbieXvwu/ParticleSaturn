@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
     assert(device.Initialize());
     ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;
     assert(particles.Initialize(device, argv[1], 0x53415455U));
-    assert(particles.Simulate(1.0f / 120.0f, 1.0f, false));
+    assert(particles.Simulate(1.0f / 120.0f, 1.0f, false, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(particles.RenderBuffer() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalStarField stars;
     assert(stars.Initialize(device, argv[1], 0x53544152U));
@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
     assert(targets.UiBlur() != nullptr);
     assert(targets.Composite() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
-    assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomWeak(), targets.UiOverlay(), 320, 180));
+    assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomWeak(), targets.UiOverlay(), 320, 180, 0.5f));
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;

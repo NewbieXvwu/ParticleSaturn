@@ -69,7 +69,7 @@ public:
     static constexpr std::uint32_t ParticleCount = 1200000;
 
     bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
-    bool Simulate(float deltaTime, float handScale, bool handTracked);
+    bool Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount);
     void* RenderBuffer() const noexcept;
 
 private:
@@ -127,7 +127,7 @@ private:
 class MetalToneMapper {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
-               std::uint32_t width, std::uint32_t height);
+               std::uint32_t width, std::uint32_t height, float bloomStrength);
 };
 
 class MetalBloom {
@@ -139,7 +139,7 @@ public:
 class MetalAcrylic {
 public:
     bool BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
-                        std::uint32_t height, float backingScale);
+                        std::uint32_t height, float backingScale, float left, float top, float panelWidth, float panelHeight);
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
                void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
                float blurRadius, float opacity);
@@ -155,7 +155,7 @@ class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
-              const App::SceneState& scene) const;
+              const App::SceneState& scene, std::uint32_t particleCount) const;
 
 private:
     void* particlePipeline_ = nullptr;
@@ -167,7 +167,7 @@ public:
     bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                 MetalParticleRenderer& particleRenderer,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
-                float backingScale, const App::SceneState& scene, bool handTracked, float deltaTime,
+                float backingScale, const App::AppState& state, bool handTracked, float deltaTime,
                 std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});
 };

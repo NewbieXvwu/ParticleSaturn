@@ -117,10 +117,11 @@ float3 SampleBilinear(texture2d<float, access::read> texture, float2 uv) {
 kernel void ToneMapWithBloom(texture2d<float, access::read> hdr [[texture(0)]],
                     texture2d<float, access::read> bloom [[texture(1)]],
                     texture2d<float, access::write> ldr [[texture(2)]],
+                    constant float& bloomStrength [[buffer(0)]],
                     uint2 id [[thread_position_in_grid]]) {
     if (id.x >= ldr.get_width() || id.y >= ldr.get_height()) return;
     const float2 uv = (float2(id) + 0.5f) / float2(ldr.get_width(), ldr.get_height());
-    float3 color = hdr.read(id).rgb + SampleBilinear(bloom, uv) * 0.25f;
+    float3 color = hdr.read(id).rgb + SampleBilinear(bloom, uv) * bloomStrength;
     color = (color * (2.51f * color + 0.03f)) / (color * (2.43f * color + 0.59f) + 0.14f);
     ldr.write(float4(clamp(color, 0.0f, 1.0f), 1.0f), id);
 }

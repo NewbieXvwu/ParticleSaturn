@@ -80,25 +80,57 @@ int main() {
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            drawableSize.scale, frame.state->scene, false, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
+                            drawableSize.scale, *frame.state, false, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
                 ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-                ImGui::SetNextWindowSize(ImVec2(210.0f, 95.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
                 ImGui::SetNextWindowBgAlpha(0.0f);
                 ImGui::Begin("Particle Saturn");
                 const ImVec2 panelPosition = ImGui::GetWindowPos();
                 const ImVec2 panelSize = ImGui::GetWindowSize();
                 const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
                 const float panelTop = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.height);
-                const float panelRight = (80.0f + 210.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
-                const float panelBottom = (80.0f + 95.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                const float panelRight = (80.0f + 320.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                const float panelBottom = (80.0f + 280.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
                 ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
                                                       ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
                                                       ImVec2(panelLeft, panelTop), ImVec2(panelRight, panelBottom));
-                ImGui::Text("Metal reference path");
-                ImGui::Text("Particles: %u", ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount);
+                const auto& state = controller.State();
+                ImGui::Text("Metal");
+                ImGui::SameLine();
+                ImGui::Text("FPS: %u", fpsMeter.Value());
+                ImGui::Separator();
+                ImGui::Text("Particles: %u", state.render.particleCount);
+                int particleCount = static_cast<int>(state.render.particleCount);
+                if (ImGui::SliderInt("Particle count", &particleCount,
+                                     static_cast<int>(ParticleSaturn::App::RenderSettings::MinParticles),
+                                     static_cast<int>(ParticleSaturn::App::RenderSettings::MaxParticles))) {
+                    controller.Dispatch(ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)});
+                }
+                bool bloomEnabled = state.render.bloomEnabled;
+                if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
+                    controller.Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
+                }
+                bool blurEnabled = state.ui.blurEnabled;
+                if (ImGui::Checkbox("UI blur", &blurEnabled)) {
+                    controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
+                }
+                float blurStrength = state.ui.blurStrength;
+                if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
+                    controller.Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
+                }
+                const char* pauseLabel = state.scene.paused ? "Resume" : "Pause";
+                if (ImGui::Button(pauseLabel)) {
+                    controller.Dispatch(ParticleSaturn::App::TogglePause{});
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Fullscreen")) {
+                    const bool fullscreen = !state.window.fullscreen;
+                    const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
+                    if (effect.windowChanged) host.ToggleFullscreen();
+                }
                 ImGui::End();
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
