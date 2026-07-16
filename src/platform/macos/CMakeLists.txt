@@ -46,6 +46,19 @@ if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     set(PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD "${CMAKE_CURRENT_BINARY_DIR}/KosmicKrisp_icd.json")
     file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
 endif()
+
+add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE OpenGL41Main.mm)
+set_target_properties(ParticleSaturn.OpenGL41.macOS PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.opengl41")
+target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend)
+target_compile_definitions(ParticleSaturn.OpenGL41.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
+add_dependencies(ParticleSaturn.OpenGL41.macOS ParticleSaturnOpenGL41Shaders)
+add_custom_command(TARGET ParticleSaturn.OpenGL41.macOS POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.OpenGL41.macOS>/../Resources/glsl410"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/src/shaders/glsl410"
+        "$<TARGET_FILE_DIR:ParticleSaturn.OpenGL41.macOS>/../Resources/glsl410"
+    VERBATIM)
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"

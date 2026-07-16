@@ -22,10 +22,10 @@ void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSys
     assert(snapshots.size() == 64);
     using Snapshot = ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot;
     const Snapshot expected[] = {
-        {{7.55536461f, 8.98992634f, 12.9282703f, 1.78891587f}, 0xcce3dac5U, 0.0f, 0.0f, 0.0f},
-        {{-1.69500279f, -16.1162949f, -0.682979405f, 1.37864661f}, 0xccc9a070U, 0.0f, 0.0f, 0.0f},
-        {{15.9242182f, -0.907382071f, 8.3308363f, 1.67867303f}, 0xcce3dac5U, 0.0f, 0.0f, 0.0f},
-        {{3.47033906f, -0.0189455301f, -27.8411579f, 1.26095307f}, 0xd9cec0a2U, 1.51033187f, 1.0f, 0.0f},
+        {{7.55536461f, 8.98992634f, 12.9282703f, 1.78891587f}, 0xccc5dae3U, 0.0f, 0.0f, 0.0f},
+        {{-1.69500279f, -16.1162949f, -0.682979405f, 1.37864661f}, 0xcc70a0c9U, 0.0f, 0.0f, 0.0f},
+        {{15.9242182f, -0.907382071f, 8.3308363f, 1.67867303f}, 0xccc5dae3U, 0.0f, 0.0f, 0.0f},
+        {{3.47033906f, -0.0189455301f, -27.8411579f, 1.26095307f}, 0xd9a2c0ceU, 1.51033187f, 1.0f, 0.0f},
     };
     for (std::size_t index = 0; index < std::size(expected); ++index) {
         const auto& actual = snapshots[index];
@@ -79,10 +79,16 @@ int main(int argc, char* argv[]) {
         assert(particles.ReadBack(firstFrame, 1));
         particles.Simulate(1.0f / 120.0f, 1.0f, false);
         std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> secondFrame;
-        assert(particles.ReadBack(secondFrame, 1));
+        assert(particles.ReadBack(secondFrame, 64));
         AssertNear(secondFrame[0].position[1], firstFrame[0].position[1]);
         assert(std::abs(secondFrame[0].position[0] - firstFrame[0].position[0]) > 0.000001f ||
                std::abs(secondFrame[0].position[2] - firstFrame[0].position[2]) > 0.000001f);
+        for (const auto& particle : secondFrame) {
+            for (float position : particle.position) assert(std::isfinite(position));
+            assert(particle.color != 0U);
+            assert(particle.isRing == 0.0f || particle.isRing == 1.0f);
+            AssertNear(particle.padding, 0.0f);
+        }
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);
         glClearColor(3.0f, 2.0f, 1.0f, 1.0f);
@@ -91,6 +97,11 @@ int main(int argc, char* argv[]) {
         ParticleSaturn::Gpu::OpenGL41::OpenGLBloom bloom;
         assert(bloom.Initialize(argv[4]));
         assert(bloom.Apply(targets));
+        float bloomColor[4]{};
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.BloomPingPongFramebuffer());
+        glReadPixels(160, 90, 1, 1, GL_RGBA, GL_FLOAT, bloomColor);
+        assert(glGetError() == GL_NO_ERROR);
+        assert(bloomColor[0] > 0.1f && bloomColor[1] > 0.1f && bloomColor[2] > 0.1f);
         ParticleSaturn::Gpu::OpenGL41::OpenGLToneMapper toneMapper;
         assert(toneMapper.Initialize(argv[4]));
         assert(toneMapper.Apply(targets));

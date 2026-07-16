@@ -27,7 +27,9 @@ public:
     bool ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const;
     std::uint32_t RenderVertexArray() const noexcept;
     std::uint32_t IndirectBuffer() const noexcept;
-    void DrawIndirect() const;
+    void DrawIndirect(float timeSeconds = 0.0f, std::uint32_t width = 1920, std::uint32_t height = 1080,
+                      float scale = 1.0f, float rotationX = 0.0f, float rotationY = 0.0f,
+                      float pixelRatio = 1.0f, float densityCompensation = 1.0f) const;
 
 private:
     std::uint32_t program_ = 0;

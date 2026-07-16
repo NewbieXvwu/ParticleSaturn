@@ -7,7 +7,7 @@ class OpenGLRenderTargets;
 class OpenGLToneMapper {
 public:
     bool Initialize(const char* shaderDirectory);
-    bool Apply(const OpenGLRenderTargets& targets) const;
+    bool Apply(const OpenGLRenderTargets& targets, float bloomStrength = 0.5f) const;
 
 private:
     unsigned int program_ = 0;

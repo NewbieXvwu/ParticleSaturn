@@ -3,6 +3,7 @@
 #include "OpenGLToneMapper.h"
 #include "OpenGLRenderTargets.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -59,7 +60,7 @@ bool OpenGLToneMapper::Initialize(const char* shaderDirectory) {
     return false;
 }
 
-bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets) const {
+bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStrength) const {
     if (program_ == 0 || targets.Width() == 0 || targets.Height() == 0) return false;
     glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
     glViewport(0, 0, targets.Width(), targets.Height());
@@ -68,8 +69,9 @@ bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets) const {
     glBindTexture(GL_TEXTURE_2D, targets.SceneTexture());
     glUniform1i(glGetUniformLocation(program_, "uScene"), 0);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, targets.BloomWeakTexture());
+    glBindTexture(GL_TEXTURE_2D, targets.BloomPingPongTexture());
     glUniform1i(glGetUniformLocation(program_, "uBloom"), 1);
+    glUniform1f(glGetUniformLocation(program_, "uBloomStrength"), std::max(0.0f, bloomStrength));
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return glGetError() == GL_NO_ERROR;
 }

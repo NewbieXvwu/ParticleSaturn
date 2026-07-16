@@ -58,7 +58,7 @@ GLuint BuildProgram(const std::filesystem::path& directory, const char* fragment
 }
 
 void Draw(GLuint program, GLuint sourceTexture, GLuint targetFramebuffer, std::uint32_t targetWidth,
-          std::uint32_t targetHeight, std::uint32_t sourceWidth, std::uint32_t sourceHeight) {
+          std::uint32_t targetHeight, std::uint32_t sourceWidth, std::uint32_t sourceHeight, float offset, float threshold) {
     glBindFramebuffer(GL_FRAMEBUFFER, targetFramebuffer);
     glViewport(0, 0, targetWidth, targetHeight);
     glUseProgram(program);
@@ -66,6 +66,8 @@ void Draw(GLuint program, GLuint sourceTexture, GLuint targetFramebuffer, std::u
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
     glUniform1i(glGetUniformLocation(program, "uSource"), 0);
     glUniform2f(glGetUniformLocation(program, "uTexelSize"), 1.0f / sourceWidth, 1.0f / sourceHeight);
+    glUniform1f(glGetUniformLocation(program, "uOffset"), offset);
+    glUniform1f(glGetUniformLocation(program, "uThreshold"), threshold);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 
@@ -86,9 +88,27 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets) const {
     const std::uint32_t weakWidth = std::max(1U, targets.Width() / 12U);
     const std::uint32_t weakHeight = std::max(1U, targets.Height() / 12U);
     Draw(downsampleProgram_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
-         targets.Width(), targets.Height());
-    Draw(blurProgram_, targets.BloomStrongTexture(), targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
-         strongWidth, strongHeight);
+         targets.Width(), targets.Height(), 0.0f, 1.0f);
+
+    static constexpr float offsets[] = {1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    GLuint source = targets.BloomStrongTexture();
+    for (std::size_t index = 0; index < std::size(offsets); ++index) {
+        const bool writePingPong = (index % 2U) == 0U;
+        Draw(blurProgram_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
+             strongWidth, strongHeight, strongWidth, strongHeight, offsets[index], 0.0f);
+        source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
+    }
+
+    Draw(downsampleProgram_, source, targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
+         strongWidth, strongHeight, 0.0f, 0.0f);
+    source = targets.BloomWeakTexture();
+    static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
+    for (std::size_t index = 0; index < std::size(secondaryOffsets); ++index) {
+        const bool writePingPong = (index % 2U) == 0U;
+        Draw(blurProgram_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
+             weakWidth, weakHeight, weakWidth, weakHeight, secondaryOffsets[index], 0.0f);
+        source = writePingPong ? targets.BloomWeakPingPongTexture() : targets.BloomWeakTexture();
+    }
     return glGetError() == GL_NO_ERROR;
 }
 

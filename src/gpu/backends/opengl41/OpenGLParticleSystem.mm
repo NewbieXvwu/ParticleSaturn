@@ -39,7 +39,7 @@ std::uint32_t PackColor(float red, float green, float blue, float alpha) {
     const auto channel = [](float value) {
         return static_cast<std::uint32_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
     };
-    return (channel(alpha) << 24U) | (channel(red) << 16U) | (channel(green) << 8U) | channel(blue);
+    return (channel(alpha) << 24U) | (channel(blue) << 16U) | (channel(green) << 8U) | channel(red);
 }
 
 OpenGLParticleSystem::ParticleSnapshot InitializeDiligentParticle(std::uint32_t id, std::uint32_t seed) {
@@ -128,8 +128,8 @@ GLuint BuildTransformFeedbackProgram(const char* path) {
     if (shader == 0) return 0;
     GLuint program = glCreateProgram();
     glAttachShader(program, shader);
-    const char* varyings[] = {"tfPosition", "tfColor", "tfSpeed", "tfIsRing"};
-    glTransformFeedbackVaryings(program, 4, varyings, GL_INTERLEAVED_ATTRIBS);
+    const char* varyings[] = {"tfPosition", "tfColor", "tfSpeed", "tfIsRing", "tfPadding"};
+    glTransformFeedbackVaryings(program, 5, varyings, GL_INTERLEAVED_ATTRIBS);
     glLinkProgram(program);
     glDeleteShader(shader);
     GLint linked = GL_FALSE;
@@ -166,6 +166,7 @@ void ConfigureVertexArray(GLuint vao, GLuint buffer) {
     glEnableVertexAttribArray(1); glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, ParticleBytes, reinterpret_cast<void*>(16));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(20));
     glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(24));
+    glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(28));
 }
 
 } // namespace
@@ -232,16 +233,22 @@ bool OpenGLParticleSystem::ReadBack(std::vector<ParticleSnapshot>& particles, st
 std::uint32_t OpenGLParticleSystem::RenderVertexArray() const noexcept { return vertexArrays_[renderIndex_]; }
 std::uint32_t OpenGLParticleSystem::IndirectBuffer() const noexcept { return indirectBuffer_; }
 
-void OpenGLParticleSystem::DrawIndirect() const {
-    static constexpr float Identity[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
+void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, std::uint32_t height, float scale,
+                                        float rotationX, float rotationY, float pixelRatio,
+                                        float densityCompensation) const {
     glUseProgram(renderProgram_);
-    const GLint viewProjection = glGetUniformLocation(renderProgram_, "uViewProjection");
-    if (viewProjection >= 0) glUniformMatrix4fv(viewProjection, 1, GL_FALSE, Identity);
+    const auto setFloat = [this](const char* name, float value) {
+        const GLint location = glGetUniformLocation(renderProgram_, name);
+        if (location >= 0) glUniform1f(location, value);
+    };
+    setFloat("uTime", timeSeconds);
+    setFloat("uScale", scale);
+    setFloat("uRotationX", rotationX);
+    setFloat("uRotationY", rotationY);
+    setFloat("uAspect", static_cast<float>(std::max(width, 1U)) / static_cast<float>(std::max(height, 1U)));
+    setFloat("uScreenHeight", static_cast<float>(std::max(height, 1U)));
+    setFloat("uPixelRatio", pixelRatio);
+    setFloat("uDensityCompensation", densityCompensation);
     glBindVertexArray(vertexArrays_[renderIndex_]);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
     glDrawArraysIndirect(GL_POINTS, nullptr);
