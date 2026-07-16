@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/state/AppStates.h"
+
 #include <cstdint>
 
 namespace ParticleSaturn::Platform::MacOS {
@@ -21,12 +23,15 @@ public:
     void Show();
     void Run();
     void ToggleFullscreen();
+    void SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;
     void* NativeMetalLayer() const noexcept;
 
 private:
     void* window_ = nullptr;
     void* layer_ = nullptr;
+    void* metalView_ = nullptr;
+    void* visualEffectView_ = nullptr;
 };
 
 } // namespace ParticleSaturn::Platform::MacOS

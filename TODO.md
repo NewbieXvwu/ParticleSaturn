@@ -858,7 +858,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 界面模糊 + Acrylic 合成
 - [ ] 七段数码 FPS
 - [ ] ImGui（官方 Metal 后端）
-- [ ] 透明窗口 + `NSVisualEffectView`
+- [x] 透明窗口 + `NSVisualEffectView`
 - [ ] 管线缓存（`MTLBinaryArchive`）
 - [x] MSL 着色器编写 + `metallib` 编译
 - [ ] Metal 成为 macOS 参考路径
@@ -888,7 +888,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] HDR 离屏缓冲
 - [ ] Bloom + Kawase 模糊
 - [ ] 色调映射
-- [ ] 透明窗口
+- [x] 透明窗口
 - [ ] ImGui
 - [x] GLSL 410 着色器编写
 

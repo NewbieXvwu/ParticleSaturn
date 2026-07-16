@@ -25,13 +25,15 @@ CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* titl
     [layer setContentsScale:[window backingScaleFactor]];
     [view setLayer:layer];
     [window setContentView:view];
-    [view release];
 
     window_ = window;
     layer_ = layer;
+    metalView_ = view;
 }
 
 CocoaHost::~CocoaHost() {
+    [(NSVisualEffectView*)visualEffectView_ release];
+    [(NSView*)metalView_ release];
     [(NSWindow*)window_ release];
 }
 
@@ -47,6 +49,33 @@ void CocoaHost::Run() {
 
 void CocoaHost::ToggleFullscreen() {
     [(NSWindow*)window_ toggleFullScreen:nil];
+}
+
+void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
+    auto* window = (NSWindow*)window_;
+    auto* metalView = (NSView*)metalView_;
+    if (visualEffectView_ != nullptr) {
+        [metalView removeFromSuperview];
+        [window setContentView:metalView];
+        [(NSVisualEffectView*)visualEffectView_ release];
+        visualEffectView_ = nullptr;
+    }
+    const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic;
+    [window setOpaque:!transparent && material != App::WindowMaterial::SystemBlur];
+    [window setBackgroundColor:transparent || material == App::WindowMaterial::SystemBlur ? NSColor.clearColor : NSColor.blackColor];
+    [metalView setWantsLayer:YES];
+    [[metalView layer] setOpaque:!transparent];
+    if (material != App::WindowMaterial::SystemBlur) return;
+    auto* visual = [[NSVisualEffectView alloc] initWithFrame:[[window contentView] bounds]];
+    [visual setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [visual setMaterial:NSVisualEffectMaterialHUDWindow];
+    [visual setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
+    [visual setState:NSVisualEffectStateActive];
+    [window setContentView:visual];
+    [visual addSubview:metalView];
+    [metalView setFrame:[visual bounds]];
+    [metalView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    visualEffectView_ = visual;
 }
 
 DrawableSize CocoaHost::CurrentDrawableSize() const {
