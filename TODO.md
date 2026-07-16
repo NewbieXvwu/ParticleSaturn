@@ -868,7 +868,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
-进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；当前 macOS 会话处于锁屏状态，窗口与真实设备预览验收待解锁后完成。TensorFlow Lite 仍待迁移。
+进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；当前 macOS 会话处于锁屏状态，窗口与真实设备预览验收待解锁后完成。已新增 `scripts/build_tflite_macos.sh`，对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态库，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载。已验证 `libtensorflow-lite.a` 为 `arm64`，`libxnnpack-delegate.a` 含委托创建和释放符号，`libXNNPACK.a` 含 `xnn_initialize`。主应用尚未链接 PalmDetector/HandLandmark 推理核心，故 XNNPACK 验收项保持未完成。
 
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
