@@ -855,7 +855,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] HDR 离屏渲染
 - [x] Bloom + Kawase 模糊
 - [x] 色调映射
-- [x] 界面模糊 + Acrylic 合成
+- [ ] 界面模糊 + Acrylic 合成
 - [x] 七段数码 FPS
 - [x] ImGui（官方 Metal 后端）
 - [x] 透明窗口 + `NSVisualEffectView`
