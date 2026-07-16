@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -180,6 +181,63 @@ void VerifyDiligentFpsGeometry(ParticleSaturn::Gpu::Metal::MetalDevice& device, 
     [output release];
 }
 
+id<MTLTexture> CreateSharedTexture(id<MTLDevice> device, std::uint32_t width, std::uint32_t height) {
+    MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+                                                                                            width:width
+                                                                                           height:height
+                                                                                        mipmapped:NO];
+    descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    descriptor.storageMode = MTLStorageModeShared;
+    return [device newTextureWithDescriptor:descriptor];
+}
+
+void VerifyBloomThresholdAndAcrylicIsolation(ParticleSaturn::Gpu::Metal::MetalDevice& device, const char* libraryPath) {
+    id<MTLDevice> nativeDevice = (id<MTLDevice>)device.NativeDevice();
+    id<MTLTexture> scene = CreateSharedTexture(nativeDevice, 12, 12);
+    id<MTLTexture> bloomA = CreateSharedTexture(nativeDevice, 2, 2);
+    id<MTLTexture> bloomB = CreateSharedTexture(nativeDevice, 2, 2);
+    assert(scene != nil && bloomA != nil && bloomB != nil);
+
+    float darkScene[12 * 12 * 4];
+    for (std::size_t index = 0; index < 12U * 12U; ++index) {
+        darkScene[index * 4U + 0U] = 0.5f;
+        darkScene[index * 4U + 1U] = 0.5f;
+        darkScene[index * 4U + 2U] = 0.5f;
+        darkScene[index * 4U + 3U] = 1.0f;
+    }
+    const MTLRegion sceneRegion = MTLRegionMake2D(0, 0, 12, 12);
+    [scene replaceRegion:sceneRegion mipmapLevel:0 withBytes:darkScene bytesPerRow:12 * 4 * sizeof(float)];
+    ParticleSaturn::Gpu::Metal::MetalBloom bloom;
+    assert(bloom.Apply(device, libraryPath, scene, bloomA, bloomB, 12, 12, 2.0f));
+    float bloomPixels[2 * 2 * 4]{};
+    [bloomB getBytes:bloomPixels bytesPerRow:2 * 4 * sizeof(float) fromRegion:MTLRegionMake2D(0, 0, 2, 2) mipmapLevel:0];
+    for (std::size_t pixel = 0; pixel < 4U; ++pixel) {
+        AssertNear(bloomPixels[pixel * 4U + 0U], 0.0f);
+        AssertNear(bloomPixels[pixel * 4U + 1U], 0.0f);
+        AssertNear(bloomPixels[pixel * 4U + 2U], 0.0f);
+        AssertNear(bloomPixels[pixel * 4U + 3U], 1.0f);
+    }
+
+    id<MTLTexture> blurA = CreateSharedTexture(nativeDevice, 2, 2);
+    id<MTLTexture> blurB = CreateSharedTexture(nativeDevice, 2, 2);
+    id<MTLTexture> acrylic = CreateSharedTexture(nativeDevice, 2, 2);
+    assert(blurA != nil && blurB != nil && acrylic != nil);
+    float before[12 * 12 * 4]{};
+    [scene getBytes:before bytesPerRow:12 * 4 * sizeof(float) fromRegion:sceneRegion mipmapLevel:0];
+    ParticleSaturn::Gpu::Metal::MetalAcrylic compositor;
+    assert(compositor.Apply(device, libraryPath, scene, blurA, blurB, acrylic, 12, 12, 2.0f));
+    float after[12 * 12 * 4]{};
+    [scene getBytes:after bytesPerRow:12 * 4 * sizeof(float) fromRegion:sceneRegion mipmapLevel:0];
+    assert(std::memcmp(before, after, sizeof(before)) == 0);
+
+    [scene release];
+    [bloomA release];
+    [bloomB release];
+    [blurA release];
+    [blurB release];
+    [acrylic release];
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -209,12 +267,14 @@ int main(int argc, char* argv[]) {
     assert(targets.Create(device, 640, 360));
     assert(targets.SceneHdr() != nullptr);
     assert(targets.BloomPingPong() != nullptr);
+    assert(targets.Create(device, 320, 180));
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
     assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(), 320, 180, 0.5f));
     VerifyDiligentToneMapping(device, argv[1]);
     VerifyDiligentFpsGeometry(device, argv[1]);
+    VerifyBloomThresholdAndAcrylicIsolation(device, argv[1]);
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
     assert(acrylic.Apply(device, argv[1], targets.UiScene(), targets.UiBlur(), targets.Composite(), targets.UiOverlay(),
                          320, 180, 3.0f));

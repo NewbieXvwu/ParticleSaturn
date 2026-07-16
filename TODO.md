@@ -856,6 +856,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 间接绘制
 - [x] HDR 离屏渲染
 - [x] Bloom + Kawase 模糊
+- [x] Bloom 阈值与 Acrylic 输入隔离纹理读回测试
 - [x] 色调映射
 - [x] 界面模糊 + Acrylic 合成
 - [x] 七段数码 FPS
