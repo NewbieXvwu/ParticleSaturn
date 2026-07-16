@@ -128,6 +128,8 @@ enum class VulkanDriver { MoltenVK, KosmicKrisp };
 
 切换后端/驱动后重启进程（与现有 `Settings::RestartWithBackend` 行为一致）。
 
+模式选择的完成条件：应用必须在图形设备创建前读取已保存的 `GraphicsAPI` 与 `VulkanDriver`，实际启动所选路径。两个 Vulkan 选项均需具备表面、交换链、呈现、全部渲染通道和独立进程重启后的复验，设备创建或 `vulkaninfo` 枚举不能作为模式完成依据。OpenGL、Metal、MoltenVK、KosmicKrisp 必须由同一入口选择，不能依靠不同应用包或源代码常量切换。
+
 ---
 
 ## 3. 总体分层架构
@@ -221,6 +223,8 @@ src/
 | `RenderSettings` | 粒子数、像素比例、Bloom、VSync、后端选择 | `render.*`、`ui.enableBlur` |
 | `UiState` | 调试面板、模糊强度、主题、界面布局 | `ui.*` |
 | `GestureSettings` | 灵敏度、轴反转、丢手延迟 | `handParams.*` |
+| `LodState` | 自动调整策略、锁定、最近决策和时间 | `lod.*` |
+| `InputState` | F3/F11/B/Esc 防抖和命令映射 | `input.*` |
 | `WindowState` | 尺寸、全屏、显示器、DPI、窗口材质 | `window.*`、`backdrop.*` |
 
 ### 5.2 控制流
@@ -229,6 +233,8 @@ src/
 - `FrameCoordinator`：计算固定时间步长、更新手势、调用渲染器。
 - 界面只能生成应用命令（如"设置粒子数""切换全屏""选择后端"），控制器更新状态，渲染器在下一帧读取状态快照。
 - 消除当前界面代码直接修改 GPU 资源的问题。
+- 平台输入将 F3、F11、B、Esc 和窗口关闭事件转换为 `AppCommand`；主题、窗口材质、垂直同步、LOD、摄像头状态和后端选择均有命令入口与持久化字段。
+- `FrameCoordinator` 只消费手势服务发布的最新不可变样本，不能由渲染线程等待摄像头或推理。动态 LOD 以帧时间和锁定状态更新粒子数、像素比例，不能由固定默认值替代。
 
 ### 5.3 窗口材质枚举
 
@@ -288,6 +294,7 @@ src/
 - 资源通过不透明句柄管理，上层不能持有 Diligent 指针、Metal 对象或 OpenGL 名称。
 - 原生句柄只允许在后端内部和受控的界面纹理桥接层出现。
 - 界面纹理必须经过 `UiTextureRegistry` 分配稳定编号，MD3 和界面代码不能把 Diligent 纹理指针直接作为 `ImTextureID`。
+- `RenderGraph`、`GpuDevice` 和资源注册表必须进入 Metal、OpenGL 4.1、Vulkan 的实际帧路径。仅存在独立静态库、对象定义或拓扑排序测试时，相关迁移项保持未完成。
 
 ---
 
@@ -328,6 +335,8 @@ Present
 ### 7.2 通道职责
 
 每个通道声明读取资源、写入资源、格式和尺寸。渲染图负责排序、资源生命周期、缩放重建和后端资源依赖。第一阶段只做固定通道图和纹理池，暂不实现通用图编译器。
+
+生产帧必须由该图执行通道顺序、资源屏障、缩放重建与延迟释放；各后端手写串行调用只能作为接入前的临时路径。验收时验证图中每个通道至少在一个真实后端被执行，并验证窗口缩放后旧资源在对应帧令牌完成前不释放。
 
 ### 7.3 主要资源
 
@@ -370,6 +379,8 @@ MetalRuntime
 - `MetalFrameScheduler`：三个帧上下文，每个包含命令缓冲、动态上传区、临时纹理引用和延迟释放列表。CPU 信号量限制在途帧数，Metal 完成回调归还帧上下文。每帧设置 `@autoreleasepool`。
 - `MetalCommandContext`：一个命令缓冲中依次编码计算、渲染和复制工作。通过编码器边界和资源使用声明保证可见性。
 - `MetalPipelineLibrary`：缓存键包含着色器哈希、颜色格式、深度格式、混合状态、采样数和设备标识。磁盘缓存采用 `MTLBinaryArchive`，加入系统版本和构建号失效控制。
+- 主帧路径必须复用命令队列，通过三个帧上下文和完成回调限制在途帧数。禁止每个通道新建命令队列或在正常帧中 `waitUntilCompleted()`。
+- 管线缓存必须实际传入计算和图形管线创建过程，覆盖所有常用管线并在下次启动命中。仅能读写归档文件不构成缓存完成。
 
 ### 8.3 资源存储策略
 
@@ -396,9 +407,13 @@ GPU 部分需全部重写为 Metal 管线：
 
 Metal 着色器必须保持现有常量布局、随机算法、粒子颜色和混合公式。直接使用 MSL，不通过 SPIRV-Cross 生成，作为独立参考实现。
 
+网格着色器能力由运行时能力表决定。支持设备运行 Metal 对等管线并和顶点拉取路径比较输出，不支持设备使用顶点拉取回退；能力位固定为 `false` 或缺少可执行管线时，该项保持未完成。
+
 ### 8.5 ImGui
 
 使用官方 macOS 输入后端。渲染端先采用官方 Metal 后端，随后收进项目图形接口。
+
+界面迁移以旧 Diligent/MD3 调试窗口为基准，逐项覆盖主题色与明暗切换、标题栏、窗口尺寸和布局、折叠区、全部选项、日志、状态表、滚动与缩放、水波动画、Acrylic 与噪点合成。官方后端初始化、基础控件或局部命令接入均不构成完整迁移。
 
 ---
 
@@ -423,6 +438,8 @@ Metal 着色器必须保持现有常量布局、随机算法、粒子颜色和�
 ### 9.3 完整实现清单
 
 变换反馈粒子更新（正式路径）、解析式运动（可选轻量路径，由用户切换）、间接绘制、HDR 离屏缓冲、Bloom、Kawase 模糊、色调映射、透明窗口、ImGui。
+
+解析式路径需有独立策略实现、界面选择项、保存项和暂停/恢复/手势缩放连续性测试。变换反馈路径存在时不能据此勾选解析式路径。
 
 ### 9.4 废弃说明
 
@@ -467,6 +484,10 @@ ParticleSaturn.app/
 ### 10.5 日志要求
 
 日志与崩溃报告必须同时记录图形接口、ICD 名称、驱动版本和能力表。
+
+### 10.6 可呈现路径
+
+`DiligentVulkanAdapter` 的完成范围包含 macOS 原生表面、交换链、呈现模式、窗口缩放重建、全部共享渲染图通道、ImGui 和设备丢失诊断。无表面设备创建、能力表读取、ICD 枚举和独立进程探测仅验证运行时准备，不能标记为 Vulkan 后端完成。
 
 ---
 
@@ -513,6 +534,8 @@ ABI 工具必须生成字段尺寸、对齐和偏移断言。缓冲结构禁止�
 
 算法主体（随机算法、粒子更新公式、色调映射公式）分别实现，但通过固定输入和 GPU 读回测试验证一致性。
 
+所有 C++、HLSL、GLSL、MSL 粒子和常量结构必须直接消费生成产物或由同一生成步骤内联。构建测试需检查四种语言的字段偏移、绑定编号和反射结果，禁止生成后继续维护未受约束的手写副本。
+
 ### 11.3 当前着色器清单
 
 GLSL（16 个）：
@@ -553,6 +576,8 @@ SPIRV-Cross 保留为开发期对照工具：把 Vulkan SPIR-V 转成 MSL，再�
 
 共享设置层定义带版本的设置模型。Windows 保留注册表实现，无需迁移。macOS 使用 `NSUserDefaults` 或 JSON（`~/Library/Application Support`）。Vulkan 驱动设置属于启动前配置，macOS 入口必须能在图形系统创建前读取。
 
+设置库必须由每个 macOS 应用目标链接，并在启动时加载、状态变化后保存。范围包含后端与驱动、粒子数、像素比例、垂直同步、Bloom、主题、界面模糊和噪点、手势参数、LOD 锁定、窗口材质、全屏和摄像头选择。仅有读写类或摄像头选择器单独写入默认存储不构成设置迁移完成。
+
 ### 12.3 摄像头
 
 决策（确认于 2026-07-16）：**纯 AVFoundation + Accelerate/vImage，不保留 OpenCV**。macOS 构建不再需要 OpenCV 子模块（消除约 500MB+ 克隆和许可证约束）。
@@ -567,6 +592,8 @@ SPIRV-Cross 保留为开发期对照工具：把 Vulkan SPIR-V 转成 MSL，再�
 
 AVFoundation 直接输出 `CVPixelBuffer`，通过 Accelerate/vImage 或 NEON 转换成推理张量格式，消除 `cv::Mat` 中间拷贝和格式转换延迟。开发迭代初期可将 AVFoundation 输出与旧 OpenCV 路径逐帧比较验证正确性，但正式 `.app` 只包含 AVFoundation 实现。
 
+摄像头启动必须协商请求的分辨率、像素格式、方向和帧率。实际数据路径从 `CVPixelBuffer` 融合完成缩放、BGRA 到 RGB、归一化和张量写入，并通过性能采样证明使用 Accelerate/vImage 或 NEON；标量双重遍历与临时浮点缓冲只可作为回退路径。
+
 摄像头选择器保留预览和记住选择功能。D2D 选择器（`src/CameraSelector/`）是 Windows 专属，macOS 需原生设备选择窗口。
 
 模型放入应用包资源目录，通过 `NSBundle` 定位。
@@ -580,6 +607,8 @@ AVFoundation 直接输出 `CVPixelBuffer`，通过 Accelerate/vImage 或 NEON �
 4. 指令集优化（见第 13 节）
 
 摄像头线程和推理线程只发布最新不可变手势样本，渲染线程不等待推理。
+
+Palm 推理输出检测框、置信度和旋转，Landmark 只接收按该框裁剪并对齐的区域。随后解析关键点与手势尺度，生成 `GestureInput` 并传入 `FrameCoordinator`。模型调用成功不代表手势跟踪完成，测试必须覆盖输出张量、裁剪坐标、关键点、丢手状态和旋转/缩放映射。
 
 ### 12.5 动态链接
 
@@ -597,6 +626,8 @@ Windows 端继续使用现有 `LoadLibraryW` + DLL 模式，不做改动。
 
 macOS 使用信号处理（`SIGSEGV`/`SIGBUS`/`SIGABRT`）、`NSException` 捕获、dSYM 符号化和 `atos` 回溯。不做加固运行时、公证、开发者 ID 签名和正式安装包。
 
+应用初始化、后端创建、摄像头、Vulkan 驱动切换和运行期设备错误必须进入统一诊断通道，向用户显示可读错误并写入结构化日志。直接 `return 1` 或仅输出标准错误不能作为 macOS 诊断完成。
+
 ---
 
 ## 13. SIMD / 指令集调度系统
@@ -604,6 +635,8 @@ macOS 使用信号处理（`SIGSEGV`/`SIGBUS`/`SIGABRT`）、`NSException` 捕�
 ### 13.1 当前问题
 
 `SIMDNormalize.cpp:8-15` 直接处理 CPUID、SSE、AVX2，继续增加 NEON、AVX-512 会失控。需重构为"能力检测、内核注册、自动选择、正确性验证"四层。
+
+现有 SSE 路径以 16 字节读取四个 RGB 像素的 12 字节数据，边界处存在越界读取风险。重构前先消除该内存安全问题，并在精确缓冲尾部、任意长度和未对齐地址上运行地址消毒器测试。
 
 ### 13.2 指令集范围
 
@@ -745,6 +778,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - 顶层工程启用 C++，仅在 Apple 平台启用 Objective-C++（`.mm`）。
 - Windows 目标继续链接 D3D、DXGI、DWM 和现有 Diligent 后端。
 - macOS 目标使用 `MACOSX_BUNDLE`，ARM64 架构，最小部署版本 **26.0**（与 KosmicKrisp 社区脚本一致），链接 Cocoa、Metal、QuartzCore、AVFoundation、Accelerate。
+- 每个 macOS 模式目标链接实际使用的渲染图、GPU 接口、设置、平台服务和诊断模块。主应用由保存的图形接口选择运行路径，测试目标覆盖 Metal、OpenGL 4.1、MoltenVK、KosmicKrisp 的构建与启动。
 
 ### 14.3 应用包内容
 
@@ -761,7 +795,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 14.5 签名与发布
 
-不纳入开发者签名、加固运行时、公证和安装器。本地构建仅保持系统允许启动和访问摄像头所需的应用包结构。本地临时签名足够。CI 可以只做编译和基础测试。
+不纳入开发者签名、加固运行时、公证和安装器。本地构建仅保持系统允许启动和访问摄像头所需的应用包结构。本地临时签名足够。CI 可以只做编译和基础测试，但必须增加 macOS 构建、ABI、渲染图、手势和四模式启动测试；现有仅 Windows 的流水线不能覆盖迁移完成状态。
 
 ### 14.6 FastRelease 配置
 
@@ -809,6 +843,9 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 从 `AppState.h` 拆出 `SceneState`/`RenderSettings`/`UiState`/`GestureSettings`/`WindowState`
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`
+- [ ] 补齐 `LodState`、`InputState`、主题、窗口材质和全部旧设置字段，并建立对应命令
+- [ ] 接入 macOS `NSEvent` 快捷键与窗口事件，验证 F3/F11/B/Esc 行为
+- [ ] 将动态 LOD 接入帧时间决策，验证锁定、粒子数和像素比例联动
 - [ ] 界面改为生成命令，不再直接修改 GPU 资源
 - [ ] 旧渲染器保持运行，验证状态拆分无回归
 
@@ -822,6 +859,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 定义能力表
 - [ ] 实现 `DiligentAdapter`（D3D11/D3D12/Vulkan）
 - [x] 定义粒子模拟策略接口
+- [ ] 将 GPU API、模拟策略和受控纹理桥接层接入 Metal、OpenGL 4.1、Vulkan 的生产帧路径
 - [ ] 按通道逐步迁移：星空 → 粒子 → Bloom → 界面模糊 → 最终合成
 
 ### 阶段 4：建立共享渲染图和 GPU ABI
@@ -832,6 +870,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 实现纹理池和延迟释放队列
 - [x] 建立 ABI 描述文件和生成工具
 - [x] 生成 C++/HLSL/GLSL 结构声明
+- [ ] 生成 MSL 声明并让四种语言的实际着色器与后端消费生成 ABI
+- [ ] 由 `RenderGraph` 执行所有生产帧通道，接入资源生命周期和缩放重建
 - [ ] Windows 三个 Diligent 后端全部恢复一致
 - [ ] 着色器构建目标平台中立化
 
@@ -844,6 +884,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Retina 缩放、多显示器、全屏切换
 - [x] `MetalDevice`、`MetalSurface`、`MetalFrameScheduler` 基础
 - [x] `MetalResourceManager`、`MetalCommandContext` 基础
+- [ ] 接入 `NSEvent`、显示器刷新节奏、可配置呈现模式和窗口关闭收尾
+- [ ] 将窗口材质状态实际应用到 `CocoaHost`，验证透明、系统模糊、应用内 Acrylic 与全屏切换
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
@@ -864,27 +906,35 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 七段 FPS 旧线段几何与右上角布局读回测试
 - [x] ImGui（官方 Metal 后端）
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
-- [x] 透明窗口 + `NSVisualEffectView`
-- [x] 管线缓存（`MTLBinaryArchive`）
+- [ ] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
+- [ ] 三帧并行调度、共享命令队列和延迟资源释放
+- [ ] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
 - [x] MSL 着色器编写 + `metallib` 编译
 - [x] Metal 离屏纹理缩放重建释放旧资源
+- [ ] 以共享 GPU API 和渲染图运行 Metal 帧路径
+- [ ] 支持设备启用 Metal 网格着色器对等路径并验证顶点拉取回退
 - [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
 - [ ] Metal 成为 macOS 参考路径
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
-进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；已在本机实际枚举内建摄像头、启动预览并验证设备标识持久化。窗口以浮动原生面板居中置前，避免被渲染窗口遮挡。`scripts/build_tflite_macos.sh` 对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态归档，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载，同时构建静态链接必需的 Abseil 日志归档。macOS 新增无 OpenCV 依赖的 `XnnpackHandTrackingRuntime`：从包资源加载 Palm 与 Landmark 模型，创建 XNNPACK 委托、接受 AVFoundation RGB 帧、缩放归一化并调用两份模型；测试已用实际模型完成委托推理，主应用已链接并在摄像头产生新帧时调用该运行时；推理结果映射手势控制仍待阶段 9 的手势输入验证。
+进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；已在本机实际枚举内建摄像头、启动预览并验证设备标识持久化。窗口以浮动原生面板居中置前，避免被渲染窗口遮挡。`scripts/build_tflite_macos.sh` 对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态归档，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载，同时构建静态链接必需的 Abseil 日志归档。macOS 新增无 OpenCV 依赖的 `XnnpackHandTrackingRuntime`：从包资源加载 Palm 与 Landmark 模型，创建 XNNPACK 委托、接受 AVFoundation RGB 帧、缩放归一化并调用两份模型；测试已用实际模型完成委托推理，主应用已链接并在摄像头产生新帧时调用该运行时；推理结果映射手势控制仍待阶段 10 的端到端验证。
+
+当前推理运行时尚未解析 Palm/ Landmark 输出、裁剪并对齐关键点区域，主循环尚未将手势样本传给 `FrameCoordinator`。摄像头转换和模型输入仍需完成 Accelerate/NEON 融合路径与实际性能验证。
 
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
 - [x] 原生设备选择窗口（预览、记住选择、主动重选）
-- [x] `CVPixelBuffer` → 推理格式转换（Accelerate/NEON）
+- [ ] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
 - [x] NEON 归一化实现
-- [x] SIMD 调度系统重构（能力检测、内核注册、自动选择）
+- [ ] SIMD 调度系统重构（能力检测、内核注册、自动选择）
+- [ ] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
 - [x] TensorFlow Lite XNNPACK ARM64 内核启用（实际模型委托推理测试）
+- [ ] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
+- [ ] 摄像头与推理线程仅交换最新不可变样本，主循环实际驱动旋转和缩放
 - [x] 模型通过 `NSBundle` 定位
-- [x] macOS 设置（`NSUserDefaults`）
+- [ ] macOS 设置（`NSUserDefaults`）接入启动加载、变更保存和所有应用状态
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
@@ -899,6 +949,9 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 透明窗口 + macOS 系统玻璃模糊
 - [x] ImGui（官方 macOS/OpenGL 后端，独立界面 Acrylic 模糊）
 - [x] GLSL 410 着色器编写
+- [ ] 解析式粒子路径、用户选择项及暂停/恢复/手势连续性验证
+- [ ] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为
+- [ ] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 
@@ -912,6 +965,9 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] `DiligentVulkanAdapter` 兼容修复（双 ICD 独立进程设备创建测试）
 - [x] 驱动切换 + 重启
 - [x] 日志记录 ICD 信息
+- [ ] 创建 macOS Vulkan 表面和交换链，接入呈现、窗口缩放、全部渲染通道与 ImGui
+- [ ] 主应用按保存的图形接口和驱动启动 Vulkan/MoltenVK 或 Vulkan/KosmicKrisp 路径
+- [ ] MoltenVK、KosmicKrisp 分别完成可见画面、交互、设备丢失和重启后的运行验证
 
 ### 阶段 10：四路径一致性与性能回归
 
@@ -919,10 +975,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 粒子读回数据比较
 - [ ] 窗口行为对齐
 - [ ] 性能锁定测试
-- [ ] 手势输入验证
+- [ ] 手势输入端到端验证（模型输出、关键点、丢手、旋转、缩放）
 - [ ] 摄像头异常状态验证
 - [ ] Retina 与外接显示器
 - [ ] 睡眠唤醒
+- [ ] 四种 macOS 模式分别完成构建、启动、呈现和交互验证
+- [ ] 设置持久化、主题、窗口材质、垂直同步、快捷键和动态 LOD 行为对齐
+- [ ] 统一诊断、错误展示和崩溃日志验证
 - [x] 应用包启动验证（2026-07-16：`ParticleSaturn.macOS.app` 已实际启动并完成场景截图）
 
 ---
@@ -931,11 +990,11 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 17.1 后端契约测试
 
-覆盖：缓冲上传、纹理读回、混合、sRGB、间接绘制、缩放、透明表面、GPU 同步。
+覆盖：缓冲上传、纹理读回、混合、sRGB、间接绘制、缩放、透明表面、GPU 同步。每个后端还需在真实窗口表面执行渲染图、呈现、缩放重建和资源延迟释放，Vulkan 两个 ICD 分别验证交换链与呈现。
 
 ### 17.2 着色器 ABI 测试
 
-检查每个字段尺寸与绑定编号。粒子结构 32 字节布局：`pos(16) + color(4) + speed(4) + isRing(4) + pad(4)`。
+检查每个字段尺寸与绑定编号。粒子结构 32 字节布局：`pos(16) + color(4) + speed(4) + isRing(4) + pad(4)`。验证生成的 C++、HLSL、GLSL、MSL 声明均被实际代码消费，反射结果和运行时缓冲读回一致。
 
 ### 17.3 粒子测试
 
@@ -946,6 +1005,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 分别截取场景 HDR、Bloom、界面模糊和最终输出，在统一线性色彩空间比较。允许不同 GPU 的浮点舍入差异，阈值在建立基线后固定，不能针对失败后端临时放宽。
 
 Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比。OpenGL 4.1 允许浮点舍入差异，但画面、粒子规模和交互语义必须一致。
+
+每次截图来自所选模式的真实呈现路径，不能以共享 Metal 截图、无表面设备或离线着色器测试替代。
 
 ### 17.5 功能验收（固定配置）
 
@@ -960,6 +1021,11 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 | 动态 LOD | 启用 |
 | 调试界面 | 全部控件 |
 | 快捷键 | F3、F11、B、Esc 行为对齐 |
+| 图形模式 | OpenGL 4.1、Metal、MoltenVK、KosmicKrisp 均可选择、重启、呈现与交互 |
+| 设置 | 重启后恢复后端、驱动、画面、界面、手势、LOD、窗口和摄像头选择 |
+| 垂直同步 | Off、On、Adaptive 按后端能力显示并实际改变呈现行为 |
+| 窗口与主题 | 实色、透明、系统模糊、应用内 Acrylic，明暗主题和布局均可切换 |
+| 诊断 | 初始化、运行期和崩溃错误可见且含后端、ICD、能力信息 |
 
 任何后端不得通过减少粒子、跳过通道或降低纹理尺寸取得通过结果。
 
@@ -969,7 +1035,7 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 ### 17.7 SIMD 验证
 
-每个向量内核与标量参考实现比较，覆盖：任意长度、非对齐地址、尾部元素、零值、极值、NaN。再运行完整摄像头到手势输出测试。自动调度测试伪造能力表，确保每种设备组合选择合法内核。实际设备测试至少覆盖：
+每个向量内核与标量参考实现比较，覆盖：任意长度、非对齐地址、精确缓冲尾部、零值、极值、NaN，并使用地址消毒器检查越界读取。再运行完整摄像头到手势输出测试，覆盖 Palm 框、裁剪区域、Landmark、丢手和场景旋转缩放。自动调度测试伪造能力表，确保每种设备组合选择合法内核。实际设备测试至少覆盖：
 - 一台基础 Apple Silicon
 - 一台较新 Apple Silicon
 - AVX2 Windows 设备
