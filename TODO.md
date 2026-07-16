@@ -825,10 +825,12 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 4：建立共享渲染图和 GPU ABI
 
-- [ ] 实现固定通道渲染图
-- [ ] 实现纹理池和延迟释放队列
-- [ ] 建立 ABI 描述文件和生成工具
-- [ ] 生成 C++/HLSL/GLSL 结构声明
+进展（2026-07-16）：`RenderGraph` 会根据资源读写关系编排通道，`TexturePool` 按帧令牌延迟回收。`particle_abi.json` 通过 CMake 生成 32 字节粒子结构的 C++、HLSL、GLSL 声明并作布局断言。
+
+- [x] 实现固定通道渲染图
+- [x] 实现纹理池和延迟释放队列
+- [x] 建立 ABI 描述文件和生成工具
+- [x] 生成 C++/HLSL/GLSL 结构声明
 - [ ] Windows 三个 Diligent 后端全部恢复一致
 - [ ] 着色器构建目标平台中立化
 

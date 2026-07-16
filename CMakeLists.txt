@@ -99,6 +99,8 @@ message(STATUS "App build id: ${APP_BUILD_ID}")
 include(CTest)
 add_subdirectory(src/app)
 add_subdirectory(src/gpu)
+add_subdirectory(src/render)
+add_subdirectory(src/shaders/abi)
 
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})
 

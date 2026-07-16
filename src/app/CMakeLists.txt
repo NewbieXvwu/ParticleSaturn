@@ -16,6 +16,7 @@ target_include_directories(ParticleSaturnAppCore
 )
 
 target_compile_features(ParticleSaturnAppCore PUBLIC cxx_std_20)
+add_library(ParticleSaturn.Core ALIAS ParticleSaturnAppCore)
 
 if(BUILD_TESTING)
     add_executable(ParticleSaturnAppCoreTests

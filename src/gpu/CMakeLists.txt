@@ -8,6 +8,7 @@ target_include_directories(ParticleSaturnGpu
 )
 
 target_compile_features(ParticleSaturnGpu PUBLIC cxx_std_20)
+add_library(ParticleSaturn.GpuApi ALIAS ParticleSaturnGpu)
 
 if(BUILD_TESTING)
     add_executable(ParticleSaturnGpuTests

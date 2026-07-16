@@ -1,0 +1,11 @@
+{
+  "name": "Particle",
+  "size": 32,
+  "fields": [
+    {"name": "position", "type": "float4", "offset": 0},
+    {"name": "color", "type": "uint", "offset": 16},
+    {"name": "speed", "type": "float", "offset": 20},
+    {"name": "isRing", "type": "uint", "offset": 24},
+    {"name": "padding", "type": "uint", "offset": 28}
+  ]
+}
