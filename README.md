@@ -57,14 +57,10 @@ cd ParticleSaturn
 # 3. 构建 OpenCV（自动配置、编译、安装，约 10-20 分钟）
 scripts\build_opencv.cmd
 
-# 4. 应用 TFLite 剪枝补丁并构建（自动配置、编译、安装，约 20-40 分钟）
-scripts/apply_third_party_patch.sh tensorflow-lite-prune
+# 4. 构建 TFLite（构建脚本会自动应用项目补丁，约 20-40 分钟）
 scripts\build_tflite.cmd
 
-# 5. 应用 ImGui MD3 补丁（Material Design 3 UI 系统）
-scripts/apply_third_party_patch.sh imgui-md3
-
-# 6. 编译项目（首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
+# 5. 编译项目（配置阶段会自动应用 ImGui 补丁，首次编译时 vcpkg 会自动安装 GLFW、GLAD、GLM）
 msbuild ParticleSaturn.slnx /p:Configuration=Release /p:Platform=x64
 ```
 

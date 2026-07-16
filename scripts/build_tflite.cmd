@@ -43,6 +43,9 @@ set TFLITE_SRC=HandTracker\libs\tensorflow\tensorflow\lite
 set TENSORFLOW_ROOT=HandTracker\libs\tensorflow
 set BUILD_DIR=HandTracker\libs\tensorflow\tflite_build
 
+call scripts\apply_third_party_patch.cmd tensorflow-lite
+if errorlevel 1 exit /b %errorlevel%
+
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 
 echo Configuring CMake...

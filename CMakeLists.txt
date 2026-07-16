@@ -96,6 +96,16 @@ if(GIT_FOUND)
 endif()
 message(STATUS "App build id: ${APP_BUILD_ID}")
 
+function(particlesaturn_apply_third_party_patch patch_name)
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -DPARTICLESATURN_PATCH=${patch_name}
+            -P "${CMAKE_SOURCE_DIR}/scripts/apply_third_party_patch.cmake"
+        RESULT_VARIABLE patch_result)
+    if(NOT patch_result EQUAL 0)
+        message(FATAL_ERROR "Unable to apply required third-party patch: ${patch_name}")
+    endif()
+endfunction()
+
 include(CTest)
 add_subdirectory(src/app)
 add_subdirectory(src/gpu)
@@ -124,6 +134,7 @@ if(APPLE)
     add_subdirectory(src/services/hand_tracking/macos)
     add_subdirectory(src/services/resources/macos)
     add_subdirectory(src/services/vulkan)
+    particlesaturn_apply_third_party_patch(imgui-md3)
 
     # macOS Vulkan uses the public Diligent Vulkan backend with the packaged
     # loader and one selected ICD. The legacy Diligent application remains
@@ -138,13 +149,7 @@ if(APPLE)
     set(DILIGENT_NO_ARCHIVER ON CACHE BOOL "" FORCE)
     set(DILIGENT_NO_HLSL ON CACHE BOOL "" FORCE)
     set(SPIRV_WERROR OFF CACHE BOOL "" FORCE)
-    execute_process(
-        COMMAND "${CMAKE_SOURCE_DIR}/scripts/apply_third_party_patch.sh" diligent-volk-loader-path
-        RESULT_VARIABLE PARTICLESATURN_DILIGENT_PATCH_RESULT
-    )
-    if(NOT PARTICLESATURN_DILIGENT_PATCH_RESULT EQUAL 0)
-        message(FATAL_ERROR "Unable to apply Diligent volk loader patch")
-    endif()
+    particlesaturn_apply_third_party_patch(diligent-volk-loader-path)
     add_subdirectory(libs/DiligentCore)
     add_subdirectory(src/gpu/backends/diligent)
 endif()
@@ -269,6 +274,8 @@ add_custom_command(
 add_custom_target(CompileShaders
     DEPENDS "${SHADER_BYTECODES_HEADER}"
 )
+
+particlesaturn_apply_third_party_patch(imgui-md3)
 
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
