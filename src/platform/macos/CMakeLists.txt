@@ -17,6 +17,7 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
 target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController")

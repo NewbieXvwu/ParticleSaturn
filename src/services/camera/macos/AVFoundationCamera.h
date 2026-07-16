@@ -18,6 +18,7 @@ public:
     bool IsRunning() const override;
     bool LatestFrame(Frame& frame) override;
     std::string LastError() const override;
+    void* NativeSession() const;
     void PublishPixelBuffer(void* pixelBuffer, std::uint64_t timestampNanoseconds);
     void HandleDeviceDisconnected(const char* deviceId);
 

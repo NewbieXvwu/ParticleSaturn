@@ -14,5 +14,7 @@
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Particle Saturn uses the camera for local hand tracking and camera preview.</string>
 </dict>
 </plist>

@@ -117,6 +117,7 @@ void AVFoundationCamera::Stop() {
 bool AVFoundationCamera::IsRunning() const { std::lock_guard lock{mutex_}; return session_ != nullptr && [(AVCaptureSession*)session_ isRunning]; }
 bool AVFoundationCamera::LatestFrame(Frame& frame) { std::lock_guard lock{mutex_}; if (!hasFrame_) return false; frame = latestFrame_; hasFrame_ = false; return true; }
 std::string AVFoundationCamera::LastError() const { std::lock_guard lock{mutex_}; return error_; }
+void* AVFoundationCamera::NativeSession() const { std::lock_guard lock{mutex_}; return session_; }
 
 void AVFoundationCamera::HandleDeviceDisconnected(const char* deviceId) {
     std::lock_guard lock{mutex_};
