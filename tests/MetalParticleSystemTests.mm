@@ -22,18 +22,19 @@ int main(int argc, char* argv[]) {
     assert(targets.BloomStrong() != nullptr);
     assert(targets.BloomPingPong() != nullptr);
     assert(targets.BloomWeak() != nullptr);
+    assert(targets.UiScene() != nullptr);
     assert(targets.UiOverlay() != nullptr);
     assert(targets.UiBlur() != nullptr);
     assert(targets.Composite() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
-    assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomWeak(), targets.UiOverlay(), 320, 180, 0.5f));
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));
+    assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(), 320, 180, 0.5f));
     ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
-    assert(acrylic.Apply(device, argv[1], targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
-                         320, 180, 3.0f, 0.75f));
+    assert(acrylic.Apply(device, argv[1], targets.UiScene(), targets.UiBlur(), targets.Composite(), targets.UiOverlay(),
+                         320, 180, 3.0f));
     ParticleSaturn::Gpu::Metal::MetalSevenSegmentFps fps;
-    assert(fps.Render(device, argv[1], targets.Composite(), 320, 180, 120));
+    assert(fps.Render(device, argv[1], targets.UiScene(), 320, 180, 120));
     ParticleSaturn::Gpu::Metal::MetalIndirectDraw indirect;
     assert(indirect.Create(device, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(indirect.Buffer() != nullptr);

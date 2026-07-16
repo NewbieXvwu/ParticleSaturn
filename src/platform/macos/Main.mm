@@ -15,6 +15,8 @@
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/metal/MetalBackend.h"
+#include "services/camera/macos/AVFoundationCamera.h"
+#include "services/camera/macos/CameraSelectorWindow.h"
 
 namespace {
 
@@ -60,6 +62,8 @@ int main() {
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller;
         ParticleSaturn::App::FrameCoordinator coordinator;
+        ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
+        ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
         FpsMeter fpsMeter;
         auto lastFrameTime = std::chrono::steady_clock::now();
         if (!particleRenderer.Initialize(device, libraryPath)) return 1;
@@ -88,16 +92,18 @@ int main() {
                 ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
                 ImGui::SetNextWindowBgAlpha(0.0f);
                 ImGui::Begin("Particle Saturn");
+                const auto& state = controller.State();
                 const ImVec2 panelPosition = ImGui::GetWindowPos();
                 const ImVec2 panelSize = ImGui::GetWindowSize();
                 const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
                 const float panelTop = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.height);
                 const float panelRight = (80.0f + 320.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
                 const float panelBottom = (80.0f + 280.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
-                ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
-                                                      ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
-                                                      ImVec2(panelLeft, panelTop), ImVec2(panelRight, panelBottom));
-                const auto& state = controller.State();
+                if (state.ui.blurEnabled) {
+                    ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
+                                                          ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
+                                                          ImVec2(panelLeft, panelTop), ImVec2(panelRight, panelBottom));
+                }
                 ImGui::Text("Metal");
                 ImGui::SameLine();
                 ImGui::Text("FPS: %u", fpsMeter.Value());
@@ -130,6 +136,13 @@ int main() {
                     const bool fullscreen = !state.window.fullscreen;
                     const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
                     if (effect.windowChanged) host.ToggleFullscreen();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Camera")) {
+                    if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) {
+                        camera.RequestPermission();
+                    }
+                    cameraSelector.Show();
                 }
                 ImGui::End();
                 ImGui::Render();

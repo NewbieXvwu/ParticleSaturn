@@ -269,18 +269,20 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
     bloomStrong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
     bloomPingPong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
     bloomWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
-    uiOverlay_ = create(width, height);
-    uiBlur_ = create(width, height);
-    composite_ = create(width, height);
+    uiScene_ = create(width, height);
+    uiOverlay_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
+    uiBlur_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
+    composite_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
     [descriptor release];
     return sceneHdr_ != nullptr && bloomStrong_ != nullptr && bloomPingPong_ != nullptr && bloomWeak_ != nullptr &&
-           uiOverlay_ != nullptr && uiBlur_ != nullptr && composite_ != nullptr;
+           uiScene_ != nullptr && uiOverlay_ != nullptr && uiBlur_ != nullptr && composite_ != nullptr;
 }
 
 void* MetalRenderTargets::SceneHdr() const noexcept { return sceneHdr_; }
 void* MetalRenderTargets::BloomStrong() const noexcept { return bloomStrong_; }
 void* MetalRenderTargets::BloomPingPong() const noexcept { return bloomPingPong_; }
 void* MetalRenderTargets::BloomWeak() const noexcept { return bloomWeak_; }
+void* MetalRenderTargets::UiScene() const noexcept { return uiScene_; }
 void* MetalRenderTargets::UiOverlay() const noexcept { return uiOverlay_; }
 void* MetalRenderTargets::UiBlur() const noexcept { return uiBlur_; }
 void* MetalRenderTargets::Composite() const noexcept { return composite_; }
@@ -349,66 +351,64 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
-bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
-                         void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
-                         float blurRadius, float opacity) {
-    if (sceneTexture == nullptr || uiOverlayTexture == nullptr || blurredSceneTexture == nullptr || outputTexture == nullptr ||
-        width == 0 || height == 0 || blurRadius < 0.0f || opacity < 0.0f || opacity > 1.0f) return false;
+bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
+                         void* outputTexture, std::uint32_t width, std::uint32_t height, float blurStrength) {
+    if (uiSceneTexture == nullptr || blurA == nullptr || blurB == nullptr || outputTexture == nullptr ||
+        width == 0 || height == 0 || blurStrength < 0.0f) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"UiKawaseBlur");
+    id<MTLComputePipelineState> downsample = CreateComputePipeline(library, @"BloomDownsample");
+    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"KawaseBlur");
     id<MTLComputePipelineState> composite = CreateComputePipeline(library, @"AcrylicComposite");
     [library release];
-    if (blur == nil || composite == nil) return false;
+    if (downsample == nil || blur == nil || composite == nil) return false;
 
-    struct AcrylicConstants { float blurRadius; float opacity; } constants{blurRadius, opacity};
+    const std::uint32_t blurWidth = std::max(1U, width / 6U);
+    const std::uint32_t blurHeight = std::max(1U, height / 6U);
+    struct BloomConstants { float texelX, texelY, offset, threshold; } blurConstants{
+        1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 0.0f};
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
     id<MTLCommandBuffer> commands = [queue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:blur];
-    [encoder setTexture:(id<MTLTexture>)sceneTexture atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)blurredSceneTexture atIndex:1];
-    [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
-      threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)];
+    [encoder setComputePipelineState:downsample];
+    [encoder setTexture:(id<MTLTexture>)uiSceneTexture atIndex:0];
+    [encoder setTexture:(id<MTLTexture>)blurA atIndex:1];
+    [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(blurWidth, blurHeight, 1)
+      threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)];
     [encoder endEncoding];
 
+    static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const float scale = std::clamp(blurStrength, 0.0f, 5.0f) / 5.0f;
+    for (std::size_t index = 1; index < sizeof(offsets) / sizeof(offsets[0]); ++index) {
+        blurConstants.texelX = 1.0f / static_cast<float>(blurWidth);
+        blurConstants.texelY = 1.0f / static_cast<float>(blurHeight);
+        blurConstants.offset = scale * (offsets[index] + 0.5f) - 0.5f;
+        const bool writeToB = (index % 2U) == 1U;
+        encoder = [commands computeCommandEncoder];
+        [encoder setComputePipelineState:blur];
+        [encoder setTexture:(id<MTLTexture>)(writeToB ? blurA : blurB) atIndex:0];
+        [encoder setTexture:(id<MTLTexture>)(writeToB ? blurB : blurA) atIndex:1];
+        [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
+        [encoder dispatchThreads:MTLSizeMake(blurWidth, blurHeight, 1)
+          threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)];
+        [encoder endEncoding];
+    }
+
+    struct AcrylicConstants { float tintR, tintG, tintB, baseOpacity, saturation, adaptive, darkMode, exclusion; } constants{
+        20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f, 180.0f / 255.0f, 1.35f, 0.35f, 1.0f, 1.0f};
     encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:composite];
-    [encoder setTexture:(id<MTLTexture>)sceneTexture atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)blurredSceneTexture atIndex:1];
-    [encoder setTexture:(id<MTLTexture>)uiOverlayTexture atIndex:2];
-    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:3];
+    [encoder setTexture:(id<MTLTexture>)blurB atIndex:0];
+    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:1];
     [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
+    [encoder dispatchThreads:MTLSizeMake(blurWidth, blurHeight, 1)
       threadsPerThreadgroup:MTLSizeMake([composite threadExecutionWidth], 1, 1)];
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted];
-    [blur release]; [composite release]; [queue release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
-}
-
-bool MetalAcrylic::BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture,
-                                  std::uint32_t width, std::uint32_t height, float backingScale,
-                                  float left, float top, float panelWidth, float panelHeight) {
-    if (outputTexture == nullptr || width == 0 || height == 0) return false;
-    NSError* error = nil;
-    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
-        newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
-    if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"BuildAcrylicPanelMask");
-    [library release]; if (pipeline == nil) return false;
-    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
-    id<MTLCommandBuffer> commands = [queue commandBuffer];
-    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    struct PanelMask { float left, top, width, height; } mask{left * backingScale, top * backingScale,
-                                                               panelWidth * backingScale, panelHeight * backingScale};
-    [encoder setComputePipelineState:pipeline]; [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
-    [encoder setBytes:&mask length:sizeof(mask) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
-    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted]; [pipeline release]; [queue release];
+    [downsample release]; [blur release]; [composite release]; [queue release];
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
@@ -488,24 +488,17 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     MetalBloom bloom;
     if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
                      width, height, state.ui.blurStrength)) return false;
-    MetalAcrylic acrylic;
-    constexpr float panelLeft = 80.0f;
-    constexpr float panelTop = 80.0f;
-    constexpr float panelWidth = 320.0f;
-    constexpr float panelHeight = 280.0f;
-    if (state.ui.blurEnabled &&
-        (!acrylic.BuildPanelMask(device, libraryPath, targets.UiOverlay(), width, height, backingScale,
-                                 panelLeft, panelTop, panelWidth, panelHeight) ||
-         !acrylic.Apply(device, libraryPath, targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
-                        width, height, state.ui.blurStrength, 0.75f))) return false;
     MetalToneMapper toneMapper;
-    // The UI path receives its own tone-mapped acrylic texture. The scene path remains untouched.
-    void* uiSource = state.ui.blurEnabled ? targets.Composite() : targets.SceneHdr();
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
-    if (!toneMapper.Apply(device, libraryPath, uiSource, targets.BloomPingPong(), targets.UiOverlay(),
-                          width, height, bloomStrength) ||
-        !toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
+    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
                           [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength)) return false;
+    if (state.ui.blurEnabled) {
+        if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
+                              width, height, bloomStrength)) return false;
+        MetalAcrylic acrylic;
+        if (!acrylic.Apply(device, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(), targets.UiOverlay(),
+                           width, height, state.ui.blurStrength)) return false;
+    }
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
     if (uiRenderer) {

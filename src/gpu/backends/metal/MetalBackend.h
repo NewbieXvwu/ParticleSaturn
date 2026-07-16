@@ -110,6 +110,7 @@ public:
     void* BloomStrong() const noexcept;
     void* BloomPingPong() const noexcept;
     void* BloomWeak() const noexcept;
+    void* UiScene() const noexcept;
     void* UiOverlay() const noexcept;
     void* UiBlur() const noexcept;
     void* Composite() const noexcept;
@@ -119,6 +120,7 @@ private:
     void* bloomStrong_ = nullptr;
     void* bloomPingPong_ = nullptr;
     void* bloomWeak_ = nullptr;
+    void* uiScene_ = nullptr;
     void* uiOverlay_ = nullptr;
     void* uiBlur_ = nullptr;
     void* composite_ = nullptr;
@@ -138,11 +140,8 @@ public:
 
 class MetalAcrylic {
 public:
-    bool BuildPanelMask(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
-                        std::uint32_t height, float backingScale, float left, float top, float panelWidth, float panelHeight);
-    bool Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
-               void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
-               float blurRadius, float opacity);
+    bool Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
+               void* outputTexture, std::uint32_t width, std::uint32_t height, float blurStrength);
 };
 
 class MetalSevenSegmentFps {

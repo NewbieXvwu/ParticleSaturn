@@ -163,48 +163,33 @@ kernel void KawaseBlur(texture2d<float, access::read> source [[texture(0)]],
 }
 
 struct AcrylicConstants {
-    float blurRadius;
-    float opacity;
+    float tintR;
+    float tintG;
+    float tintB;
+    float baseOpacity;
+    float saturation;
+    float adaptive;
+    float darkMode;
+    float exclusion;
 };
 
-kernel void UiKawaseBlur(texture2d<float, access::read> source [[texture(0)]],
-                         texture2d<float, access::write> target [[texture(1)]],
-                         constant AcrylicConstants& constants [[buffer(0)]],
-                         uint2 id [[thread_position_in_grid]]) {
-    if (id.x >= target.get_width() || id.y >= target.get_height()) return;
-    const int offset = max(1, int(round(constants.blurRadius)));
-    const int2 p = int2(id);
-    const int2 size = int2(source.get_width() - 1, source.get_height() - 1);
-    const int2 lower = int2(0);
-    const float4 color = source.read(uint2(clamp(p + int2(-offset, -offset), lower, size))) +
-                         source.read(uint2(clamp(p + int2( offset, -offset), lower, size))) +
-                         source.read(uint2(clamp(p + int2(-offset,  offset), lower, size))) +
-                         source.read(uint2(clamp(p + int2( offset,  offset), lower, size)));
-    target.write(color * 0.25f, id);
-}
-
-kernel void AcrylicComposite(texture2d<float, access::read> scene [[texture(0)]],
-                             texture2d<float, access::read> blurredScene [[texture(1)]],
-                             texture2d<float, access::read> overlay [[texture(2)]],
-                             texture2d<float, access::write> output [[texture(3)]],
+kernel void AcrylicComposite(texture2d<float, access::read> blurredScene [[texture(0)]],
+                             texture2d<float, access::write> output [[texture(1)]],
                              constant AcrylicConstants& constants [[buffer(0)]],
                              uint2 id [[thread_position_in_grid]]) {
     if (id.x >= output.get_width() || id.y >= output.get_height()) return;
-    const float4 sceneColor = scene.read(id);
-    const float4 overlayColor = overlay.read(id);
-    const float mask = clamp(overlayColor.a * constants.opacity, 0.0f, 1.0f);
-    const float3 acrylic = mix(blurredScene.read(id).rgb, float3(0.12f, 0.15f, 0.18f), 0.18f);
-    const float3 background = mix(sceneColor.rgb, acrylic, mask);
-    output.write(float4(mix(background, overlayColor.rgb, overlayColor.a), 1.0f), id);
-}
-
-struct PanelMask { float left; float top; float width; float height; };
-
-kernel void BuildAcrylicPanelMask(texture2d<float, access::write> output [[texture(0)]], constant PanelMask& panel [[buffer(0)]], uint2 id [[thread_position_in_grid]]) {
-    if (id.x >= output.get_width() || id.y >= output.get_height()) return;
-    const bool inside = float(id.x) >= panel.left && float(id.x) < panel.left + panel.width &&
-                        float(id.y) >= panel.top && float(id.y) < panel.top + panel.height;
-    output.write(inside ? float4(0.078f, 0.078f, 0.098f, 1.0f) : float4(0.0f), id);
+    float3 color = blurredScene.read(id).rgb;
+    const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+    color = clamp(float3(luminance) + (color - float3(luminance)) * constants.saturation, 0.0f, 1.0f);
+    const float adjustedLuminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+    float opacity = constants.baseOpacity;
+    opacity = constants.darkMode > 0.5f
+        ? clamp(opacity + (adjustedLuminance - 0.5f) * constants.adaptive, 0.0f, 1.0f)
+        : clamp(opacity + (0.5f - adjustedLuminance) * constants.adaptive, 0.0f, 1.0f);
+    const float3 tint = float3(constants.tintR, constants.tintG, constants.tintB);
+    const float3 exclusion = (color + tint) - (2.0f * color * tint);
+    const float3 mixed = mix(color, exclusion, clamp(constants.exclusion, 0.0f, 1.0f));
+    output.write(float4(mix(color, mixed, opacity), 1.0f), id);
 }
 
 bool IsSevenSegmentPixel(uint2 pixel, uint digit, uint digitIndex, uint viewportWidth) {
