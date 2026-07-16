@@ -1,6 +1,7 @@
 #include "gpu/backends/metal/MetalBackend.h"
 
 #include <cassert>
+#include <filesystem>
 
 int main(int argc, char* argv[]) {
     assert(argc == 2);
@@ -10,5 +11,13 @@ int main(int argc, char* argv[]) {
     assert(particles.Initialize(device, argv[1], 0x53415455U));
     assert(particles.Simulate(1.0f / 120.0f, 1.0f, false));
     assert(particles.RenderBuffer() != nullptr);
+    const auto cachePath = std::filesystem::temp_directory_path() / "ParticleSaturnTests.metallibarchive";
+    std::filesystem::remove(cachePath);
+    ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;
+    assert(cache.Load(device, cachePath.string()));
+    assert(cache.AddComputeFunction(device, argv[1], "InitializeParticles"));
+    assert(cache.Save(cachePath.string()));
+    assert(std::filesystem::is_regular_file(cachePath));
+    std::filesystem::remove(cachePath);
     return 0;
 }

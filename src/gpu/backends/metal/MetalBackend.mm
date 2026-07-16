@@ -3,6 +3,8 @@
 
 #include "MetalBackend.h"
 
+#include <filesystem>
+
 namespace ParticleSaturn::Gpu::Metal {
 
 bool MetalDevice::Initialize() {
@@ -151,5 +153,40 @@ bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTr
 }
 
 void* MetalParticleSystem::RenderBuffer() const noexcept { return buffers_[renderIndex_]; }
+
+bool MetalPipelineCache::Load(MetalDevice& device, const std::string& path) {
+    auto* descriptor = [[MTLBinaryArchiveDescriptor alloc] init];
+    if (std::filesystem::is_regular_file(path)) {
+        [descriptor setUrl:[NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]]];
+    }
+    NSError* error = nil;
+    archive_ = [(id<MTLDevice>)device.NativeDevice() newBinaryArchiveWithDescriptor:descriptor error:&error];
+    [descriptor release];
+    return archive_ != nullptr && error == nil;
+}
+
+bool MetalPipelineCache::Save(const std::string& path) {
+    if (archive_ == nullptr) return false;
+    NSError* error = nil;
+    const bool saved = [(id<MTLBinaryArchive>)archive_ serializeToURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]] error:&error];
+    return saved && error == nil;
+}
+
+bool MetalPipelineCache::AddComputeFunction(MetalDevice& device, const std::string& libraryPath, const char* functionName) {
+    NSError* error = nil;
+    NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath.c_str()]];
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice() newLibraryWithURL:url error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:functionName]];
+    auto* descriptor = [[MTLComputePipelineDescriptor alloc] init];
+    [descriptor setComputeFunction:function];
+    const bool added = [(id<MTLBinaryArchive>)archive_ addComputePipelineFunctionsWithDescriptor:descriptor error:&error];
+    [descriptor release];
+    [function release];
+    [library release];
+    return added && error == nil;
+}
+
+void* MetalPipelineCache::NativeArchive() const noexcept { return archive_; }
 
 } // namespace ParticleSaturn::Gpu::Metal

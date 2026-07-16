@@ -859,7 +859,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 七段数码 FPS
 - [ ] ImGui（官方 Metal 后端）
 - [x] 透明窗口 + `NSVisualEffectView`
-- [ ] 管线缓存（`MTLBinaryArchive`）
+- [x] 管线缓存（`MTLBinaryArchive`）
 - [x] MSL 着色器编写 + `metallib` 编译
 - [ ] Metal 成为 macOS 参考路径
 

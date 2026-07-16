@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace ParticleSaturn::Gpu::Metal {
 
@@ -76,6 +77,17 @@ private:
     std::uint32_t renderIndex_ = 0;
     std::uint32_t readIndex_ = 1;
     std::uint32_t writeIndex_ = 2;
+};
+
+class MetalPipelineCache {
+public:
+    bool Load(MetalDevice& device, const std::string& path);
+    bool AddComputeFunction(MetalDevice& device, const std::string& libraryPath, const char* functionName);
+    bool Save(const std::string& path);
+    void* NativeArchive() const noexcept;
+
+private:
+    void* archive_ = nullptr;
 };
 
 } // namespace ParticleSaturn::Gpu::Metal
