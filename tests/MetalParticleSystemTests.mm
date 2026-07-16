@@ -312,6 +312,14 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalIndirectDraw indirect;
     assert(indirect.Create(device, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(indirect.Buffer() != nullptr);
+    assert(indirect.Update(345678U));
+    assert(indirect.VertexCount() == 345678U);
+    struct IndirectArguments { std::uint32_t vertexCount, instanceCount, vertexStart, baseInstance; };
+    const auto* indirectArguments = static_cast<const IndirectArguments*>([(id<MTLBuffer>)indirect.Buffer() contents]);
+    assert(indirectArguments != nullptr);
+    assert(indirectArguments->vertexCount == 345678U);
+    assert(indirectArguments->instanceCount == 1U);
+    assert(indirectArguments->vertexStart == 0U && indirectArguments->baseInstance == 0U);
     const auto cachePath = std::filesystem::temp_directory_path() / "ParticleSaturnTests.metallibarchive";
     std::filesystem::remove(cachePath);
     ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;

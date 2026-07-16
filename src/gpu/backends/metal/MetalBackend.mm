@@ -537,11 +537,12 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
     particlePipeline_ = CreateRenderPipeline(nativeDevice, library, @"ParticleVertex", @"ParticleFragment");
     starPipeline_ = CreateRenderPipeline(nativeDevice, library, @"StarVertex", @"StarFragment");
     [library release];
-    return particlePipeline_ != nullptr && starPipeline_ != nullptr;
+    return particlePipeline_ != nullptr && starPipeline_ != nullptr &&
+           particleIndirect_.Create(device, MetalParticleSystem::ParticleCount);
 }
 
 void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
-                                 std::uint32_t height, const App::AppState& state) const {
+                                 std::uint32_t height, const App::AppState& state) {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
     struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY, pixelRatio, densityCompensation; } constants{
@@ -555,8 +556,11 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
-    [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0
-                 vertexCount:std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount)];
+    const auto particleCount = std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount);
+    if (!particleIndirect_.Update(particleCount)) return;
+    [encoder drawPrimitives:MTLPrimitiveTypePoint
+             indirectBuffer:(id<MTLBuffer>)particleIndirect_.Buffer()
+       indirectBufferOffset:0];
 }
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
@@ -616,9 +620,21 @@ bool MetalIndirectDraw::Create(MetalDevice& device, std::uint32_t vertexCount) {
     const Arguments arguments{vertexCount, 1, 0, 0};
     buffer_ = [(id<MTLDevice>)device.NativeDevice() newBufferWithBytes:&arguments length:sizeof(arguments)
         options:MTLResourceStorageModeShared];
+    vertexCount_ = buffer_ == nullptr ? 0U : vertexCount;
     return buffer_ != nullptr;
 }
 
+bool MetalIndirectDraw::Update(std::uint32_t vertexCount) {
+    if (buffer_ == nullptr || vertexCount == 0U) return false;
+    struct Arguments { std::uint32_t vertexCount, instanceCount, vertexStart, baseInstance; };
+    auto* arguments = static_cast<Arguments*>([(id<MTLBuffer>)buffer_ contents]);
+    if (arguments == nullptr) return false;
+    *arguments = {vertexCount, 1U, 0U, 0U};
+    vertexCount_ = vertexCount;
+    return true;
+}
+
 void* MetalIndirectDraw::Buffer() const noexcept { return buffer_; }
+std::uint32_t MetalIndirectDraw::VertexCount() const noexcept { return vertexCount_; }
 
 } // namespace ParticleSaturn::Gpu::Metal

@@ -168,15 +168,28 @@ public:
                 std::uint32_t height, std::uint32_t framesPerSecond);
 };
 
+class MetalIndirectDraw {
+public:
+    bool Create(MetalDevice& device, std::uint32_t vertexCount);
+    bool Update(std::uint32_t vertexCount);
+    void* Buffer() const noexcept;
+    std::uint32_t VertexCount() const noexcept;
+
+private:
+    void* buffer_ = nullptr;
+    std::uint32_t vertexCount_ = 0;
+};
+
 class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
-              const App::AppState& state) const;
+              const App::AppState& state);
 
 private:
     void* particlePipeline_ = nullptr;
     void* starPipeline_ = nullptr;
+    MetalIndirectDraw particleIndirect_;
 };
 
 class MetalFrameRenderer {
@@ -187,15 +200,6 @@ public:
                 float backingScale, const App::AppState& state, bool handTracked, float deltaTime,
                 std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});
-};
-
-class MetalIndirectDraw {
-public:
-    bool Create(MetalDevice& device, std::uint32_t vertexCount);
-    void* Buffer() const noexcept;
-
-private:
-    void* buffer_ = nullptr;
 };
 
 } // namespace ParticleSaturn::Gpu::Metal
