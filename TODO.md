@@ -874,7 +874,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] SIMD 调度系统重构（能力检测、内核注册、自动选择）
 - [ ] TensorFlow Lite XNNPACK ARM64 内核启用
 - [ ] 模型通过 `NSBundle` 定位
-- [ ] macOS 设置（`NSUserDefaults`）
+- [x] macOS 设置（`NSUserDefaults`）
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
