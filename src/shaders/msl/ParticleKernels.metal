@@ -17,27 +17,27 @@ struct SimulationConstants {
     uint particleCount;
 };
 
-uint Hash(uint value) {
-    value ^= value >> 16;
-    value *= 0x7feb352dU;
-    value ^= value >> 15;
-    value *= 0x846ca68bU;
-    return value ^ (value >> 16);
+uint PcgHash(uint input) {
+    const uint state = input * 747796405U + 2891336453U;
+    const uint word = ((state >> ((state >> 28U) + 4U)) ^ state) * 277803737U;
+    return (word >> 22U) ^ word;
 }
 
 float Random01(thread uint& state) {
-    state = state * 747796405U + 2891336453U;
-    uint value = ((state >> ((state >> 28U) + 4U)) ^ state) * 277803737U;
-    value = (value >> 22U) ^ value;
-    return float(value) / 4294967295.0f;
+    state = PcgHash(state);
+    return float(state) * (1.0f / 4294967296.0f);
 }
 
 uint PackColor(float3 color, float alpha) {
-    const uint r = uint(clamp(color.r, 0.0f, 1.0f) * 255.0f);
-    const uint g = uint(clamp(color.g, 0.0f, 1.0f) * 255.0f);
-    const uint b = uint(clamp(color.b, 0.0f, 1.0f) * 255.0f);
-    const uint a = uint(clamp(alpha, 0.0f, 1.0f) * 255.0f);
+    const uint r = uint(clamp(color.r, 0.0f, 1.0f) * 255.0f + 0.5f);
+    const uint g = uint(clamp(color.g, 0.0f, 1.0f) * 255.0f + 0.5f);
+    const uint b = uint(clamp(color.b, 0.0f, 1.0f) * 255.0f + 0.5f);
+    const uint a = uint(clamp(alpha, 0.0f, 1.0f) * 255.0f + 0.5f);
     return r | (g << 8U) | (b << 16U) | (a << 24U);
+}
+
+float3 HexToRgb(uint color) {
+    return float3(float((color >> 16U) & 0xffU), float((color >> 8U) & 0xffU), float(color & 0xffU)) / 255.0f;
 }
 
 kernel void InitializeParticles(device Particle* particles [[buffer(0)]],
@@ -55,19 +55,18 @@ kernel void InitializeParticles(device Particle* particles [[buffer(0)]],
                                              radius * sin(phi) * sin(theta));
         const float latitude = (particles[id].position.y / (0.9f * radius) + 1.0f) * 0.5f;
         const int index = int(latitude * 4.0f + cos(latitude * 40.0f) * 0.8f + cos(latitude * 15.0f) * 0.4f);
-        constexpr float3 colors[4] = {float3(0.890f, 0.855f, 0.773f), float3(0.788f, 0.627f, 0.439f),
-                                      float3(0.890f, 0.855f, 0.773f), float3(0.690f, 0.553f, 0.333f)};
-        color = colors[(index % 4 + 4) % 4]; alpha = 0.8f;
+        constexpr uint colors[4] = {0xE3DAC5U, 0xC9A070U, 0xE3DAC5U, 0xB08D55U};
+        color = HexToRgb(colors[(index % 4 + 4) % 4]); alpha = 0.8f;
         particles[id].position.w = 1.0f + Random01(rng) * 0.8f;
         particles[id].speed = 0.0f; particles[id].isRing = 0U;
     } else {
         const float z = Random01(rng);
         float ringRadius; float size; float opacity;
-        if (z < 0.15f) { ringRadius = radius * (1.235f + Random01(rng) * 0.29f); color = float3(0.165f, 0.145f, 0.125f); size = 0.5f; opacity = 0.3f; }
-        else if (z < 0.65f) { const float t = Random01(rng); ringRadius = radius * (1.525f + t * 0.425f); color = mix(float3(0.804f, 0.749f, 0.627f), float3(0.863f, 0.796f, 0.729f), t); size = 0.8f + Random01(rng) * 0.6f; opacity = sin(ringRadius * 2.0f) > 0.8f ? 1.02f : 0.85f; }
-        else if (z < 0.69f) { ringRadius = radius * (1.95f + Random01(rng) * 0.075f); color = float3(0.02f); size = 0.3f; opacity = 0.1f; }
-        else if (z < 0.99f) { ringRadius = radius * (2.025f + Random01(rng) * 0.245f); color = float3(0.596f, 0.565f, 0.522f); size = 0.7f; opacity = ringRadius > radius * 2.2f && ringRadius < radius * 2.21f ? 0.1f : 0.6f; }
-        else { ringRadius = radius * (2.32f + Random01(rng) * 0.02f); color = float3(0.686f); size = 1.0f; opacity = 0.7f; }
+        if (z < 0.15f) { ringRadius = radius * (1.235f + Random01(rng) * 0.29f); color = HexToRgb(0x2A2520U); size = 0.5f; opacity = 0.3f; }
+        else if (z < 0.65f) { const float t = Random01(rng); ringRadius = radius * (1.525f + t * 0.425f); color = mix(HexToRgb(0xCDBFA0U), HexToRgb(0xDCCBBAU), t); size = 0.8f + Random01(rng) * 0.6f; opacity = sin(ringRadius * 2.0f) > 0.8f ? 1.02f : 0.85f; }
+        else if (z < 0.69f) { ringRadius = radius * (1.95f + Random01(rng) * 0.075f); color = HexToRgb(0x050505U); size = 0.3f; opacity = 0.1f; }
+        else if (z < 0.99f) { ringRadius = radius * (2.025f + Random01(rng) * 0.245f); color = HexToRgb(0x989085U); size = 0.7f; opacity = ringRadius > radius * 2.2f && ringRadius < radius * 2.21f ? 0.1f : 0.6f; }
+        else { ringRadius = radius * (2.32f + Random01(rng) * 0.02f); color = HexToRgb(0xAFAFA0U); size = 1.0f; opacity = 0.7f; }
         const float theta = Random01(rng) * 6.28318f;
         particles[id].position = float4(ringRadius * cos(theta), (Random01(rng) - 0.5f) * (ringRadius > radius * 2.3f ? 0.4f : 0.15f), ringRadius * sin(theta), size);
         alpha = opacity; particles[id].speed = 8.0f / sqrt(ringRadius); particles[id].isRing = 1U;
@@ -94,7 +93,7 @@ kernel void SimulateParticles(const device Particle* input [[buffer(0)]],
 kernel void InitializeStars(device float4* stars [[buffer(0)]],
                             constant uint& seed [[buffer(1)]],
                             uint id [[thread_position_in_grid]]) {
-    const uint value = Hash(id ^ seed);
+    const uint value = PcgHash(id ^ seed);
     const float x = float(value & 0x3ffU) / 512.0f - 1.0f;
     const float y = float((value >> 10) & 0x3ffU) / 512.0f - 1.0f;
     const float z = float((value >> 20) & 0x3ffU) / 512.0f - 1.0f;
