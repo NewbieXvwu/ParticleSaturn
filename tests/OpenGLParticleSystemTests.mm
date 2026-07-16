@@ -4,6 +4,7 @@
 #include "gpu/backends/opengl41/OpenGLParticleSystem.h"
 #include "gpu/backends/opengl41/OpenGLBloom.h"
 #include "gpu/backends/opengl41/OpenGLRenderTargets.h"
+#include "gpu/backends/opengl41/OpenGLSevenSegmentFps.h"
 #include "gpu/backends/opengl41/OpenGLToneMapper.h"
 
 #include <cassert>
@@ -205,6 +206,25 @@ int main(int argc, char* argv[]) {
         assert(color[0] > 0.5f && color[0] <= 1.0f);
         assert(color[1] > 0.5f && color[1] <= 1.0f);
         assert(color[2] > 0.5f && color[2] <= 1.0f);
+        const float sceneBeforeUi[4] = {color[0], color[1], color[2], color[3]};
+        assert(bloom.ApplyUiBlur(targets, 2.0f));
+        float acrylic[4]{};
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.BloomStrongFramebuffer());
+        glReadPixels(160, 90, 1, 1, GL_RGBA, GL_FLOAT, acrylic);
+        assert(glGetError() == GL_NO_ERROR);
+        assert(acrylic[0] > 0.0f && acrylic[1] > 0.0f && acrylic[2] > 0.0f);
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
+        glReadPixels(960, 540, 1, 1, GL_RGBA, GL_FLOAT, color);
+        for (std::size_t channel = 0; channel < 4; ++channel) AssertNear(color[channel], sceneBeforeUi[channel]);
+
+        ParticleSaturn::Gpu::OpenGL41::OpenGLSevenSegmentFps fps;
+        assert(fps.Initialize(argv[4]));
+        assert(fps.Render(targets.ToneMappedFramebuffer(), 1920, 1080, 29));
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
+        glReadPixels(1860, 1075, 1, 1, GL_RGBA, GL_FLOAT, color);
+        assert(color[0] > 0.99f && color[1] < 0.3f);
+        glReadPixels(1830, 1057, 1, 1, GL_RGBA, GL_FLOAT, color);
+        assert(color[0] > 0.99f && color[1] < 0.3f);
         [context release];
     }
     return 0;

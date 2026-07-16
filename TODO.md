@@ -888,7 +888,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
-进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，测试按旧 Diligent GPU 公式核对前 64 个粒子的完整字段；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。粒子绘制已由点精灵改为旧 Diligent 同构的六顶点实例化矩形，间接参数固定为 6 个顶点和 120 万实例并有缓冲读回验证。HDR 场景及 Bloom 链使用与 Metal 一致的 `RGBA16F`，在 1/6 双缓冲执行默认强度 `2.0` 的七轮连续偏移 Kawase，并生成 1/12 辅助模糊。最终合成对全分辨率场景逐像素读取，对 Bloom 使用与 Metal 相同的双线性采样，再按旧 Diligent 的高光压缩和 Bloom 强度 `0.5` 输出到 `RGBA8`。Retina 倍率与渲染 `pixelRatio` 已解耦，最外环十字状明暗断层经真实窗口截图和用户验收已消除。OpenGL 的 ImGui 与透明窗口仍待完成。
+进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，测试按旧 Diligent GPU 公式核对前 64 个粒子的完整字段；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。粒子绘制已由点精灵改为旧 Diligent 同构的六顶点实例化矩形，间接参数按应用状态更新为 6 个顶点和最多 120 万实例并有缓冲读回验证。HDR 场景及 Bloom 链使用与 Metal 一致的 `RGBA16F`，在 1/6 双缓冲执行默认强度 `2.0` 的七轮连续偏移 Kawase，并生成 1/12 辅助模糊。最终合成对全分辨率场景逐像素读取，对 Bloom 使用与 Metal 相同的双线性采样，再按旧 Diligent 的高光压缩和 Bloom 强度 `0.5` 输出到 `RGBA8`。Retina 倍率与渲染 `pixelRatio` 已解耦，最外环十字状明暗断层经真实窗口截图和用户验收已消除。官方 macOS/OpenGL ImGui 后端已接入应用状态，粒子数、Bloom、界面模糊、暂停和全屏控件可生成应用命令；界面模糊从已色调映射的完整场景独立生成 1/6 强层与 1/12 弱层，再按 Metal 同参数执行 Acrylic 合成，读回测试确认主场景纹理保持不变。七段 FPS 按旧 Diligent 的 20×36 单像素线段和右上角坐标绘制，并用右上角裁剪矩形限制片元负载；真实窗口截图已核对 FPS、ImGui 面板和主场景隔离。透明窗口仍待完成。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转，固定种子读回基线）
@@ -897,7 +897,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Bloom + Kawase 模糊
 - [x] 色调映射
 - [ ] 透明窗口
-- [ ] ImGui
+- [x] ImGui（官方 macOS/OpenGL 后端，独立界面 Acrylic 模糊）
 - [x] GLSL 410 着色器编写
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp

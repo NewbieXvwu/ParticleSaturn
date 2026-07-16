@@ -47,11 +47,19 @@ if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
 endif()
 
-add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE OpenGL41Main.mm)
+add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE
+    OpenGL41Main.mm
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp")
 set_target_properties(ParticleSaturn.OpenGL41.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.opengl41")
-target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend)
+target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore "-framework GameController")
+target_include_directories(ParticleSaturn.OpenGL41.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_compile_definitions(ParticleSaturn.OpenGL41.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.OpenGL41.macOS ParticleSaturnOpenGL41Shaders)
 add_custom_command(TARGET ParticleSaturn.OpenGL41.macOS POST_BUILD

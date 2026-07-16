@@ -237,7 +237,7 @@ std::uint32_t OpenGLParticleSystem::IndirectBuffer() const noexcept { return ind
 
 void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, std::uint32_t height, float scale,
                                         float rotationX, float rotationY, float pixelRatio,
-                                        float densityCompensation) const {
+                                        float densityCompensation, std::uint32_t particleCount) const {
     glUseProgram(renderProgram_);
     const auto setFloat = [this](const char* name, float value) {
         const GLint location = glGetUniformLocation(renderProgram_, name);
@@ -254,6 +254,8 @@ void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, 
     glBindVertexArray(vertexArrays_[renderIndex_]);
     for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 1);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
+    const DrawArraysIndirectCommand draw{6, std::clamp(particleCount, 1U, ParticleCount), 0, 0};
+    glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(draw), &draw);
     glDrawArraysIndirect(GL_TRIANGLES, nullptr);
     for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 0);
 }

@@ -8,10 +8,12 @@ class OpenGLBloom {
 public:
     bool Initialize(const char* shaderDirectory);
     bool Apply(const OpenGLRenderTargets& targets, float blurStrength = 2.0f) const;
+    bool ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStrength = 2.0f) const;
 
 private:
     unsigned int downsampleProgram_ = 0;
     unsigned int blurProgram_ = 0;
+    unsigned int acrylicProgram_ = 0;
 };
 
 } // namespace ParticleSaturn::Gpu::OpenGL41
