@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.19)
+
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    project(ParticleSaturnAppCore LANGUAGES CXX)
+    include(CTest)
+endif()
+
+add_library(ParticleSaturnAppCore STATIC
+    AppController.cpp
+    FrameCoordinator.cpp
+)
+
+target_include_directories(ParticleSaturnAppCore
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+)
+
+target_compile_features(ParticleSaturnAppCore PUBLIC cxx_std_20)
+
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnAppCoreTests
+        "${CMAKE_CURRENT_LIST_DIR}/../../tests/AppCoreTests.cpp"
+    )
+    target_link_libraries(ParticleSaturnAppCoreTests PRIVATE ParticleSaturnAppCore)
+    add_test(NAME ParticleSaturnAppCoreTests COMMAND ParticleSaturnAppCoreTests)
+endif()

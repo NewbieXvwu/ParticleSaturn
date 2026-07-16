@@ -96,6 +96,9 @@ if(GIT_FOUND)
 endif()
 message(STATUS "App build id: ${APP_BUILD_ID}")
 
+include(CTest)
+add_subdirectory(src/app)
+
 # ============================================================================
 # DiligentCore 子模块版本（用于缓存失效判定）
 # ============================================================================
