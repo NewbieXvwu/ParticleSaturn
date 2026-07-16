@@ -883,7 +883,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。变换反馈和后处理通道尚未迁移。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
-- [ ] 变换反馈粒子更新（三缓冲轮转）
+- [x] 变换反馈粒子更新（三缓冲轮转）
 - [ ] 间接绘制
 - [ ] HDR 离屏缓冲
 - [ ] Bloom + Kawase 模糊
