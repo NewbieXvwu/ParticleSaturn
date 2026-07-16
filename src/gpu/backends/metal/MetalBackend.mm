@@ -319,6 +319,10 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     id<MTLComputePipelineState> downsample = CreateComputePipeline(library, @"BloomDownsample");
     id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"KawaseBlur"); [library release];
     if (downsample == nil || blur == nil) return false;
+    const std::uint32_t bloomWidth = std::max(1U, width / 6U);
+    const std::uint32_t bloomHeight = std::max(1U, height / 6U);
+    // The bright-pass reads the full-size HDR scene.  Its texel size must
+    // therefore describe that source, matching Diligent's RenderBloom pass.
     struct BloomConstants { float texelX, texelY, offset, threshold; } constants{
         1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 1.0f};
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
@@ -326,18 +330,20 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:downsample]; [encoder setTexture:(id<MTLTexture>)sceneHdr atIndex:0]; [encoder setTexture:(id<MTLTexture>)bloomA atIndex:1];
     [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+    [encoder dispatchThreads:MTLSizeMake(bloomWidth, bloomHeight, 1) threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)]; [encoder endEncoding];
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     const float scale = std::clamp(blurStrength, 0.0f, 5.0f) / 5.0f;
     for (std::size_t index = 1; index < sizeof(offsets) / sizeof(offsets[0]); ++index) {
         constants.offset = scale * (offsets[index] + 0.5f) - 0.5f;
         const bool writeToB = (index % 2U) == 1U;
+        constants.texelX = 1.0f / static_cast<float>(bloomWidth);
+        constants.texelY = 1.0f / static_cast<float>(bloomHeight);
         encoder = [commands computeCommandEncoder]; [encoder setComputePipelineState:blur];
         [encoder setTexture:(id<MTLTexture>)(writeToB ? bloomA : bloomB) atIndex:0];
         [encoder setTexture:(id<MTLTexture>)(writeToB ? bloomB : bloomA) atIndex:1];
         [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(width, height, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+        [encoder dispatchThreads:MTLSizeMake(bloomWidth, bloomHeight, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
     }
     [commands commit]; [commands waitUntilCompleted]; [downsample release]; [blur release]; [queue release];
     return [commands status] == MTLCommandBufferStatusCompleted;
@@ -481,7 +487,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
     MetalBloom bloom;
     if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
-                     std::max(1U, width / 6U), std::max(1U, height / 6U), state.ui.blurStrength)) return false;
+                     width, height, state.ui.blurStrength)) return false;
     MetalAcrylic acrylic;
     constexpr float panelLeft = 80.0f;
     constexpr float panelTop = 80.0f;
