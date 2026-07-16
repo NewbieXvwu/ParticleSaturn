@@ -119,4 +119,10 @@ public:
                std::uint32_t width, std::uint32_t height);
 };
 
+class MetalBloom {
+public:
+    bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* strongBloom, void* weakBloom,
+               std::uint32_t strongWidth, std::uint32_t strongHeight, std::uint32_t weakWidth, std::uint32_t weakHeight);
+};
+
 } // namespace ParticleSaturn::Gpu::Metal

@@ -256,4 +256,23 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
+bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* strongBloom, void* weakBloom,
+                       std::uint32_t strongWidth, std::uint32_t strongHeight, std::uint32_t weakWidth, std::uint32_t weakHeight) {
+    NSError* error = nil;
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice() newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLComputePipelineState> downsample = CreateComputePipeline(library, @"BloomDownsample");
+    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"KawaseBlur"); [library release];
+    if (downsample == nil || blur == nil) return false;
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:downsample]; [encoder setTexture:(id<MTLTexture>)sceneHdr atIndex:0]; [encoder setTexture:(id<MTLTexture>)strongBloom atIndex:1];
+    [encoder dispatchThreads:MTLSizeMake(strongWidth, strongHeight, 1) threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+    encoder = [commands computeCommandEncoder]; [encoder setComputePipelineState:blur]; [encoder setTexture:(id<MTLTexture>)strongBloom atIndex:0]; [encoder setTexture:(id<MTLTexture>)weakBloom atIndex:1];
+    [encoder dispatchThreads:MTLSizeMake(weakWidth, weakHeight, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+    [commands commit]; [commands waitUntilCompleted]; [downsample release]; [blur release]; [queue release];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
 } // namespace ParticleSaturn::Gpu::Metal
