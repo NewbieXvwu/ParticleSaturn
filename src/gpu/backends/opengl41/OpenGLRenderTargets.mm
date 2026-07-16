@@ -8,8 +8,7 @@ namespace ParticleSaturn::Gpu::OpenGL41 {
 
 namespace {
 
-bool CreateTarget(std::uint32_t width, std::uint32_t height, std::uint32_t& framebuffer) {
-    GLuint texture = 0;
+bool CreateTarget(std::uint32_t width, std::uint32_t height, std::uint32_t& framebuffer, std::uint32_t& texture) {
     glGenFramebuffers(1, &framebuffer);
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -25,14 +24,21 @@ bool CreateTarget(std::uint32_t width, std::uint32_t height, std::uint32_t& fram
 
 bool OpenGLRenderTargets::Create(std::uint32_t width, std::uint32_t height) {
     if (width == 0 || height == 0) return false;
-    const bool scene = CreateTarget(width, height, sceneFramebuffer_);
-    const bool strong = CreateTarget(std::max(1U, width / 6U), std::max(1U, height / 6U), bloomStrongFramebuffer_);
-    const bool weak = CreateTarget(std::max(1U, width / 12U), std::max(1U, height / 12U), bloomWeakFramebuffer_);
+    const bool scene = CreateTarget(width, height, sceneFramebuffer_, sceneTexture_);
+    const bool strong = CreateTarget(std::max(1U, width / 6U), std::max(1U, height / 6U), bloomStrongFramebuffer_, bloomStrongTexture_);
+    const bool weak = CreateTarget(std::max(1U, width / 12U), std::max(1U, height / 12U), bloomWeakFramebuffer_, bloomWeakTexture_);
+    width_ = width;
+    height_ = height;
     return scene && strong && weak;
 }
 
 std::uint32_t OpenGLRenderTargets::SceneFramebuffer() const noexcept { return sceneFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::BloomStrongFramebuffer() const noexcept { return bloomStrongFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::BloomWeakFramebuffer() const noexcept { return bloomWeakFramebuffer_; }
+std::uint32_t OpenGLRenderTargets::SceneTexture() const noexcept { return sceneTexture_; }
+std::uint32_t OpenGLRenderTargets::BloomStrongTexture() const noexcept { return bloomStrongTexture_; }
+std::uint32_t OpenGLRenderTargets::BloomWeakTexture() const noexcept { return bloomWeakTexture_; }
+std::uint32_t OpenGLRenderTargets::Width() const noexcept { return width_; }
+std::uint32_t OpenGLRenderTargets::Height() const noexcept { return height_; }
 
 } // namespace ParticleSaturn::Gpu::OpenGL41
