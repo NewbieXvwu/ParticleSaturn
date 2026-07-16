@@ -11,6 +11,9 @@ int main(int argc, char* argv[]) {
     assert(particles.Initialize(device, argv[1], 0x53415455U));
     assert(particles.Simulate(1.0f / 120.0f, 1.0f, false));
     assert(particles.RenderBuffer() != nullptr);
+    ParticleSaturn::Gpu::Metal::MetalStarField stars;
+    assert(stars.Initialize(device, argv[1], 0x53544152U));
+    assert(stars.Buffer() != nullptr);
     const auto cachePath = std::filesystem::temp_directory_path() / "ParticleSaturnTests.metallibarchive";
     std::filesystem::remove(cachePath);
     ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;

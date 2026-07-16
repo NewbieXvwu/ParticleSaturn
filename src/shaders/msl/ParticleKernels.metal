@@ -53,3 +53,13 @@ kernel void SimulateParticles(const device Particle* input [[buffer(0)]],
                                   particle.position.x * s + particle.position.z * c);
     output[id] = particle;
 }
+
+kernel void InitializeStars(device float4* stars [[buffer(0)]],
+                            constant uint& seed [[buffer(1)]],
+                            uint id [[thread_position_in_grid]]) {
+    const uint value = Hash(id ^ seed);
+    const float x = float(value & 0x3ffU) / 512.0f - 1.0f;
+    const float y = float((value >> 10) & 0x3ffU) / 512.0f - 1.0f;
+    const float z = float((value >> 20) & 0x3ffU) / 512.0f - 1.0f;
+    stars[id] = float4(normalize(float3(x, y, z)) * 100.0f, 1.0f);
+}

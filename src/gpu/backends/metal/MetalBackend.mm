@@ -189,4 +189,27 @@ bool MetalPipelineCache::AddComputeFunction(MetalDevice& device, const std::stri
 
 void* MetalPipelineCache::NativeArchive() const noexcept { return archive_; }
 
+bool MetalStarField::Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed) {
+    id<MTLDevice> nativeDevice = (id<MTLDevice>)device.NativeDevice();
+    NSError* error = nil;
+    id<MTLLibrary> library = [nativeDevice newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"InitializeStars");
+    [library release];
+    if (pipeline == nil) return false;
+    buffer_ = [nativeDevice newBufferWithLength:StarCount * 16U options:MTLResourceStorageModePrivate];
+    id<MTLCommandQueue> queue = [nativeDevice newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:pipeline];
+    [encoder setBuffer:(id<MTLBuffer>)buffer_ offset:0 atIndex:0];
+    [encoder setBytes:&seed length:sizeof(seed) atIndex:1];
+    Dispatch(encoder, pipeline, StarCount);
+    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
+    [pipeline release]; [queue release];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+void* MetalStarField::Buffer() const noexcept { return buffer_; }
+
 } // namespace ParticleSaturn::Gpu::Metal

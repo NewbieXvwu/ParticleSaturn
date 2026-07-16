@@ -90,4 +90,14 @@ private:
     void* archive_ = nullptr;
 };
 
+class MetalStarField {
+public:
+    static constexpr std::uint32_t StarCount = 50000;
+    bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
+    void* Buffer() const noexcept;
+
+private:
+    void* buffer_ = nullptr;
+};
+
 } // namespace ParticleSaturn::Gpu::Metal
