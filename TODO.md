@@ -880,14 +880,14 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
-进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。三缓冲变换反馈、HDR 帧缓冲与亮部下采样、Kawase 模糊均已接入；离屏测试在绑定 HDR 帧缓冲后验证粒子模拟和 Bloom 绘制无驱动错误。
+进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。三缓冲变换反馈、HDR 帧缓冲、亮部下采样、Kawase 模糊和 ACES 色调映射均已接入；离屏测试在绑定 HDR 帧缓冲后验证粒子模拟、Bloom 绘制无驱动错误，并读回色调映射结果。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转）
 - [ ] 间接绘制
 - [x] HDR 离屏缓冲
 - [x] Bloom + Kawase 模糊
-- [ ] 色调映射
+- [x] 色调映射
 - [x] 透明窗口
 - [ ] ImGui
 - [x] GLSL 410 着色器编写

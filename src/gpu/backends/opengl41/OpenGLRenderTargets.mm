@@ -27,17 +27,20 @@ bool OpenGLRenderTargets::Create(std::uint32_t width, std::uint32_t height) {
     const bool scene = CreateTarget(width, height, sceneFramebuffer_, sceneTexture_);
     const bool strong = CreateTarget(std::max(1U, width / 6U), std::max(1U, height / 6U), bloomStrongFramebuffer_, bloomStrongTexture_);
     const bool weak = CreateTarget(std::max(1U, width / 12U), std::max(1U, height / 12U), bloomWeakFramebuffer_, bloomWeakTexture_);
+    const bool toneMapped = CreateTarget(width, height, toneMappedFramebuffer_, toneMappedTexture_);
     width_ = width;
     height_ = height;
-    return scene && strong && weak;
+    return scene && strong && weak && toneMapped;
 }
 
 std::uint32_t OpenGLRenderTargets::SceneFramebuffer() const noexcept { return sceneFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::BloomStrongFramebuffer() const noexcept { return bloomStrongFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::BloomWeakFramebuffer() const noexcept { return bloomWeakFramebuffer_; }
+std::uint32_t OpenGLRenderTargets::ToneMappedFramebuffer() const noexcept { return toneMappedFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::SceneTexture() const noexcept { return sceneTexture_; }
 std::uint32_t OpenGLRenderTargets::BloomStrongTexture() const noexcept { return bloomStrongTexture_; }
 std::uint32_t OpenGLRenderTargets::BloomWeakTexture() const noexcept { return bloomWeakTexture_; }
+std::uint32_t OpenGLRenderTargets::ToneMappedTexture() const noexcept { return toneMappedTexture_; }
 std::uint32_t OpenGLRenderTargets::Width() const noexcept { return width_; }
 std::uint32_t OpenGLRenderTargets::Height() const noexcept { return height_; }
 

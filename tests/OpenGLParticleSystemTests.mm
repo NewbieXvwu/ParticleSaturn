@@ -4,6 +4,7 @@
 #include "gpu/backends/opengl41/OpenGLParticleSystem.h"
 #include "gpu/backends/opengl41/OpenGLBloom.h"
 #include "gpu/backends/opengl41/OpenGLRenderTargets.h"
+#include "gpu/backends/opengl41/OpenGLToneMapper.h"
 
 #include <cassert>
 
@@ -26,6 +27,7 @@ int main(int argc, char* argv[]) {
         assert(targets.SceneFramebuffer() != 0);
         assert(targets.BloomStrongFramebuffer() != 0);
         assert(targets.BloomWeakFramebuffer() != 0);
+        assert(targets.ToneMappedFramebuffer() != 0);
         assert(targets.SceneTexture() != 0);
         glBindFramebuffer(GL_FRAMEBUFFER, targets.SceneFramebuffer());
         glViewport(0, 0, 1920, 1080);
@@ -39,6 +41,16 @@ int main(int argc, char* argv[]) {
         ParticleSaturn::Gpu::OpenGL41::OpenGLBloom bloom;
         assert(bloom.Initialize(argv[2]));
         assert(bloom.Apply(targets));
+        ParticleSaturn::Gpu::OpenGL41::OpenGLToneMapper toneMapper;
+        assert(toneMapper.Initialize(argv[2]));
+        assert(toneMapper.Apply(targets));
+        float color[4]{};
+        glBindFramebuffer(GL_FRAMEBUFFER, targets.ToneMappedFramebuffer());
+        glReadPixels(960, 540, 1, 1, GL_RGBA, GL_FLOAT, color);
+        assert(glGetError() == GL_NO_ERROR);
+        assert(color[0] > 0.5f && color[0] <= 1.0f);
+        assert(color[1] > 0.5f && color[1] <= 1.0f);
+        assert(color[2] > 0.5f && color[2] <= 1.0f);
         [context release];
     }
     return 0;
