@@ -9,3 +9,9 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
+add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
+add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/ParticleKernels.metallib"
+)

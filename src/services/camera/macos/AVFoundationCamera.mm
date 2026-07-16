@@ -44,7 +44,7 @@ void AVFoundationCamera::RequestPermission() { [AVCaptureDevice requestAccessFor
 std::vector<Device> AVFoundationCamera::Devices() const {
     std::vector<Device> devices;
     auto* discovery = [AVCaptureDeviceDiscoverySession
-        discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternalUnknown]
+        discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternal]
         mediaType:AVMediaTypeVideo
         position:AVCaptureDevicePositionUnspecified];
     for (AVCaptureDevice* device in [discovery devices]) {

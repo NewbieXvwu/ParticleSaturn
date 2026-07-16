@@ -846,7 +846,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
-进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化和三缓冲计算模拟。当前 Xcode 缺少 Metal 工具链组件，`metal` 与 `metallib` 无法执行，着色器二进制和运行通道验证待组件安装完成后继续。
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化和三缓冲计算模拟。CMake 已通过 Xcode Metal 工具链将其编译为 `metallib` 并复制到 macOS 应用包资源目录；渲染通道接入待继续完成。
 
 - [ ] 120 万粒子初始化（Metal 计算管线）
 - [ ] 三缓冲计算模拟
@@ -860,7 +860,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] ImGui（官方 Metal 后端）
 - [ ] 透明窗口 + `NSVisualEffectView`
 - [ ] 管线缓存（`MTLBinaryArchive`）
-- [ ] MSL 着色器编写 + `metallib` 编译
+- [x] MSL 着色器编写 + `metallib` 编译
 - [ ] Metal 成为 macOS 参考路径
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
