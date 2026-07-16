@@ -8,6 +8,7 @@
 // SIMD 模式枚举
 enum class SIMDMode {
     Auto,  // 自动检测最佳实现
+    NEON,  // 强制使用 ARM NEON
     AVX2,  // 强制使用 AVX2
     SSE,   // 强制使用 SSE
     Scalar // 强制使用标量实现
@@ -32,6 +33,9 @@ bool IsAVX2Supported();
 
 // 检测 CPU 是否支持 SSE2
 bool IsSSE2Supported();
+
+// 检测 CPU 是否支持 ARM NEON
+bool IsNEONSupported();
 
 // 将 uint8 RGB 图像归一化为 float [0, 1]
 // src: 源图像数据 (uint8, RGB 交错)

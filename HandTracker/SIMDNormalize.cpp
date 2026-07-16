@@ -5,14 +5,27 @@
 
 #include <iostream>
 
-#ifdef _MSC_VER
+#if defined(_M_X64) || defined(_M_IX86) || defined(__i386__) || defined(__x86_64__)
+#define PARTICLESATURN_X86_SIMD 1
+#endif
+
+#if defined(__aarch64__) || defined(__ARM_NEON)
+#define PARTICLESATURN_NEON_SIMD 1
+#endif
+
+#if defined(PARTICLESATURN_X86_SIMD) && defined(_MSC_VER)
 #include <intrin.h>
-#else
+#elif defined(PARTICLESATURN_X86_SIMD)
 #include <cpuid.h>
 #endif
 
-// SIMD 内联函数
-#include <immintrin.h> // AVX2, AVX, SSE
+#if defined(PARTICLESATURN_X86_SIMD)
+#include <immintrin.h>
+#endif
+
+#if defined(PARTICLESATURN_NEON_SIMD)
+#include <arm_neon.h>
+#endif
 
 namespace SIMDNormalize {
 
@@ -20,9 +33,10 @@ namespace SIMDNormalize {
 static bool     g_initialized = false;
 static bool     g_hasAVX2     = false;
 static bool     g_hasSSE2     = false;
+static bool     g_hasNEON     = false;
 static SIMDMode g_currentMode = SIMDMode::Auto;
 
-// CPUID 辅助函数
+#if defined(PARTICLESATURN_X86_SIMD)
 static void GetCPUID(int info[4], int function_id) {
 #ifdef _MSC_VER
     __cpuid(info, function_id);
@@ -38,14 +52,15 @@ static void GetCPUIDEx(int info[4], int function_id, int subfunction_id) {
     __cpuid_count(function_id, subfunction_id, info[0], info[1], info[2], info[3]);
 #endif
 }
+#endif
 
 void Init() {
     if (g_initialized) {
         return;
     }
 
-    int info[4];
-
+#if defined(PARTICLESATURN_X86_SIMD)
+    int info[4]{};
     // 检查 CPUID 支持
     GetCPUID(info, 0);
     int maxFunction = info[0];
@@ -61,10 +76,16 @@ void Init() {
         // AVX2: EBX bit 5
         g_hasAVX2 = (info[1] & (1 << 5)) != 0;
     }
+#endif
+
+#if defined(PARTICLESATURN_NEON_SIMD)
+    g_hasNEON = true;
+#endif
 
     g_initialized = true;
 
-    std::cout << "[SIMD] CPU features detected - AVX2: " << (g_hasAVX2 ? "Yes" : "No")
+    std::cout << "[SIMD] CPU features detected - NEON: " << (g_hasNEON ? "Yes" : "No")
+              << ", AVX2: " << (g_hasAVX2 ? "Yes" : "No")
               << ", SSE2: " << (g_hasSSE2 ? "Yes" : "No") << std::endl;
 }
 
@@ -91,12 +112,21 @@ bool IsSSE2Supported() {
     return g_hasSSE2;
 }
 
+bool IsNEONSupported() {
+    if (!g_initialized) {
+        Init();
+    }
+    return g_hasNEON;
+}
+
 const char* GetCurrentImplementation() {
     if (!g_initialized) {
         Init();
     }
 
     switch (g_currentMode) {
+    case SIMDMode::NEON:
+        return g_hasNEON ? "NEON (forced)" : "NEON (unavailable, using scalar)";
     case SIMDMode::AVX2:
         return g_hasAVX2 ? "AVX2 (forced)" : "AVX2 (unavailable, using fallback)";
     case SIMDMode::SSE:
@@ -105,6 +135,9 @@ const char* GetCurrentImplementation() {
         return "Scalar (forced)";
     case SIMDMode::Auto:
     default:
+        if (g_hasNEON) {
+            return "NEON (auto)";
+        }
         if (g_hasAVX2) {
             return "AVX2 (auto)";
         }
@@ -125,6 +158,30 @@ static void NormalizeRGB_Scalar(const uint8_t* src, float* dst, size_t pixel_cou
         dst[i] = src[i] * scale;
     }
 }
+
+#if defined(PARTICLESATURN_NEON_SIMD)
+static void NormalizeRGB_NEON(const uint8_t* src, float* dst, size_t pixel_count) {
+    constexpr float scale = 1.0f / 255.0f;
+    size_t i = 0;
+    const size_t channelCount = pixel_count * 3;
+    for (; i + 16 <= channelCount; i += 16) {
+        const uint8x16_t bytes = vld1q_u8(src + i);
+        const uint16x8_t low16 = vmovl_u8(vget_low_u8(bytes));
+        const uint16x8_t high16 = vmovl_u8(vget_high_u8(bytes));
+        const uint32x4_t low32a = vmovl_u16(vget_low_u16(low16));
+        const uint32x4_t low32b = vmovl_u16(vget_high_u16(low16));
+        const uint32x4_t high32a = vmovl_u16(vget_low_u16(high16));
+        const uint32x4_t high32b = vmovl_u16(vget_high_u16(high16));
+        vst1q_f32(dst + i, vmulq_n_f32(vcvtq_f32_u32(low32a), scale));
+        vst1q_f32(dst + i + 4, vmulq_n_f32(vcvtq_f32_u32(low32b), scale));
+        vst1q_f32(dst + i + 8, vmulq_n_f32(vcvtq_f32_u32(high32a), scale));
+        vst1q_f32(dst + i + 12, vmulq_n_f32(vcvtq_f32_u32(high32b), scale));
+    }
+    for (; i < channelCount; ++i) {
+        dst[i] = src[i] * scale;
+    }
+}
+#endif
 
 // ============================================================================
 // SSE 实现 (一次处理 4 个像素 = 12 个通道)
@@ -252,6 +309,12 @@ void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count) {
 
     if (effectiveMode == SIMDMode::Auto) {
         // 自动选择最佳实现
+#if defined(PARTICLESATURN_NEON_SIMD)
+        if (g_hasNEON) {
+            NormalizeRGB_NEON(src, dst, pixel_count);
+            return;
+        }
+#endif
 #ifdef HAS_AVX2_IMPL
         if (g_hasAVX2) {
             NormalizeRGB_AVX2(src, dst, pixel_count);
@@ -270,6 +333,15 @@ void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count) {
 
     // 强制指定的模式
     switch (effectiveMode) {
+    case SIMDMode::NEON:
+#if defined(PARTICLESATURN_NEON_SIMD)
+        if (g_hasNEON) {
+            NormalizeRGB_NEON(src, dst, pixel_count);
+            return;
+        }
+#endif
+        NormalizeRGB_Scalar(src, dst, pixel_count);
+        break;
     case SIMDMode::AVX2:
 #ifdef HAS_AVX2_IMPL
         if (g_hasAVX2) {
