@@ -846,6 +846,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化和三缓冲计算模拟。当前 Xcode 缺少 Metal 工具链组件，`metal` 与 `metallib` 无法执行，着色器二进制和运行通道验证待组件安装完成后继续。
+
 - [ ] 120 万粒子初始化（Metal 计算管线）
 - [ ] 三缓冲计算模拟
 - [ ] 50,000 星体
