@@ -21,6 +21,13 @@ target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
 target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController")
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
+add_custom_target(ParticleSaturnMacOSMetalResource ALL
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/ParticleKernels.metallib"
+    DEPENDS ParticleSaturnMetalShaders
+    VERBATIM)
+add_dependencies(ParticleSaturn.macOS ParticleSaturnMacOSMetalResource)
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"

@@ -123,7 +123,7 @@ private:
 
 class MetalToneMapper {
 public:
-    bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* outputTexture,
+    bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
                std::uint32_t width, std::uint32_t height);
 };
 
@@ -149,7 +149,8 @@ public:
 class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
-    void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height) const;
+    void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
+              float timeSeconds) const;
 
 private:
     void* particlePipeline_ = nullptr;
@@ -163,6 +164,9 @@ public:
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
                 float deltaTime, std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {});
+
+private:
+    float elapsedTime_ = 0.0f;
 };
 
 class MetalIndirectDraw {

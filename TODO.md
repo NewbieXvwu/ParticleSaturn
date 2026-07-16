@@ -846,7 +846,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
-进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。CMake 已通过 Xcode Metal 工具链将其编译为 `metallib` 并复制到 macOS 应用包资源目录；`ParticleSaturnMetalParticleTests` 已在真实 Metal 设备上验证各计算通道提交。macOS 应用已接入显示刷新回调、粒子和星空图形绘制、官方 ImGui Metal 后端和呈现流程；应用包截图已验证输出包含可见粒子、星空、FPS 和界面。
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化采用旧 Diligent 的 PCG 序列、半径分层与四色调色板，星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑；相机投影、粒子片元映射、FPS 右上角布局和 Bloom 合成均已接入实际帧路径。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；完整测试和应用包截图均已验证。
 
 - [x] 120 万粒子初始化（Metal 计算管线）
 - [x] 三缓冲计算模拟

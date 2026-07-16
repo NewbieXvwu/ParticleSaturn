@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <random>
+#include <vector>
 
 namespace ParticleSaturn::Gpu::Metal {
 
@@ -225,23 +227,28 @@ void* MetalPipelineCache::NativeArchive() const noexcept { return archive_; }
 
 bool MetalStarField::Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed) {
     id<MTLDevice> nativeDevice = (id<MTLDevice>)device.NativeDevice();
-    NSError* error = nil;
-    id<MTLLibrary> library = [nativeDevice newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
-    if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"InitializeStars");
-    [library release];
-    if (pipeline == nil) return false;
-    buffer_ = [nativeDevice newBufferWithLength:StarCount * 16U options:MTLResourceStorageModePrivate];
-    id<MTLCommandQueue> queue = [nativeDevice newCommandQueue];
-    id<MTLCommandBuffer> commands = [queue commandBuffer];
-    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:pipeline];
-    [encoder setBuffer:(id<MTLBuffer>)buffer_ offset:0 atIndex:0];
-    [encoder setBytes:&seed length:sizeof(seed) atIndex:1];
-    Dispatch(encoder, pipeline, StarCount);
-    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
-    [pipeline release]; [queue release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
+    (void)libraryPath;
+    (void)seed;
+    struct Star { float position[3]; float color[3]; float size; float randomSeed; };
+    std::vector<Star> stars(StarCount);
+    std::mt19937 generator{1337U};
+    std::uniform_real_distribution<float> random{0.0f, 1.0f};
+    constexpr float colors[4][3] = {{0.890f, 0.855f, 0.773f}, {0.788f, 0.627f, 0.439f},
+                                    {0.890f, 0.855f, 0.773f}, {0.690f, 0.553f, 0.333f}};
+    for (std::uint32_t index = 0; index < StarCount; ++index) {
+        const float radius = 400.0f + random(generator) * 3000.0f;
+        const float theta = random(generator) * 6.28318530718f;
+        const float phi = std::acos(2.0f * random(generator) - 1.0f);
+        auto& star = stars[index];
+        star.position[0] = radius * std::sin(phi) * std::cos(theta);
+        star.position[1] = radius * std::cos(phi);
+        star.position[2] = radius * std::sin(phi) * std::sin(theta);
+        star.color[0] = colors[index % 4][0]; star.color[1] = colors[index % 4][1]; star.color[2] = colors[index % 4][2];
+        star.size = 1.0f + random(generator) * 3.0f;
+        star.randomSeed = random(generator);
+    }
+    buffer_ = [nativeDevice newBufferWithBytes:stars.data() length:stars.size() * sizeof(Star) options:MTLResourceStorageModeShared];
+    return buffer_ != nullptr;
 }
 
 void* MetalStarField::Buffer() const noexcept { return buffer_; }
@@ -275,13 +282,14 @@ void* MetalRenderTargets::UiOverlay() const noexcept { return uiOverlay_; }
 void* MetalRenderTargets::UiBlur() const noexcept { return uiBlur_; }
 void* MetalRenderTargets::Composite() const noexcept { return composite_; }
 
-bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* outputTexture,
+bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
                             std::uint32_t width, std::uint32_t height) {
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"ToneMap");
+    if (hdrTexture == nullptr || bloomTexture == nullptr || outputTexture == nullptr) { [library release]; return false; }
+    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"ToneMapWithBloom");
     [library release];
     if (pipeline == nil) return false;
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
@@ -289,7 +297,8 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:pipeline];
     [encoder setTexture:(id<MTLTexture>)hdrTexture atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:1];
+    [encoder setTexture:(id<MTLTexture>)bloomTexture atIndex:1];
+    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:2];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1)
       threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
     [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
@@ -392,17 +401,18 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
 }
 
 void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
-                                 std::uint32_t height) const {
+                                 std::uint32_t height, float timeSeconds) const {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
-    const float aspect = static_cast<float>(width) / static_cast<float>(height);
+    struct RenderConstants { float aspect, screenHeight, time, scale; } constants{
+        static_cast<float>(width) / static_cast<float>(height), static_cast<float>(height), timeSeconds, 1.0f};
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)starPipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)starBuffer offset:0 atIndex:0];
-    [encoder setVertexBytes:&aspect length:sizeof(aspect) atIndex:1];
+    [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalStarField::StarCount];
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
-    [encoder setVertexBytes:&aspect length:sizeof(aspect) atIndex:1];
+    [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalParticleSystem::ParticleCount];
 }
 
@@ -413,6 +423,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
                                 const std::function<void(void*, void*, void*)>& uiRenderer) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
     if (!particles.Simulate(deltaTime, 1.0f, false)) return false;
+    elapsedTime_ += deltaTime;
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
     id<MTLCommandBuffer> commands = [queue commandBuffer];
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -421,12 +432,16 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height);
+    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, elapsedTime_);
     [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [queue release];
     if ([commands status] != MTLCommandBufferStatusCompleted) return false;
+    MetalBloom bloom;
+    if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(),
+                     std::max(1U, width / 6U), std::max(1U, height / 6U), std::max(1U, width / 12U), std::max(1U, height / 12U))) return false;
     MetalToneMapper toneMapper;
-    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
+    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomWeak(),
+                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) return false;
     MetalSevenSegmentFps fps;
     if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
     if (uiRenderer) {
