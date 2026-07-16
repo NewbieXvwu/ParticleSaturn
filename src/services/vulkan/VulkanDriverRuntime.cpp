@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 
 namespace ParticleSaturn::Services::Vulkan {
 
@@ -16,6 +17,7 @@ bool ConfigureDriver(App::VulkanDriver driver, const std::string& bundleResource
         error = "unable to set VK_DRIVER_FILES";
         return false;
     }
+    std::clog << "[Vulkan] selected ICD " << name << " at " << path << '\n';
     error.clear();
     return true;
 }

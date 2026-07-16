@@ -903,7 +903,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] KosmicKrisp 接入
 - [ ] `DiligentVulkanAdapter` 兼容修复
 - [ ] 驱动切换 + 重启
-- [ ] 日志记录 ICD 信息
+- [x] 日志记录 ICD 信息
 
 ### 阶段 10：四路径一致性与性能回归
 
