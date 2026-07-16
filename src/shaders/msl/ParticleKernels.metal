@@ -94,3 +94,39 @@ kernel void KawaseBlur(texture2d<float, access::read> source [[texture(0)]],
                    source.read(uint2(clamp(p + int2(1, 1), int2(0), size)));
     target.write(color * 0.25f, id);
 }
+
+struct AcrylicConstants {
+    float blurRadius;
+    float opacity;
+};
+
+kernel void UiKawaseBlur(texture2d<float, access::read> source [[texture(0)]],
+                         texture2d<float, access::write> target [[texture(1)]],
+                         constant AcrylicConstants& constants [[buffer(0)]],
+                         uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= target.get_width() || id.y >= target.get_height()) return;
+    const int offset = max(1, int(round(constants.blurRadius)));
+    const int2 p = int2(id);
+    const int2 size = int2(source.get_width() - 1, source.get_height() - 1);
+    const int2 lower = int2(0);
+    const float4 color = source.read(uint2(clamp(p + int2(-offset, -offset), lower, size))) +
+                         source.read(uint2(clamp(p + int2( offset, -offset), lower, size))) +
+                         source.read(uint2(clamp(p + int2(-offset,  offset), lower, size))) +
+                         source.read(uint2(clamp(p + int2( offset,  offset), lower, size)));
+    target.write(color * 0.25f, id);
+}
+
+kernel void AcrylicComposite(texture2d<float, access::read> scene [[texture(0)]],
+                             texture2d<float, access::read> blurredScene [[texture(1)]],
+                             texture2d<float, access::read> overlay [[texture(2)]],
+                             texture2d<float, access::write> output [[texture(3)]],
+                             constant AcrylicConstants& constants [[buffer(0)]],
+                             uint2 id [[thread_position_in_grid]]) {
+    if (id.x >= output.get_width() || id.y >= output.get_height()) return;
+    const float4 sceneColor = scene.read(id);
+    const float4 overlayColor = overlay.read(id);
+    const float mask = clamp(overlayColor.a * constants.opacity, 0.0f, 1.0f);
+    const float3 acrylic = mix(blurredScene.read(id).rgb, float3(0.12f, 0.15f, 0.18f), 0.18f);
+    const float3 background = mix(sceneColor.rgb, acrylic, mask);
+    output.write(float4(mix(background, overlayColor.rgb, overlayColor.a), 1.0f), id);
+}

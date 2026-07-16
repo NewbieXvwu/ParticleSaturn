@@ -106,11 +106,17 @@ public:
     void* SceneHdr() const noexcept;
     void* BloomStrong() const noexcept;
     void* BloomWeak() const noexcept;
+    void* UiOverlay() const noexcept;
+    void* UiBlur() const noexcept;
+    void* Composite() const noexcept;
 
 private:
     void* sceneHdr_ = nullptr;
     void* bloomStrong_ = nullptr;
     void* bloomWeak_ = nullptr;
+    void* uiOverlay_ = nullptr;
+    void* uiBlur_ = nullptr;
+    void* composite_ = nullptr;
 };
 
 class MetalToneMapper {
@@ -123,6 +129,13 @@ class MetalBloom {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* strongBloom, void* weakBloom,
                std::uint32_t strongWidth, std::uint32_t strongHeight, std::uint32_t weakWidth, std::uint32_t weakHeight);
+};
+
+class MetalAcrylic {
+public:
+    bool Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
+               void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
+               float blurRadius, float opacity);
 };
 
 class MetalIndirectDraw {

@@ -15,14 +15,20 @@ int main(int argc, char* argv[]) {
     assert(stars.Initialize(device, argv[1], 0x53544152U));
     assert(stars.Buffer() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalRenderTargets targets;
-    assert(targets.Create(device, 1920, 1080));
+    assert(targets.Create(device, 320, 180));
     assert(targets.SceneHdr() != nullptr);
     assert(targets.BloomStrong() != nullptr);
     assert(targets.BloomWeak() != nullptr);
+    assert(targets.UiOverlay() != nullptr);
+    assert(targets.UiBlur() != nullptr);
+    assert(targets.Composite() != nullptr);
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
     assert(toneMapper.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), 320, 180));
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomWeak(), 320, 180, 160, 90));
+    ParticleSaturn::Gpu::Metal::MetalAcrylic acrylic;
+    assert(acrylic.Apply(device, argv[1], targets.SceneHdr(), targets.UiOverlay(), targets.UiBlur(), targets.Composite(),
+                         320, 180, 3.0f, 0.75f));
     ParticleSaturn::Gpu::Metal::MetalIndirectDraw indirect;
     assert(indirect.Create(device, ParticleSaturn::Gpu::Metal::MetalParticleSystem::ParticleCount));
     assert(indirect.Buffer() != nullptr);

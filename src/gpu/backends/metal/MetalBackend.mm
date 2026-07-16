@@ -3,6 +3,7 @@
 
 #include "MetalBackend.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace ParticleSaturn::Gpu::Metal {
@@ -226,13 +227,20 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
     sceneHdr_ = create(width, height);
     bloomStrong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
     bloomWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
+    uiOverlay_ = create(width, height);
+    uiBlur_ = create(width, height);
+    composite_ = create(width, height);
     [descriptor release];
-    return sceneHdr_ != nullptr && bloomStrong_ != nullptr && bloomWeak_ != nullptr;
+    return sceneHdr_ != nullptr && bloomStrong_ != nullptr && bloomWeak_ != nullptr &&
+           uiOverlay_ != nullptr && uiBlur_ != nullptr && composite_ != nullptr;
 }
 
 void* MetalRenderTargets::SceneHdr() const noexcept { return sceneHdr_; }
 void* MetalRenderTargets::BloomStrong() const noexcept { return bloomStrong_; }
 void* MetalRenderTargets::BloomWeak() const noexcept { return bloomWeak_; }
+void* MetalRenderTargets::UiOverlay() const noexcept { return uiOverlay_; }
+void* MetalRenderTargets::UiBlur() const noexcept { return uiBlur_; }
+void* MetalRenderTargets::Composite() const noexcept { return composite_; }
 
 bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* outputTexture,
                             std::uint32_t width, std::uint32_t height) {
@@ -272,6 +280,47 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     encoder = [commands computeCommandEncoder]; [encoder setComputePipelineState:blur]; [encoder setTexture:(id<MTLTexture>)strongBloom atIndex:0]; [encoder setTexture:(id<MTLTexture>)weakBloom atIndex:1];
     [encoder dispatchThreads:MTLSizeMake(weakWidth, weakHeight, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
     [commands commit]; [commands waitUntilCompleted]; [downsample release]; [blur release]; [queue release];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* sceneTexture, void* uiOverlayTexture,
+                         void* blurredSceneTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
+                         float blurRadius, float opacity) {
+    if (sceneTexture == nullptr || uiOverlayTexture == nullptr || blurredSceneTexture == nullptr || outputTexture == nullptr ||
+        width == 0 || height == 0 || blurRadius < 0.0f || opacity < 0.0f || opacity > 1.0f) return false;
+    NSError* error = nil;
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
+        newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
+    if (library == nil || error != nil) return false;
+    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"UiKawaseBlur");
+    id<MTLComputePipelineState> composite = CreateComputePipeline(library, @"AcrylicComposite");
+    [library release];
+    if (blur == nil || composite == nil) return false;
+
+    struct AcrylicConstants { float blurRadius; float opacity; } constants{blurRadius, opacity};
+    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:blur];
+    [encoder setTexture:(id<MTLTexture>)sceneTexture atIndex:0];
+    [encoder setTexture:(id<MTLTexture>)blurredSceneTexture atIndex:1];
+    [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
+      threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)];
+    [encoder endEncoding];
+
+    encoder = [commands computeCommandEncoder];
+    [encoder setComputePipelineState:composite];
+    [encoder setTexture:(id<MTLTexture>)sceneTexture atIndex:0];
+    [encoder setTexture:(id<MTLTexture>)blurredSceneTexture atIndex:1];
+    [encoder setTexture:(id<MTLTexture>)uiOverlayTexture atIndex:2];
+    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:3];
+    [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
+    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
+      threadsPerThreadgroup:MTLSizeMake([composite threadExecutionWidth], 1, 1)];
+    [encoder endEncoding];
+    [commands commit]; [commands waitUntilCompleted];
+    [blur release]; [composite release]; [queue release];
     return [commands status] == MTLCommandBufferStatusCompleted;
 }
 
