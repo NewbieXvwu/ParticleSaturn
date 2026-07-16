@@ -888,14 +888,14 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
-进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，前四个粒子的完整字段作为读回基线；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。间接参数缓冲使用 `glDrawArraysIndirect` 参与实际绘制，测试已验证两帧后的位置旋转。新增 `ParticleSaturn.OpenGL41.macOS` 应用包目标，实际将 `R11G11B10F` HDR 场景绘制到 1/6 Bloom 双缓冲链，执行七轮 Kawase 与 1/12 辅助模糊，再按旧 Diligent 的高光压缩和默认 Bloom 强度 `0.5` 合成到 `RGBA8` 显示目标并呈现。该路径已完成真实窗口截图，星体采用与 Metal 相同的 `mt19937(1337)` 球壳分布、调色板和闪烁公式。HDR、Bloom 与色调映射各有资源和纹理读回验证；OpenGL 的 ImGui、透明窗口及与 Metal 的画面差异基准仍待完成。
+进展（2026-07-16）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，前四个粒子的完整字段作为读回基线；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。间接参数缓冲使用 `glDrawArraysIndirect` 参与实际绘制，测试已验证两帧后的位置旋转。新增 `ParticleSaturn.OpenGL41.macOS` 应用包目标，实际将 `R11G11B10F` HDR 场景绘制到 1/6 Bloom 双缓冲链，执行七轮 Kawase 与 1/12 辅助模糊，再按旧 Diligent 的高光压缩和默认 Bloom 强度 `0.5` 合成到 `RGBA8` 显示目标并呈现。该路径已完成真实窗口截图，星体采用与 Metal 相同的 `mt19937(1337)` 球壳分布、调色板和闪烁公式。当前发现独立路径错误地把 Retina 倍率作为粒子 `pixelRatio`，使画面严重过曝；修正及与 Metal 的逐像素基准完成前，HDR、Bloom 和色调映射不作为验收通过项。OpenGL 的 ImGui、透明窗口及与 Metal 的画面差异基准仍待完成。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转，固定种子读回基线）
 - [x] 间接绘制（`glDrawArraysIndirect`）
-- [x] HDR 离屏缓冲（真实窗口路径与纹理读回）
-- [x] Bloom + Kawase 模糊（1/6 双缓冲链、1/12 辅助链与纹理读回）
-- [x] 色调映射（旧 Diligent 高光压缩与实际交换缓冲呈现）
+- [ ] HDR 离屏缓冲
+- [ ] Bloom + Kawase 模糊
+- [ ] 色调映射
 - [ ] 透明窗口
 - [ ] ImGui
 - [x] GLSL 410 着色器编写

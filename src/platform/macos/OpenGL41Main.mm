@@ -76,7 +76,7 @@ int main() {
             glBlendFunc(GL_SRC_ALPHA, GL_ONE);
             stars->Draw(*elapsed, width, height);
             particles->Simulate(deltaTime, 1.0f, false);
-            particles->DrawIndirect(*elapsed, width, height, 1.0f, 0.4f, 0.0f, backingScale, 0.6f);
+            particles->DrawIndirect(*elapsed, width, height, 1.0f, 0.4f, 0.0f, 1.0f, 0.6f);
             glDisable(GL_BLEND);
             if (!bloom->Apply(*targets) || !toneMapper->Apply(*targets)) return;
 
