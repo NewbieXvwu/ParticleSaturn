@@ -246,10 +246,21 @@ void OpenGLParticleSystem::SetSimulationMode(SimulationMode mode) noexcept { sim
 OpenGLParticleSystem::SimulationMode OpenGLParticleSystem::GetSimulationMode() const noexcept { return simulationMode_; }
 
 bool OpenGLParticleSystem::ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const {
-    if (count == 0 || count > ParticleCount || buffers_[renderIndex_] == 0) return false;
+    const std::uint32_t source = simulationMode_ == SimulationMode::Analytic ? analyticBuffer_ : buffers_[renderIndex_];
+    if (count == 0 || count > ParticleCount || source == 0) return false;
     particles.resize(count);
-    glBindBuffer(GL_ARRAY_BUFFER, buffers_[renderIndex_]);
+    glBindBuffer(GL_ARRAY_BUFFER, source);
     glGetBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(count) * ParticleBytes, particles.data());
+    if (simulationMode_ == SimulationMode::Analytic) {
+        for (auto& particle : particles) {
+            const float angle = (particle.isRing == 0U ? 0.03f : particle.speed * 0.2f) * analyticPhase_;
+            const float c = std::cos(angle);
+            const float s = std::sin(angle);
+            const float x = particle.position[0];
+            particle.position[0] = x * c - particle.position[2] * s;
+            particle.position[2] = x * s + particle.position[2] * c;
+        }
+    }
     return glGetError() == GL_NO_ERROR;
 }
 

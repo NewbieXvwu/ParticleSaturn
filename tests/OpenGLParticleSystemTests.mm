@@ -183,6 +183,15 @@ int main(int argc, char* argv[]) {
             assert(particle.isRing == 0U || particle.isRing == 1U);
             assert(particle.padding == 0U);
         }
+        particles.SetSimulationMode(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::Analytic);
+        particles.Simulate(2.0f / 120.0f, 1.0f, false);
+        std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> analyticFrame;
+        assert(particles.ReadBack(analyticFrame, 1));
+        const auto initial = ExpectedDiligentParticle(0, 0x53415455U);
+        const float angle = (initial.isRing == 0U ? 0.03f : initial.speed * 0.2f) * (2.0f / 120.0f);
+        AssertNear(analyticFrame[0].position[0], initial.position[0] * std::cos(angle) - initial.position[2] * std::sin(angle));
+        AssertNear(analyticFrame[0].position[2], initial.position[0] * std::sin(angle) + initial.position[2] * std::cos(angle));
+        particles.SetSimulationMode(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::TransformFeedback);
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);
         glClearColor(3.0f, 2.0f, 1.0f, 1.0f);

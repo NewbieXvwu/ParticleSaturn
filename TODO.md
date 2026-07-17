@@ -988,6 +988,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：解析式粒子模式现由 `AppController` 命令、`NSUserDefaults` 和 OpenGL 调试面板共同驱动，默认保留变换反馈；OpenGL 粒子、设置持久化、跨后端粒子和视觉基准测试通过，暂停与真实手势连续性对照待完成。
 
+进展补充（2026-07-17）：解析式模式的粒子读回已按累计相位返回当前位置，固定步长测试直接核对本体和环带旋转公式；暂停与真实手势连续性对照待完成。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
