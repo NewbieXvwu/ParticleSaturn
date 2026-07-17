@@ -727,20 +727,13 @@ __declspec(noinline) static void FlipHorizontalAndBGR2RGB_AVX2(const uint8_t* sr
 
             ymm = _mm256_shuffle_epi8(ymm, shuffle_mask);
 
-            // Store strategy:
-            // 1. Store Hi (16 bytes) at dst. Valid: 0-11. Garbage: 12-15.
-            // 2. Construct V containing correct 8-15 (from Hi and Lo) and 16-23 (from Lo).
-            //    V = [Hi_2 | Lo_0 | Lo_1 | Lo_2] (16 bytes of interest)
-            // 3. Store V (16 bytes) at dst+8.
-            //    Overwrites 8-15 with correct data. Writes 16-23 correctly. Writes 24-27 garbage (handled by next iter
-            //    or logic).
-
-            // Construct V
+            // The first eight bytes come from Hi; V supplies bytes 8 through
+            // 23. Store exactly 24 bytes so the last block cannot overrun.
             __m256i v_256 = _mm256_permutevar8x32_epi32(ymm, v_perm_mask);
             __m128i v     = _mm256_castsi256_si128(v_256);
             __m128i hi    = _mm256_extracti128_si256(ymm, 1);
 
-            _mm_storeu_si128((__m128i*)(dst_row + x * 3), hi);
+            _mm_storel_epi64((__m128i*)(dst_row + x * 3), hi);
             _mm_storeu_si128((__m128i*)(dst_row + x * 3 + 8), v);
         }
 

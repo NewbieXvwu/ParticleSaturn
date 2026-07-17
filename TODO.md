@@ -956,6 +956,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：AVX2 翻转的两个四像素子块现复用精确 12 字节装载器，消除其源端 16 字节跨界读取；常规和 AddressSanitizer 构建均通过。BGR AVX2 的目的端尾部存储仍待收紧。
 
+进展补充（2026-07-17）：BGR AVX2 翻转的目的端改为 8 字节加 16 字节的精确写入，完整八像素块只写 24 字节，不再覆盖下一个块或最终缓冲之外；常规和 AddressSanitizer 构建均通过。本机没有 x86 AVX2 执行环境，跨架构运行验收仍待完成。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
