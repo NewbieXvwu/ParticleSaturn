@@ -978,6 +978,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：独立 `PARTICLESATURN_SIMD_ADDRESS_SANITIZER` 配置再次构建并通过 `ParticleSaturnSimdTests`，覆盖零长度、任意短长度、未对齐 RGB 输入与翻转路径；x86 SSE/AVX2 实机运行保留在跨架构验收。
 
+进展补充（2026-07-17）：用户强制选择当前 CPU 不支持的 SIMD 档位时，调度器会保留此前有效设置并写出不可用诊断；常规与 AddressSanitizer 测试覆盖该回退契约。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误

@@ -84,5 +84,14 @@ int main() {
 #if defined(__aarch64__)
     assert(SIMDNormalize::IsNEONSupported());
 #endif
+    SIMDNormalize::SetMode(SIMDMode::Auto);
+    if (!SIMDNormalize::IsAVX2Supported()) {
+        SIMDNormalize::SetMode(SIMDMode::AVX2);
+        assert(SIMDNormalize::GetMode() == SIMDMode::Auto);
+    }
+    if (!SIMDNormalize::IsSSE2Supported()) {
+        SIMDNormalize::SetMode(SIMDMode::SSE);
+        assert(SIMDNormalize::GetMode() == SIMDMode::Auto);
+    }
     return 0;
 }

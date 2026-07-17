@@ -118,6 +118,18 @@ void Init() {
 }
 
 void SetMode(SIMDMode mode) {
+    if (!g_initialized) {
+        Init();
+    }
+    const bool supported =
+        mode == SIMDMode::Auto || mode == SIMDMode::Scalar ||
+        (mode == SIMDMode::NEON && g_hasNEON) ||
+        (mode == SIMDMode::AVX2 && g_hasAVX2) ||
+        (mode == SIMDMode::SSE && g_hasSSE2);
+    if (!supported) {
+        std::cout << "[SIMD] Requested mode is unavailable; keeping " << GetCurrentImplementation() << std::endl;
+        return;
+    }
     g_currentMode = mode;
     std::cout << "[SIMD] Mode set to: " << GetCurrentImplementation() << std::endl;
 }
