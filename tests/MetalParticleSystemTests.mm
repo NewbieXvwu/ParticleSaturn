@@ -276,12 +276,27 @@ void VerifyBloomThresholdAndAcrylicIsolation(ParticleSaturn::Gpu::Metal::MetalDe
     [acrylicWeak release];
 }
 
+void VerifyFrameScheduler(ParticleSaturn::Gpu::Metal::MetalDevice& device) {
+    ParticleSaturn::Gpu::Metal::MetalFrameScheduler scheduler;
+    id<MTLCommandQueue> queue = (id<MTLCommandQueue>)device.NativeCommandQueue();
+    for (std::uint64_t frame = 1; frame <= 4; ++frame) {
+        assert(scheduler.BeginFrame() == frame);
+        id<MTLCommandBuffer> commands = [queue commandBuffer];
+        assert(commands != nil);
+        [commands commit];
+        scheduler.Submit(commands);
+    }
+    assert(scheduler.LastSubmittedFrame() == 4);
+    assert(scheduler.WaitForSubmittedFrames());
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     assert(argc == 2);
     ParticleSaturn::Gpu::Metal::MetalDevice device;
     assert(device.Initialize());
+    VerifyFrameScheduler(device);
     ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;
     assert(particles.Initialize(device, argv[1], 0x53415455U));
     VerifyDiligentParticleInitialization(particles);
