@@ -1,206 +1,85 @@
-// SIMDNormalize.cpp - SIMD 加速的图像归一化
-// 支持 AVX2、SSE2 和标量回退
+// SIMDNormalize.cpp - 面向调用方的归一化接口和运行时分派
 
-#include "SIMDNormalize.h"
+#include "CpuFeatureDetector.h"
+#include "SIMDNormalizeDispatch.h"
 #include "SIMDNormalizeKernels.h"
 
-#include <cstring>
 #include <iostream>
 
-#if defined(_M_X64) || defined(_M_IX86) || defined(__i386__) || defined(__x86_64__)
-#define PARTICLESATURN_X86_SIMD 1
-#endif
-
-#if defined(__aarch64__) || defined(__ARM_NEON)
-#define PARTICLESATURN_NEON_SIMD 1
-#endif
-
-#if defined(PARTICLESATURN_X86_SIMD) && defined(_MSC_VER)
-#include <intrin.h>
-#elif defined(PARTICLESATURN_X86_SIMD)
-#include <cpuid.h>
-#endif
-
-#if defined(PARTICLESATURN_X86_SIMD)
-#include <immintrin.h>
-#endif
-
-#if defined(__SSSE3__)
-#define PARTICLESATURN_HAS_SSSE3_IMPL 1
-#endif
-
-#if defined(PARTICLESATURN_NEON_SIMD)
-#include <arm_neon.h>
-#endif
-
 namespace SIMDNormalize {
+namespace {
 
-// CPU 特性检测结果（缓存）
-static bool     g_initialized = false;
-static bool     g_hasAVX2     = false;
-static bool     g_hasSSE2     = false;
-static bool     g_hasSSSE3    = false;
-static bool     g_hasNEON     = false;
-static SIMDMode g_currentMode = SIMDMode::Auto;
+bool g_initialized = false;
+CpuFeatureSet g_features{};
+SIMDMode g_currentMode = SIMDMode::Auto;
 
-enum class KernelOperation { Normalize, FlipNormalize, FlipBgrToRgb };
-enum class KernelImplementation { Scalar, SSE2, SSSE3, AVX2, NEON };
+Internal::KernelImplementation Select(Internal::KernelOperation operation) {
+    return Internal::KernelDispatcher::Select(g_currentMode, operation, g_features);
+}
 
-class KernelRegistry {
-public:
-    explicit KernelRegistry(CpuFeatureSet features) : features_{features} {}
-
-    bool Supports(KernelImplementation implementation, KernelOperation operation) const {
-        switch (implementation) {
-        case KernelImplementation::NEON:
-            return features_.neon && operation == KernelOperation::Normalize;
-        case KernelImplementation::AVX2:
-#ifdef HAS_AVX2_IMPL
-            return features_.avx2;
-#else
-            return false;
-#endif
-        case KernelImplementation::SSSE3:
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-            return features_.ssse3;
-#else
-            return false;
-#endif
-        case KernelImplementation::SSE2:
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-            return features_.sse2 && operation == KernelOperation::Normalize;
-#else
-            return false;
-#endif
-        case KernelImplementation::Scalar:
-            return true;
-        }
-        return false;
+const char* ImplementationName(Internal::KernelImplementation implementation, bool automatic) {
+    switch (implementation) {
+    case Internal::KernelImplementation::NEON: return automatic ? "NEON (auto)" : "NEON (forced)";
+    case Internal::KernelImplementation::AVX2: return automatic ? "AVX2 (auto)" : "AVX2 (forced)";
+    case Internal::KernelImplementation::SSE41: return automatic ? "SSE4.1 (auto)" : "SSE4.1 (forced)";
+    case Internal::KernelImplementation::SSSE3: return automatic ? "SSSE3 (auto)" : "SSSE3 (forced)";
+    case Internal::KernelImplementation::SSE2: return automatic ? "SSE2 (auto)" : "SSE2 (forced)";
+    case Internal::KernelImplementation::Scalar: return automatic ? "Scalar (auto)" : "Scalar (forced fallback)";
+    case Internal::KernelImplementation::AVX512:
+    case Internal::KernelImplementation::FMA:
+    case Internal::KernelImplementation::DotProd:
+    case Internal::KernelImplementation::I8MM:
+        return "Scalar (forced fallback)";
     }
+    return "Scalar (forced fallback)";
+}
 
-private:
-    CpuFeatureSet features_;
-};
-
-class KernelDispatcher {
-public:
-    static KernelImplementation Select(SIMDMode mode, KernelOperation operation, CpuFeatureSet features) {
-        const KernelRegistry registry{features};
-        const auto supported = [&registry, operation](KernelImplementation implementation) {
-            return registry.Supports(implementation, operation);
-        };
-        if (mode == SIMDMode::Scalar) return KernelImplementation::Scalar;
-        if (mode == SIMDMode::NEON) return supported(KernelImplementation::NEON) ? KernelImplementation::NEON : KernelImplementation::Scalar;
-        if (mode == SIMDMode::AVX2) {
-            if (supported(KernelImplementation::AVX2)) return KernelImplementation::AVX2;
-            if (supported(KernelImplementation::SSSE3)) return KernelImplementation::SSSE3;
-            if (supported(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
-            return KernelImplementation::Scalar;
-        }
-        if (mode == SIMDMode::SSE) {
-            if (operation == KernelOperation::Normalize && supported(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
-            return supported(KernelImplementation::SSSE3) ? KernelImplementation::SSSE3 : KernelImplementation::Scalar;
-        }
-        for (const auto implementation : {KernelImplementation::NEON, KernelImplementation::AVX2,
-                                          KernelImplementation::SSSE3, KernelImplementation::SSE2}) {
-            if (supported(implementation)) return implementation;
-        }
-        return KernelImplementation::Scalar;
+bool IsModeSupported(SIMDMode mode) {
+    switch (mode) {
+    case SIMDMode::Auto:
+    case SIMDMode::Scalar:
+        return true;
+    case SIMDMode::NEON:
+        return g_features.neon &&
+               Internal::KernelDispatcher::Select(mode, Internal::KernelOperation::Normalize, g_features) !=
+                   Internal::KernelImplementation::Scalar;
+    case SIMDMode::AVX2:
+        return g_features.avx2 &&
+               Internal::KernelDispatcher::Select(mode, Internal::KernelOperation::Normalize, g_features) !=
+                   Internal::KernelImplementation::Scalar;
+    case SIMDMode::SSE41:
+        return g_features.sse41 &&
+               Internal::KernelDispatcher::Select(mode, Internal::KernelOperation::Normalize, g_features) !=
+                   Internal::KernelImplementation::Scalar;
+    case SIMDMode::SSE:
+        return g_features.sse2 &&
+               Internal::KernelDispatcher::Select(mode, Internal::KernelOperation::Normalize, g_features) !=
+                   Internal::KernelImplementation::Scalar;
     }
-};
-
-#if defined(PARTICLESATURN_X86_SIMD)
-static void GetCPUID(int info[4], int function_id) {
-#ifdef _MSC_VER
-    __cpuid(info, function_id);
-#else
-    __cpuid(function_id, info[0], info[1], info[2], info[3]);
-#endif
+    return false;
 }
 
-static void GetCPUIDEx(int info[4], int function_id, int subfunction_id) {
-#ifdef _MSC_VER
-    __cpuidex(info, function_id, subfunction_id);
-#else
-    __cpuid_count(function_id, subfunction_id, info[0], info[1], info[2], info[3]);
-#endif
-}
-
-static std::uint64_t GetXCR0() {
-#ifdef _MSC_VER
-    return _xgetbv(0);
-#else
-    std::uint32_t low = 0;
-    std::uint32_t high = 0;
-    __asm__ volatile("xgetbv" : "=a"(low), "=d"(high) : "c"(0));
-    return (static_cast<std::uint64_t>(high) << 32U) | low;
-#endif
-}
-#endif
+} // namespace
 
 void Init() {
-    if (g_initialized) {
-        return;
-    }
-
-#if defined(PARTICLESATURN_X86_SIMD)
-    int info[4]{};
-    // 检查 CPUID 支持
-    GetCPUID(info, 0);
-    int maxFunction = info[0];
-
-    if (maxFunction >= 1) {
-        GetCPUID(info, 1);
-        // SSE2: EDX bit 26
-        g_hasSSE2 = (info[3] & (1 << 26)) != 0;
-        // SSSE3: ECX bit 9, required by _mm_shuffle_epi8.
-        g_hasSSSE3 = (info[2] & (1 << 9)) != 0;
-        const bool osXSave = (info[2] & (1 << 27)) != 0;
-        const bool avx = (info[2] & (1 << 28)) != 0;
-        if (osXSave && avx) {
-            const auto xcr0 = GetXCR0();
-            g_hasAVX2 = (xcr0 & 0x6U) == 0x6U;
-        }
-    }
-
-    if (g_hasAVX2 && maxFunction >= 7) {
-        GetCPUIDEx(info, 7, 0);
-        // AVX2: EBX bit 5
-        g_hasAVX2 = (info[1] & (1 << 5)) != 0;
-    } else {
-        g_hasAVX2 = false;
-    }
-#endif
-
-#if defined(PARTICLESATURN_NEON_SIMD)
-    g_hasNEON = true;
-#endif
-
+    if (g_initialized) return;
+    g_features = Internal::CpuFeatureDetector::Detect();
     g_initialized = true;
-
-    std::cout << "[SIMD] CPU features detected - NEON: " << (g_hasNEON ? "Yes" : "No")
-              << ", AVX2: " << (g_hasAVX2 ? "Yes" : "No")
-              << ", SSE2: " << (g_hasSSE2 ? "Yes" : "No")
-              << ", SSSE3: " << (g_hasSSSE3 ? "Yes" : "No") << std::endl;
+    std::cout << "[SIMD] CPU features detected - NEON: " << (g_features.neon ? "Yes" : "No")
+              << ", AVX2: " << (g_features.avx2 ? "Yes" : "No")
+              << ", SSE4.1: " << (g_features.sse41 ? "Yes" : "No")
+              << ", SSSE3: " << (g_features.ssse3 ? "Yes" : "No")
+              << ", SSE2: " << (g_features.sse2 ? "Yes" : "No") << std::endl;
 }
 
 CpuFeatureSet GetCpuFeatures() {
-    if (!g_initialized) {
-        Init();
-    }
-    return {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON};
+    if (!g_initialized) Init();
+    return g_features;
 }
 
 void SetMode(SIMDMode mode) {
-    if (!g_initialized) {
-        Init();
-    }
-    const bool supported =
-        mode == SIMDMode::Auto || mode == SIMDMode::Scalar ||
-        (mode == SIMDMode::NEON && g_hasNEON) ||
-        (mode == SIMDMode::AVX2 && g_hasAVX2) ||
-        (mode == SIMDMode::SSE && g_hasSSE2);
-    if (!supported) {
+    if (!g_initialized) Init();
+    if (!IsModeSupported(mode)) {
         std::cout << "[SIMD] Requested mode is unavailable; keeping " << GetCurrentImplementation() << std::endl;
         return;
     }
@@ -208,566 +87,110 @@ void SetMode(SIMDMode mode) {
     std::cout << "[SIMD] Mode set to: " << GetCurrentImplementation() << std::endl;
 }
 
-SIMDMode GetMode() {
-    return g_currentMode;
-}
+SIMDMode GetMode() { return g_currentMode; }
 
-bool IsAVX2Supported() {
-    if (!g_initialized) {
-        Init();
-    }
-    return g_hasAVX2;
-}
-
-bool IsSSE2Supported() {
-    if (!g_initialized) {
-        Init();
-    }
-    return g_hasSSE2;
-}
-
-bool IsNEONSupported() {
-    if (!g_initialized) {
-        Init();
-    }
-    return g_hasNEON;
-}
+bool IsAVX2Supported() { return GetCpuFeatures().avx2; }
+bool IsSSE2Supported() { return GetCpuFeatures().sse2; }
+bool IsSSE41Supported() { return GetCpuFeatures().sse41; }
+bool IsNEONSupported() { return GetCpuFeatures().neon; }
 
 const char* GetCurrentImplementation() {
-    if (!g_initialized) {
-        Init();
-    }
-    const auto selected = KernelDispatcher::Select(
-        g_currentMode, KernelOperation::Normalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
-    const bool automatic = g_currentMode == SIMDMode::Auto;
-    switch (selected) {
-    case KernelImplementation::NEON: return automatic ? "NEON (auto)" : "NEON (forced)";
-    case KernelImplementation::AVX2: return automatic ? "AVX2 (auto)" : "AVX2 (forced)";
-    case KernelImplementation::SSSE3: return automatic ? "SSSE3 (auto)" : "SSSE3 (forced)";
-    case KernelImplementation::SSE2: return automatic ? "SSE2 (auto)" : "SSE2 (forced)";
-    case KernelImplementation::Scalar: return automatic ? "Scalar (auto)" : "Scalar (forced fallback)";
-    }
-    return "Scalar (forced fallback)";
+    if (!g_initialized) Init();
+    return ImplementationName(Select(Internal::KernelOperation::Normalize), g_currentMode == SIMDMode::Auto);
 }
 
-// ============================================================================
-// 标量实现
-// ============================================================================
-static void NormalizeRGB_Scalar(const uint8_t* src, float* dst, size_t pixel_count) {
-    const float scale = 1.0f / 255.0f;
-    size_t      total = pixel_count * 3;
-    for (size_t i = 0; i < total; ++i) {
-        dst[i] = src[i] * scale;
-    }
-}
-
-#if defined(PARTICLESATURN_NEON_SIMD)
-static void NormalizeRGB_NEON(const uint8_t* src, float* dst, size_t pixel_count) {
-    constexpr float scale = 1.0f / 255.0f;
-    size_t i = 0;
-    const size_t channelCount = pixel_count * 3;
-    for (; i + 16 <= channelCount; i += 16) {
-        const uint8x16_t bytes = vld1q_u8(src + i);
-        const uint16x8_t low16 = vmovl_u8(vget_low_u8(bytes));
-        const uint16x8_t high16 = vmovl_u8(vget_high_u8(bytes));
-        const uint32x4_t low32a = vmovl_u16(vget_low_u16(low16));
-        const uint32x4_t low32b = vmovl_u16(vget_high_u16(low16));
-        const uint32x4_t high32a = vmovl_u16(vget_low_u16(high16));
-        const uint32x4_t high32b = vmovl_u16(vget_high_u16(high16));
-        vst1q_f32(dst + i, vmulq_n_f32(vcvtq_f32_u32(low32a), scale));
-        vst1q_f32(dst + i + 4, vmulq_n_f32(vcvtq_f32_u32(low32b), scale));
-        vst1q_f32(dst + i + 8, vmulq_n_f32(vcvtq_f32_u32(high32a), scale));
-        vst1q_f32(dst + i + 12, vmulq_n_f32(vcvtq_f32_u32(high32b), scale));
-    }
-    for (; i < channelCount; ++i) {
-        dst[i] = src[i] * scale;
-    }
-}
-#endif
-
-// ============================================================================
-// SSE 实现 (一次处理 4 个像素 = 12 个通道)
-// ============================================================================
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-static __m128i Load12Bytes(const uint8_t* source) {
-    std::uint32_t tail = 0;
-    std::memcpy(&tail, source + 8, sizeof(tail));
-    return _mm_unpacklo_epi64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(source)), _mm_cvtsi32_si128(static_cast<int>(tail)));
-}
-
-static void NormalizeRGB_SSE(const uint8_t* src, float* dst, size_t pixel_count) {
-    const __m128  scale = _mm_set1_ps(1.0f / 255.0f);
-    const __m128i zero  = _mm_setzero_si128();
-
-    size_t i = 0;
-    // 每次处理 4 个像素 (12 bytes -> 12 floats)
-    // 但 SSE 寄存器是 128 位 (4 floats)，所以需要 3 次存储
-    size_t simd_count = (pixel_count / 4) * 4;
-
-    for (; i < simd_count; i += 4) {
-        // 精确读取四个 RGB 像素，最后一个 4 字节块不能跨越输入边界。
-        __m128i pixels = Load12Bytes(src + i * 3);
-
-        // 解包 uint8 -> int16 -> int32
-        __m128i lo16 = _mm_unpacklo_epi8(pixels, zero); // 前 8 个 uint8 -> 8 个 int16
-
-        // int16 -> int32 (前 4 个)
-        __m128i lo32_0 = _mm_unpacklo_epi16(lo16, zero); // 4 个 int32
-        __m128i lo32_1 = _mm_unpackhi_epi16(lo16, zero); // 4 个 int32
-
-        // 再解包一次获取第三组
-        __m128i hi16   = _mm_unpackhi_epi8(pixels, zero);
-        __m128i lo32_2 = _mm_unpacklo_epi16(hi16, zero);
-
-        // int32 -> float 并乘以 scale
-        __m128 f0 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_0), scale);
-        __m128 f1 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_1), scale);
-        __m128 f2 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_2), scale);
-
-        // 存储 12 个 float
-        _mm_storeu_ps(dst + i * 3 + 0, f0);
-        _mm_storeu_ps(dst + i * 3 + 4, f1);
-        _mm_storeu_ps(dst + i * 3 + 8, f2);
-    }
-
-    // 处理剩余像素
-    const float scalar_scale = 1.0f / 255.0f;
-    for (; i < pixel_count; ++i) {
-        dst[i * 3 + 0] = src[i * 3 + 0] * scalar_scale;
-        dst[i * 3 + 1] = src[i * 3 + 1] * scalar_scale;
-        dst[i * 3 + 2] = src[i * 3 + 2] * scalar_scale;
-    }
-}
-#endif
-
-// ============================================================================
-// AVX2 实现 (一次处理 8 个像素 = 24 个通道)
-// ============================================================================
-#if defined(__AVX2__) || (defined(_MSC_VER) && defined(__AVX2__))
-// 注意：MSVC 需要 /arch:AVX2 编译选项
-#define HAS_AVX2_IMPL 1
-#else
-// 对于 MSVC，我们通过运行时检测来使用 AVX2
-#ifdef _MSC_VER
-#define HAS_AVX2_IMPL 1
-#endif
-#endif
-
-#ifdef HAS_AVX2_IMPL
-__declspec(noinline) static void NormalizeRGB_AVX2(const uint8_t* src, float* dst, size_t pixel_count) {
-    const __m256 scale = _mm256_set1_ps(1.0f / 255.0f);
-
-    size_t i = 0;
-    // 每次处理 8 个像素 (24 bytes -> 24 floats)
-    size_t simd_count = (pixel_count / 8) * 8;
-
-    for (; i < simd_count; i += 8) {
-        // 加载 24 字节 - 使用两次 128 位加载
-        __m128i pixels_lo = _mm_loadu_si128((const __m128i*)(src + i * 3));      // 前 16 字节
-        __m128i pixels_hi = _mm_loadl_epi64((const __m128i*)(src + i * 3 + 16)); // 后 8 字节
-
-        // 组合成 256 位
-        __m256i pixels = _mm256_set_m128i(pixels_hi, pixels_lo);
-
-        // 使用 AVX2 的 _mm256_cvtepu8_epi32 一次将 8 个 uint8 转为 8 个 int32
-        // 但我们有 24 个通道，需要分 3 组处理
-
-        // 提取前 8 个字节 -> 8 个 int32
-        __m256i i32_0 = _mm256_cvtepu8_epi32(pixels_lo);
-
-        // 提取中间 8 个字节
-        __m128i mid8  = _mm_srli_si128(pixels_lo, 8); // 移位获取第 8-15 字节
-        __m256i i32_1 = _mm256_cvtepu8_epi32(mid8);
-
-        // 提取后 8 个字节
-        __m256i i32_2 = _mm256_cvtepu8_epi32(pixels_hi);
-
-        // int32 -> float 并乘以 scale
-        __m256 f0 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_0), scale);
-        __m256 f1 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_1), scale);
-        __m256 f2 = _mm256_mul_ps(_mm256_cvtepi32_ps(i32_2), scale);
-
-        // 存储 24 个 float
-        _mm256_storeu_ps(dst + i * 3 + 0, f0);
-        _mm256_storeu_ps(dst + i * 3 + 8, f1);
-        _mm256_storeu_ps(dst + i * 3 + 16, f2);
-    }
-
-    // 处理剩余像素 (使用标量)
-    const float scalar_scale = 1.0f / 255.0f;
-    for (; i < pixel_count; ++i) {
-        dst[i * 3 + 0] = src[i * 3 + 0] * scalar_scale;
-        dst[i * 3 + 1] = src[i * 3 + 1] * scalar_scale;
-        dst[i * 3 + 2] = src[i * 3 + 2] * scalar_scale;
-    }
-}
-#endif
-
-// ============================================================================
-// 统一接口
-// ============================================================================
-void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count) {
-    if (!g_initialized) {
-        Init();
-    }
-    const auto implementation = KernelDispatcher::Select(
-        g_currentMode, KernelOperation::Normalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
-    switch (implementation) {
-    case KernelImplementation::NEON:
-#if defined(PARTICLESATURN_NEON_SIMD)
-        Kernels::NormalizeRGBNeon(src, dst, pixel_count);
+void NormalizeRGB(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
+    if (!g_initialized) Init();
+    switch (Select(Internal::KernelOperation::Normalize)) {
+    case Internal::KernelImplementation::NEON:
+#if PARTICLESATURN_SIMD_HAS_NEON_KERNEL
+        Kernels::NormalizeRGBNeon(src, dst, pixelCount);
         return;
 #endif
         break;
-    case KernelImplementation::AVX2:
-#ifdef HAS_AVX2_IMPL
-        NormalizeRGB_AVX2(src, dst, pixel_count);
+    case Internal::KernelImplementation::AVX2:
+#if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
+        Kernels::NormalizeRGBAvx2(src, dst, pixelCount);
         return;
 #endif
         break;
-    case KernelImplementation::SSSE3:
-    case KernelImplementation::SSE2:
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        Kernels::NormalizeRGBSse2(src, dst, pixel_count);
+    case Internal::KernelImplementation::SSE41:
+#if PARTICLESATURN_SIMD_HAS_SSE41_KERNEL
+        Kernels::NormalizeRGBSse41(src, dst, pixelCount);
         return;
 #endif
         break;
-    case KernelImplementation::Scalar:
-        break;
-    }
-    Kernels::NormalizeRGBScalar(src, dst, pixel_count);
-}
-
-// 行级别归一化（用于逐行处理的情况）
-void NormalizeRGBRow(const uint8_t* src, float* dst, size_t pixel_count) {
-    // 直接调用主函数，因为逻辑相同
-    NormalizeRGB(src, dst, pixel_count);
-}
-
-// ============================================================================
-// 水平翻转并归一化 - 标量实现
-// ============================================================================
-static void FlipHorizontalAndNormalize_Scalar(const uint8_t* src, float* dst, int width, int height) {
-    const float scale = 1.0f / 255.0f;
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        float*         dst_row = dst + y * width * 3;
-        for (int x = 0; x < width; ++x) {
-            int src_x          = (width - 1 - x) * 3;
-            int dst_x          = x * 3;
-            dst_row[dst_x + 0] = src_row[src_x + 0] * scale;
-            dst_row[dst_x + 1] = src_row[src_x + 1] * scale;
-            dst_row[dst_x + 2] = src_row[src_x + 2] * scale;
-        }
-    }
-}
-
-// ============================================================================
-// 水平翻转并归一化 - SSE 实现
-// ============================================================================
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-static void FlipHorizontalAndNormalize_SSE(const uint8_t* src, float* dst, int width, int height) {
-    const __m128  scale        = _mm_set1_ps(1.0f / 255.0f);
-    const __m128i zero         = _mm_setzero_si128();
-    const float   scalar_scale = 1.0f / 255.0f;
-
-    // Shuffle mask: P3 P2 P1 P0 -> P0 P1 P2 P3
-    // RGB RGB RGB RGB -> RGB RGB RGB RGB
-    // P0: 9,10,11. P1: 6,7,8. P2: 3,4,5. P3: 0,1,2.
-    const __m128i shuffle_mask = _mm_setr_epi8(9, 10, 11, 6, 7, 8, 3, 4, 5, 0, 1, 2, -1, -1, -1, -1);
-
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        float*         dst_row = dst + y * width * 3;
-
-        int x        = 0;
-        int simd_end = width - 4;
-
-        for (; x <= simd_end; x += 4) {
-            const int src_offset = (width - 4 - x) * 3;
-            __m128i px = Load12Bytes(src_row + src_offset);
-
-            // Shuffle to reverse order
-            px = _mm_shuffle_epi8(px, shuffle_mask);
-
-            // Unpack and convert
-            __m128i lo16   = _mm_unpacklo_epi8(px, zero);
-            __m128i lo32_0 = _mm_unpacklo_epi16(lo16, zero);
-            __m128i lo32_1 = _mm_unpackhi_epi16(lo16, zero);
-            __m128i hi16   = _mm_unpackhi_epi8(px, zero);
-            __m128i lo32_2 = _mm_unpacklo_epi16(hi16, zero);
-
-            __m128 f0 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_0), scale);
-            __m128 f1 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_1), scale);
-            __m128 f2 = _mm_mul_ps(_mm_cvtepi32_ps(lo32_2), scale);
-
-            _mm_storeu_ps(dst_row + x * 3 + 0, f0);
-            _mm_storeu_ps(dst_row + x * 3 + 4, f1);
-            _mm_storeu_ps(dst_row + x * 3 + 8, f2);
-        }
-
-        // Fallback
-        for (; x < width; ++x) {
-            int src_x          = (width - 1 - x) * 3;
-            int dst_x          = x * 3;
-            dst_row[dst_x + 0] = src_row[src_x + 0] * scalar_scale;
-            dst_row[dst_x + 1] = src_row[src_x + 1] * scalar_scale;
-            dst_row[dst_x + 2] = src_row[src_x + 2] * scalar_scale;
-        }
-    }
-}
-#endif
-
-// ============================================================================
-// 水平翻转并归一化 - AVX2 实现
-// ============================================================================
-#ifdef HAS_AVX2_IMPL
-__declspec(noinline) static void FlipHorizontalAndNormalize_AVX2(const uint8_t* src, float* dst, int width,
-                                                                 int height) {
-    const __m256 scale        = _mm256_set1_ps(1.0f / 255.0f);
-    const float  scalar_scale = 1.0f / 255.0f;
-
-    const __m256i shuffle_mask = _mm256_setr_epi8(9, 10, 11, 6, 7, 8, 3, 4, 5, 0, 1, 2, -1, -1, -1, -1, 9, 10, 11, 6, 7,
-                                                  8, 3, 4, 5, 0, 1, 2, -1, -1, -1, -1);
-
-    // Permute to pack: Hi (dst 0..3) then Lo (dst 4..7)
-    // Indices in 32-bit units: Hi(4,5,6), Lo(0,1,2)
-    const __m256i permute_mask = _mm256_setr_epi32(4, 5, 6, 0, 1, 2, 0, 0);
-
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        float*         dst_row = dst + y * width * 3;
-
-        int x        = 0;
-        int simd_end = width - 8;
-
-        for (; x <= simd_end; x += 8) {
-            int src_offset_hi = (width - 4 - x) * 3; // Chunk 1 (dst 0..3)
-            int src_offset_lo = (width - 8 - x) * 3; // Chunk 2 (dst 4..7)
-
-            __m128i v_lo = Load12Bytes(src_row + src_offset_lo);
-            __m128i v_hi = Load12Bytes(src_row + src_offset_hi);
-
-            __m256i ymm = _mm256_inserti128_si256(_mm256_castsi128_si256(v_lo), v_hi, 1);
-
-            ymm = _mm256_shuffle_epi8(ymm, shuffle_mask);
-            ymm = _mm256_permutevar8x32_epi32(ymm, permute_mask);
-
-            // Now lower 24 bytes contain 8 pixels in order
-            // We need to convert bytes 0-7, 8-15, 16-23 to floats
-
-            // 0-7
-            __m256i i0 = _mm256_cvtepu8_epi32(_mm256_castsi256_si128(ymm));
-
-            // 8-15
-            // Can't use srli_si256 on AVX register across lanes, but here all data is in low 256 bits?
-            // No, data is 24 bytes. 0-15 in Lane 0. 16-23 in Lane 1.
-            // Wait, permutevar8x32 result:
-            // Indices 4,5,6 from original (Lane 1 valid part) -> Output 0,1,2 (Lane 0)
-            // Indices 0,1,2 from original (Lane 0 valid part) -> Output 3,4,5 (Lane 0 high, Lane 1 low)
-            // Output layout: [Hi_0, Hi_1, Hi_2, Lo_0] [Lo_1, Lo_2, 0, 0]
-            // Lane 0: 16 bytes. Lane 1: 16 bytes.
-            // Data is contiguous 24 bytes.
-            // Byte 0-15 in Lane 0. Byte 16-23 in Lane 1.
-
-            // i0 (bytes 0-7) -> Correct.
-
-            // i1 (bytes 8-15)
-            // Extract Lane 0, shift right 8 bytes
-            __m128i lane0 = _mm256_castsi256_si128(ymm);
-            __m128i mid   = _mm_srli_si128(lane0, 8);
-            __m256i i1    = _mm256_cvtepu8_epi32(mid);
-
-            // i2 (bytes 16-23)
-            // Extract Lane 1
-            __m128i lane1 = _mm256_extracti128_si256(ymm, 1);
-            __m256i i2    = _mm256_cvtepu8_epi32(lane1);
-
-            __m256 f0 = _mm256_mul_ps(_mm256_cvtepi32_ps(i0), scale);
-            __m256 f1 = _mm256_mul_ps(_mm256_cvtepi32_ps(i1), scale);
-            __m256 f2 = _mm256_mul_ps(_mm256_cvtepi32_ps(i2), scale);
-
-            _mm256_storeu_ps(dst_row + x * 3 + 0, f0);
-            _mm256_storeu_ps(dst_row + x * 3 + 8, f1);
-            _mm256_storeu_ps(dst_row + x * 3 + 16, f2);
-        }
-
-        for (; x < width; ++x) {
-            int src_x          = (width - 1 - x) * 3;
-            int dst_x          = x * 3;
-            dst_row[dst_x + 0] = src_row[src_x + 0] * scalar_scale;
-            dst_row[dst_x + 1] = src_row[src_x + 1] * scalar_scale;
-            dst_row[dst_x + 2] = src_row[src_x + 2] * scalar_scale;
-        }
-    }
-}
-#endif
-
-// ============================================================================
-// 水平翻转并归一化 - 统一接口
-// ============================================================================
-void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int height) {
-    if (!g_initialized) {
-        Init();
-    }
-    const auto implementation = KernelDispatcher::Select(
-        g_currentMode, KernelOperation::FlipNormalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
-    switch (implementation) {
-    case KernelImplementation::AVX2:
-#ifdef HAS_AVX2_IMPL
-        FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
+    case Internal::KernelImplementation::SSSE3:
+#if PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL
+        Kernels::NormalizeRGBSsse3(src, dst, pixelCount);
         return;
 #endif
         break;
-    case KernelImplementation::SSSE3:
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        FlipHorizontalAndNormalize_SSE(src, dst, width, height);
+    case Internal::KernelImplementation::SSE2:
+#if PARTICLESATURN_SIMD_HAS_SSE2_KERNEL
+        Kernels::NormalizeRGBSse2(src, dst, pixelCount);
         return;
 #endif
         break;
-    case KernelImplementation::NEON:
-    case KernelImplementation::SSE2:
-    case KernelImplementation::Scalar:
+    default:
+        break;
+    }
+    Kernels::NormalizeRGBScalar(src, dst, pixelCount);
+}
+
+void NormalizeRGBRow(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
+    NormalizeRGB(src, dst, pixelCount);
+}
+
+void FlipHorizontalAndNormalize(const std::uint8_t* src, float* dst, int width, int height) {
+    if (!g_initialized) Init();
+    switch (Select(Internal::KernelOperation::FlipNormalize)) {
+    case Internal::KernelImplementation::AVX2:
+#if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
+        Kernels::FlipHorizontalAndNormalizeAvx2(src, dst, width, height);
+        return;
+#endif
+        break;
+    case Internal::KernelImplementation::SSE41:
+#if PARTICLESATURN_SIMD_HAS_SSE41_KERNEL
+        Kernels::FlipHorizontalAndNormalizeSse41(src, dst, width, height);
+        return;
+#endif
+        break;
+    case Internal::KernelImplementation::SSSE3:
+#if PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL
+        Kernels::FlipHorizontalAndNormalizeSsse3(src, dst, width, height);
+        return;
+#endif
+        break;
+    default:
         break;
     }
     Kernels::FlipHorizontalAndNormalizeScalar(src, dst, width, height);
 }
 
-// ============================================================================
-// 水平翻转并 BGR 转 RGB - 标量实现
-// ============================================================================
-static void FlipHorizontalAndBGR2RGB_Scalar(const uint8_t* src, uint8_t* dst, int width, int height) {
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        uint8_t*       dst_row = dst + y * width * 3;
-        for (int x = 0; x < width; ++x) {
-            int src_x = (width - 1 - x) * 3;
-            int dst_x = x * 3;
-            // BGR to RGB and Flip
-            dst_row[dst_x + 0] = src_row[src_x + 2]; // R
-            dst_row[dst_x + 1] = src_row[src_x + 1]; // G
-            dst_row[dst_x + 2] = src_row[src_x + 0]; // B
-        }
-    }
-}
-
-// ============================================================================
-// 水平翻转并 BGR 转 RGB - SSE 实现
-// ============================================================================
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-static void FlipHorizontalAndBGR2RGB_SSE(const uint8_t* src, uint8_t* dst, int width, int height) {
-    // Mask: Reverse 12 bytes completely.
-    // BGR BGR BGR BGR -> (Reverse) -> R G B R G B ...
-    const __m128i shuffle_mask = _mm_setr_epi8(11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -1, -1, -1, -1);
-
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        uint8_t*       dst_row = dst + y * width * 3;
-
-        int x        = 0;
-        int simd_end = width - 4;
-
-        for (; x <= simd_end; x += 4) {
-            const int src_offset = (width - 4 - x) * 3;
-            __m128i px = Load12Bytes(src_row + src_offset);
-
-            px = _mm_shuffle_epi8(px, shuffle_mask);
-
-            // Store 12 bytes. We can't use storeu_si128 (16 bytes) if buffer is tight,
-            // but usually safe except end of buffer.
-            // Using 64-bit store + 32-bit store is safer.
-            _mm_storel_epi64((__m128i*)(dst_row + x * 3), px);
-            _mm_storeu_si32((void*)(dst_row + x * 3 + 8), _mm_bsrli_si128(px, 8));
-        }
-
-        for (; x < width; ++x) {
-            int src_x          = (width - 1 - x) * 3;
-            int dst_x          = x * 3;
-            dst_row[dst_x + 0] = src_row[src_x + 2];
-            dst_row[dst_x + 1] = src_row[src_x + 1];
-            dst_row[dst_x + 2] = src_row[src_x + 0];
-        }
-    }
-}
-#endif
-
-// ============================================================================
-// 水平翻转并 BGR 转 RGB - AVX2 实现
-// ============================================================================
-#ifdef HAS_AVX2_IMPL
-__declspec(noinline) static void FlipHorizontalAndBGR2RGB_AVX2(const uint8_t* src, uint8_t* dst, int width,
-                                                               int height) {
-    // Mask: Reverse 12 bytes in each lane
-    const __m256i shuffle_mask = _mm256_setr_epi8(11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, -1, -1, -1, -1, 11, 10, 9, 8, 7,
-                                                  6, 5, 4, 3, 2, 1, 0, -1, -1, -1, -1);
-
-    // Permute to pack: Hi (dst 0..3) then Lo (dst 4..7)
-    // We want Hi_2, Lo_0, Lo_1, Lo_2 to form "V" (dst 8..23)
-    // V layout: [Hi(8-11) | Lo(0-11) | junk]
-    // Indices (32-bit): Hi_2 (6), Lo_0 (0), Lo_1 (1), Lo_2 (2)
-    const __m256i v_perm_mask = _mm256_setr_epi32(6, 0, 1, 2, 0, 0, 0, 0);
-
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* src_row = src + y * width * 3;
-        uint8_t*       dst_row = dst + y * width * 3;
-
-        int x        = 0;
-        int simd_end = width - 8;
-
-        for (; x <= simd_end; x += 8) {
-            int src_offset_hi = (width - 4 - x) * 3;
-            int src_offset_lo = (width - 8 - x) * 3;
-
-            __m128i v_lo = Load12Bytes(src_row + src_offset_lo);
-            __m128i v_hi = Load12Bytes(src_row + src_offset_hi);
-
-            __m256i ymm = _mm256_inserti128_si256(_mm256_castsi128_si256(v_lo), v_hi, 1);
-
-            ymm = _mm256_shuffle_epi8(ymm, shuffle_mask);
-
-            // The first eight bytes come from Hi; V supplies bytes 8 through
-            // 23. Store exactly 24 bytes so the last block cannot overrun.
-            __m256i v_256 = _mm256_permutevar8x32_epi32(ymm, v_perm_mask);
-            __m128i v     = _mm256_castsi256_si128(v_256);
-            __m128i hi    = _mm256_extracti128_si256(ymm, 1);
-
-            _mm_storel_epi64((__m128i*)(dst_row + x * 3), hi);
-            _mm_storeu_si128((__m128i*)(dst_row + x * 3 + 8), v);
-        }
-
-        for (; x < width; ++x) {
-            int src_x          = (width - 1 - x) * 3;
-            int dst_x          = x * 3;
-            dst_row[dst_x + 0] = src_row[src_x + 2];
-            dst_row[dst_x + 1] = src_row[src_x + 1];
-            dst_row[dst_x + 2] = src_row[src_x + 0];
-        }
-    }
-}
-#endif
-
-void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int height) {
-    if (!g_initialized) {
-        Init();
-    }
-    const auto implementation = KernelDispatcher::Select(
-        g_currentMode, KernelOperation::FlipBgrToRgb, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
-    switch (implementation) {
-    case KernelImplementation::AVX2:
-#ifdef HAS_AVX2_IMPL
-        FlipHorizontalAndBGR2RGB_AVX2(src, dst, width, height);
+void FlipHorizontalAndBGR2RGB(const std::uint8_t* src, std::uint8_t* dst, int width, int height) {
+    if (!g_initialized) Init();
+    switch (Select(Internal::KernelOperation::FlipBgrToRgb)) {
+    case Internal::KernelImplementation::AVX2:
+#if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
+        Kernels::FlipHorizontalAndBGR2RGBAvx2(src, dst, width, height);
         return;
 #endif
         break;
-    case KernelImplementation::SSSE3:
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
+    case Internal::KernelImplementation::SSE41:
+#if PARTICLESATURN_SIMD_HAS_SSE41_KERNEL
+        Kernels::FlipHorizontalAndBGR2RGBSse41(src, dst, width, height);
         return;
 #endif
         break;
-    case KernelImplementation::NEON:
-    case KernelImplementation::SSE2:
-    case KernelImplementation::Scalar:
+    case Internal::KernelImplementation::SSSE3:
+#if PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL
+        Kernels::FlipHorizontalAndBGR2RGBSsse3(src, dst, width, height);
+        return;
+#endif
+        break;
+    default:
         break;
     }
     Kernels::FlipHorizontalAndBGR2RGBScalar(src, dst, width, height);

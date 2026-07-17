@@ -11,14 +11,20 @@ enum class SIMDMode {
     NEON,  // 强制使用 ARM NEON
     AVX2,  // 强制使用 AVX2
     SSE,   // 强制使用 SSE
-    Scalar // 强制使用标量实现
+    Scalar, // 强制使用标量实现
+    SSE41   // 强制使用 SSE4.1（追加，保留已有枚举值）
 };
 
 struct CpuFeatureSet {
     bool sse2 = false;
     bool ssse3 = false;
+    bool sse41 = false;
     bool avx2 = false;
+    bool fma = false;
+    bool avx512 = false;
     bool neon = false;
+    bool dotProd = false;
+    bool i8mm = false;
 };
 
 namespace SIMDNormalize {
@@ -43,6 +49,9 @@ bool IsAVX2Supported();
 
 // 检测 CPU 是否支持 SSE2
 bool IsSSE2Supported();
+
+// 检测 CPU 是否支持 SSE4.1
+bool IsSSE41Supported();
 
 // 检测 CPU 是否支持 ARM NEON
 bool IsNEONSupported();

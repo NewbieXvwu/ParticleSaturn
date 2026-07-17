@@ -1,4 +1,6 @@
 #include "SIMDNormalize.h"
+#include "SIMDNormalizeDispatch.h"
+#include "SIMDNormalizeKernels.h"
 
 #include <cassert>
 #include <cmath>
@@ -14,9 +16,68 @@ void AssertEqual(const std::vector<float>& left, const std::vector<float>& right
     }
 }
 
+void AssertEqual(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) {
+    assert(left == right);
+}
+
+void VerifyDispatcherWithSyntheticFeatures() {
+    using namespace SIMDNormalize::Internal;
+    const CpuFeatureSet allX86{
+        .sse2 = true, .ssse3 = true, .sse41 = true, .avx2 = true,
+    };
+    const auto automatic = KernelDispatcher::Select(SIMDMode::Auto, KernelOperation::Normalize, allX86);
+#if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
+    assert(automatic == KernelImplementation::AVX2);
+#elif PARTICLESATURN_SIMD_HAS_SSE41_KERNEL
+    assert(automatic == KernelImplementation::SSE41);
+#elif PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL
+    assert(automatic == KernelImplementation::SSSE3);
+#elif PARTICLESATURN_SIMD_HAS_SSE2_KERNEL
+    assert(automatic == KernelImplementation::SSE2);
+#else
+    assert(automatic == KernelImplementation::Scalar);
+#endif
+
+    const CpuFeatureSet sse2Only{.sse2 = true};
+    const auto normalize = KernelDispatcher::Select(SIMDMode::Auto, KernelOperation::Normalize, sse2Only);
+#if PARTICLESATURN_SIMD_HAS_SSE2_KERNEL
+    assert(normalize == KernelImplementation::SSE2);
+#else
+    assert(normalize == KernelImplementation::Scalar);
+#endif
+    assert(KernelDispatcher::Select(SIMDMode::Auto, KernelOperation::FlipNormalize, sse2Only) ==
+           KernelImplementation::Scalar);
+
+    const CpuFeatureSet neonOnly{.neon = true};
+    const auto neon = KernelDispatcher::Select(SIMDMode::Auto, KernelOperation::Normalize, neonOnly);
+#if PARTICLESATURN_SIMD_HAS_NEON_KERNEL
+    assert(neon == KernelImplementation::NEON);
+#else
+    assert(neon == KernelImplementation::Scalar);
+#endif
+    assert(KernelDispatcher::Select(SIMDMode::AVX2, KernelOperation::Normalize, {}) ==
+           KernelImplementation::Scalar);
+}
+
+void VerifyModeAgainstScalar(SIMDMode mode, const std::vector<std::uint8_t>& pixels, int width, int height,
+                             const std::vector<float>& scalarNormalized, const std::vector<float>& scalarFlipped,
+                             const std::vector<std::uint8_t>& scalarConverted) {
+    std::vector<float> normalized(pixels.size());
+    std::vector<float> flipped(pixels.size());
+    std::vector<std::uint8_t> converted(pixels.size());
+    SIMDNormalize::SetMode(mode);
+    SIMDNormalize::NormalizeRGB(pixels.data(), normalized.data(), static_cast<std::size_t>(width * height));
+    SIMDNormalize::FlipHorizontalAndNormalize(pixels.data(), flipped.data(), width, height);
+    SIMDNormalize::FlipHorizontalAndBGR2RGB(pixels.data(), converted.data(), width, height);
+    AssertEqual(normalized, scalarNormalized);
+    AssertEqual(flipped, scalarFlipped);
+    AssertEqual(converted, scalarConverted);
+}
+
 } // namespace
 
 int main() {
+    VerifyDispatcherWithSyntheticFeatures();
     const CpuFeatureSet features = SIMDNormalize::GetCpuFeatures();
     assert(features.avx2 == SIMDNormalize::IsAVX2Supported());
     assert(features.sse2 == SIMDNormalize::IsSSE2Supported());
@@ -35,9 +96,73 @@ int main() {
     std::vector<float> automatic(pixels.size());
     SIMDNormalize::SetMode(SIMDMode::Scalar);
     SIMDNormalize::NormalizeRGB(pixels.data(), scalar.data(), width * height);
+    std::vector<float> scalarFlipped(pixels.size());
+    std::vector<std::uint8_t> scalarConverted(pixels.size());
+    SIMDNormalize::FlipHorizontalAndNormalize(pixels.data(), scalarFlipped.data(), width, height);
+    SIMDNormalize::FlipHorizontalAndBGR2RGB(pixels.data(), scalarConverted.data(), width, height);
     SIMDNormalize::SetMode(SIMDMode::Auto);
     SIMDNormalize::NormalizeRGB(pixels.data(), automatic.data(), width * height);
     AssertEqual(scalar, automatic);
+
+    if (features.neon) {
+        VerifyModeAgainstScalar(SIMDMode::NEON, pixels, width, height, scalar, scalarFlipped, scalarConverted);
+    }
+    if (features.sse2) {
+        VerifyModeAgainstScalar(SIMDMode::SSE, pixels, width, height, scalar, scalarFlipped, scalarConverted);
+    }
+    if (features.sse41) {
+        VerifyModeAgainstScalar(SIMDMode::SSE41, pixels, width, height, scalar, scalarFlipped, scalarConverted);
+    }
+    if (features.avx2) {
+        VerifyModeAgainstScalar(SIMDMode::AVX2, pixels, width, height, scalar, scalarFlipped, scalarConverted);
+    }
+
+#if PARTICLESATURN_SIMD_HAS_SSE2_KERNEL
+    {
+        std::vector<float> normalized(pixels.size());
+        SIMDNormalize::Kernels::NormalizeRGBSse2(pixels.data(), normalized.data(), width * height);
+        AssertEqual(normalized, scalar);
+    }
+#endif
+#if PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL
+    if (features.ssse3) {
+        std::vector<float> normalized(pixels.size());
+        std::vector<float> flippedKernel(pixels.size());
+        std::vector<std::uint8_t> converted(pixels.size());
+        SIMDNormalize::Kernels::NormalizeRGBSsse3(pixels.data(), normalized.data(), width * height);
+        SIMDNormalize::Kernels::FlipHorizontalAndNormalizeSsse3(pixels.data(), flippedKernel.data(), width, height);
+        SIMDNormalize::Kernels::FlipHorizontalAndBGR2RGBSsse3(pixels.data(), converted.data(), width, height);
+        AssertEqual(normalized, scalar);
+        AssertEqual(flippedKernel, scalarFlipped);
+        AssertEqual(converted, scalarConverted);
+    }
+#endif
+#if PARTICLESATURN_SIMD_HAS_SSE41_KERNEL
+    if (features.sse41) {
+        std::vector<float> normalized(pixels.size());
+        std::vector<float> flippedKernel(pixels.size());
+        std::vector<std::uint8_t> converted(pixels.size());
+        SIMDNormalize::Kernels::NormalizeRGBSse41(pixels.data(), normalized.data(), width * height);
+        SIMDNormalize::Kernels::FlipHorizontalAndNormalizeSse41(pixels.data(), flippedKernel.data(), width, height);
+        SIMDNormalize::Kernels::FlipHorizontalAndBGR2RGBSse41(pixels.data(), converted.data(), width, height);
+        AssertEqual(normalized, scalar);
+        AssertEqual(flippedKernel, scalarFlipped);
+        AssertEqual(converted, scalarConverted);
+    }
+#endif
+#if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
+    if (features.avx2) {
+        std::vector<float> normalized(pixels.size());
+        std::vector<float> flippedKernel(pixels.size());
+        std::vector<std::uint8_t> converted(pixels.size());
+        SIMDNormalize::Kernels::NormalizeRGBAvx2(pixels.data(), normalized.data(), width * height);
+        SIMDNormalize::Kernels::FlipHorizontalAndNormalizeAvx2(pixels.data(), flippedKernel.data(), width, height);
+        SIMDNormalize::Kernels::FlipHorizontalAndBGR2RGBAvx2(pixels.data(), converted.data(), width, height);
+        AssertEqual(normalized, scalar);
+        AssertEqual(flippedKernel, scalarFlipped);
+        AssertEqual(converted, scalarConverted);
+    }
+#endif
 
     for (const std::size_t count : {0U, 1U, 2U, 3U, 4U, 5U, 7U, 8U, 9U}) {
         std::vector<std::uint8_t> unaligned(count * 3U + 1U, 0U);

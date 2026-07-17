@@ -112,16 +112,50 @@ add_subdirectory(src/gpu)
 add_subdirectory(src/render)
 add_subdirectory(src/shaders/abi)
 
-add_library(ParticleSaturnSimd STATIC HandTracker/SIMDNormalize.cpp HandTracker/SIMDNormalizeScalar.cpp)
+add_library(ParticleSaturnSimd STATIC
+    HandTracker/CpuFeatureDetector.cpp
+    HandTracker/SIMDNormalize.cpp
+    HandTracker/SIMDNormalizeDispatch.cpp
+    HandTracker/SIMDNormalizeScalar.cpp
+)
+set(PARTICLESATURN_SIMD_HAS_NEON_KERNEL 0)
+set(PARTICLESATURN_SIMD_HAS_SSE2_KERNEL 0)
+set(PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL 0)
+set(PARTICLESATURN_SIMD_HAS_SSE41_KERNEL 0)
+set(PARTICLESATURN_SIMD_HAS_AVX2_KERNEL 0)
 if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|arm)$")
     target_sources(ParticleSaturnSimd PRIVATE HandTracker/SIMDNormalizeNEON.cpp)
+    set(PARTICLESATURN_SIMD_HAS_NEON_KERNEL 1)
 endif()
 if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    target_sources(ParticleSaturnSimd PRIVATE HandTracker/SIMDNormalizeSSE2.cpp)
+    target_sources(ParticleSaturnSimd PRIVATE
+        HandTracker/SIMDNormalizeSSE2.cpp
+        HandTracker/SIMDNormalizeSSSE3.cpp
+        HandTracker/SIMDNormalizeSSE41.cpp
+        HandTracker/SIMDNormalizeAVX2.cpp
+    )
+    set(PARTICLESATURN_SIMD_HAS_SSE2_KERNEL 1)
+    set(PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL 1)
+    set(PARTICLESATURN_SIMD_HAS_SSE41_KERNEL 1)
+    set(PARTICLESATURN_SIMD_HAS_AVX2_KERNEL 1)
     if(MSVC)
         set_source_files_properties(HandTracker/SIMDNormalizeSSE2.cpp PROPERTIES COMPILE_OPTIONS "/arch:SSE2")
+        set_source_files_properties(HandTracker/SIMDNormalizeSSSE3.cpp HandTracker/SIMDNormalizeSSE41.cpp
+            PROPERTIES COMPILE_OPTIONS "/arch:SSE2")
+        set_source_files_properties(HandTracker/SIMDNormalizeAVX2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    else()
+        set_source_files_properties(HandTracker/SIMDNormalizeSSSE3.cpp PROPERTIES COMPILE_OPTIONS "-mssse3")
+        set_source_files_properties(HandTracker/SIMDNormalizeSSE41.cpp PROPERTIES COMPILE_OPTIONS "-msse4.1")
+        set_source_files_properties(HandTracker/SIMDNormalizeAVX2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2")
     endif()
 endif()
+target_compile_definitions(ParticleSaturnSimd PUBLIC
+    PARTICLESATURN_SIMD_HAS_NEON_KERNEL=${PARTICLESATURN_SIMD_HAS_NEON_KERNEL}
+    PARTICLESATURN_SIMD_HAS_SSE2_KERNEL=${PARTICLESATURN_SIMD_HAS_SSE2_KERNEL}
+    PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL=${PARTICLESATURN_SIMD_HAS_SSSE3_KERNEL}
+    PARTICLESATURN_SIMD_HAS_SSE41_KERNEL=${PARTICLESATURN_SIMD_HAS_SSE41_KERNEL}
+    PARTICLESATURN_SIMD_HAS_AVX2_KERNEL=${PARTICLESATURN_SIMD_HAS_AVX2_KERNEL}
+)
 target_include_directories(ParticleSaturnSimd PUBLIC "${CMAKE_SOURCE_DIR}/HandTracker")
 target_compile_features(ParticleSaturnSimd PUBLIC cxx_std_20)
 option(PARTICLESATURN_SIMD_ADDRESS_SANITIZER "Enable AddressSanitizer for SIMD normalization tests" OFF)

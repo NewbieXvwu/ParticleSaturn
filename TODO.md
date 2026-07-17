@@ -991,9 +991,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：ARM64 TensorFlow Lite/XNNPACK 静态库已重新构建；启用运行时的应用成功编译 OpenGL 手势分支，手势工作线程与实际模型张量契约测试均通过。真实摄像头手势连续性仍待人工端到端验收。
 
-进展补充（2026-07-17）：SIMD 能力检测已输出 `CpuFeatureSet` 快照，归一化、翻转归一化与 BGR 转 RGB 均经统一 `KernelRegistry`/`KernelDispatcher` 选择路径。标量和 ARM NEON 归一化内核已迁入独立编译单元并通过测试；SSE、AVX2 的独立单元和 Windows 专用编译参数仍待迁移。
-
-进展补充（2026-07-17）：SSE2 RGB 归一化内核已迁入 Windows 专用编译单元，并以 `/arch:SSE2` 单独编译；当前 macOS ARM64 回归验证不编译 x86 源文件，标量与 NEON 路径保持通过。SSSE3 翻转和 AVX2 内核仍待迁移。
+进展补充（2026-07-17）：SIMD 调度已拆为 `CpuFeatureDetector`、`KernelRegistry` 和 `KernelDispatcher`。能力表覆盖 ARM NEON、x86 SSE2/SSSE3/SSE4.1/AVX2，以及 AVX-512、FMA、DotProd、I8MM 的未注册预留位；AVX2 同时检查 CPUID、OSXSAVE 与 XCR0。标量、NEON、SSE2、SSSE3、SSE4.1、AVX2 均由独立编译单元提供，Windows x64 对应设置 `/arch:SSE2` 或 `/arch:AVX2`，高指令不会进入检测和通用回退路径。归一化、翻转归一化与翻转 BGR 转 RGB 均按操作独立选择内核，伪造能力表、任意长度、未对齐内存和地址消毒器回归通过；Rosetta x86_64 实际运行 SSE2、SSSE3、SSE4.1 对照测试。
 
 进展补充（2026-07-17）：启用 XNNPACK 运行时的完整 CTest 回归共 17 项全部通过，覆盖 Metal、OpenGL、跨后端画面基准、设置、手势工作线程、模型运行时和两种 Vulkan ICD 的交换链测试。
 
@@ -1003,7 +1001,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 原生设备选择窗口（预览、记住选择、主动重选）
 - [ ] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
 - [x] NEON 归一化实现
-- [ ] SIMD 调度系统须完整实现（CpuFeatureDetector + KernelRegistry + KernelDispatcher），覆盖 ARM NEON 和 x86 SSE2/SSSE3/SSE4.1/AVX2 两套指令集体系，并为 AVX-512/FMA/DotProd/I8MM 预留空桩；各指令集变体在独立编译单元实现，运行时检测并选择，标量路径作为所有平台的通用回退
+- [x] SIMD 调度系统须完整实现（CpuFeatureDetector + KernelRegistry + KernelDispatcher），覆盖 ARM NEON 和 x86 SSE2/SSSE3/SSE4.1/AVX2 两套指令集体系，并为 AVX-512/FMA/DotProd/I8MM 预留空桩；各指令集变体在独立编译单元实现，运行时检测并选择，标量路径作为所有平台的通用回退
 - [x] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
 - [x] TensorFlow Lite XNNPACK ARM64 内核启用（实际模型委托推理测试）
 - [x] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
