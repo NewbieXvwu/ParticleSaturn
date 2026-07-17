@@ -992,6 +992,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：OpenGL 4.1 已复用 macOS 摄像头、后台手势推理和最新样本消费链路，并将追踪状态传入粒子模拟；当前构建未启用 XNNPACK 运行时，真实模型下的连续性验收待启用该目标后完成。
 
+进展补充（2026-07-17）：ARM64 TensorFlow Lite/XNNPACK 静态库已重新构建；启用运行时的应用成功编译 OpenGL 手势分支，手势工作线程与实际模型张量契约测试均通过。真实摄像头手势连续性仍待人工端到端验收。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
