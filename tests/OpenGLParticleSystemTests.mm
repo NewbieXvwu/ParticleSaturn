@@ -103,6 +103,19 @@ ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot ExpectedDi
     return particle;
 }
 
+void AssertAnalyticPosition(const ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot& actual,
+                            const ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot& initial,
+                            float phase) {
+    const float angle = (initial.isRing == 0U ? 0.03f : initial.speed * 0.2f) * phase;
+    AssertNear(actual.position[0], initial.position[0] * std::cos(angle) - initial.position[2] * std::sin(angle));
+    AssertNear(actual.position[1], initial.position[1]);
+    AssertNear(actual.position[2], initial.position[0] * std::sin(angle) + initial.position[2] * std::cos(angle));
+    AssertNear(actual.position[3], initial.position[3]);
+    assert(actual.color == initial.color);
+    assert(actual.isRing == initial.isRing);
+    assert(actual.padding == initial.padding);
+}
+
 void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem& particles) {
     std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> snapshots;
     assert(particles.ReadBack(snapshots, 64));
@@ -184,22 +197,32 @@ int main(int argc, char* argv[]) {
             assert(particle.padding == 0U);
         }
         particles.SetSimulationMode(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::Analytic);
-        particles.Simulate(2.0f / 120.0f, 1.0f, false);
+        constexpr float frameStep = 1.0f / 120.0f;
+        particles.Simulate(2.0f * frameStep, 1.0f, false);
         std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> analyticFrame;
-        assert(particles.ReadBack(analyticFrame, 1));
-        const auto initial = ExpectedDiligentParticle(0, 0x53415455U);
-        const float angle = (initial.isRing == 0U ? 0.03f : initial.speed * 0.2f) * (2.0f / 120.0f);
-        AssertNear(analyticFrame[0].position[0], initial.position[0] * std::cos(angle) - initial.position[2] * std::sin(angle));
-        AssertNear(analyticFrame[0].position[2], initial.position[0] * std::sin(angle) + initial.position[2] * std::cos(angle));
+        assert(particles.ReadBack(analyticFrame, 64));
+        const auto initialPlanet = ExpectedDiligentParticle(0, 0x53415455U);
+        AssertAnalyticPosition(analyticFrame[0], initialPlanet, 2.0f * frameStep);
+        std::size_t ringIndex = 0;
+        while (ringIndex < analyticFrame.size() && analyticFrame[ringIndex].isRing == 0U) ++ringIndex;
+        assert(ringIndex < analyticFrame.size());
+        const auto initialRing = ExpectedDiligentParticle(static_cast<std::uint32_t>(ringIndex), 0x53415455U);
+        AssertAnalyticPosition(analyticFrame[ringIndex], initialRing, 2.0f * frameStep);
         std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> pausedFrame;
-        assert(particles.ReadBack(pausedFrame, 1));
-        AssertNear(pausedFrame[0].position[0], analyticFrame[0].position[0]);
-        AssertNear(pausedFrame[0].position[2], analyticFrame[0].position[2]);
+        assert(particles.ReadBack(pausedFrame, 64));
+        AssertAnalyticPosition(pausedFrame[0], initialPlanet, 2.0f * frameStep);
+        AssertAnalyticPosition(pausedFrame[ringIndex], initialRing, 2.0f * frameStep);
         std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> resumedFrame;
-        particles.Simulate(1.0f / 120.0f, 1.0f, false);
-        assert(particles.ReadBack(resumedFrame, 1));
-        assert(std::abs(resumedFrame[0].position[0] - pausedFrame[0].position[0]) > 0.000001f ||
-               std::abs(resumedFrame[0].position[2] - pausedFrame[0].position[2]) > 0.000001f);
+        particles.Simulate(frameStep, 2.5f, true);
+        assert(particles.ReadBack(resumedFrame, 64));
+        const float trackedPhase = 4.5f * frameStep;
+        AssertAnalyticPosition(resumedFrame[0], initialPlanet, trackedPhase);
+        AssertAnalyticPosition(resumedFrame[ringIndex], initialRing, trackedPhase);
+        particles.Simulate(frameStep, 9.0f, false);
+        assert(particles.ReadBack(resumedFrame, 64));
+        const float lostHandPhase = 5.5f * frameStep;
+        AssertAnalyticPosition(resumedFrame[0], initialPlanet, lostHandPhase);
+        AssertAnalyticPosition(resumedFrame[ringIndex], initialRing, lostHandPhase);
         particles.SetSimulationMode(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::TransformFeedback);
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);

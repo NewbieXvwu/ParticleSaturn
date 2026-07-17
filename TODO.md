@@ -1018,6 +1018,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：变换反馈缓冲的 32 字节粒子布局现直接来自共享 ABI，环带标记和填充字段改为整数顶点属性与整数反馈变量；完整构建、GLSL 运行时编译、粒子读回和跨 Metal 对比均通过。
 
+进展补充（2026-07-17）：解析式粒子路径已由 MD3 选项生成应用命令并通过 `NSUserDefaults` 保存。粒子读回测试覆盖本体和环带粒子在暂停期间保持相位、恢复后按已追踪手势的缩放倍率累计相位，以及手势丢失后以标准速度连续推进。
+
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转，固定种子读回基线）
 - [x] 间接绘制（`glDrawArraysIndirect`）
@@ -1027,7 +1029,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 透明窗口 + macOS 系统玻璃模糊
 - [x] ImGui（官方 macOS/OpenGL 后端，独立界面 Acrylic 模糊）
 - [x] GLSL 410 着色器编写
-- [ ] 解析式粒子路径、用户选择项及暂停/恢复/手势连续性验证
+- [x] 解析式粒子路径，含用户切换、NSUserDefaults 持久化、暂停/恢复/手势连续性验证
 - [ ] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为
 - [ ] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
 
