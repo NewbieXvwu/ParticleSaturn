@@ -58,6 +58,29 @@ int main() {
         }
     }
 
+    for (const int testWidth : {1, 2, 3, 4, 5, 7, 8, 9}) {
+        constexpr int testHeight = 2;
+        std::vector<std::uint8_t> source(static_cast<std::size_t>(testWidth * testHeight * 3 + 1), 0U);
+        for (std::size_t index = 0; index < source.size() - 1U; ++index) {
+            source[index + 1U] = static_cast<std::uint8_t>((index * 13U) % 256U);
+        }
+        std::vector<float> normalized(static_cast<std::size_t>(testWidth * testHeight * 3));
+        std::vector<std::uint8_t> converted(static_cast<std::size_t>(testWidth * testHeight * 3));
+        SIMDNormalize::SetMode(SIMDMode::Auto);
+        SIMDNormalize::FlipHorizontalAndNormalize(source.data() + 1U, normalized.data(), testWidth, testHeight);
+        SIMDNormalize::FlipHorizontalAndBGR2RGB(source.data() + 1U, converted.data(), testWidth, testHeight);
+        for (int y = 0; y < testHeight; ++y) {
+            for (int x = 0; x < testWidth; ++x) {
+                const int sourceOffset = (y * testWidth + testWidth - x - 1) * 3;
+                const int destinationOffset = (y * testWidth + x) * 3;
+                assert(std::abs(normalized[destinationOffset] - source[sourceOffset + 1] / 255.0f) < 0.000001f);
+                assert(converted[destinationOffset] == source[sourceOffset + 3]);
+                assert(converted[destinationOffset + 1] == source[sourceOffset + 2]);
+                assert(converted[destinationOffset + 2] == source[sourceOffset + 1]);
+            }
+        }
+    }
+
 #if defined(__aarch64__)
     assert(SIMDNormalize::IsNEONSupported());
 #endif

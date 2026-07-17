@@ -950,6 +950,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：AVX2 分派现同时验证 CPUID 的 AVX、OSXSAVE 与 AVX2 位，并检查 XCR0 已启用 XMM/YMM 状态，避免仅凭 CPU 标志在操作系统未保存扩展寄存器的环境执行 AVX 指令。
 
+进展补充（2026-07-17）：SSSE3 的两条翻转路径也改为精确读取每四像素的 12 字节块；测试覆盖 1 到 9 像素宽度、两行图像和未对齐源数据，并逐元素核对归一化翻转与 BGR 到 RGB 的结果。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误

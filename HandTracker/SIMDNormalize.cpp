@@ -455,12 +455,8 @@ static void FlipHorizontalAndNormalize_SSE(const uint8_t* src, float* dst, int w
         int simd_end = width - 4;
 
         for (; x <= simd_end; x += 4) {
-            // Load 16 bytes. Valid data for 4 pixels is 12 bytes.
-            // dst[x] <= src[width-1-x] (Last pixel of block)
-            // dst[x+3] <= src[width-4-x] (First pixel of block)
-            // We load starting from the first pixel of the block in src
-            int     src_offset = (width - 4 - x) * 3;
-            __m128i px         = _mm_loadu_si128((const __m128i*)(src_row + src_offset));
+            const int src_offset = (width - 4 - x) * 3;
+            __m128i px = Load12Bytes(src_row + src_offset);
 
             // Shuffle to reverse order
             px = _mm_shuffle_epi8(px, shuffle_mask);
@@ -674,8 +670,8 @@ static void FlipHorizontalAndBGR2RGB_SSE(const uint8_t* src, uint8_t* dst, int w
         int simd_end = width - 4;
 
         for (; x <= simd_end; x += 4) {
-            int     src_offset = (width - 4 - x) * 3;
-            __m128i px         = _mm_loadu_si128((const __m128i*)(src_row + src_offset));
+            const int src_offset = (width - 4 - x) * 3;
+            __m128i px = Load12Bytes(src_row + src_offset);
 
             px = _mm_shuffle_epi8(px, shuffle_mask);
 
