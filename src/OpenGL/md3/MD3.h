@@ -440,7 +440,8 @@ MD3Context& GetContext();
 //=============================================================================
 
 // 初始化 MD3 系统
-void Init(float dpiScale = 1.0f);
+// Metal 使用纯 ImGui 绘制回退，避免在没有 OpenGL 上下文时创建 GL 资源。
+void Init(float dpiScale = 1.0f, bool useOpenGL = false);
 
 // 关闭 MD3 系统
 void Shutdown();
@@ -613,8 +614,14 @@ unsigned int ColorToU32(const ImVec4& color);
 ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
 
 // 绘制带圆角的图片（解决模糊背景黑边问题）
-void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
+void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max,
                      const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
+inline void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
+                            const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding,
+                            int flags = 0) {
+    AddImageRounded(dl, reinterpret_cast<void*>(static_cast<uintptr_t>(tex_id)), p_min, p_max, uv_min, uv_max, col,
+                    rounding, flags);
+}
 
 } // namespace MD3
 

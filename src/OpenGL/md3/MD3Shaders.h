@@ -6,7 +6,7 @@ namespace MD3Shaders {
 
 // Ripple 涟漪效果顶点着色器
 const char* const VertexRipple = R"(
-#version 430 core
+#version 410 core
 layout (location = 0) in vec2 aPos;
 out vec2 vUV;
 void main() {
@@ -18,7 +18,7 @@ void main() {
 // Ripple 涟漪效果片段着色器
 // 实现 MD3 规范的涟漪扩散效果，带圆角裁剪
 const char* const FragmentRipple = R"(
-#version 430 core
+#version 410 core
 
 out vec4 fragColor;
 

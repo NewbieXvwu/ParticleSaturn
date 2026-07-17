@@ -21,7 +21,9 @@
 #include "imgui_impl_osx.h"
 
 #include "CocoaHost.h"
+#include "MacOSMd3Panel.h"
 #include "MacOSApplication.h"
+#include "MD3.h"
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/metal/MetalBackend.h"
@@ -133,6 +135,9 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller{initialState};
+        ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
+        ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
+        if (!captureBaseline) cameraSelector.StartSaved();
         host.SetActionCallback([&](ParticleSaturn::Platform::MacOS::HostAction action) {
             switch (action) {
             case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
@@ -146,6 +151,13 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             }
             case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
                 controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller.State().ui.blurEnabled});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::TogglePause:
+                controller.Dispatch(ParticleSaturn::App::TogglePause{});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector:
+                if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
+                cameraSelector.Show();
                 break;
             case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down:
             case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Up:
@@ -184,9 +196,6 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         host.SetWindowMaterial(appliedWindowMaterial);
         host.SetPresentationMode(appliedVsyncMode);
         ParticleSaturn::App::FrameCoordinator coordinator;
-        ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
-        ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
-        if (!captureBaseline) cameraSelector.StartSaved();
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
         ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
         std::unique_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
@@ -210,7 +219,12 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         if (!particleRenderer.Initialize(device, libraryPath)) return 1;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        ImGui::StyleColorsDark();
+        ImGui::GetIO().FontDefault = ImGui::GetIO().Fonts->AddFontFromFileTTF("/System/Library/Fonts/SFNS.ttf", 15.0f);
+        ImGui::GetStyle().WindowRounding = 12.0f;
+        ImGui::GetStyle().WindowBorderSize = 0.0f;
+        MD3::Init();
+        MD3::SetDarkMode(controller.State().ui.darkMode);
+        MD3::SetScreenSize(static_cast<float>(size.width / size.scale), static_cast<float>(size.height / size.scale));
         if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
         host.Show();
         host.Run([&] {
@@ -260,105 +274,32 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
-                const auto& state = controller.State();
-                if (state.ui.showDebugWindow) {
-                    ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-                    ImGui::SetNextWindowSize(ImVec2(320.0f, 340.0f), ImGuiCond_Always);
-                    ImGui::SetNextWindowBgAlpha(0.0f);
-                    ImGui::Begin("Particle Saturn");
-                const ImVec2 panelPosition = ImGui::GetWindowPos();
-                const ImVec2 panelSize = ImGui::GetWindowSize();
-                const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
-                const float panelTop = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.height);
-                const float panelRight = (80.0f + 320.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
-                const float panelBottom = (80.0f + 340.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
-                if (state.ui.blurEnabled) {
-                    ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
-                                                          ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
-                                                          ImVec2(panelLeft, panelTop), ImVec2(panelRight, panelBottom));
-                }
-                ImGui::Text("Metal");
-                ImGui::SameLine();
-                ImGui::Text("FPS: %u", fpsMeter.Value());
-                ImGui::Separator();
-                ImGui::Text("Particles: %u", state.render.particleCount);
-                int particleCount = static_cast<int>(state.render.particleCount);
-                if (ImGui::SliderInt("Particle count", &particleCount,
-                                     static_cast<int>(ParticleSaturn::App::RenderSettings::MinParticles),
-                                     static_cast<int>(ParticleSaturn::App::RenderSettings::MaxParticles))) {
-                    controller.Dispatch(ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)});
-                    settings.Save(controller.State());
-                }
-                bool bloomEnabled = state.render.bloomEnabled;
-                if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
-                    controller.Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
-                    settings.Save(controller.State());
-                }
-                bool blurEnabled = state.ui.blurEnabled;
-                if (ImGui::Checkbox("UI blur", &blurEnabled)) {
-                    controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
-                    settings.Save(controller.State());
-                }
-                int windowMaterial = static_cast<int>(state.window.material);
-                if (ImGui::Combo("Window material", &windowMaterial,
-                                 "Solid\0Transparent\0System blur\0App Acrylic\0")) {
-                    const auto material = static_cast<ParticleSaturn::App::WindowMaterial>(windowMaterial);
-                    controller.Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
-                    settings.Save(controller.State());
-                }
-                float blurStrength = state.ui.blurStrength;
-                if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
-                    controller.Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
-                    settings.Save(controller.State());
-                }
-                int graphicsApi = static_cast<int>(state.render.graphicsApi);
-                if (ImGui::Combo("Graphics API", &graphicsApi, "OpenGL 4.1\0Vulkan\0Metal\0")) {
-                    const auto effect = controller.Dispatch(ParticleSaturn::App::SetGraphicsApi{
-                        static_cast<ParticleSaturn::App::GraphicsApi>(graphicsApi)});
-                    settings.Save(controller.State());
-                    if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
-                        [NSApp terminate:nil];
-                        return;
-                    }
-                }
-                if (controller.State().render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
-                    int vulkanDriver = static_cast<int>(state.render.vulkanDriver);
-                    if (ImGui::Combo("Vulkan driver", &vulkanDriver, "MoltenVK\0KosmicKrisp\0")) {
-                        const auto effect = controller.Dispatch(ParticleSaturn::App::SetVulkanDriver{
-                            static_cast<ParticleSaturn::App::VulkanDriver>(vulkanDriver)});
-                        settings.Save(controller.State());
-                        if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
-                            [NSApp terminate:nil];
-                            return;
-                        }
-                    }
-                }
-                bool lodLocked = state.lod.locked;
-                if (ImGui::Checkbox("Lock dynamic LOD", &lodLocked)) {
-                    controller.Dispatch(ParticleSaturn::App::SetLodLocked{lodLocked});
-                    settings.Save(controller.State());
-                }
-                const char* pauseLabel = state.scene.paused ? "Resume" : "Pause";
-                if (ImGui::Button(pauseLabel)) {
-                    controller.Dispatch(ParticleSaturn::App::TogglePause{});
-                    settings.Save(controller.State());
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Fullscreen")) {
-                    const bool fullscreen = !state.window.fullscreen;
-                    const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
-                    settings.Save(controller.State());
-                    if (effect.windowChanged) host.ToggleFullscreen();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Camera")) {
-                    if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) {
-                        camera.RequestPermission();
-                    }
-                    cameraSelector.Show();
-                }
-                    ImGui::End();
-                }
+                MD3::BeginFrame(deltaTime);
+                MD3::SetDpiScale(1.0f);
+                MD3::SetScreenSize(static_cast<float>(drawableSize.width / drawableSize.scale),
+                                   static_cast<float>(drawableSize.height / drawableSize.scale));
+                ParticleSaturn::Platform::MacOS::RenderMd3Panel(controller, "Metal", fpsMeter.Value(), false, {
+                    [&] { if (!captureBaseline) settings.Save(controller.State()); },
+                    [&] {
+                        const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{!controller.State().window.fullscreen});
+                        if (effect.windowChanged) host.ToggleFullscreen();
+                    },
+                    [&] {
+                        if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
+                        cameraSelector.Show();
+                    },
+                    [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
+                    [&](ParticleSaturn::App::WindowMaterial material) { host.SetWindowMaterial(material); },
+                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
+                        const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
+                        const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
+                        const float right = (position.x + panelSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                        const float bottom = (position.y + panelSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                        MD3::AddImageRounded(drawList, targets.UiOverlay(), position,
+                                             ImVec2(position.x + panelSize.x, position.y + panelSize.y),
+                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, 12.0f);
+                    }});
+                MD3::EndFrame();
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
                                                (id<MTLRenderCommandEncoder>)encoder);
@@ -372,6 +313,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         });
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();
+        MD3::Shutdown();
         ImGui::DestroyContext();
         if (!captureBaseline) settings.Save(controller.State());
     }

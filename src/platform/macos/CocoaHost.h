@@ -17,6 +17,8 @@ enum class HostAction : std::uint8_t {
     ToggleDebugWindow,
     ToggleFullscreen,
     ToggleBlur,
+    TogglePause,
+    ShowCameraSelector,
     KeyF3Down,
     KeyF3Up,
     KeyF11Down,
@@ -38,6 +40,7 @@ public:
     void Show();
     void Run(const std::function<void()>& frameCallback = {});
     void SetActionCallback(std::function<void(HostAction)> callback);
+    void InvokeAction(HostAction action);
     void SetWindowPosition(std::int32_t x, std::int32_t y);
     void GetWindowPosition(std::int32_t& x, std::int32_t& y) const;
     void ToggleFullscreen();

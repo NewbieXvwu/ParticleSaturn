@@ -104,6 +104,9 @@ bool DiligentVulkanAdapter::PresentClearFrame(const float color[4], std::uint32_
 }
 
 void DiligentVulkanAdapter::Shutdown() noexcept {
+    if (context_ != nullptr) {
+        static_cast<::Diligent::IDeviceContext*>(context_)->Flush();
+    }
     if (swapChain_ != nullptr) {
         static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
         swapChain_ = nullptr;

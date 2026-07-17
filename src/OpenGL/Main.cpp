@@ -1922,7 +1922,7 @@ int main() {
                     std::cout << "[Main] Lazy-loading UI system..." << std::endl;
                     ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
                     UIManager::Init(window, appState);
-                    MD3::Init(appState.ui.dpiScale);
+                    MD3::Init(appState.ui.dpiScale, true);
                     MD3::SetDarkMode(appState.ui.isDarkMode);
                     MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
                     appState.ui.imguiInitialized = true;

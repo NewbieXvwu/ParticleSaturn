@@ -23,9 +23,13 @@ if(BUILD_TESTING)
         add_dependencies(ParticleSaturnDiligentVulkanSurfaceTests ParticleSaturn.macOS)
         add_test(NAME ParticleSaturnDiligentVulkanMoltenSurfaceTests COMMAND ParticleSaturnDiligentVulkanSurfaceTests
             "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources" molten)
-        add_test(NAME ParticleSaturnDiligentVulkanKosmicSurfaceTests COMMAND ParticleSaturnDiligentVulkanSurfaceTests
-            "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources" kosmic)
-        set_tests_properties(ParticleSaturnDiligentVulkanMoltenSurfaceTests ParticleSaturnDiligentVulkanKosmicSurfaceTests
-            PROPERTIES TIMEOUT 30)
+        if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+            add_test(NAME ParticleSaturnDiligentVulkanKosmicSurfaceTests COMMAND ParticleSaturnDiligentVulkanSurfaceTests
+                "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources" kosmic)
+            set_tests_properties(ParticleSaturnDiligentVulkanMoltenSurfaceTests ParticleSaturnDiligentVulkanKosmicSurfaceTests
+                PROPERTIES TIMEOUT 30)
+        else()
+            set_tests_properties(ParticleSaturnDiligentVulkanMoltenSurfaceTests PROPERTIES TIMEOUT 30)
+        endif()
     endif()
 endif()

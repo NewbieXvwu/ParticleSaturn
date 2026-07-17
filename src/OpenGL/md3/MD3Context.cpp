@@ -1,6 +1,6 @@
 // MD3Context.cpp - MD3 全局状态、初始化和帧管理
 
-#include <glad/glad.h>
+#include <OpenGL/gl3.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -71,7 +71,7 @@ static GLuint CreateProgram(const char* vertexSrc, const char* fragmentSrc) {
     return program;
 }
 
-void Init(float dpiScale) {
+void Init(float dpiScale, bool useOpenGL) {
     if (g_context.initialized) {
         return;
     }
@@ -80,25 +80,27 @@ void Init(float dpiScale) {
     g_context.isDarkMode = true;
     g_context.colors     = GetDarkColorScheme();
 
-    // 创建 Ripple 着色器程序
-    g_context.rippleProgram = CreateProgram(MD3Shaders::VertexRipple, MD3Shaders::FragmentRipple);
+    if (useOpenGL) {
+        // 创建 Ripple 着色器程序
+        g_context.rippleProgram = CreateProgram(MD3Shaders::VertexRipple, MD3Shaders::FragmentRipple);
 
-    if (!g_context.rippleProgram) {
-        std::cerr << "[MD3] Failed to create ripple shader program" << std::endl;
+        if (!g_context.rippleProgram) {
+            std::cerr << "[MD3] Failed to create ripple shader program" << std::endl;
+        }
+
+        // 创建全屏四边形 VAO/VBO
+        float quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
+
+        glGenVertexArrays(1, &g_context.rippleVAO);
+        glGenBuffers(1, &g_context.rippleVBO);
+
+        glBindVertexArray(g_context.rippleVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, g_context.rippleVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+        glBindVertexArray(0);
     }
-
-    // 创建全屏四边形 VAO/VBO
-    float quadVerts[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
-
-    glGenVertexArrays(1, &g_context.rippleVAO);
-    glGenBuffers(1, &g_context.rippleVBO);
-
-    glBindVertexArray(g_context.rippleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, g_context.rippleVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
-    glBindVertexArray(0);
 
     g_context.initialized = true;
     std::cout << "[MD3] Material Design 3 UI system initialized" << std::endl;
@@ -677,11 +679,11 @@ ImVec4 HexToColor(unsigned int hex, float alpha) {
     return ImVec4(((hex >> 16) & 0xFF) / 255.0f, ((hex >> 8) & 0xFF) / 255.0f, (hex & 0xFF) / 255.0f, alpha);
 }
 
-void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
+void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max,
                      const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
     if ((col & IM_COL32_A_MASK) == 0 || rounding < 0.5f) {
         // 无透明度或无圆角，直接使用普通 AddImage
-        dl->AddImage((ImTextureID)(uintptr_t)tex_id, p_min, p_max, uv_min, uv_max, col);
+        dl->AddImage((ImTextureID)tex_id, p_min, p_max, uv_min, uv_max, col);
         return;
     }
 
@@ -702,7 +704,7 @@ void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, c
     float uv_h  = uv_max.y - uv_min.y;
 
     // 切换到指定纹理
-    dl->PushTextureID((ImTextureID)(uintptr_t)tex_id);
+    dl->PushTextureID((ImTextureID)tex_id);
 
     // 预留顶点和索引空间（三角形扇形）
     int idx_count = (path_count - 2) * 3;

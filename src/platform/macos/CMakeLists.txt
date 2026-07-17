@@ -7,6 +7,10 @@ add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     LauncherMain.mm
     Main.mm
     OpenGL41Main.mm
+    MacOSMd3Panel.cpp
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Theme.cpp"
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Context.cpp"
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Widgets.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
@@ -26,7 +30,7 @@ if(TARGET ParticleSaturnMacOSHandTracking)
     target_compile_definitions(ParticleSaturn.macOS PRIVATE PARTICLESATURN_HAS_XNNPACK_RUNTIME=1)
 endif()
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
-target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
+target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends" "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController" "-framework QuartzCore")
 target_compile_definitions(ParticleSaturn.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders)

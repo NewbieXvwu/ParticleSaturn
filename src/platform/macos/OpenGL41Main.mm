@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -17,6 +18,9 @@
 #include "imgui_impl_osx.h"
 
 #include "MacOSApplication.h"
+#include "CocoaHost.h"
+#include "MacOSMd3Panel.h"
+#include "MD3.h"
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/opengl41/OpenGL41Surface.h"
@@ -33,7 +37,53 @@
 #include "services/hand_tracking/macos/XnnpackRuntime.h"
 #include "services/resources/macos/BundleResources.h"
 
+@interface ParticleSaturnOpenGLMenuTarget : NSObject {
+@public std::function<void(ParticleSaturn::Platform::MacOS::HostAction)> action;
+}
+- (void)toggleDebugWindow:(id)sender;
+- (void)toggleFullscreen:(id)sender;
+- (void)toggleBlur:(id)sender;
+- (void)togglePause:(id)sender;
+- (void)showCameraSelector:(id)sender;
+@end
+
+@implementation ParticleSaturnOpenGLMenuTarget
+- (void)toggleDebugWindow:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow); }
+- (void)toggleFullscreen:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen); }
+- (void)toggleBlur:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur); }
+- (void)togglePause:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::TogglePause); }
+- (void)showCameraSelector:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector); }
+@end
+
 namespace {
+
+void AddOpenGLMenuAction(NSMenu* menu, NSString* title, SEL selector, id target, NSString* keyEquivalent = @"") {
+    auto* item = [[NSMenuItem alloc] initWithTitle:title action:selector keyEquivalent:keyEquivalent];
+    [item setTarget:target];
+    [menu addItem:item];
+    [item release];
+}
+
+void InstallOpenGLApplicationMenu(ParticleSaturnOpenGLMenuTarget* target) {
+    auto* mainMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
+    auto* appItem = [[NSMenuItem alloc] initWithTitle:@"Particle Saturn" action:nil keyEquivalent:@""];
+    auto* appMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
+    AddOpenGLMenuAction(appMenu, @"Quit Particle Saturn", @selector(terminate:), NSApp, @"q");
+    [appItem setSubmenu:appMenu]; [appMenu release]; [mainMenu addItem:appItem]; [appItem release];
+    auto* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
+    auto* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    AddOpenGLMenuAction(viewMenu, @"Show or Hide Control Panel", @selector(toggleDebugWindow:), target);
+    AddOpenGLMenuAction(viewMenu, @"Enter or Exit Full Screen", @selector(toggleFullscreen:), target);
+    AddOpenGLMenuAction(viewMenu, @"Toggle UI Blur", @selector(toggleBlur:), target);
+    [viewItem setSubmenu:viewMenu]; [viewMenu release]; [mainMenu addItem:viewItem]; [viewItem release];
+    auto* controlsItem = [[NSMenuItem alloc] initWithTitle:@"Controls" action:nil keyEquivalent:@""];
+    auto* controlsMenu = [[NSMenu alloc] initWithTitle:@"Controls"];
+    AddOpenGLMenuAction(controlsMenu, @"Pause or Resume", @selector(togglePause:), target);
+    AddOpenGLMenuAction(controlsMenu, @"Select Camera...", @selector(showCameraSelector:), target);
+    [controlsItem setSubmenu:controlsMenu]; [controlsMenu release]; [mainMenu addItem:controlsItem]; [controlsItem release];
+    [NSApp setMainMenu:mainMenu];
+    [mainMenu release];
+}
 
 std::filesystem::path ShaderDirectory() {
     const char* resourcePath = [[[NSBundle mainBundle] resourcePath] UTF8String];
@@ -233,10 +283,14 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        ImGui::StyleColorsDark();
+        ImGui::GetIO().FontDefault = ImGui::GetIO().Fonts->AddFontFromFileTTF("/System/Library/Fonts/SFNS.ttf", 15.0f);
+        ImGui::GetStyle().WindowRounding = 12.0f;
+        ImGui::GetStyle().WindowBorderSize = 0.0f;
         if (!ImGui_ImplOSX_Init(view) || !ImGui_ImplOpenGL3_Init("#version 410")) return 1;
 
         auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
+        MD3::Init(1.0f, true);
+        MD3::SetDarkMode(controller->State().ui.darkMode);
         auto* settingsPtr = &settings;
         controller->MutableState().window.fullscreen =
             ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
@@ -330,6 +384,33 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             handTracking->Start();
         }
 #endif
+        auto* menuTarget = [[ParticleSaturnOpenGLMenuTarget alloc] init];
+        menuTarget->action = [&, settingsPtr] (ParticleSaturn::Platform::MacOS::HostAction action) {
+            switch (action) {
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
+                controller->Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen:
+                toggleFullscreen();
+                return;
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
+                controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller->State().ui.blurEnabled});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::TogglePause:
+                controller->Dispatch(ParticleSaturn::App::TogglePause{});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector:
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+                if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
+                cameraSelector->Show();
+#endif
+                break;
+            default:
+                break;
+            }
+            if (!captureBaseline) settingsPtr->Save(controller->State());
+        };
+        InstallOpenGLApplicationMenu(menuTarget);
         auto appliedVsyncMode = std::make_shared<int>(initialState.render.vsyncMode);
 
         const NSInteger refreshRate = std::max<NSInteger>(1, [[window screen] maximumFramesPerSecond]);
@@ -416,100 +497,33 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplOSX_NewFrame(view);
             ImGui::NewFrame();
-            if (state.ui.showDebugWindow) {
-                ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-                ImGui::SetNextWindowSize(ImVec2(320.0f, 340.0f), ImGuiCond_Always);
-                ImGui::SetNextWindowBgAlpha(0.0f);
-                ImGui::Begin("Particle Saturn");
-            const ImVec2 panelPosition = ImGui::GetWindowPos();
-            const ImVec2 panelSize = ImGui::GetWindowSize();
-            if (state.ui.blurEnabled) {
-                const float left = panelPosition.x / static_cast<float>(logicalSize.width);
-                const float top = panelPosition.y / static_cast<float>(logicalSize.height);
-                const float right = (panelPosition.x + panelSize.x) / static_cast<float>(logicalSize.width);
-                const float bottom = (panelPosition.y + panelSize.y) / static_cast<float>(logicalSize.height);
-                const ImTextureID texture = static_cast<ImTextureID>(targets->BloomStrongTexture());
-                ImGui::GetWindowDrawList()->AddImage(texture, panelPosition,
-                    ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
-                    ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom));
-            }
-            ImGui::Text("OpenGL 4.1");
-            ImGui::SameLine();
-            ImGui::Text("FPS: %u", fpsMeter->Value());
-            ImGui::Separator();
-            ImGui::Text("Particles: %u", state.render.particleCount);
-            int particleCount = static_cast<int>(state.render.particleCount);
-            if (ImGui::SliderInt("Particle count", &particleCount,
-                                 static_cast<int>(ParticleSaturn::App::RenderSettings::MinParticles),
-                                 static_cast<int>(ParticleSaturn::App::RenderSettings::MaxParticles))) {
-                controller->Dispatch(ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)});
-                settings.Save(controller->State());
-            }
-            bool bloomEnabled = state.render.bloomEnabled;
-            if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
-                controller->Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
-                settings.Save(controller->State());
-            }
-            bool analyticParticles = state.render.analyticParticles;
-            if (ImGui::Checkbox("Analytic particles", &analyticParticles)) {
-                controller->Dispatch(ParticleSaturn::App::SetAnalyticParticles{analyticParticles});
-                settings.Save(controller->State());
-            }
-            bool blurEnabled = state.ui.blurEnabled;
-            if (ImGui::Checkbox("UI blur", &blurEnabled)) {
-                controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
-                settings.Save(controller->State());
-            }
-            int windowMaterial = static_cast<int>(state.window.material);
-            if (ImGui::Combo("Window material", &windowMaterial,
-                             "Solid\0Transparent\0System blur\0App Acrylic\0")) {
-                const auto material = static_cast<ParticleSaturn::App::WindowMaterial>(windowMaterial);
-                controller->Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
-                glass->ApplyMaterial(material, state.window.fullscreen);
-                settings.Save(controller->State());
-            }
-            float blurStrength = state.ui.blurStrength;
-            if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
-                controller->Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
-                settings.Save(controller->State());
-            }
-            int graphicsApi = static_cast<int>(state.render.graphicsApi);
-            if (ImGui::Combo("Graphics API", &graphicsApi, "OpenGL 4.1\0Vulkan\0Metal\0")) {
-                const auto effect = controller->Dispatch(ParticleSaturn::App::SetGraphicsApi{
-                    static_cast<ParticleSaturn::App::GraphicsApi>(graphicsApi)});
-                settings.Save(controller->State());
-                if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
-                    [NSApp terminate:nil];
-                    return;
-                }
-            }
-            if (controller->State().render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
-                int vulkanDriver = static_cast<int>(state.render.vulkanDriver);
-                if (ImGui::Combo("Vulkan driver", &vulkanDriver, "MoltenVK\0KosmicKrisp\0")) {
-                    const auto effect = controller->Dispatch(ParticleSaturn::App::SetVulkanDriver{
-                        static_cast<ParticleSaturn::App::VulkanDriver>(vulkanDriver)});
-                    settings.Save(controller->State());
-                    if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
-                        [NSApp terminate:nil];
-                        return;
-                    }
-                }
-            }
-            bool lodLocked = state.lod.locked;
-            if (ImGui::Checkbox("Lock dynamic LOD", &lodLocked)) {
-                controller->Dispatch(ParticleSaturn::App::SetLodLocked{lodLocked});
-                settings.Save(controller->State());
-            }
-            if (ImGui::Button(state.scene.paused ? "Resume" : "Pause")) {
-                controller->Dispatch(ParticleSaturn::App::TogglePause{});
-                settings.Save(controller->State());
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Fullscreen")) {
-                toggleFullscreen();
-            }
-                ImGui::End();
-            }
+            MD3::BeginFrame(deltaTime);
+            MD3::SetDpiScale(1.0f);
+            MD3::SetScreenSize(static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height));
+            MD3::SetBlurTexture(state.ui.blurEnabled ? targets->BloomStrongTexture() : 0, state.ui.blurEnabled);
+            MD3::SetBlurTexture2(state.ui.blurEnabled ? targets->BloomWeakTexture() : 0);
+            ParticleSaturn::Platform::MacOS::RenderMd3Panel(*controller, "OpenGL 4.1", fpsMeter->Value(), true, {
+                [&] { if (!captureBaseline) settingsPtr->Save(controller->State()); },
+                [&] { toggleFullscreen(); },
+                [&] {
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+                    if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
+                    cameraSelector->Show();
+#endif
+                },
+                [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
+                [&](ParticleSaturn::App::WindowMaterial material) { glass->ApplyMaterial(material, controller->State().window.fullscreen); },
+                [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
+                    const float left = position.x / static_cast<float>(logicalSize.width);
+                    const float top = position.y / static_cast<float>(logicalSize.height);
+                    const float right = (position.x + panelSize.x) / static_cast<float>(logicalSize.width);
+                    const float bottom = (position.y + panelSize.y) / static_cast<float>(logicalSize.height);
+                    MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(targets->BloomStrongTexture())), position,
+                                         ImVec2(position.x + panelSize.x, position.y + panelSize.y),
+                                         ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
+                                         12.0f * backingScale);
+                }});
+            MD3::EndFrame();
             ImGui::Render();
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, width, height);
@@ -524,6 +538,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         surface->MakeCurrent();
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplOSX_Shutdown();
+        MD3::Shutdown();
         ImGui::DestroyContext();
         if (!captureBaseline) settings.Save(controller->State());
         [NSEvent removeMonitor:eventMonitor];
@@ -533,6 +548,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         [[NSNotificationCenter defaultCenter] removeObserver:resizeObserver];
         [[NSNotificationCenter defaultCenter] removeObserver:backingScaleObserver];
         [[NSNotificationCenter defaultCenter] removeObserver:closeObserver];
+        [menuTarget release];
         glass->SetEnabled(false);
         glass.reset();
         [view release];

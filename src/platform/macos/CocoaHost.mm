@@ -10,6 +10,11 @@
 @interface ParticleSaturnCocoaHostDelegate : NSObject<NSWindowDelegate> {
 @public ParticleSaturn::Platform::MacOS::CocoaHost* owner;
 }
+- (void)toggleDebugWindow:(id)sender;
+- (void)toggleFullscreen:(id)sender;
+- (void)toggleBlur:(id)sender;
+- (void)togglePause:(id)sender;
+- (void)showCameraSelector:(id)sender;
 @end
 
 @implementation ParticleSaturnCocoaHostDelegate
@@ -25,9 +30,42 @@
     (void)notification;
     if (owner != nullptr) owner->SetFullscreenActive(false);
 }
+- (void)toggleDebugWindow:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow); }
+- (void)toggleFullscreen:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen); }
+- (void)toggleBlur:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur); }
+- (void)togglePause:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::TogglePause); }
+- (void)showCameraSelector:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector); }
 @end
 
 namespace ParticleSaturn::Platform::MacOS {
+
+static void AddMenuAction(NSMenu* menu, NSString* title, SEL action, id target, NSString* keyEquivalent = @"") {
+    auto* item = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:keyEquivalent];
+    [item setTarget:target];
+    [menu addItem:item];
+    [item release];
+}
+
+static void InstallApplicationMenu(ParticleSaturnCocoaHostDelegate* target) {
+    auto* mainMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
+    auto* appItem = [[NSMenuItem alloc] initWithTitle:@"Particle Saturn" action:nil keyEquivalent:@""];
+    auto* appMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
+    AddMenuAction(appMenu, @"Quit Particle Saturn", @selector(terminate:), NSApp, @"q");
+    [appItem setSubmenu:appMenu]; [appMenu release]; [mainMenu addItem:appItem]; [appItem release];
+    auto* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
+    auto* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    AddMenuAction(viewMenu, @"Show or Hide Control Panel", @selector(toggleDebugWindow:), target);
+    AddMenuAction(viewMenu, @"Enter or Exit Full Screen", @selector(toggleFullscreen:), target);
+    AddMenuAction(viewMenu, @"Toggle UI Blur", @selector(toggleBlur:), target);
+    [viewItem setSubmenu:viewMenu]; [viewMenu release]; [mainMenu addItem:viewItem]; [viewItem release];
+    auto* controlsItem = [[NSMenuItem alloc] initWithTitle:@"Controls" action:nil keyEquivalent:@""];
+    auto* controlsMenu = [[NSMenu alloc] initWithTitle:@"Controls"];
+    AddMenuAction(controlsMenu, @"Pause or Resume", @selector(togglePause:), target);
+    AddMenuAction(controlsMenu, @"Select Camera...", @selector(showCameraSelector:), target);
+    [controlsItem setSubmenu:controlsMenu]; [controlsMenu release]; [mainMenu addItem:controlsItem]; [controlsItem release];
+    [NSApp setMainMenu:mainMenu];
+    [mainMenu release];
+}
 
 CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* title) {
     [NSApplication sharedApplication];
@@ -45,6 +83,7 @@ CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* titl
     auto* delegate = [[ParticleSaturnCocoaHostDelegate alloc] init];
     delegate->owner = this;
     [window setDelegate:delegate];
+    InstallApplicationMenu(delegate);
 
     auto* view = [[NSView alloc] initWithFrame:frame];
     [view setWantsLayer:YES];
@@ -116,6 +155,10 @@ void CocoaHost::Run(const std::function<void()>& frameCallback) {
 
 void CocoaHost::SetActionCallback(std::function<void(HostAction)> callback) {
     actionCallback_ = std::move(callback);
+}
+
+void CocoaHost::InvokeAction(HostAction action) {
+    if (actionCallback_) actionCallback_(action);
 }
 
 void CocoaHost::SetWindowPosition(std::int32_t x, std::int32_t y) {

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <sys/wait.h>
 
@@ -31,7 +32,10 @@ int main(int argc, char* argv[]) {
     assert(argc == 2 || argc == 3);
     if (argc == 2) {
         assert(RunChild(argv[0], argv[1], "molten") == 0);
-        assert(RunChild(argv[0], argv[1], "kosmic") == 0);
+        const auto kosmicIcd = std::filesystem::path{argv[1]} / "Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json";
+        if (std::filesystem::is_regular_file(kosmicIcd)) {
+            assert(RunChild(argv[0], argv[1], "kosmic") == 0);
+        }
         return 0;
     }
 

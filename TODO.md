@@ -275,7 +275,7 @@ src/
 
 ### 6.3 粒子模拟策略
 
-决策（确认于 2026-07-16）：**变换反馈为正式路径，解析式运动为可选轻量路径**。
+决策（确认于 2026-07-16）：**变换反馈为默认路径，解析式运动必须作为第二策略完整实现**。
 
 | 后端 | 粒子模拟实现 |
 |------|-------------|
@@ -283,11 +283,11 @@ src/
 | Vulkan / MoltenVK / KosmicKrisp | 计算着色器 |
 | Metal | Metal 计算管线 |
 | OpenGL 4.1（正式） | 变换反馈（Transform Feedback） |
-| OpenGL 4.1（实验/可选） | 解析式运动 |
+| OpenGL 4.1（第二策略） | 解析式运动 |
 
 **变换反馈（正式）**：用顶点着色器更新粒子，输出到交替缓冲区。保留逐帧 GPU 模拟语义，兼容 OpenGL 4.1，每帧多一次完整粒子缓冲区读写。使用三个粒子缓冲，与现代后端保持同样的读取/写入/渲染轮转。变换反馈是 OpenGL 4.1 后端的默认实现，未来加入粒子间碰撞或重力场扰动等非恒定运动时仍可继续承载。
 
-**解析式运动（实验/可选）**：保留初始位置和速度，在顶点着色器中根据累计时间直接计算当前位置。最终运动轨迹一致，省去模拟通道和三缓冲，内存带宽更低。手势缩放影响累积为模拟时间，暂停/恢复/速度变化保持连续。由用户在下拉菜单中切换，不作为默认路径。代码上 `ParticleSimulationPass` 对 OpenGL 4.1 后端同时提供两种实现的注册入口，不与 `supportsCompute` 能力标记耦合。
+**解析式运动（第二策略）**：保留初始位置和速度，在顶点着色器中根据累计时间直接计算当前位置。最终运动轨迹一致，省去模拟通道和三缓冲，内存带宽更低。手势缩放影响累积为模拟时间，暂停/恢复/速度变化保持连续。由用户在下拉菜单中切换，不作为默认路径。代码上 `ParticleSimulationPass` 对 OpenGL 4.1 后端同时提供两种实现的注册入口，不与 `supportsCompute` 能力标记耦合。缺少此路径 OpenGL 4.1 后端不可标记完成。
 
 ### 6.4 资源管理
 
@@ -427,7 +427,7 @@ Metal 着色器必须保持现有常量布局、随机算法、粒子颜色和�
 
 | 现有能力（4.3+） | OpenGL 4.1 替代 |
 |------------------|-----------------|
-| 计算着色器 | 变换反馈（正式）或解析式运动（实验） |
+| 计算着色器 | 变换反馈（默认）或解析式运动 |
 | SSBO | 变换反馈输出缓冲 / VBO |
 | 内存屏障 | `glFlush()`、变换反馈结束同步 |
 | 持久映射缓冲 | 普通缓冲路径（项目已有） |
@@ -437,9 +437,9 @@ Metal 着色器必须保持现有常量布局、随机算法、粒子颜色和�
 
 ### 9.3 完整实现清单
 
-变换反馈粒子更新（正式路径）、解析式运动（可选轻量路径，由用户切换）、间接绘制、HDR 离屏缓冲、Bloom、Kawase 模糊、色调映射、透明窗口、ImGui。
+变换反馈粒子更新（默认路径）、解析式运动（第二策略，由用户切换）、间接绘制、HDR 离屏缓冲、Bloom、Kawase 模糊、色调映射、透明窗口、ImGui。
 
-解析式路径需有独立策略实现、界面选择项、保存项和暂停/恢复/手势缩放连续性测试。变换反馈路径存在时不能据此勾选解析式路径。
+解析式路径须有独立策略实现、界面选择项、保存项和暂停/恢复/手势缩放连续性测试。缺少此路径 OpenGL 4.1 后端不可标记完成。
 
 ### 9.4 废弃说明
 
@@ -640,15 +640,15 @@ macOS 使用信号处理（`SIGSEGV`/`SIGBUS`/`SIGABRT`）、`NSException` 捕�
 
 ### 13.2 指令集范围
 
-| 平台 | 基础路径 | 可增加的高性能路径 | 主要用途 |
-|------|----------|---------------------|----------|
-| Windows x64 | 标量、SSE2 | SSE4.1、AVX2+FMA、AVX-512F/BW/VL | 图像转换、归一化、浮点批处理 |
-| Windows 新型 x64 | AVX2 | AVX-512 VNNI、BF16、FP16，条件合适时 AMX | 量化推理、矩阵运算 |
-| Apple Silicon | ARM64 NEON | FP16、DotProd、I8MM、BF16 | 图像预处理及量化模型 |
-| 未来 ARM 设备 | NEON | SVE、SVE2、SME | 可变宽向量和矩阵运算 |
-| Windows ARM64 | NEON | 设备公开的 ARM 扩展 | 可复用 macOS 大部分内核 |
+项目 SIMD 热路径（像素加载 → 颜色转换 → 归一化）瓶颈在访存带宽不在 ALU，且手势推理帧（192×192 ~ 256×256）规模较小，引入稀有指令集的收益极低。
 
-Apple Silicon NEON 属于 ARM64 基础能力，作为 macOS 最低实现。当前模型保持 FP32 时，强制使用 I8MM 或 BF16 不会自动产生性能收益。SVE2/SME 预留接口，不假定公开支持；利用 Apple 内部矩阵单元应通过 Accelerate/BNNS/Core ML。
+| 平台 | 基础路径 | 高性能路径 | 主要用途 |
+|------|----------|-----------|----------|
+| Windows x64 | 标量、SSE2 | SSE4.1、AVX2+FMA | 图像转换、归一化、浮点批处理 |
+| Apple Silicon | ARM64 NEON | Accelerate/vImage（优于手写） | 图像预处理及归一化 |
+| 其余平台 | 标量 | — | 回退 |
+
+不在上述表格中的指令集（AVX-512、SVE/SVE2/SME、AMX、DotProd/I8MM 手写内核）项目不实现。TensorFlow Lite 内部是否使用这些指令由 XNNPACK 自行选择，与项目手写 SIMD 代码无关。
 
 ### 13.3 能力模型
 
@@ -657,27 +657,25 @@ Apple Silicon NEON 属于 ARM64 基础能力，作为 macOS 最低实现。当�
 ```
 CpuFeatureSet
 ├── 架构：X86_64 / ARM64
-├── 浮点：FMA / FP16 / BF16
-├── 向量：SSE2 / SSE4.1 / AVX2 / AVX512 / NEON / SVE2
-├── 整数矩阵：VNNI / DotProd / I8MM / AMX
-└── 操作系统状态：XMM、YMM、ZMM、Tile、SME 是否允许使用
+├── 向量：SSE2 / SSE4.1 / AVX2 / NEON
+└── 操作系统状态：XMM、YMM 是否允许使用
 ```
 
-界面显示执行档位：自动、标量、SSE2、AVX2+FMA、AVX-512、NEON、NEON+FP16、NEON+DotProd、NEON+I8MM、系统加速库。只显示当前设备可执行的档位。用户强制选择无效档位时保留原设置并报告缺少的能力。
+只追踪项目实际用到的指令集。界面显示执行档位：自动、标量、SSE2、AVX2+FMA、NEON、系统加速库。只显示当前设备可执行的档位。用户强制选择无效档位时保留原设置并报告缺少的能力。
 
 **现有枚举值保持不变**（`HandTrackerSIMDMode` 0-3 和 `SIMDMode` 枚举），新值追加到末尾，避免旧数值失效。
 
 ### 13.4 运行时检测
 
-- Windows x64：同时检查 CPUID 和操作系统保存状态。AVX2 要求 CPU 能力 + `OSXSAVE` + XCR0 YMM 状态。AVX-512 还要求 ZMM 和操作掩码状态。AMX 需要操作系统允许保存 Tile 状态。
-- macOS：`sysctlbyname` 查询 `hw.optional.arm.FEAT_*`。查询项不存在按不支持处理。编译期 `__ARM_NEON` 只说明源文件允许生成 NEON 指令，不替代运行设备检测。
+- Windows x64：同时检查 CPUID 和操作系统保存状态。AVX2 要求 CPU 能力 + `OSXSAVE` + XCR0 YMM 状态。
+- macOS：`sysctlbyname` 查询 `hw.optional.arm.FEAT_*`。编译期 `__ARM_NEON` 只说明源文件允许生成 NEON 指令，不替代运行设备检测。
 
 检测结果记录到启动日志：
 
 ```
 CPU: Apple M4
 Architecture: arm64
-Available: NEON, FP16, DotProd, I8MM, BF16
+Available: NEON
 Selected preprocessing: Accelerate/vImage
 Selected normalization: NEON FP32
 Inference provider: TensorFlow Lite XNNPACK
@@ -710,23 +708,23 @@ Inference provider: TensorFlow Lite XNNPACK
 
 ### 13.6 融合数据处理
 
-比增加罕见指令更有价值的优化：
+Apple Silicon 上比手写 NEON 更快的唯二可行方向：**Accelerate/vImage 对比验证**（可能用上 AMX 等未公开单元）和**融合流水线**。
 
 ```
 原流程：颜色转换 → 临时图像 → 缩放 → 临时图像 → 归一化 → 张量转换
 融合流程：读取摄像头像素 → 缩放采样 → 颜色转换 → 归一化 → 直接写入模型张量
 ```
 
+融合流水线消除中间临时缓冲，节省一遍完整帧的内存带宽，收益最大。
+
 ### 13.7 精度分级
 
 | 精度等级 | 允许实现 |
 |----------|----------|
-| FP32 一致路径 | 标量、SSE、AVX2、AVX-512、NEON FP32 |
+| FP32 一致路径 | 标量、SSE2、SSE4.1、AVX2、NEON |
 | 有限舍入差异 | FMA 及不同运算重排 |
-| 低精度路径 | FP16、BF16 |
-| 量化路径 | INT8、DotProd、I8MM、VNNI、AMX |
 
-FP16/BF16/INT8 只有通过完整模型精度验收后才能进入自动模式。FMA 和不同向量归约顺序产生末位舍入差异，用固定容差验证。
+FMA 和不同向量归约顺序产生末位舍入差异，用固定容差验证。低精度路径（FP16/BF16/INT8）由 TensorFlow Lite / XNNPACK 内部调度，项目不手写对应 SIMD 内核。
 
 ### 13.8 构建隔离
 
@@ -735,21 +733,18 @@ FP16/BF16/INT8 只有通过完整模型精度验收后才能进入自动模式�
 ```
 normalize_scalar.cpp
 normalize_sse2.cpp
+normalize_sse4_1.cpp
 normalize_avx2.cpp
-normalize_avx512.cpp
 normalize_neon.cpp
-normalize_neon_fp16.cpp
-normalize_arm_dotprod.cpp
-normalize_arm_i8mm.cpp
 ```
 
-禁止对整个目标使用 `-march=native`。每个高指令文件单独设置编译参数，通过函数指针调用。高指令模块关闭跨模块内联，防止 AVX-512/I8MM 指令带入检测器或基础路径。
+禁止对整个目标使用 `-march=native`。每个高指令文件单独设置编译参数，通过函数指针调用。高指令模块关闭跨模块内联，防止高指令带入检测器或基础路径。
 
 运行时流程：启动检测 → 选择内核 → 保存函数表 → 每帧直接调用。
 
 ### 13.9 系统库与自研内核边界
 
-摄像头缩放、颜色转换、图像旋转优先比较 Accelerate/vImage 与自研 NEON。TensorFlow Lite 推理交给 XNNPACK。项目主要自行优化数据预处理、张量布局转换、关键点后处理。AVX-512/SVE2/SME/AMX 纳入框架能力，但只在性能分析确认值得后再增加代码。
+摄像头缩放、颜色转换、图像旋转优先比较 Accelerate/vImage 与自研 NEON。TensorFlow Lite 推理交给 XNNPACK。项目主要自行优化数据预处理、张量布局转换、关键点后处理。
 
 ---
 
@@ -934,11 +929,11 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
 - [x] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
 - [x] 三帧并行调度、共享命令队列和延迟资源释放
-- [ ] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
+- [ ] 管线缓存（`MTLBinaryArchive`）图形管线接入使 Metal/OpenGL 画面基准超限，已停用；须定位根因并修复后重新接入，不能以性能缓存牺牲画面一致性
 - [x] MSL 着色器编写 + `metallib` 编译
 - [x] Metal 离屏纹理缩放重建释放旧资源
 - [ ] 以共享 GPU API 和渲染图运行 Metal 帧路径
-- [ ] 支持设备启用 Metal 网格着色器对等路径并验证顶点拉取回退
+- [ ] Metal 后端须实现网格着色器对等路径（运行时能力检测，支持设备启用，不支持设备走顶点拉取回退），且须通过画面基准测试验证两条路径输出一致
 - [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
 - [ ] Metal 成为 macOS 参考路径
 
@@ -1004,7 +999,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 原生设备选择窗口（预览、记住选择、主动重选）
 - [ ] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
 - [x] NEON 归一化实现
-- [ ] SIMD 调度系统重构（能力检测、内核注册、自动选择）
+- [ ] SIMD 调度系统须完整实现（CpuFeatureDetector + KernelRegistry + KernelDispatcher），覆盖 ARM NEON 和 x86 SSE2/SSSE3/SSE4.1/AVX2 两套指令集体系，并为 AVX-512/FMA/DotProd/I8MM 预留空桩；各指令集变体在独立编译单元实现，运行时检测并选择，标量路径作为所有平台的通用回退
 - [x] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
 - [x] TensorFlow Lite XNNPACK ARM64 内核启用（实际模型委托推理测试）
 - [x] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
