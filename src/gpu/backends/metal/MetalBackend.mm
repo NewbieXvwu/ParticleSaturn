@@ -2,6 +2,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include "MetalBackend.h"
+#include "render/RenderGraph.h"
 
 #include <algorithm>
 #include <array>
@@ -769,44 +770,78 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     (void)backingScale;
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
     if (commands == nil) return false;
-    if (!state.scene.paused &&
-        !particles.EncodeSimulation(commands, deltaTime, state.scene.zoom, handTracked, state.render.particleCount)) return false;
-    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture = (id<MTLTexture>)targets.SceneHdr();
-    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
-    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-    particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
-    [encoder endEncoding];
     MetalBloom bloom;
-    if (!bloom.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
-                      width, height, state.render.bloomBlurStrength)) return false;
     MetalToneMapper toneMapper;
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
     id<MTLTexture> drawableTexture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
-    if (!toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), drawableTexture,
-                           width, height, bloomStrength, state.window.material == App::WindowMaterial::SystemBlur)) return false;
-    if (state.ui.blurEnabled) {
+    MetalSevenSegmentFps fps;
+    Render::RenderGraph graph;
+    const auto scene = graph.AddResource({"scene", {width, height, 1}});
+    const auto bloomTexture = graph.AddResource({"bloom", {std::max(1U, width / 6U), std::max(1U, height / 6U), 1}});
+    const auto drawable = graph.AddResource({"drawable", {width, height, 1}});
+    const auto uiScene = graph.AddResource({"ui-scene", {width, height, 1}});
+    const auto simulation = graph.AddPass("particle-simulation", [&] {
+        return state.scene.paused || particles.EncodeSimulation(commands, deltaTime, state.scene.zoom, handTracked, state.render.particleCount);
+    });
+    const auto scenePass = graph.AddPass("scene-hdr", [&] {
+        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture = (id<MTLTexture>)targets.SceneHdr();
+        pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
+        id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+        particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
+        [encoder endEncoding];
+        return true;
+    });
+    const auto bloomPass = graph.AddPass("bloom", [&] {
+        return bloom.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
+                            width, height, state.render.bloomBlurStrength);
+    });
+    const auto toneMapPass = graph.AddPass("tone-map", [&] {
+        return toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), drawableTexture,
+                                 width, height, bloomStrength, state.window.material == App::WindowMaterial::SystemBlur);
+    });
+    const auto acrylicPass = graph.AddPass("ui-acrylic", [&] {
+        if (!state.ui.blurEnabled) return true;
         if (!toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
                                width, height, bloomStrength)) return false;
         MetalAcrylic acrylic;
-        if (!acrylic.Encode(device, commands, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(),
-                            targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
-                            width, height, state.ui.blurStrength)) return false;
-    }
-    MetalSevenSegmentFps fps;
-    if (!fps.Encode(device, commands, libraryPath, drawableTexture, width, height, framesPerSecond)) return false;
-    if (uiRenderer) {
-        pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        return acrylic.Encode(device, commands, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(),
+                              targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
+                              width, height, state.ui.blurStrength);
+    });
+    const auto fpsPass = graph.AddPass("seven-segment", [&] {
+        return fps.Encode(device, commands, libraryPath, drawableTexture, width, height, framesPerSecond);
+    });
+    const auto uiPass = graph.AddPass("imgui", [&] {
+        if (!uiRenderer) return true;
+        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = drawableTexture;
         pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-        encoder = [commands renderCommandEncoderWithDescriptor:pass];
+        id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
         uiRenderer(commands, encoder, pass);
         [encoder endEncoding];
-    }
-    if (!surface.Present(commands)) return false;
+        return true;
+    });
+    const auto presentPass = graph.AddPass("present", [&] { return surface.Present(commands); });
+    graph.Write(simulation, scene, ResourceUsage::ShaderWrite);
+    graph.Write(scenePass, scene, ResourceUsage::RenderTarget);
+    graph.Read(bloomPass, scene, ResourceUsage::ShaderRead);
+    graph.Write(bloomPass, bloomTexture, ResourceUsage::ShaderWrite);
+    graph.Read(toneMapPass, scene, ResourceUsage::ShaderRead);
+    graph.Read(toneMapPass, bloomTexture, ResourceUsage::ShaderRead);
+    graph.Write(toneMapPass, drawable, ResourceUsage::RenderTarget);
+    graph.Read(acrylicPass, scene, ResourceUsage::ShaderRead);
+    graph.Read(acrylicPass, bloomTexture, ResourceUsage::ShaderRead);
+    graph.Write(acrylicPass, uiScene, ResourceUsage::RenderTarget);
+    graph.Read(fpsPass, drawable, ResourceUsage::RenderTarget);
+    graph.Write(fpsPass, drawable, ResourceUsage::RenderTarget);
+    graph.Read(uiPass, drawable, ResourceUsage::RenderTarget);
+    graph.Write(uiPass, drawable, ResourceUsage::RenderTarget);
+    graph.Read(presentPass, drawable, ResourceUsage::Present);
+    if (!graph.Execute()) return false;
     [commands commit];
     scheduler_.Submit(commands);
     if (!sceneCapture) return true;
