@@ -1048,6 +1048,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：新增原生窗口交换链测试，MoltenVK 与 KosmicKrisp 均实际创建 `CocoaHost` 视图、交换链、清除并呈现一帧，再执行不同尺寸重建并再次呈现；生产通道、ImGui 和两种 ICD 的可见画面验收仍未完成。
 
+进展补充（2026-07-17）：统一启动器选择 Vulkan 后现进入 `RunVulkanApplication`，读取持久化或测试覆盖的驱动设置，在任何 Vulkan 调用前配置唯一 ICD，创建 `CocoaHost` 和 Diligent 交换链，并在主循环处理物理像素缩放、窗口几何、垂直同步、全屏、Esc 退出和清除呈现。MoltenVK 主应用冒烟测试连续呈现三帧后正常退出，KosmicKrisp 构建配置存在时注册同等测试；全部 CTest 共 18 项通过。共享渲染通道和 ImGui 尚未迁入 Vulkan，因此可见内容仍是清除帧。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
@@ -1057,7 +1059,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 驱动切换 + 重启
 - [x] 日志记录 ICD 信息
 - [ ] 创建 macOS Vulkan 表面和交换链，接入呈现、窗口缩放、全部渲染通道与 ImGui
-- [ ] 主应用按保存的图形接口和驱动启动 Vulkan/MoltenVK 或 Vulkan/KosmicKrisp 路径
+- [x] 主应用按保存的图形接口和驱动启动 Vulkan/MoltenVK 或 Vulkan/KosmicKrisp 路径
 - [ ] MoltenVK、KosmicKrisp 分别完成可见画面、交互、设备丢失和重启后的运行验证
 
 ### 阶段 10：四路径一致性与性能回归

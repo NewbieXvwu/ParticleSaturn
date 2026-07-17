@@ -8,6 +8,7 @@ add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     LauncherMain.mm
     Main.mm
     OpenGL41Main.mm
+    VulkanMain.mm
     MacOSMd3Panel.cpp
     "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Theme.cpp"
     "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Context.cpp"

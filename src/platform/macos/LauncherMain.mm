@@ -34,8 +34,7 @@ int main() {
         case ParticleSaturn::App::GraphicsApi::OpenGL41:
             return ParticleSaturn::Platform::MacOS::RunOpenGL41Application();
         case ParticleSaturn::App::GraphicsApi::Vulkan:
-            std::cerr << "Vulkan presentation is not implemented yet\n";
-            return 2;
+            return ParticleSaturn::Platform::MacOS::RunVulkanApplication();
         }
     }
     return 2;

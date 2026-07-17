@@ -6,6 +6,10 @@ target_include_directories(ParticleSaturnDiligentVulkanAdapter PRIVATE
 target_link_libraries(ParticleSaturnDiligentVulkanAdapter
     PUBLIC ParticleSaturnVulkanRuntime Diligent-GraphicsEngineVk-static)
 
+if(TARGET ParticleSaturn.macOS)
+    target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnDiligentVulkanAdapter)
+endif()
+
 if(BUILD_TESTING)
     add_executable(ParticleSaturnDiligentVulkanAdapterTests
         "${CMAKE_SOURCE_DIR}/tests/DiligentVulkanAdapterTests.cpp")
@@ -30,6 +34,22 @@ if(BUILD_TESTING)
                 PROPERTIES TIMEOUT 30)
         else()
             set_tests_properties(ParticleSaturnDiligentVulkanMoltenSurfaceTests PROPERTIES TIMEOUT 30)
+        endif()
+        add_test(NAME ParticleSaturnVulkanApplicationMoltenSmoke
+            COMMAND "${CMAKE_COMMAND}" -E env
+                PARTICLESATURN_GRAPHICS_API=vulkan
+                PARTICLESATURN_VULKAN_DRIVER=molten
+                PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
+                "$<TARGET_FILE:ParticleSaturn.macOS>")
+        set_tests_properties(ParticleSaturnVulkanApplicationMoltenSmoke PROPERTIES TIMEOUT 30)
+        if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+            add_test(NAME ParticleSaturnVulkanApplicationKosmicSmoke
+                COMMAND "${CMAKE_COMMAND}" -E env
+                    PARTICLESATURN_GRAPHICS_API=vulkan
+                    PARTICLESATURN_VULKAN_DRIVER=kosmic
+                    PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
+                    "$<TARGET_FILE:ParticleSaturn.macOS>")
+            set_tests_properties(ParticleSaturnVulkanApplicationKosmicSmoke PROPERTIES TIMEOUT 30)
         endif()
     endif()
 endif()
