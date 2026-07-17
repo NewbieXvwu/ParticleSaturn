@@ -110,6 +110,8 @@ public:
 
     bool Load(MetalDevice& device, const std::string& path);
     bool AddComputeFunction(MetalDevice& device, const std::string& libraryPath, const char* functionName);
+    bool AddRenderFunctions(MetalDevice& device, const std::string& libraryPath, const char* vertexName,
+                            const char* fragmentName);
     bool Save(const std::string& path);
     void* NativeArchive() const noexcept;
 

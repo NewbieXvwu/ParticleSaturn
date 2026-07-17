@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
@@ -92,6 +93,27 @@ bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t wid
     return completed && output.good();
 }
 
+std::string PipelineArchivePath(id<MTLDevice> device, const char* libraryPath) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    const auto mix = [&hash](const std::string& value) {
+        for (const unsigned char character : value) {
+            hash ^= character;
+            hash *= 1099511628211ULL;
+        }
+    };
+    std::error_code error;
+    const std::filesystem::path path{libraryPath};
+    mix(path.string());
+    mix(std::to_string(std::filesystem::file_size(path, error)));
+    error.clear();
+    const auto modifiedAt = std::filesystem::last_write_time(path, error).time_since_epoch().count();
+    mix(std::to_string(static_cast<std::int64_t>(modifiedAt)));
+    mix([[device name] UTF8String]);
+    mix([[[NSProcessInfo processInfo] operatingSystemVersionString] UTF8String]);
+    return (std::filesystem::temp_directory_path() /
+            ("ParticleSaturn-metal-" + std::to_string(hash) + ".metallibarchive")).string();
+}
+
 } // namespace
 
 int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
@@ -115,7 +137,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Gpu::Metal::MetalSurface surface{device, host.NativeMetalLayer()};
         auto size = host.CurrentDrawableSize();
         const auto libraryPath = [[[NSBundle mainBundle] pathForResource:@"ParticleKernels" ofType:@"metallib"] UTF8String];
-        const auto pipelineCachePath = (std::filesystem::temp_directory_path() / "ParticleSaturn-v2.metallibarchive").string();
+        const auto pipelineCachePath = libraryPath == nullptr ? std::string{} :
+            PipelineArchivePath((id<MTLDevice>)device.NativeDevice(), libraryPath);
         ParticleSaturn::Gpu::Metal::MetalPipelineCache pipelineCache;
         if (libraryPath != nullptr && pipelineCache.Load(device, pipelineCachePath)) {
             pipelineCache.AddComputeFunction(device, libraryPath, "InitializeParticles");
@@ -125,6 +148,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             pipelineCache.AddComputeFunction(device, libraryPath, "KawaseBlur");
             pipelineCache.AddComputeFunction(device, libraryPath, "AcrylicComposite");
             pipelineCache.AddComputeFunction(device, libraryPath, "RenderSevenSegmentFps");
+            pipelineCache.AddRenderFunctions(device, libraryPath, "ParticleVertex", "ParticleFragment");
+            pipelineCache.AddRenderFunctions(device, libraryPath, "StarVertex", "StarFragment");
             pipelineCache.Save(pipelineCachePath);
         }
         ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;

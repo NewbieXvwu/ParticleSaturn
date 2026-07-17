@@ -929,7 +929,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
 - [x] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
 - [x] 三帧并行调度、共享命令队列和延迟资源释放
-- [ ] 管线缓存（`MTLBinaryArchive`）图形管线接入使 Metal/OpenGL 画面基准超限，已停用；须定位根因并修复后重新接入，不能以性能缓存牺牲画面一致性
+- [x] 管线缓存（`MTLBinaryArchive`）图形管线接入：归档键现包含 metallib 时间与大小、设备名及系统版本，计算和图形描述符均预热并实际接入创建；首次生成和第二次加载归档的 Metal/OpenGL 画面基准均通过
 - [x] MSL 着色器编写 + `metallib` 编译
 - [x] Metal 离屏纹理缩放重建释放旧资源
 - [ ] 以共享 GPU API 和渲染图运行 Metal 帧路径
