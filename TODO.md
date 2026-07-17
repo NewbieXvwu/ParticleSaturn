@@ -971,7 +971,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：适配器已新增 macOS 原生视图交换链创建、尺寸重建和后备缓冲清除呈现接口，直接使用 Diligent 的 `MacOSNativeWindow` 绑定现有 Cocoa 视图；尚未接入生产渲染通道或统一启动器。
 
-进展补充（2026-07-17）：新增 MoltenVK 原生窗口交换链测试，实际创建 `CocoaHost` 视图、交换链、清除并呈现一帧，再执行同尺寸重建；生产通道、ImGui 和 KosmicKrisp 的可见画面验收仍未完成。
+进展补充（2026-07-17）：新增原生窗口交换链测试，MoltenVK 与 KosmicKrisp 均实际创建 `CocoaHost` 视图、交换链、清除并呈现一帧，再执行同尺寸重建；生产通道、ImGui 和两种 ICD 的可见画面验收仍未完成。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置

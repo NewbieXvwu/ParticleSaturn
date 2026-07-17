@@ -4,10 +4,11 @@
 #include "platform/macos/CocoaHost.h"
 
 #include <cassert>
+#include <cstring>
 #include <string>
 
 int main(int argc, char* argv[]) {
-    assert(argc == 2);
+    assert(argc == 3);
     @autoreleasepool {
         ParticleSaturn::Platform::MacOS::CocoaHost host{160, 90, "Particle Saturn Vulkan Test"};
         host.Show();
@@ -16,7 +17,10 @@ int main(int argc, char* argv[]) {
 
         ParticleSaturn::Gpu::Diligent::DiligentVulkanAdapter adapter;
         std::string error;
-        assert(adapter.Initialize(ParticleSaturn::App::VulkanDriver::MoltenVK, argv[1], error));
+        const auto driver = std::strcmp(argv[2], "kosmic") == 0
+            ? ParticleSaturn::App::VulkanDriver::KosmicKrisp
+            : ParticleSaturn::App::VulkanDriver::MoltenVK;
+        assert(adapter.Initialize(driver, argv[1], error));
         assert(adapter.CreateSwapChain(host.NativeView(), drawable.width, drawable.height, error));
         const float color[] = {0.0f, 0.0f, 0.0f, 1.0f};
         assert(adapter.PresentClearFrame(color, 1));
