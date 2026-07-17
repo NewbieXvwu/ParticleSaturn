@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec4 inPosition;
 layout(location = 1) in uint inColor;
+layout(location = 2) in float inSpeed;
 layout(location = 3) in uint inIsRing;
 
 uniform float uTime;
@@ -12,6 +13,7 @@ uniform float uAspect;
 uniform float uScreenHeight;
 uniform float uPixelRatio;
 uniform float uDensityCompensation;
+uniform float uAnalyticPhase;
 
 out vec4 vColor;
 out float vDistance;
@@ -52,7 +54,12 @@ void main() {
         vec2(-1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0),
         vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(1.0, -1.0));
     vec2 corner = corners[gl_VertexID % 6];
-    vec3 position = rotateSaturn(inPosition.xyz * uScale);
+    float orbitAngle = (inIsRing == 0u ? 0.03 : 0.2 * inSpeed) * uAnalyticPhase;
+    float orbitC = cos(orbitAngle);
+    float orbitS = sin(orbitAngle);
+    vec3 orbitalPosition = vec3(inPosition.x * orbitC - inPosition.z * orbitS, inPosition.y,
+                                inPosition.x * orbitS + inPosition.z * orbitC);
+    vec3 position = rotateSaturn(orbitalPosition * uScale);
     float distance = 100.0 - position.z;
     vec3 viewPosition = vec3(position.xy, position.z - 100.0);
     float chaos = smoothstep(25.0, 0.1, distance);

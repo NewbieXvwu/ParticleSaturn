@@ -180,6 +180,8 @@ void ConfigureVertexArray(GLuint vao, GLuint buffer) {
 
 OpenGLParticleSystem::~OpenGLParticleSystem() {
     if (transformFeedback_ != 0) glDeleteTransformFeedbacks(1, &transformFeedback_);
+    if (analyticVertexArray_ != 0) glDeleteVertexArrays(1, &analyticVertexArray_);
+    if (analyticBuffer_ != 0) glDeleteBuffers(1, &analyticBuffer_);
     if (indirectBuffer_ != 0) glDeleteBuffers(1, &indirectBuffer_);
     glDeleteVertexArrays(3, vertexArrays_);
     glDeleteBuffers(3, buffers_);
@@ -201,6 +203,11 @@ bool OpenGLParticleSystem::Initialize(const char* transformFeedbackVertexShader,
         glBufferData(GL_ARRAY_BUFFER, ParticleCount * ParticleBytes, initialParticles.data(), GL_DYNAMIC_COPY);
         ConfigureVertexArray(vertexArrays_[index], buffers_[index]);
     }
+    glGenBuffers(1, &analyticBuffer_);
+    glGenVertexArrays(1, &analyticVertexArray_);
+    glBindBuffer(GL_ARRAY_BUFFER, analyticBuffer_);
+    glBufferData(GL_ARRAY_BUFFER, ParticleCount * ParticleBytes, initialParticles.data(), GL_STATIC_DRAW);
+    ConfigureVertexArray(analyticVertexArray_, analyticBuffer_);
     glGenTransformFeedbacks(1, &transformFeedback_);
     // Match the Diligent vertex-pulling path: six vertices form one particle
     // quad and the indirect instance count selects the active particles.
@@ -212,6 +219,10 @@ bool OpenGLParticleSystem::Initialize(const char* transformFeedbackVertexShader,
 }
 
 void OpenGLParticleSystem::Simulate(float deltaTime, float handScale, bool handTracked) {
+    if (simulationMode_ == SimulationMode::Analytic) {
+        analyticPhase_ += deltaTime * (handTracked ? handScale : 1.0f);
+        return;
+    }
     glUseProgram(program_);
     glUniform1f(glGetUniformLocation(program_, "uDeltaTime"), deltaTime);
     glUniform1f(glGetUniformLocation(program_, "uHandScale"), handScale);
@@ -230,6 +241,9 @@ void OpenGLParticleSystem::Simulate(float deltaTime, float handScale, bool handT
     readIndex_ = writeIndex_;
     writeIndex_ = previousRender;
 }
+
+void OpenGLParticleSystem::SetSimulationMode(SimulationMode mode) noexcept { simulationMode_ = mode; }
+OpenGLParticleSystem::SimulationMode OpenGLParticleSystem::GetSimulationMode() const noexcept { return simulationMode_; }
 
 bool OpenGLParticleSystem::ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const {
     if (count == 0 || count > ParticleCount || buffers_[renderIndex_] == 0) return false;
@@ -258,7 +272,8 @@ void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, 
     setFloat("uScreenHeight", static_cast<float>(std::max(height, 1U)));
     setFloat("uPixelRatio", pixelRatio);
     setFloat("uDensityCompensation", densityCompensation);
-    glBindVertexArray(vertexArrays_[renderIndex_]);
+    setFloat("uAnalyticPhase", simulationMode_ == SimulationMode::Analytic ? analyticPhase_ : 0.0f);
+    glBindVertexArray(simulationMode_ == SimulationMode::Analytic ? analyticVertexArray_ : vertexArrays_[renderIndex_]);
     for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 1);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
     const DrawArraysIndirectCommand draw{6, std::clamp(particleCount, 1U, ParticleCount), 0, 0};

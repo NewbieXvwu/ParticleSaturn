@@ -984,6 +984,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Metal 实窗已分别以 Solid、Transparent、SystemBlur 与 AppAcrylic 启动并截图验收，四种状态均进入预期的窗口和面板合成路径；测试后恢复 SystemBlur 设置并关闭应用。
 
+进展补充（2026-07-17）：OpenGL 4.1 粒子系统已具备独立初始粒子缓冲与解析式累计相位，解析式顶点变换使用与变换反馈相同的本体角速度、环带速度和手势时间倍率；默认仍为已验收的变换反馈模式，选择项与连续性对照待完成。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
