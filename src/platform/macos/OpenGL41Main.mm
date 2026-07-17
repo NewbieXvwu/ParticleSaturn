@@ -117,6 +117,8 @@ public:
         enabled_ = enabled;
     }
 
+    bool IsEnabled() const noexcept { return enabled_; }
+
 private:
     NSWindow* window_ = nil;
     NSView* openGlView_ = nil;
@@ -182,12 +184,56 @@ int main() {
         if (!ImGui_ImplOSX_Init(view) || !ImGui_ImplOpenGL3_Init("#version 410")) return 1;
 
         auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
+        auto* settingsPtr = &settings;
+        auto toggleFullscreen = [&] {
+            const auto effect = controller->Dispatch(ParticleSaturn::App::SetFullscreen{
+                !controller->State().window.fullscreen});
+            if (!effect.windowChanged) return;
+            if (controller->State().window.fullscreen) glass->SetEnabled(false);
+            [window toggleFullScreen:nil];
+            settingsPtr->Save(controller->State());
+        };
+        id closeObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowWillCloseNotification object:window queue:nil
+            usingBlock:^(NSNotification*) { [NSApp terminate:nil]; }];
+        id fullscreenExitObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil
+            usingBlock:^(NSNotification*) {
+                if (controller->State().window.material == ParticleSaturn::App::WindowMaterial::SystemBlur) {
+                    glass->SetEnabled(true);
+                }
+            }];
+        id eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
+            if ([event isARepeat]) return event;
+            switch ([event keyCode]) {
+            case 99:
+                controller->Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
+                settings.Save(controller->State());
+                return nil;
+            case 103:
+                toggleFullscreen();
+                return nil;
+            case 11:
+                controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller->State().ui.blurEnabled});
+                settings.Save(controller->State());
+                return nil;
+            case 53:
+                [NSApp terminate:nil];
+                return nil;
+            default:
+                return event;
+            }
+        }];
         __block bool baselineCaptured = false;
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
 
-        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer*) {
+        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer* timer) {
+            if (![NSApp isRunning]) {
+                [timer invalidate];
+                return;
+            }
             if (!surface->MakeCurrent()) return;
             const auto now = std::chrono::steady_clock::now();
             const float deltaTime = std::clamp(std::chrono::duration<float>(now - *lastFrame).count(), 0.0f, 0.25f);
@@ -221,7 +267,7 @@ int main() {
                                     state.render.pixelRatio, state.render.densityCompensation,
                                     state.render.particleCount);
             glDisable(GL_BLEND);
-            const bool transparent = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
+            const bool transparent = glass->IsEnabled();
             if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
                 !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
             if (captureBaseline && !baselineCaptured) {
@@ -238,10 +284,11 @@ int main() {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplOSX_NewFrame(view);
             ImGui::NewFrame();
-            ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
-            ImGui::SetNextWindowBgAlpha(0.0f);
-            ImGui::Begin("Particle Saturn");
+            if (state.ui.showDebugWindow) {
+                ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowBgAlpha(0.0f);
+                ImGui::Begin("Particle Saturn");
             const ImVec2 panelPosition = ImGui::GetWindowPos();
             const ImVec2 panelSize = ImGui::GetWindowSize();
             if (state.ui.blurEnabled) {
@@ -281,7 +328,7 @@ int main() {
                 const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
                                                    : ParticleSaturn::App::WindowMaterial::Solid;
                 controller->Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
-                glass->SetEnabled(glassEnabled);
+                glass->SetEnabled(glassEnabled && !state.window.fullscreen);
                 settings.Save(controller->State());
             }
             float blurStrength = state.ui.blurStrength;
@@ -295,12 +342,10 @@ int main() {
             }
             ImGui::SameLine();
             if (ImGui::Button("Fullscreen")) {
-                const bool fullscreen = !state.window.fullscreen;
-                controller->Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
-                [window toggleFullScreen:nil];
-                settings.Save(controller->State());
+                toggleFullscreen();
             }
-            ImGui::End();
+                ImGui::End();
+            }
             ImGui::Render();
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, width, height);
@@ -315,6 +360,9 @@ int main() {
         ImGui_ImplOSX_Shutdown();
         ImGui::DestroyContext();
         if (!captureBaseline) settings.Save(controller->State());
+        [NSEvent removeMonitor:eventMonitor];
+        [[NSNotificationCenter defaultCenter] removeObserver:fullscreenExitObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:closeObserver];
         glass->SetEnabled(false);
         glass.reset();
         [view release];

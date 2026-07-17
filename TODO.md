@@ -844,7 +844,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`
 - [ ] 补齐 `LodState`、`InputState`、主题、窗口材质和全部旧设置字段，并建立对应命令
-- [ ] 接入 macOS `NSEvent` 快捷键与窗口事件，验证 F3/F11/B/Esc 行为
+- [x] 接入 macOS `NSEvent` 快捷键与窗口事件，验证 F3/F11/B/Esc 行为
 - [ ] 将动态 LOD 接入帧时间决策，验证锁定、粒子数和像素比例联动
 - [ ] 界面改为生成命令，不再直接修改 GPU 资源
 - [ ] 旧渲染器保持运行，验证状态拆分无回归
@@ -936,7 +936,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
-进展（2026-07-17）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，测试按旧 Diligent GPU 公式核对前 64 个粒子的完整字段；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。粒子绘制已由点精灵改为旧 Diligent 同构的六顶点实例化矩形，间接参数按应用状态更新为 6 个顶点和最多 120 万实例并有缓冲读回验证。HDR 场景及 Bloom 链使用与 Metal 一致的 `RGBA16F`，在 1/6 双缓冲执行默认强度 `2.0` 的七轮连续偏移 Kawase，并生成 1/12 辅助模糊。最终合成对全分辨率场景逐像素读取，对 Bloom 使用与 Metal 相同的双线性采样，再按旧 Diligent 的高光压缩和 Bloom 强度 `0.5` 输出到 `RGBA8`。Retina 倍率与渲染 `pixelRatio` 已解耦，最外环十字状明暗断层经真实窗口截图和用户验收已消除。官方 macOS/OpenGL ImGui 后端已接入应用状态，粒子数、Bloom、界面模糊、暂停和全屏控件可生成应用命令；界面模糊从已色调映射的完整场景独立生成 1/6 强层与 1/12 弱层，再按 Metal 同参数执行 Acrylic 合成，读回测试确认主场景纹理保持不变。七段 FPS 按旧 Diligent 的 20×36 单像素线段和右上角坐标绘制，并用右上角裁剪矩形限制片元负载。系统玻璃改由非图层后备的原生 OpenGL 表面输出预乘透明度，`NSVisualEffectView` 可见且不会模糊主场景；窗口恢复时按当前显示器可见内容区限制尺寸，并从 Cocoa 实际像素边界重建离屏纹理。`PARTICLESATURN_CAPTURE_BASELINE` 固定使用 1512×827、默认场景和暂停状态，不再读取用户持久化状态，Metal/OpenGL 画面差异测试维持原阈值通过。
+进展（2026-07-17）：已增加独立的 `OpenGL41Surface`，以 `NSOpenGLProfileVersion4_1Core` 创建并呈现上下文。粒子系统现为三个真实的 120 万粒子缓冲填入旧 Diligent 的固定种子初始分布，测试按旧 Diligent GPU 公式核对前 64 个粒子的完整字段；变换反馈从读取缓冲写入第三缓冲，结束后以 `glFlush()` 保证 OpenGL 4.1 同一上下文命令序，并按 `render/read/write` 三索引轮转。反馈输出现包含 32 字节结构的填充字段，避免 28 字节输出被 32 字节顶点步长读取时发生颜色、大小和类型错位。粒子绘制已由点精灵改为旧 Diligent 同构的六顶点实例化矩形，间接参数按应用状态更新为 6 个顶点和最多 120 万实例并有缓冲读回验证。HDR 场景及 Bloom 链使用与 Metal 一致的 `RGBA16F`，在 1/6 双缓冲执行默认强度 `2.0` 的七轮连续偏移 Kawase，并生成 1/12 辅助模糊。最终合成对全分辨率场景逐像素读取，对 Bloom 使用与 Metal 相同的双线性采样，再按旧 Diligent 的高光压缩和 Bloom 强度 `0.5` 输出到 `RGBA8`。Retina 倍率与渲染 `pixelRatio` 已解耦，最外环十字状明暗断层经真实窗口截图和用户验收已消除。官方 macOS/OpenGL ImGui 后端已接入应用状态，粒子数、Bloom、界面模糊、暂停和全屏控件可生成应用命令；界面模糊从已色调映射的完整场景独立生成 1/6 强层与 1/12 弱层，再按 Metal 同参数执行 Acrylic 合成，读回测试确认主场景纹理保持不变。七段 FPS 按旧 Diligent 的 20×36 单像素线段和右上角坐标绘制，并用右上角裁剪矩形限制片元负载。系统玻璃改由非图层后备的原生 OpenGL 表面输出预乘透明度，`NSVisualEffectView` 可见且不会模糊主场景；窗口恢复时按当前显示器可见内容区限制尺寸，并从 Cocoa 实际像素边界重建离屏纹理。F3、F11、B、Esc 与关闭窗口均经 `NSEvent`/窗口通知接入 `AppController`；全屏前停用系统玻璃并采用不透明黑色场景底，原生退出全屏后恢复玻璃，实际窗口首帧已验证无蓝色背景。`PARTICLESATURN_CAPTURE_BASELINE` 固定使用 1512×827、默认场景和暂停状态，不再读取用户持久化状态，Metal/OpenGL 画面差异测试维持原阈值通过。
 
 - [x] `NSOpenGLContext` + 4.1 Core Profile
 - [x] 变换反馈粒子更新（三缓冲轮转，固定种子读回基线）
