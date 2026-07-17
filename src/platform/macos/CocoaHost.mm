@@ -72,11 +72,12 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
         visualEffectView_ = nullptr;
     }
     const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic;
-    [window setOpaque:!transparent && material != App::WindowMaterial::SystemBlur];
-    [window setBackgroundColor:transparent || material == App::WindowMaterial::SystemBlur ? NSColor.clearColor : NSColor.blackColor];
+    const bool systemBlur = material == App::WindowMaterial::SystemBlur;
+    [window setOpaque:!transparent && !systemBlur];
+    [window setBackgroundColor:transparent || systemBlur ? NSColor.clearColor : NSColor.blackColor];
     [metalView setWantsLayer:YES];
-    [[metalView layer] setOpaque:!transparent];
-    if (material != App::WindowMaterial::SystemBlur) return;
+    [[metalView layer] setOpaque:!transparent && !systemBlur];
+    if (!systemBlur) return;
     auto* visual = [[NSVisualEffectView alloc] initWithFrame:[[window contentView] bounds]];
     [visual setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [visual setMaterial:NSVisualEffectMaterialHUDWindow];

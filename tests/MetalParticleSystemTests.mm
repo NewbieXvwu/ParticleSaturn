@@ -152,6 +152,19 @@ void VerifyDiligentToneMapping(ParticleSaturn::Gpu::Metal::MetalDevice& device, 
     AssertNear(pixels[0], 0.5f * (2.25f + 2.25f / 3.25f));
     AssertNear(pixels[1], 0.5f * (0.75f + 0.75f / 1.75f));
     AssertNear(pixels[2], 0.5f * (0.35f + 0.35f / 1.35f));
+    const float transparentScene[16] = {
+        0.20f, 0.10f, 0.05f, 1.0f, 0.20f, 0.10f, 0.05f, 1.0f,
+        0.20f, 0.10f, 0.05f, 1.0f, 0.20f, 0.10f, 0.05f, 1.0f,
+    };
+    const float blackBloom[16] = {};
+    [scene replaceRegion:region mipmapLevel:0 withBytes:transparentScene bytesPerRow:2 * 4 * sizeof(float)];
+    [bloom replaceRegion:region mipmapLevel:0 withBytes:blackBloom bytesPerRow:2 * 4 * sizeof(float)];
+    assert(toneMapper.Apply(device, libraryPath, scene, bloom, output, 2, 2, 0.5f, true));
+    [output getBytes:pixels bytesPerRow:2 * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    AssertNear(pixels[0], 0.04f);
+    AssertNear(pixels[1], 0.02f);
+    AssertNear(pixels[2], 0.01f);
+    AssertNear(pixels[3], 0.20f);
     [scene release];
     [bloom release];
     [output release];

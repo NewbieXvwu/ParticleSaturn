@@ -335,7 +335,7 @@ void* MetalRenderTargets::UiBlurWeakPingPong() const noexcept { return uiBlurWea
 void* MetalRenderTargets::UiOverlayWeak() const noexcept { return uiOverlayWeak_; }
 
 bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
-                            std::uint32_t width, std::uint32_t height, float bloomStrength) {
+                            std::uint32_t width, std::uint32_t height, float bloomStrength, bool transparent) {
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
@@ -353,6 +353,8 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:2];
     const float clampedBloomStrength = std::max(0.0f, bloomStrength);
     [encoder setBytes:&clampedBloomStrength length:sizeof(clampedBloomStrength) atIndex:0];
+    const float transparentValue = transparent ? 1.0f : 0.0f;
+    [encoder setBytes:&transparentValue length:sizeof(transparentValue) atIndex:1];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1)
       threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
     [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
@@ -590,7 +592,8 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     MetalToneMapper toneMapper;
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
     if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
-                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength)) return false;
+                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength,
+                          state.window.material == App::WindowMaterial::SystemBlur)) return false;
     if (sceneCapture && !sceneCapture(device.NativeDevice(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) {
         return false;
     }

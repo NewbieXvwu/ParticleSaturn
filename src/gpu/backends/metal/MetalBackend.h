@@ -146,7 +146,7 @@ private:
 class MetalToneMapper {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
-               std::uint32_t width, std::uint32_t height, float bloomStrength);
+               std::uint32_t width, std::uint32_t height, float bloomStrength, bool transparent = false);
 };
 
 class MetalBloom {

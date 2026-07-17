@@ -107,6 +107,8 @@ int main() {
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         if (captureBaseline) controller.MutableState().scene.paused = true;
         bool baselineCaptured = false;
+        auto appliedWindowMaterial = controller.State().window.material;
+        host.SetWindowMaterial(appliedWindowMaterial);
         ParticleSaturn::App::FrameCoordinator coordinator;
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
@@ -133,6 +135,10 @@ int main() {
             lastFrameTime = now;
             const auto frame = coordinator.Advance(controller, deltaTime);
             fpsMeter.AddSample(deltaTime);
+            if (frame.state->window.material != appliedWindowMaterial) {
+                host.SetWindowMaterial(frame.state->window.material);
+                appliedWindowMaterial = frame.state->window.material;
+            }
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
             ParticleSaturn::Services::Camera::Frame cameraFrame;
             if (handTracking.IsLoaded() && camera.LatestFrame(cameraFrame) && !handTracking.Invoke(cameraFrame, handTrackingError)) {
@@ -183,6 +189,12 @@ int main() {
                 bool blurEnabled = state.ui.blurEnabled;
                 if (ImGui::Checkbox("UI blur", &blurEnabled)) {
                     controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
+                }
+                bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
+                if (ImGui::Checkbox("Window glass", &glassEnabled)) {
+                    const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
+                                                       : ParticleSaturn::App::WindowMaterial::Solid;
+                    controller.Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
                 }
                 float blurStrength = state.ui.blurStrength;
                 if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {

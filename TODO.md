@@ -889,7 +889,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
-进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化已改为逐次 PCG 哈希推进、精确 RGBA8 四舍五入打包与完整十六进制调色板，固定种子分布与旧 Diligent GPU 初始化一致；星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑。相机投影、粒子顶点与片元映射和 FPS 右上角布局均已接入实际帧路径。粒子路径包含旧 Diligent 的近距离扰动、环体缩放、像素比例和密度补偿公式。粒子绘制改为实际读取 Metal 间接参数缓冲，每帧按当前粒子数量写入 `vertexCount`、`instanceCount`、`vertexStart` 与 `baseInstance`，测试直接读回并核对四个字段。Bloom 已改为旧 Diligent 的 `1/6` 分辨率亮部提取与七轮 Kawase 乒乓链，最终合成采样该链的结果，不再把 `1/12` 纹理放大到全屏；首轮亮部提取的采样步长已校正为原始场景尺寸。Bloom 半径现独立于界面模糊滑条，默认固定为旧路径值 `2.0`，调节 Acrylic 不会改变星球周边的 Bloom。色调映射已改为旧 Diligent 全屏合成的高光压缩公式，移除了未对齐的 ACES 曲线，并以固定 HDR/Bloom 输入的 Metal 纹理读回测试逐通道验证。Metal 调试面板经 `AppController` 生成粒子数量、Bloom、界面模糊、暂停和全屏命令，渲染器只读取状态快照。界面模糊现严格按旧路径生成已色调映射的全场景纹理，在 `1/6` 强层执行七轮 Kawase，再从强层降采样至 `1/12` 弱层并执行两次小偏移 Kawase，最后分别使用旧 Diligent 的强弱 Acrylic 参数合成；两层输出均有非均匀 HDR 纹理读回验证，且输入场景纹理逐字节不变。ImGui 面板仅按其屏幕坐标采样强层纹理，主场景不参与 Acrylic 合成。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；应用包已在解锁桌面上重启并完成视觉截图验收。旧 MD3/ImGui 命令界面与跨路径画面基准尚未完成，因此 Metal 参考路径验收保持未完成。
+进展（2026-07-16）：已新增 `src/shaders/msl/ParticleKernels.metal`，包含固定种子粒子初始化、三缓冲计算模拟、HDR 色调映射、Bloom、界面 Kawase 模糊、Acrylic 合成和七段 FPS 叠加。粒子初始化已改为逐次 PCG 哈希推进、精确 RGBA8 四舍五入打包与完整十六进制调色板，固定种子分布与旧 Diligent GPU 初始化一致；星空采用相同的 `mt19937(1337)` 球壳数据与闪烁逻辑。相机投影、粒子顶点与片元映射和 FPS 右上角布局均已接入实际帧路径。粒子路径包含旧 Diligent 的近距离扰动、环体缩放、像素比例和密度补偿公式。粒子绘制改为实际读取 Metal 间接参数缓冲，每帧按当前粒子数量写入 `vertexCount`、`instanceCount`、`vertexStart` 与 `baseInstance`，测试直接读回并核对四个字段。Bloom 已改为旧 Diligent 的 `1/6` 分辨率亮部提取与七轮 Kawase 乒乓链，最终合成采样该链的结果，不再把 `1/12` 纹理放大到全屏；首轮亮部提取的采样步长已校正为原始场景尺寸。Bloom 半径现独立于界面模糊滑条，默认固定为旧路径值 `2.0`，调节 Acrylic 不会改变星球周边的 Bloom。色调映射已改为旧 Diligent 全屏合成的高光压缩公式，移除了未对齐的 ACES 曲线，并以固定 HDR/Bloom 输入的 Metal 纹理读回测试逐通道验证。Metal 调试面板经 `AppController` 生成粒子数量、Bloom、界面模糊、暂停、全屏和窗口材质命令，渲染器只读取状态快照。`CocoaHost` 会在下一帧将材质状态应用到 `NSWindow`；系统玻璃将 Metal 图层设为透明，色调映射按旧 Diligent 的预乘 alpha 规则输出，低亮度背景不再遮住 `NSVisualEffectView`。该模式已在实际窗口截图中验证。界面模糊现严格按旧路径生成已色调映射的全场景纹理，在 `1/6` 强层执行七轮 Kawase，再从强层降采样至 `1/12` 弱层并执行两次小偏移 Kawase，最后分别使用旧 Diligent 的强弱 Acrylic 参数合成；两层输出均有非均匀 HDR 纹理读回验证，且输入场景纹理逐字节不变。ImGui 面板仅按其屏幕坐标采样强层纹理，主场景不参与 Acrylic 合成。CMake 会在每次 MSL 变更后同步最新 `metallib` 到应用包资源目录；应用包已在解锁桌面上重启并完成视觉截图验收。旧 MD3/ImGui 命令界面与跨路径画面基准尚未完成，因此 Metal 参考路径验收保持未完成。
 
 - [x] 120 万粒子初始化（Metal 计算管线）
 - [x] 固定种子粒子读回与旧 Diligent 初始化公式一致（前 64 个粒子逐字段核对）
@@ -906,7 +906,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 七段 FPS 旧线段几何与右上角布局读回测试
 - [x] ImGui（官方 Metal 后端）
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
-- [ ] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
+- [x] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
 - [ ] 三帧并行调度、共享命令队列和延迟资源释放
 - [ ] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
 - [x] MSL 着色器编写 + `metallib` 编译
