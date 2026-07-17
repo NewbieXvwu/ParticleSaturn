@@ -338,8 +338,6 @@ int main(int argc, char* argv[]) {
     ParticleSaturn::Gpu::Metal::MetalPipelineCache cache;
     assert(cache.Load(device, cachePath.string()));
     assert(cache.AddComputeFunction(device, argv[1], "InitializeParticles"));
-    assert(cache.AddRenderFunctions(device, argv[1], "ParticleVertex", "ParticleFragment"));
-    assert(cache.AddRenderFunctions(device, argv[1], "StarVertex", "StarFragment"));
     assert(cache.Save(cachePath.string()));
     assert(std::filesystem::is_regular_file(cachePath));
     ParticleSaturn::Gpu::Metal::MetalPipelineCache reloadedCache;

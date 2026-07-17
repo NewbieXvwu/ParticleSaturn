@@ -210,8 +210,6 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             pipelineCache.AddComputeFunction(device, libraryPath, "KawaseBlur");
             pipelineCache.AddComputeFunction(device, libraryPath, "AcrylicComposite");
             pipelineCache.AddComputeFunction(device, libraryPath, "RenderSevenSegmentFps");
-            pipelineCache.AddRenderFunctions(device, libraryPath, "ParticleVertex", "ParticleFragment");
-            pipelineCache.AddRenderFunctions(device, libraryPath, "StarVertex", "StarFragment");
             pipelineCache.Save(pipelineCachePath);
         }
         ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;

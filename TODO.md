@@ -874,6 +874,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：OpenGL 4.1 后端的粒子读回类型已直接使用生成的 C++ ABI，顶点数组以生成结构的 `offsetof` 配置属性；`isRing` 和 `padding` 全程采用无符号整数，变换反馈、渲染顶点着色器和 Metal/OpenGL 跨后端读回均严格比较其位值。GLSL 4.1 的顶点属性适配器受运行时源码加载限制，不能直接包含生成结构，ABI 测试已锁定其对应整数接口。
 
+进展补充（2026-07-17）：计算管线的 `MTLBinaryArchive` 已能保存和重新加载；图形管线归档在本机使 Metal/OpenGL 画面基准超限，已停用其实际接入并保留该项待解决，不能以性能缓存牺牲画面一致性。
+
 - [x] 实现固定通道渲染图
 - [x] 实现纹理池和延迟释放队列
 - [x] 建立 ABI 描述文件和生成工具
@@ -920,7 +922,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
 - [x] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
 - [ ] 三帧并行调度、共享命令队列和延迟资源释放
-- [x] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
+- [ ] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
 - [x] MSL 着色器编写 + `metallib` 编译
 - [x] Metal 离屏纹理缩放重建释放旧资源
 - [ ] 以共享 GPU API 和渲染图运行 Metal 帧路径
