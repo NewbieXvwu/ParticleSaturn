@@ -119,6 +119,11 @@ private:
             std::string error;
             ParticleSaturn::Services::HandTracking::MacOS::HandPose pose;
             const bool tracked = runtime_.Invoke(frame, error) && runtime_.DecodeLandmarks(pose);
+            if (!tracked && !error.empty() && error != lastRuntimeError_) {
+                std::clog << "[HandTracking] " << error << '\n';
+                lastRuntimeError_ = error;
+            }
+            if (tracked) lastRuntimeError_.clear();
             std::lock_guard lock{outputMutex_};
             sample_.updatedAt = std::chrono::steady_clock::now();
             if (tracked) {
@@ -138,6 +143,7 @@ private:
     std::thread worker_;
     ParticleSaturn::Services::Camera::Frame pendingFrame_;
     Sample sample_;
+    std::string lastRuntimeError_;
     int pendingLostDelay_ = 1;
     bool hasPendingFrame_ = false;
     bool stopping_ = false;
