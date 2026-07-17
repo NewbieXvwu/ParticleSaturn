@@ -1,4 +1,5 @@
 #include "XnnpackRuntime.h"
+#include "services/diagnostics/DiagnosticBus.h"
 
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
@@ -16,6 +17,14 @@
 #endif
 
 namespace ParticleSaturn::Services::HandTracking::MacOS {
+
+namespace {
+bool ReportFailure(std::string& error, const char* code) {
+    ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Publish(
+        "hand-tracking", code, error, ParticleSaturn::Services::Diagnostics::Severity::Error);
+    return false;
+}
+} // namespace
 
 namespace {
 
@@ -80,7 +89,7 @@ bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t tar
     const auto startedAt = std::chrono::steady_clock::now();
     if (!FrameLayoutIsValid(frame) || targetWidth == 0 || targetHeight == 0 || target == nullptr) {
         error = "camera frame layout is invalid";
-        return false;
+        return ReportFailure(error, "frame-layout");
     }
     const bool rotated = frame.orientation == Camera::FrameOrientation::Left ||
                          frame.orientation == Camera::FrameOrientation::Right;
@@ -166,7 +175,7 @@ bool XnnpackModel::Load(const std::string& modelPath, std::string& error) {
     model_ = TfLiteModelCreateFromFile(modelPath.c_str());
     if (model_ == nullptr) {
         error = "unable to load TensorFlow Lite model: " + modelPath;
-        return false;
+        return ReportFailure(error, "model-load");
     }
     TfLiteXNNPackDelegateOptions delegateOptions = TfLiteXNNPackDelegateOptionsDefault();
     delegateOptions.num_threads = 0;
@@ -174,7 +183,7 @@ bool XnnpackModel::Load(const std::string& modelPath, std::string& error) {
     if (delegate_ == nullptr) {
         error = "unable to create XNNPACK delegate";
         Reset();
-        return false;
+        return ReportFailure(error, "delegate-create");
     }
     TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
     TfLiteInterpreterOptionsSetNumThreads(options, 0);
@@ -184,21 +193,21 @@ bool XnnpackModel::Load(const std::string& modelPath, std::string& error) {
     if (interpreter_ == nullptr || TfLiteInterpreterAllocateTensors(interpreter_) != kTfLiteOk) {
         error = "unable to allocate XNNPACK interpreter tensors";
         Reset();
-        return false;
+        return ReportFailure(error, "tensor-allocation");
     }
     TfLiteTensor* input = TfLiteInterpreterGetInputTensor(interpreter_, 0);
     if (input == nullptr || TfLiteTensorType(input) != kTfLiteFloat32 || TfLiteTensorNumDims(input) != 4 ||
         TfLiteTensorDim(input, 0) != 1 || TfLiteTensorDim(input, 3) != 3) {
         error = "hand model must expose one NHWC float32 RGB input";
         Reset();
-        return false;
+        return ReportFailure(error, "input-contract");
     }
     inputHeight_ = TfLiteTensorDim(input, 1);
     inputWidth_ = TfLiteTensorDim(input, 2);
     if (inputWidth_ <= 0 || inputHeight_ <= 0) {
         error = "hand model input dimensions are invalid";
         Reset();
-        return false;
+        return ReportFailure(error, "input-dimensions");
     }
     error.clear();
     return true;
