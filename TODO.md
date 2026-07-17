@@ -1064,6 +1064,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：新增线程安全的结构化 `DiagnosticBus`；AVFoundation 的权限、设备、格式协商、输入、会话和断开错误，Vulkan 的 ICD/Loader/环境/重启错误，以及 XNNPACK 的帧布局、模型、委托、张量和输入契约错误均已发布为带领域、代码、严重级别和时间戳的记录。MD3 调试面板会显示最近诊断，Metal 入口已注册未捕获 Objective-C 异常记录；SIGSEGV、SIGBUS、SIGABRT 通过预打开的崩溃日志以异步安全方式记录，符号化崩溃日志验证仍待完成。
 
+进展补充（2026-07-17）：崩溃处理现由统一启动器在图形接口选择前安装，覆盖 Metal、OpenGL 4.1 和未来 Vulkan 入口。信号处理器以异步安全写入记录信号名、故障指令地址和主映像加载地址；下一次启动消费日志、调用 `atos` 符号化并发布 `previous-fatal-signal` 诊断后清空文件。独立子进程测试实际触发 `SIGSEGV`，验证退出码、原始日志、`CrashNow` 符号、诊断严重级别和单次消费，完整 CTest 共 17 项通过。
+
 进展（2026-07-16）：新增 `ParticleSaturnCrossBackendParticleTests`，在同一进程以固定种子 `0x53415455` 初始化 Metal 与 OpenGL 4.1 粒子系统，直接读回并比较前 64 个粒子的全部字段；随后连续执行四次 `1/120` 秒模拟，逐帧核对三缓冲轮转后的可见缓冲。位置容差为 `0.002`，颜色、环带标志和填充字段严格相等。测试为 OpenGL 离屏变换反馈绑定完整的 1×1 HDR 帧缓冲，避免无 drawable 的默认帧缓冲使模拟命令失效。另有 `PARTICLESATURN_CAPTURE_BASELINE` 基准捕获模式：两条实际应用路径均固定暂停状态并在色调映射后输出 PPM；`ParticleSaturnVisualBaselineTests` 会自动启动 Metal 与 OpenGL 应用各一帧、比较 1280×720 逻辑窗口对应的实际像素图，当前阈值为平均通道差异不超过 `2.0` 且 RGB 最大通道差异超过 `8` 的像素比例不超过 `4%`。双 Vulkan 路径尚无呈现实现，四模式基准验收保持未完成。
 
 进展补充（2026-07-17）：`ParticleSaturnVisualBaselineTests` 已在本机构建并执行通过，实际启动 Metal 与 OpenGL 4.1 应用完成基准捕获和阈值比对。

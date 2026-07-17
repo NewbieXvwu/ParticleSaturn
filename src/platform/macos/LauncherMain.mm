@@ -6,6 +6,7 @@
 #include "MacOSApplication.h"
 #include "MacOSBackendSelection.h"
 #include "app/state/AppStates.h"
+#include "services/diagnostics/macos/MacOSCrashHandler.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
 
 namespace {
@@ -26,6 +27,7 @@ ParticleSaturn::App::GraphicsApi SelectGraphicsApi() {
 
 int main() {
     @autoreleasepool {
+        ParticleSaturn::Services::Diagnostics::MacOS::InstallCrashHandler();
         switch (SelectGraphicsApi()) {
         case ParticleSaturn::App::GraphicsApi::Metal:
             return ParticleSaturn::Platform::MacOS::RunMetalApplication();
