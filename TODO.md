@@ -976,6 +976,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：缩放后的旧离屏纹理由最后一个引用它们的 Metal 命令缓冲完成回调延迟释放，主线程不再为资源重建等待 GPU；同一队列的顺序执行保证该命令缓冲完成时此前全部引用均已结束。三帧在途调度、共享命令队列与延迟资源释放已完成。
 
+进展补充（2026-07-17）：独立 `PARTICLESATURN_SIMD_ADDRESS_SANITIZER` 配置再次构建并通过 `ParticleSaturnSimdTests`，覆盖零长度、任意短长度、未对齐 RGB 输入与翻转路径；x86 SSE/AVX2 实机运行保留在跨架构验收。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
@@ -983,7 +985,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
 - [x] NEON 归一化实现
 - [ ] SIMD 调度系统重构（能力检测、内核注册、自动选择）
-- [ ] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
+- [x] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
 - [x] TensorFlow Lite XNNPACK ARM64 内核启用（实际模型委托推理测试）
 - [x] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
 - [x] 摄像头与推理线程仅交换最新不可变样本，主循环实际驱动旋转和缩放
