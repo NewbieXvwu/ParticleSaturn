@@ -113,6 +113,20 @@ void CameraSelectorWindow::StartSelected() {
     SetStatus((NSTextField*)statusLabel_, "Preview active");
 }
 
+bool CameraSelectorWindow::StartSaved() {
+    if (camera_.Permission() != Authorization::Authorized) return false;
+    const auto* preferred = [[[NSUserDefaults standardUserDefaults] stringForKey:@"camera.selectedDeviceId"] UTF8String];
+    if (preferred == nullptr) return false;
+    Refresh();
+    for (std::size_t index = 0; index < devices_.size(); ++index) {
+        if (devices_[index].id != preferred) continue;
+        [(NSPopUpButton*)popup_ selectItemAtIndex:static_cast<NSInteger>(index)];
+        StartSelected();
+        return camera_.IsRunning();
+    }
+    return false;
+}
+
 std::string CameraSelectorWindow::SelectedDeviceId() const { return selectedDeviceId_; }
 
 } // namespace ParticleSaturn::Services::Camera::MacOS

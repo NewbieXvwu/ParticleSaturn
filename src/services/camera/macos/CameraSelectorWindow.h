@@ -18,6 +18,7 @@ public:
     void Show();
     void Refresh();
     void StartSelected();
+    bool StartSaved();
     std::string SelectedDeviceId() const;
 
 private:

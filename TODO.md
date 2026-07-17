@@ -928,6 +928,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展（2026-07-17）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；已在本机实际枚举内建摄像头、启动预览并验证设备标识持久化。窗口以浮动原生面板居中置前，避免被渲染窗口遮挡。`NSUserDefaultsStore` 已覆盖当前 `AppState` 的可配置场景、渲染、界面、手势与窗口字段，并以独立默认值域完成往返测试。`scripts/build_tflite_macos.sh` 对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态归档，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载，同时构建静态链接必需的 Abseil 日志归档。macOS 无 OpenCV 依赖的 `XnnpackHandTrackingRuntime` 已按旧 HandTracker 解析 2016 个 Palm anchor，保存 7 个 Palm 关键点、旋转与手腕方向的 ROI 偏移，并以旧版 2.6 倍旋转区域裁剪 Landmark 输入。Landmark 关键点会反变换回相机归一化坐标，左右手输入翻转与拇指-食指缩放公式均与旧版一致；无 Palm 检测时清空旧 Landmark 输出。合成数据测试覆盖 ROI 偏移、左右手翻转和缩放，实际模型推理测试覆盖输出张量契约。摄像头帧以不可变快照交给后台推理线程，积压帧只保留最新一张，主循环只读取最新手势样本，并按设置的丢手帧数延迟驱动 `FrameCoordinator`。实际镜头下的手势响应仍待阶段 10 端到端验收。
 
+进展补充（2026-07-17）：Metal 路径启动时会在摄像头已授权且保存设备仍可用的条件下自动恢复采集，使后台手势线程无需重新打开选择器即可持续收到最新帧；无保存设备、权限缺失或设备不可用时保持未启动并支持手动重选。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误

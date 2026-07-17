@@ -230,6 +230,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::App::FrameCoordinator coordinator;
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
+        if (!captureBaseline) cameraSelector.StartSaved();
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
         HandTrackingWorker handTracking;
         std::string handTrackingError;
