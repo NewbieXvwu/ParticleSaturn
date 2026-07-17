@@ -12,6 +12,7 @@ struct SetPixelRatio { float value; };
 struct SetDensityCompensation { float value; };
 struct SetVSyncMode { int value; };
 struct SetBloomEnabled { bool value; };
+struct SetAnalyticParticles { bool value; };
 struct SetBlurEnabled { bool value; };
 struct SetBlurStrength { float value; };
 struct SetDarkMode { bool value; };
@@ -35,6 +36,7 @@ using AppCommand = std::variant<
     SetDensityCompensation,
     SetVSyncMode,
     SetBloomEnabled,
+    SetAnalyticParticles,
     SetBlurEnabled,
     SetBlurStrength,
     SetDarkMode,

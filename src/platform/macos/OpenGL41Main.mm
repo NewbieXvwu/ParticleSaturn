@@ -317,6 +317,9 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             fpsMeter->AddSample(deltaTime);
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
             const auto& state = *frameSnapshot.state;
+            particles->SetSimulationMode(state.render.analyticParticles
+                ? ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::Analytic
+                : ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::TransformFeedback);
             if (*appliedVsyncMode != state.render.vsyncMode) {
                 if (!surface->SetVSyncMode(state.render.vsyncMode)) return;
                 *appliedVsyncMode = state.render.vsyncMode;
@@ -407,6 +410,11 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             bool bloomEnabled = state.render.bloomEnabled;
             if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
                 controller->Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
+                settings.Save(controller->State());
+            }
+            bool analyticParticles = state.render.analyticParticles;
+            if (ImGui::Checkbox("Analytic particles", &analyticParticles)) {
+                controller->Dispatch(ParticleSaturn::App::SetAnalyticParticles{analyticParticles});
                 settings.Save(controller->State());
             }
             bool blurEnabled = state.ui.blurEnabled;

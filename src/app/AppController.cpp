@@ -38,6 +38,9 @@ CommandEffect AppController::Dispatch(const AppCommand& command) {
         } else if constexpr (std::is_same_v<Command, SetBloomEnabled>) {
             effect.renderSettingsChanged = state_.render.bloomEnabled != value.value;
             state_.render.bloomEnabled = value.value;
+        } else if constexpr (std::is_same_v<Command, SetAnalyticParticles>) {
+            effect.renderSettingsChanged = state_.render.analyticParticles != value.value;
+            state_.render.analyticParticles = value.value;
         } else if constexpr (std::is_same_v<Command, SetBlurEnabled>) {
             effect.renderSettingsChanged = state_.ui.blurEnabled != value.value;
             state_.ui.blurEnabled = value.value;

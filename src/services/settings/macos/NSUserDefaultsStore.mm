@@ -11,6 +11,7 @@ constexpr const char* PixelRatioKey = "render.pixelRatio";
 constexpr const char* DensityCompensationKey = "render.densityCompensation";
 constexpr const char* VSyncKey = "render.vsyncMode";
 constexpr const char* BloomKey = "render.bloomEnabled";
+constexpr const char* AnalyticParticlesKey = "render.analyticParticles";
 constexpr const char* BloomBlurStrengthKey = "render.bloomBlurStrength";
 constexpr const char* GraphicsApiKey = "render.graphicsApi";
 constexpr const char* VulkanDriverKey = "render.vulkanDriver";
@@ -65,6 +66,7 @@ App::AppState NSUserDefaultsStore::Load(const App::AppState& defaults) const {
     if (HasValue(values, DensityCompensationKey)) state.render.densityCompensation = [values floatForKey:@"render.densityCompensation"];
     if (HasValue(values, VSyncKey)) state.render.vsyncMode = static_cast<int>([values integerForKey:@"render.vsyncMode"]);
     if (HasValue(values, BloomKey)) state.render.bloomEnabled = [values boolForKey:@"render.bloomEnabled"];
+    if (HasValue(values, AnalyticParticlesKey)) state.render.analyticParticles = [values boolForKey:@"render.analyticParticles"];
     if (HasValue(values, BloomBlurStrengthKey)) state.render.bloomBlurStrength = [values floatForKey:@"render.bloomBlurStrength"];
     if (HasValue(values, GraphicsApiKey)) state.render.graphicsApi = ValidEnum([values integerForKey:@"render.graphicsApi"], state.render.graphicsApi, 2);
     if (HasValue(values, VulkanDriverKey)) state.render.vulkanDriver = ValidEnum([values integerForKey:@"render.vulkanDriver"], state.render.vulkanDriver, 1);
@@ -119,6 +121,7 @@ void NSUserDefaultsStore::Save(const App::AppState& state) {
     [values setFloat:state.render.densityCompensation forKey:@"render.densityCompensation"];
     [values setInteger:state.render.vsyncMode forKey:@"render.vsyncMode"];
     [values setBool:state.render.bloomEnabled forKey:@"render.bloomEnabled"];
+    [values setBool:state.render.analyticParticles forKey:@"render.analyticParticles"];
     [values setFloat:state.render.bloomBlurStrength forKey:@"render.bloomBlurStrength"];
     [values setInteger:static_cast<NSInteger>(state.render.graphicsApi) forKey:@"render.graphicsApi"];
     [values setInteger:static_cast<NSInteger>(state.render.vulkanDriver) forKey:@"render.vulkanDriver"];
