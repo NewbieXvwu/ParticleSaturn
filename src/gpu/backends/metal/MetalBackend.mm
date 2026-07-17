@@ -16,6 +16,8 @@ bool MetalDevice::Initialize() {
     if (device_ == nullptr) {
         return false;
     }
+    commandQueue_ = [(id<MTLDevice>)device_ newCommandQueue];
+    if (commandQueue_ == nullptr) return false;
     capabilities_ = {
         true,
         true,
@@ -29,12 +31,21 @@ bool MetalDevice::Initialize() {
     return true;
 }
 
+MetalDevice::~MetalDevice() {
+    [(id<MTLCommandQueue>)commandQueue_ release];
+    [(id<MTLDevice>)device_ release];
+}
+
 const GpuCapabilities& MetalDevice::Capabilities() const noexcept {
     return capabilities_;
 }
 
 void* MetalDevice::NativeDevice() const noexcept {
     return device_;
+}
+
+void* MetalDevice::NativeCommandQueue() const noexcept {
+    return commandQueue_;
 }
 
 MetalSurface::MetalSurface(MetalDevice& device, void* nativeLayer) : device_{device}, layer_{nativeLayer} {
@@ -55,11 +66,9 @@ void* MetalSurface::NativeDrawable() const noexcept {
 
 bool MetalSurface::Present(MetalDevice& device) {
     if (drawable_ == nullptr) return false;
-    id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
-    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
     [commands presentDrawable:(id<CAMetalDrawable>)drawable_];
     [commands commit];
-    [queue release];
     drawable_ = nullptr;
     return true;
 }
@@ -82,7 +91,7 @@ void* MetalResourceManager::CreateBuffer(std::size_t size) {
 MetalCommandContext::MetalCommandContext(MetalDevice& device) : device_{device} {}
 
 bool MetalCommandContext::Begin() {
-    commandBuffer_ = [[(id<MTLDevice>)device_.NativeDevice() newCommandQueue] commandBuffer];
+    commandBuffer_ = [(id<MTLCommandQueue>)device_.NativeCommandQueue() commandBuffer];
     return commandBuffer_ != nullptr;
 }
 

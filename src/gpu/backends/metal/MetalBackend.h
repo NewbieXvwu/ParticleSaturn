@@ -14,12 +14,16 @@ namespace ParticleSaturn::Gpu::Metal {
 
 class MetalDevice {
 public:
+    ~MetalDevice();
+
     bool Initialize();
     const GpuCapabilities& Capabilities() const noexcept;
     void* NativeDevice() const noexcept;
+    void* NativeCommandQueue() const noexcept;
 
 private:
     void* device_ = nullptr;
+    void* commandQueue_ = nullptr;
     GpuCapabilities capabilities_{};
 };
 
