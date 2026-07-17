@@ -4,6 +4,7 @@
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -47,6 +48,15 @@ void MapOrientedPixel(const Camera::Frame& frame, std::uint32_t orientedX, std::
     }
 }
 
+void RecordPreprocessingStats(PreprocessingStats* stats, PreprocessingPath path, std::uint32_t width,
+                              std::uint32_t height, std::chrono::steady_clock::time_point startedAt) {
+    if (stats == nullptr) return;
+    stats->path = path;
+    stats->pixels = static_cast<std::uint64_t>(width) * height;
+    stats->elapsedNanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - startedAt).count());
+}
+
 #if defined(__aarch64__) || defined(__ARM_NEON)
 float32x4_t Normalize4(uint8x8_t values, bool high) {
     const uint16x8_t widened16 = vmovl_u8(values);
@@ -65,7 +75,9 @@ void StoreNormalizedRgb8(const uint8x8_t red, const uint8x8_t green, const uint8
 } // namespace
 
 bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t targetWidth,
-                                   std::uint32_t targetHeight, float* target, std::string& error) {
+                                   std::uint32_t targetHeight, float* target, std::string& error,
+                                   PreprocessingStats* stats) {
+    const auto startedAt = std::chrono::steady_clock::now();
     if (!FrameLayoutIsValid(frame) || targetWidth == 0 || targetHeight == 0 || target == nullptr) {
         error = "camera frame layout is invalid";
         return false;
@@ -104,6 +116,7 @@ bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t tar
             }
         }
         error.clear();
+        RecordPreprocessingStats(stats, PreprocessingPath::NeonFused, targetWidth, targetHeight, startedAt);
         return true;
     }
 #endif
@@ -130,6 +143,7 @@ bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t tar
         }
     }
     error.clear();
+    RecordPreprocessingStats(stats, PreprocessingPath::ScalarFused, targetWidth, targetHeight, startedAt);
     return true;
 }
 

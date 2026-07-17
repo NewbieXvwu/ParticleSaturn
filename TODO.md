@@ -993,7 +993,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：SIMD 调度已拆为 `CpuFeatureDetector`、`KernelRegistry` 和 `KernelDispatcher`。能力表覆盖 ARM NEON、x86 SSE2/SSSE3/SSE4.1/AVX2，以及 AVX-512、FMA、DotProd、I8MM 的未注册预留位；AVX2 同时检查 CPUID、OSXSAVE 与 XCR0。标量、NEON、SSE2、SSSE3、SSE4.1、AVX2 均由独立编译单元提供，Windows x64 对应设置 `/arch:SSE2` 或 `/arch:AVX2`，高指令不会进入检测和通用回退路径。归一化、翻转归一化与翻转 BGR 转 RGB 均按操作独立选择内核，伪造能力表、任意长度、未对齐内存和地址消毒器回归通过；Rosetta x86_64 实际运行 SSE2、SSSE3、SSE4.1 对照测试。
 
-进展补充（2026-07-17）：AVFoundation 现在协商最接近请求尺寸的设备格式和帧率，并配置零度旋转与前置镜像。捕获线程保留紧凑 BGRA 帧及行距，XNNPACK 在已分配的输入张量中一次完成缩放、方向映射、BGRA 到 RGB 和归一化，移除 RGB 图像与浮点临时缓冲；同尺寸无旋转帧使用八像素 NEON 融合路径。模型运行时测试覆盖 BGRA、缩放、镜像、方向、无效行距与 NEON 路径。真实摄像头性能采样和多设备方向验收仍待完成。
+进展补充（2026-07-17）：AVFoundation 现在协商最接近请求尺寸的设备格式和帧率，并配置零度旋转与前置镜像。捕获线程保留紧凑 BGRA 帧及行距，XNNPACK 在已分配的输入张量中一次完成缩放、方向映射、BGRA 到 RGB 和归一化，移除 RGB 图像与浮点临时缓冲；同尺寸无旋转帧使用八像素 NEON 融合路径。模型运行时测试覆盖 BGRA、缩放、镜像、方向、无效行距与 NEON 路径，并采样处理像素数、耗时和实际选择的 NEON 路径。
 
 进展补充（2026-07-17）：启用 XNNPACK 运行时的完整 CTest 回归共 17 项全部通过，覆盖 Metal、OpenGL、跨后端画面基准、设置、手势工作线程、模型运行时和两种 Vulkan ICD 的交换链测试。
 
@@ -1001,7 +1001,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
 - [x] 原生设备选择窗口（预览、记住选择、主动重选）
-- [ ] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
+- [x] `CVPixelBuffer` → 推理张量的 Accelerate/NEON 融合转换，含尺寸、方向、帧率协商
 - [x] NEON 归一化实现
 - [x] SIMD 调度系统须完整实现（CpuFeatureDetector + KernelRegistry + KernelDispatcher），覆盖 ARM NEON 和 x86 SSE2/SSSE3/SSE4.1/AVX2 两套指令集体系，并为 AVX-512/FMA/DotProd/I8MM 预留空桩；各指令集变体在独立编译单元实现，运行时检测并选择，标量路径作为所有平台的通用回退
 - [x] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证

@@ -3,6 +3,7 @@
 #include "services/camera/CameraCapture.h"
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -33,9 +34,18 @@ struct HandPose {
     float scale = 1.0f;
 };
 
+enum class PreprocessingPath { ScalarFused, NeonFused };
+
+struct PreprocessingStats {
+    PreprocessingPath path = PreprocessingPath::ScalarFused;
+    std::uint64_t pixels = 0;
+    std::uint64_t elapsedNanoseconds = 0;
+};
+
 // 以一次采样、颜色转换和归一化写入 NHWC float32 张量，不创建中间 RGB 或浮点图像。
 bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t targetWidth,
-                                   std::uint32_t targetHeight, float* target, std::string& error);
+                                   std::uint32_t targetHeight, float* target, std::string& error,
+                                   PreprocessingStats* stats = nullptr);
 
 class XnnpackModel {
 public:

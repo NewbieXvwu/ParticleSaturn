@@ -44,7 +44,16 @@ int main() {
             fastPath.pixels[x * 3U + 2U] = static_cast<std::uint8_t>(50U + x);
         }
         std::vector<float> fastTensor(24U);
-        assert(HandTracking::MacOS::PreprocessCameraFrameToTensor(fastPath, 8, 1, fastTensor.data(), preprocessingError));
+        HandTracking::MacOS::PreprocessingStats preprocessingStats;
+        assert(HandTracking::MacOS::PreprocessCameraFrameToTensor(
+            fastPath, 8, 1, fastTensor.data(), preprocessingError, &preprocessingStats));
+        assert(preprocessingStats.pixels == 8U);
+        assert(preprocessingStats.elapsedNanoseconds > 0U);
+#if defined(__aarch64__) || defined(__ARM_NEON)
+        assert(preprocessingStats.path == HandTracking::MacOS::PreprocessingPath::NeonFused);
+#else
+        assert(preprocessingStats.path == HandTracking::MacOS::PreprocessingPath::ScalarFused);
+#endif
         AssertNear(fastTensor[21], 17.0f / 255.0f);
         AssertNear(fastTensor[22], 37.0f / 255.0f);
         AssertNear(fastTensor[23], 57.0f / 255.0f);
