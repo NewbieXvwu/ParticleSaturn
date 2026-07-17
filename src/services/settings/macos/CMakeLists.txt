@@ -1,3 +1,8 @@
 add_library(ParticleSaturnMacOSSettings STATIC NSUserDefaultsStore.mm)
 target_include_directories(ParticleSaturnMacOSSettings PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../../..")
 target_link_libraries(ParticleSaturnMacOSSettings PUBLIC ParticleSaturnAppCore "-framework Foundation")
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnNSUserDefaultsStoreTests "${CMAKE_SOURCE_DIR}/tests/NSUserDefaultsStoreTests.mm")
+    target_link_libraries(ParticleSaturnNSUserDefaultsStoreTests PRIVATE ParticleSaturnMacOSSettings)
+    add_test(NAME ParticleSaturnNSUserDefaultsStoreTests COMMAND ParticleSaturnNSUserDefaultsStoreTests)
+endif()

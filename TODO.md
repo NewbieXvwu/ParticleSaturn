@@ -918,7 +918,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
-进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；已在本机实际枚举内建摄像头、启动预览并验证设备标识持久化。窗口以浮动原生面板居中置前，避免被渲染窗口遮挡。`scripts/build_tflite_macos.sh` 对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态归档，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载，同时构建静态链接必需的 Abseil 日志归档。macOS 新增无 OpenCV 依赖的 `XnnpackHandTrackingRuntime`：从包资源加载 Palm 与 Landmark 模型，创建 XNNPACK 委托、接受 AVFoundation RGB 帧、缩放归一化并调用两份模型；测试已用实际模型完成委托推理，主应用已链接并在摄像头产生新帧时调用该运行时；推理结果映射手势控制仍待阶段 10 的端到端验证。
+进展（2026-07-16）：`SIMDNormalize` 已支持 Apple Silicon 的 NEON 自动检测、显式选择和标量回退；归一化与翻转预处理均有标量一致性测试。`AVFoundationCamera` 已实现授权、唯一设备标识、连接状态、断开通知、会话采集、占用错误和 BGRA `CVPixelBuffer` 到 RGB 帧的转换。原生选择窗口已实现设备刷新、`NSUserDefaults` 记住唯一标识、主动重选和 `AVCaptureVideoPreviewLayer` 预览，并已写入 `NSCameraUsageDescription`；已在本机实际枚举内建摄像头、启动预览并验证设备标识持久化。窗口以浮动原生面板居中置前，避免被渲染窗口遮挡。`NSUserDefaultsStore` 已覆盖当前 `AppState` 的可配置场景、渲染、界面、手势与窗口字段，并以独立默认值域完成往返测试；两个应用入口的启动加载和变更保存仍待接入。`scripts/build_tflite_macos.sh` 对锁定的 TensorFlow Lite 2.19 子模块幂等应用精简补丁并构建 ARM64 静态归档，固定启用 XNNPACK、关闭哈希不稳定的可选 KleidiAI 下载，同时构建静态链接必需的 Abseil 日志归档。macOS 新增无 OpenCV 依赖的 `XnnpackHandTrackingRuntime`：从包资源加载 Palm 与 Landmark 模型，创建 XNNPACK 委托、接受 AVFoundation RGB 帧、缩放归一化并调用两份模型；测试已用实际模型完成委托推理，主应用已链接并在摄像头产生新帧时调用该运行时；推理结果映射手势控制仍待阶段 10 的端到端验证。
 
 当前推理运行时尚未解析 Palm/ Landmark 输出、裁剪并对齐关键点区域，主循环尚未将手势样本传给 `FrameCoordinator`。摄像头转换和模型输入仍需完成 Accelerate/NEON 融合路径与实际性能验证。
 

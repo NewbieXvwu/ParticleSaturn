@@ -39,11 +39,15 @@ bool HasValue(NSUserDefaults* defaults, const char* key) {
     return [defaults objectForKey:[NSString stringWithUTF8String:key]] != nil;
 }
 
+NSUserDefaults* Values(void* nativeDefaults) {
+    return nativeDefaults == nullptr ? [NSUserDefaults standardUserDefaults] : (NSUserDefaults*)nativeDefaults;
+}
+
 } // namespace
 
 App::AppState NSUserDefaultsStore::Load(const App::AppState& defaults) const {
     auto state = defaults;
-    auto* values = [NSUserDefaults standardUserDefaults];
+    auto* values = Values(nativeDefaults_);
     if (HasValue(values, ParticleCountKey)) state.render.particleCount = static_cast<std::uint32_t>([values integerForKey:@"render.particleCount"]);
     if (HasValue(values, PixelRatioKey)) state.render.pixelRatio = [values floatForKey:@"render.pixelRatio"];
     if (HasValue(values, DensityCompensationKey)) state.render.densityCompensation = [values floatForKey:@"render.densityCompensation"];
@@ -88,7 +92,7 @@ App::AppState NSUserDefaultsStore::Load(const App::AppState& defaults) const {
 }
 
 void NSUserDefaultsStore::Save(const App::AppState& state) {
-    auto* values = [NSUserDefaults standardUserDefaults];
+    auto* values = Values(nativeDefaults_);
     [values setInteger:state.render.particleCount forKey:@"render.particleCount"];
     [values setFloat:state.render.pixelRatio forKey:@"render.pixelRatio"];
     [values setFloat:state.render.densityCompensation forKey:@"render.densityCompensation"];
