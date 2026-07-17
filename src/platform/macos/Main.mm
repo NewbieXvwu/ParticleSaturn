@@ -266,10 +266,10 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                     controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
                     settings.Save(controller.State());
                 }
-                bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
-                if (ImGui::Checkbox("Window glass", &glassEnabled)) {
-                    const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
-                                                       : ParticleSaturn::App::WindowMaterial::Solid;
+                int windowMaterial = static_cast<int>(state.window.material);
+                if (ImGui::Combo("Window material", &windowMaterial,
+                                 "Solid\0Transparent\0System blur\0App Acrylic\0")) {
+                    const auto material = static_cast<ParticleSaturn::App::WindowMaterial>(windowMaterial);
                     controller.Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
                     settings.Save(controller.State());
                 }

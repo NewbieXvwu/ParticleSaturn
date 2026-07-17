@@ -120,6 +120,20 @@ public:
     }
 
     bool IsEnabled() const noexcept { return enabled_; }
+    bool IsTransparent() const noexcept { return transparent_; }
+
+    void ApplyMaterial(ParticleSaturn::App::WindowMaterial material, bool fullscreen) {
+        if (material == ParticleSaturn::App::WindowMaterial::SystemBlur && !fullscreen) {
+            SetEnabled(true);
+            transparent_ = true;
+            return;
+        }
+        SetEnabled(false);
+        transparent_ = material == ParticleSaturn::App::WindowMaterial::Transparent && !fullscreen;
+        [window_ setOpaque:!transparent_];
+        [window_ setBackgroundColor:transparent_ ? NSColor.clearColor : NSColor.blackColor];
+        surface_.SetTransparent(transparent_);
+    }
 
     void PresentFullscreenBackdrop() {
         SetEnabled(false);
@@ -128,6 +142,8 @@ public:
         // that snapshot cannot expose AppKit's blue backing.
         [window_ setOpaque:YES];
         [window_ setBackgroundColor:NSColor.blackColor];
+        transparent_ = false;
+        surface_.SetTransparent(false);
         if (!surface_.MakeCurrent()) return;
         const NSSize bounds = [openGlView_ bounds].size;
         const CGFloat scale = [window_ backingScaleFactor];
@@ -153,6 +169,7 @@ private:
     ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface& surface_;
     NSVisualEffectView* visualEffect_ = nil;
     bool enabled_ = false;
+    bool transparent_ = false;
 };
 
 } // namespace
@@ -191,7 +208,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto surface = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface>(view);
         if (!surface->MakeCurrent()) return 1;
         auto glass = std::make_shared<WindowGlass>(window, view, *surface);
-        glass->SetEnabled(initialState.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur);
+        glass->ApplyMaterial(initialState.window.material, false);
         const auto shaderDirectory = ShaderDirectory();
         auto particles = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem>();
         auto stars = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLStarField>();
@@ -235,9 +252,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 controller->MutableState().window.fullscreen = false;
                 surface->MakeCurrent();
                 surface->UpdateDrawable();
-                if (controller->State().window.material == ParticleSaturn::App::WindowMaterial::SystemBlur) {
-                    glass->SetEnabled(true);
-                }
+                glass->ApplyMaterial(controller->State().window.material, false);
                 settingsPtr->Save(controller->State());
             }];
         id fullscreenWillEnterObserver = [[NSNotificationCenter defaultCenter]
@@ -335,7 +350,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                                     state.render.pixelRatio, state.render.densityCompensation,
                                     state.render.particleCount);
             glDisable(GL_BLEND);
-            const bool transparent = glass->IsEnabled();
+            const bool transparent = glass->IsTransparent();
             if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
                 !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
             if (captureBaseline && !baselineCaptured) {
@@ -392,12 +407,12 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
                 settings.Save(controller->State());
             }
-            bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
-            if (ImGui::Checkbox("Window glass", &glassEnabled)) {
-                const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
-                                                   : ParticleSaturn::App::WindowMaterial::Solid;
+            int windowMaterial = static_cast<int>(state.window.material);
+            if (ImGui::Combo("Window material", &windowMaterial,
+                             "Solid\0Transparent\0System blur\0App Acrylic\0")) {
+                const auto material = static_cast<ParticleSaturn::App::WindowMaterial>(windowMaterial);
                 controller->Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
-                glass->SetEnabled(glassEnabled && !state.window.fullscreen);
+                glass->ApplyMaterial(material, state.window.fullscreen);
                 settings.Save(controller->State());
             }
             float blurStrength = state.ui.blurStrength;
