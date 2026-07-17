@@ -22,6 +22,8 @@ int main() {
         state.gesture.sensitivity = 2.2f; state.gesture.invertX = true; state.gesture.invertY = true; state.gesture.handLostDelay = 42;
         state.lod.locked = true;
         state.window.width = 1440U; state.window.height = 900U; state.window.dpiScale = 2.0f;
+        state.window.x = 64; state.window.y = 96; state.window.windowedX = 32; state.window.windowedY = 48;
+        state.window.windowedWidth = 1280U; state.window.windowedHeight = 720U;
         state.window.fullscreen = true; state.window.material = ParticleSaturn::App::WindowMaterial::SystemBlur;
         store.Save(state);
         const auto loaded = store.Load({});
@@ -33,6 +35,15 @@ int main() {
         assert(loaded.gesture.handLostDelay == state.gesture.handLostDelay && loaded.gesture.invertX == state.gesture.invertX);
         assert(loaded.lod.locked == state.lod.locked);
         assert(loaded.window.width == state.window.width && loaded.window.material == state.window.material);
+        assert(loaded.window.x == state.window.x && loaded.window.y == state.window.y);
+        assert(loaded.window.windowedWidth == state.window.windowedWidth && loaded.window.windowedHeight == state.window.windowedHeight);
+        [values setInteger:99 forKey:@"render.graphicsApi"];
+        [values setInteger:-7 forKey:@"render.vulkanDriver"];
+        [values setInteger:42 forKey:@"window.material"];
+        const auto recovered = store.Load({});
+        assert(recovered.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan);
+        assert(recovered.render.vulkanDriver == ParticleSaturn::App::VulkanDriver::MoltenVK);
+        assert(recovered.window.material == ParticleSaturn::App::WindowMaterial::Solid);
         [values removePersistentDomainForName:[NSString stringWithUTF8String:suiteName]];
         [values release];
     }

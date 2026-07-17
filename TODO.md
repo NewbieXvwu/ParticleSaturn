@@ -846,6 +846,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：`LodState` 现以真实帧耗时的平滑值自动降低或恢复粒子数、像素比例，锁定后保持当前配置；锁定、升降档和 `NSUserDefaults` 往返均有测试，Metal 与 OpenGL 面板均提供锁定开关。
 
+进展补充（2026-07-17）：应用状态现补齐窗口位置、窗口化尺寸和快捷键边沿输入状态；主题、噪点、密度补偿、手势参数和窗口几何均有 `AppCommand`，macOS 设置会持久化窗口位置并拒绝无效的图形接口、驱动和窗口材质枚举。Metal 与 OpenGL 启动时恢复窗口位置，运行中持续记录窗口化几何；命令钳制与设置往返、异常值回退均有测试。
+
 - [x] 从 `AppState.h` 拆出 `SceneState`/`RenderSettings`/`UiState`/`GestureSettings`/`WindowState`
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`
@@ -875,6 +877,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 进展补充（2026-07-17）：OpenGL 4.1 后端的粒子读回类型已直接使用生成的 C++ ABI，顶点数组以生成结构的 `offsetof` 配置属性；`isRing` 和 `padding` 全程采用无符号整数，变换反馈、渲染顶点着色器和 Metal/OpenGL 跨后端读回均严格比较其位值。GLSL 4.1 的顶点属性适配器受运行时源码加载限制，不能直接包含生成结构，ABI 测试已锁定其对应整数接口。
 
 进展补充（2026-07-17）：计算管线的 `MTLBinaryArchive` 已能保存和重新加载；图形管线归档在本机使 Metal/OpenGL 画面基准超限，已停用其实际接入并保留该项待解决，不能以性能缓存牺牲画面一致性。
+
+进展补充（2026-07-17）：视觉基准捕获改在稳定的暂停帧进行，并强制锁定动态 LOD，避免计时器抖动改变粒子数量导致跨后端截图比较出现非确定性差异。
 
 - [x] 实现固定通道渲染图
 - [x] 实现纹理池和延迟释放队列

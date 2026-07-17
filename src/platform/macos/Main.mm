@@ -197,8 +197,10 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             initialState.window.width = 1512;
             initialState.window.height = 827;
             initialState.scene.paused = true;
+            initialState.lod.locked = true;
         }
         ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
+        if (!captureBaseline) host.SetWindowPosition(initialState.window.x, initialState.window.y);
         ParticleSaturn::Gpu::Metal::MetalDevice device;
         if (!device.Initialize()) {
             return 1;
@@ -244,6 +246,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             if (!captureBaseline) settings.Save(controller.State());
         });
         bool baselineCaptured = false;
+        std::uint32_t baselineFrameCount = 0;
         auto appliedWindowMaterial = controller.State().window.material;
         host.SetWindowMaterial(appliedWindowMaterial);
         ParticleSaturn::App::FrameCoordinator coordinator;
@@ -294,6 +297,13 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
             mutableState.window.height = static_cast<std::uint32_t>(drawableSize.height / drawableSize.scale);
             mutableState.window.dpiScale = drawableSize.scale;
+            if (!mutableState.window.fullscreen) {
+                host.GetWindowPosition(mutableState.window.x, mutableState.window.y);
+                mutableState.window.windowedX = mutableState.window.x;
+                mutableState.window.windowedY = mutableState.window.y;
+                mutableState.window.windowedWidth = mutableState.window.width;
+                mutableState.window.windowedHeight = mutableState.window.height;
+            }
             if (drawableSize.width != size.width || drawableSize.height != size.height) {
                 if (!targets.Create(device, drawableSize.width, drawableSize.height)) return;
                 size = drawableSize;
@@ -407,6 +417,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                                                (id<MTLRenderCommandEncoder>)encoder);
             }, [&](void* nativeDevice, void* texture, std::uint32_t width, std::uint32_t height) {
                 if (!captureBaseline || baselineCaptured) return true;
+                if (++baselineFrameCount < 3U) return true;
                 baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, baselinePath);
                 if (baselineCaptured) [NSApp terminate:nil];
                 return baselineCaptured;

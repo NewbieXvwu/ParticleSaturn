@@ -30,6 +30,8 @@ public:
     void Show();
     void Run(const std::function<void()>& frameCallback = {});
     void SetActionCallback(std::function<void(HostAction)> callback);
+    void SetWindowPosition(std::int32_t x, std::int32_t y);
+    void GetWindowPosition(std::int32_t& x, std::int32_t& y) const;
     void ToggleFullscreen();
     void SetFullscreenActive(bool active);
     void RequestExit();

@@ -170,12 +170,14 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             initialState.window.width = 1512;
             initialState.window.height = 827;
             initialState.scene.paused = true;
+            initialState.lod.locked = true;
         }
         const NSRect visibleFrame = [[NSScreen mainScreen] visibleFrame];
         const NSSize maximumContentSize = [NSWindow contentRectForFrameRect:visibleFrame
                                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                                                               NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable].size;
-        const NSRect frame = NSMakeRect(0, 0, std::min<CGFloat>(initialState.window.width, maximumContentSize.width),
+        const NSRect frame = NSMakeRect(captureBaseline ? 0 : initialState.window.x, captureBaseline ? 0 : initialState.window.y,
+                                        std::min<CGFloat>(initialState.window.width, maximumContentSize.width),
                                         std::min<CGFloat>(initialState.window.height, maximumContentSize.height));
         const auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
@@ -280,6 +282,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             }
         }];
         __block bool baselineCaptured = false;
+        __block std::uint32_t baselineFrameCount = 0;
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
@@ -302,6 +305,16 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             controller->MutableState().window.width = static_cast<std::uint32_t>(logicalSize.width);
             controller->MutableState().window.height = static_cast<std::uint32_t>(logicalSize.height);
             controller->MutableState().window.dpiScale = backingScale;
+            if (!controller->State().window.fullscreen) {
+                const NSPoint origin = [window frame].origin;
+                auto& windowState = controller->MutableState().window;
+                windowState.x = static_cast<std::int32_t>(origin.x);
+                windowState.y = static_cast<std::int32_t>(origin.y);
+                windowState.windowedX = windowState.x;
+                windowState.windowedY = windowState.y;
+                windowState.windowedWidth = windowState.width;
+                windowState.windowedHeight = windowState.height;
+            }
             const auto width = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.width));
             const auto height = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.height));
             if (targets->Width() != width || targets->Height() != height) {
@@ -326,6 +339,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
                 !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
             if (captureBaseline && !baselineCaptured) {
+                if (++baselineFrameCount < 3U) return;
                 if (!WriteBaselinePpm(baselinePath, targets->ToneMappedFramebuffer(), width, height)) return;
                 baselineCaptured = true;
                 [NSApp terminate:nil];

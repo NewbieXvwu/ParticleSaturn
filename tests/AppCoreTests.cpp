@@ -23,6 +23,24 @@ int main() {
     controller.Dispatch(SetBlurStrength{99.0f});
     assert(controller.State().ui.blurStrength == 5.0f);
     assert(controller.State().render.bloomBlurStrength == 2.0f);
+    controller.Dispatch(SetDensityCompensation{9.0f});
+    controller.Dispatch(SetNoiseIntensity{-1.0f});
+    controller.Dispatch(SetGestureSensitivity{9.0f});
+    controller.Dispatch(SetHandLostDelay{999});
+    controller.Dispatch(SetDarkMode{false});
+    controller.Dispatch(SetGestureInvertX{true});
+    controller.Dispatch(SetGestureInvertY{true});
+    assert(controller.State().render.densityCompensation == 2.0f);
+    assert(controller.State().ui.noiseIntensity == 0.0f && !controller.State().ui.darkMode);
+    assert(controller.State().gesture.sensitivity == 5.0f && controller.State().gesture.handLostDelay == 120);
+    assert(controller.State().gesture.invertX && controller.State().gesture.invertY);
+    const auto bounds = controller.Dispatch(SetWindowBounds{40, 80, 1600U, 900U});
+    assert(bounds.windowChanged && controller.State().window.windowedX == 40 && controller.State().window.windowedWidth == 1600U);
+    controller.Dispatch(SetFullscreen{true});
+    assert(controller.State().window.fullscreen && controller.State().window.windowedY == 80);
+    controller.Dispatch(SetGestureSensitivity{1.0f});
+    controller.Dispatch(SetGestureInvertX{false});
+    controller.Dispatch(SetGestureInvertY{false});
 
     FrameCoordinator coordinator{0.01};
     const auto frame = coordinator.Advance(controller, 0.025, {true, 2.0f, -1.0f, 0.5f});

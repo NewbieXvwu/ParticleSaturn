@@ -71,9 +71,21 @@ struct LodState {
     float smoothedFrameSeconds = 1.0f / 60.0f;
 };
 
+struct InputState {
+    bool keyBPressed = false;
+    bool keyF3Pressed = false;
+    bool keyF11Pressed = false;
+};
+
 struct WindowState {
+    std::int32_t x = 100;
+    std::int32_t y = 100;
     std::uint32_t width  = 1920;
     std::uint32_t height = 1080;
+    std::int32_t windowedX = 100;
+    std::int32_t windowedY = 100;
+    std::uint32_t windowedWidth = 1920;
+    std::uint32_t windowedHeight = 1080;
     float dpiScale       = 1.0f;
     bool fullscreen      = false;
     WindowMaterial material = WindowMaterial::Solid;
@@ -85,6 +97,7 @@ struct AppState {
     UiState ui;
     GestureSettings gesture;
     LodState lod;
+    InputState input;
     WindowState window;
 };
 

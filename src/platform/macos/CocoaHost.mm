@@ -112,6 +112,16 @@ void CocoaHost::SetActionCallback(std::function<void(HostAction)> callback) {
     actionCallback_ = std::move(callback);
 }
 
+void CocoaHost::SetWindowPosition(std::int32_t x, std::int32_t y) {
+    [(NSWindow*)window_ setFrameOrigin:NSMakePoint(x, y)];
+}
+
+void CocoaHost::GetWindowPosition(std::int32_t& x, std::int32_t& y) const {
+    const NSPoint origin = [(NSWindow*)window_ frame].origin;
+    x = static_cast<std::int32_t>(origin.x);
+    y = static_cast<std::int32_t>(origin.y);
+}
+
 void CocoaHost::ToggleFullscreen() {
     if (!fullscreen_) {
         SetFullscreenActive(true);
