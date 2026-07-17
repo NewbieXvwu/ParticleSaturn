@@ -1,6 +1,16 @@
 set(PARTICLESATURN_TFLITE_ARM64_DIR "/tmp/particlesaturn-tflite-arm64" CACHE PATH
     "ARM64 TensorFlow Lite build directory produced by scripts/build_tflite_macos.sh")
 
+add_library(ParticleSaturnMacOSHandTrackingWorker STATIC HandTrackingWorker.cpp)
+target_include_directories(ParticleSaturnMacOSHandTrackingWorker PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../..")
+target_link_libraries(ParticleSaturnMacOSHandTrackingWorker PUBLIC ParticleSaturnAppCore)
+
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnHandTrackingWorkerTests "${CMAKE_SOURCE_DIR}/tests/HandTrackingWorkerTests.cpp")
+    target_link_libraries(ParticleSaturnHandTrackingWorkerTests PRIVATE ParticleSaturnMacOSHandTrackingWorker)
+    add_test(NAME ParticleSaturnHandTrackingWorkerTests COMMAND ParticleSaturnHandTrackingWorkerTests)
+endif()
+
 set(PARTICLESATURN_TFLITE_LIBRARY "${PARTICLESATURN_TFLITE_ARM64_DIR}/libtensorflow-lite.a")
 set(PARTICLESATURN_XNNPACK_DELEGATE_LIBRARY "${PARTICLESATURN_TFLITE_ARM64_DIR}/libxnnpack-delegate.a")
 if(NOT EXISTS "${PARTICLESATURN_TFLITE_LIBRARY}" OR NOT EXISTS "${PARTICLESATURN_XNNPACK_DELEGATE_LIBRARY}")

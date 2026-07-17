@@ -20,7 +20,7 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnOpenGL41Backend ParticleSaturnMacOSSettings)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
-target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera ParticleSaturnMacOSHandTrackingWorker)
 if(TARGET ParticleSaturnMacOSHandTracking)
     target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSHandTracking)
     target_compile_definitions(ParticleSaturn.macOS PRIVATE PARTICLESATURN_HAS_XNNPACK_RUNTIME=1)

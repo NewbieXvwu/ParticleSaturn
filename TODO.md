@@ -940,6 +940,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Metal 路径启动时会在摄像头已授权且保存设备仍可用的条件下自动恢复采集，使后台手势线程无需重新打开选择器即可持续收到最新帧；无保存设备、权限缺失或设备不可用时保持未启动并支持手动重选。
 
+进展补充（2026-07-17）：手势工作线程已从应用入口提取为可注入处理器与时钟的独立模块。测试验证积压帧只处理最后一张、按设置帧数丢弃旧手势、关键点绝对姿态发布到 `FrameCoordinator`，以及 500ms 样本过期；XNN 运行时继续在后台按 Palm 后 Landmark 的顺序执行。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
@@ -950,7 +952,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 修复 SSE 边界读取并完成地址消毒器、任意长度和未对齐内存验证
 - [x] TensorFlow Lite XNNPACK ARM64 内核启用（实际模型委托推理测试）
 - [x] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
-- [ ] 摄像头与推理线程仅交换最新不可变样本，主循环实际驱动旋转和缩放
+- [x] 摄像头与推理线程仅交换最新不可变样本，主循环实际驱动旋转和缩放
 - [x] 模型通过 `NSBundle` 定位
 - [x] macOS 设置（`NSUserDefaults`）接入启动加载、变更保存和所有应用状态
 
