@@ -948,6 +948,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：翻转路径已将 `_mm_shuffle_epi8` 限定为 SSSE3 编译实现，并以 CPUID 的 SSSE3 位进行运行时分派；缺少该能力时回退标量实现，不再把 SSE2 误作字节重排能力。
 
+进展补充（2026-07-17）：AVX2 分派现同时验证 CPUID 的 AVX、OSXSAVE 与 AVX2 位，并检查 XCR0 已启用 XMM/YMM 状态，避免仅凭 CPU 标志在操作系统未保存扩展寄存器的环境执行 AVX 指令。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误

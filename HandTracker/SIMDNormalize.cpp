@@ -58,6 +58,17 @@ static void GetCPUIDEx(int info[4], int function_id, int subfunction_id) {
     __cpuid_count(function_id, subfunction_id, info[0], info[1], info[2], info[3]);
 #endif
 }
+
+static std::uint64_t GetXCR0() {
+#ifdef _MSC_VER
+    return _xgetbv(0);
+#else
+    std::uint32_t low = 0;
+    std::uint32_t high = 0;
+    __asm__ volatile("xgetbv" : "=a"(low), "=d"(high) : "c"(0));
+    return (static_cast<std::uint64_t>(high) << 32U) | low;
+#endif
+}
 #endif
 
 void Init() {
@@ -77,12 +88,20 @@ void Init() {
         g_hasSSE2 = (info[3] & (1 << 26)) != 0;
         // SSSE3: ECX bit 9, required by _mm_shuffle_epi8.
         g_hasSSSE3 = (info[2] & (1 << 9)) != 0;
+        const bool osXSave = (info[2] & (1 << 27)) != 0;
+        const bool avx = (info[2] & (1 << 28)) != 0;
+        if (osXSave && avx) {
+            const auto xcr0 = GetXCR0();
+            g_hasAVX2 = (xcr0 & 0x6U) == 0x6U;
+        }
     }
 
-    if (maxFunction >= 7) {
+    if (g_hasAVX2 && maxFunction >= 7) {
         GetCPUIDEx(info, 7, 0);
         // AVX2: EBX bit 5
         g_hasAVX2 = (info[1] & (1 << 5)) != 0;
+    } else {
+        g_hasAVX2 = false;
     }
 #endif
 
