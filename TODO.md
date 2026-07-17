@@ -877,7 +877,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 5：最小 Cocoa 宿主和 Metal 表面
 
-进展（2026-07-16）：新增 `ParticleSaturn.macOS` 应用包目标，已在本机编译。`CocoaHost` 提供窗口、Retina 可绘制尺寸和全屏切换；Metal 后端已建立设备、表面、帧调度、资源和命令上下文的基础对象。
+进展（2026-07-17）：新增 `ParticleSaturn.macOS` 应用包目标，已在本机编译。`CocoaHost` 提供窗口、Retina 可绘制尺寸和全屏切换；Metal 后端已建立设备、表面、帧调度、资源和命令上下文的基础对象。Metal 宿主已接收 F3、F11、B 和 Esc：分别经 `AppController` 切换调试界面、全屏和界面模糊，Esc 与关闭窗口会终止运行循环并完成设置保存。系统玻璃在进入原生全屏前切为不透明黑色场景底，防止 AppKit 全屏过渡和稳定态产生蓝色背景，退出全屏后恢复 HUD 玻璃；已用窗口截图验证。
 
 - [x] `NSApplication` + `NSWindow` 基础宿主
 - [x] `CAMetalLayer` 表面

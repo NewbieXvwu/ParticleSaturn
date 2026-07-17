@@ -3,6 +3,26 @@
 
 #include "CocoaHost.h"
 
+@interface ParticleSaturnCocoaHostDelegate : NSObject<NSWindowDelegate> {
+@public ParticleSaturn::Platform::MacOS::CocoaHost* owner;
+}
+@end
+
+@implementation ParticleSaturnCocoaHostDelegate
+- (void)windowWillClose:(NSNotification*)notification {
+    (void)notification;
+    if (owner != nullptr) owner->RequestExit();
+}
+- (void)windowDidEnterFullScreen:(NSNotification*)notification {
+    (void)notification;
+    if (owner != nullptr) owner->SetFullscreenActive(true);
+}
+- (void)windowDidExitFullScreen:(NSNotification*)notification {
+    (void)notification;
+    if (owner != nullptr) owner->SetFullscreenActive(false);
+}
+@end
+
 namespace ParticleSaturn::Platform::MacOS {
 
 CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* title) {
@@ -18,6 +38,9 @@ CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* titl
                                                     defer:NO];
     [window setTitle:[NSString stringWithUTF8String:title]];
     [window setReleasedWhenClosed:NO];
+    auto* delegate = [[ParticleSaturnCocoaHostDelegate alloc] init];
+    delegate->owner = this;
+    [window setDelegate:delegate];
 
     auto* view = [[NSView alloc] initWithFrame:frame];
     [view setWantsLayer:YES];
@@ -29,9 +52,34 @@ CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* titl
     window_ = window;
     layer_ = layer;
     metalView_ = view;
+    windowDelegate_ = delegate;
+    eventMonitor_ = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
+        if ([event isARepeat]) return event;
+        switch ([event keyCode]) {
+        case 99:
+            if (actionCallback_) actionCallback_(HostAction::ToggleDebugWindow);
+            return nil;
+        case 103:
+            if (actionCallback_) actionCallback_(HostAction::ToggleFullscreen);
+            return nil;
+        case 11:
+            if (actionCallback_) actionCallback_(HostAction::ToggleBlur);
+            return nil;
+        case 53:
+            RequestExit();
+            return nil;
+        default:
+            return event;
+        }
+    }];
 }
 
 CocoaHost::~CocoaHost() {
+    if (eventMonitor_ != nullptr) [NSEvent removeMonitor:(id)eventMonitor_];
+    auto* delegate = (ParticleSaturnCocoaHostDelegate*)windowDelegate_;
+    if (delegate != nullptr) delegate->owner = nullptr;
+    [(NSWindow*)window_ setDelegate:nil];
+    [delegate release];
     [(NSVisualEffectView*)visualEffectView_ release];
     [(NSView*)metalView_ release];
     [(NSWindow*)window_ release];
@@ -58,11 +106,26 @@ void CocoaHost::Run(const std::function<void()>& frameCallback) {
     [NSApp run];
 }
 
+void CocoaHost::SetActionCallback(std::function<void(HostAction)> callback) {
+    actionCallback_ = std::move(callback);
+}
+
 void CocoaHost::ToggleFullscreen() {
+    if (!fullscreen_) SetFullscreenActive(true);
     [(NSWindow*)window_ toggleFullScreen:nil];
 }
 
+void CocoaHost::SetFullscreenActive(bool active) {
+    fullscreen_ = active;
+    SetWindowMaterial(windowMaterial_);
+}
+
+void CocoaHost::RequestExit() {
+    [NSApp terminate:nil];
+}
+
 void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
+    windowMaterial_ = material;
     auto* window = (NSWindow*)window_;
     auto* metalView = (NSView*)metalView_;
     if (visualEffectView_ != nullptr) {
@@ -71,8 +134,11 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
         [(NSVisualEffectView*)visualEffectView_ release];
         visualEffectView_ = nullptr;
     }
-    const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic;
-    const bool systemBlur = material == App::WindowMaterial::SystemBlur;
+    // A behind-window visual effect has no desktop source in native fullscreen.
+    // AppKit substitutes a blue full-screen backing, so retain the scene's
+    // opaque black backdrop until the window returns to windowed mode.
+    const bool systemBlur = material == App::WindowMaterial::SystemBlur && !fullscreen_;
+    const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic || systemBlur;
     [window setOpaque:!transparent && !systemBlur];
     [window setBackgroundColor:transparent || systemBlur ? NSColor.clearColor : NSColor.blackColor];
     [metalView setWantsLayer:YES];

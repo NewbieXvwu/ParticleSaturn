@@ -207,6 +207,23 @@ int main() {
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller{initialState};
+        host.SetActionCallback([&](ParticleSaturn::Platform::MacOS::HostAction action) {
+            switch (action) {
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
+                controller.Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen: {
+                const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{
+                    !controller.State().window.fullscreen});
+                if (effect.windowChanged) host.ToggleFullscreen();
+                break;
+            }
+            case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
+                controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller.State().ui.blurEnabled});
+                break;
+            }
+            if (!captureBaseline) settings.Save(controller.State());
+        });
         bool baselineCaptured = false;
         auto appliedWindowMaterial = controller.State().window.material;
         host.SetWindowMaterial(appliedWindowMaterial);
@@ -266,11 +283,12 @@ int main() {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
-                ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-                ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
-                ImGui::SetNextWindowBgAlpha(0.0f);
-                ImGui::Begin("Particle Saturn");
                 const auto& state = controller.State();
+                if (state.ui.showDebugWindow) {
+                    ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowBgAlpha(0.0f);
+                    ImGui::Begin("Particle Saturn");
                 const ImVec2 panelPosition = ImGui::GetWindowPos();
                 const ImVec2 panelSize = ImGui::GetWindowSize();
                 const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
@@ -335,7 +353,8 @@ int main() {
                     }
                     cameraSelector.Show();
                 }
-                ImGui::End();
+                    ImGui::End();
+                }
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
                                                (id<MTLRenderCommandEncoder>)encoder);

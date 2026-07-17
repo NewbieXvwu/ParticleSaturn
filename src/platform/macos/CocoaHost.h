@@ -13,6 +13,12 @@ struct DrawableSize {
     float scale = 1.0f;
 };
 
+enum class HostAction : std::uint8_t {
+    ToggleDebugWindow,
+    ToggleFullscreen,
+    ToggleBlur,
+};
+
 class CocoaHost {
 public:
     CocoaHost(std::uint32_t width, std::uint32_t height, const char* title);
@@ -23,7 +29,10 @@ public:
 
     void Show();
     void Run(const std::function<void()>& frameCallback = {});
+    void SetActionCallback(std::function<void(HostAction)> callback);
     void ToggleFullscreen();
+    void SetFullscreenActive(bool active);
+    void RequestExit();
     void SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;
     void* NativeMetalLayer() const noexcept;
@@ -34,6 +43,11 @@ private:
     void* layer_ = nullptr;
     void* metalView_ = nullptr;
     void* visualEffectView_ = nullptr;
+    void* windowDelegate_ = nullptr;
+    void* eventMonitor_ = nullptr;
+    std::function<void(HostAction)> actionCallback_;
+    App::WindowMaterial windowMaterial_ = App::WindowMaterial::Solid;
+    bool fullscreen_ = false;
 };
 
 } // namespace ParticleSaturn::Platform::MacOS
