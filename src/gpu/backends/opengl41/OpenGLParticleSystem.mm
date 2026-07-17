@@ -2,9 +2,10 @@
 
 #include "OpenGLParticleSystem.h"
 
-#include <fstream>
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
+#include <fstream>
 #include <sstream>
 #include <vector>
 
@@ -12,7 +13,7 @@ namespace ParticleSaturn::Gpu::OpenGL41 {
 
 namespace {
 
-constexpr GLsizeiptr ParticleBytes = 32;
+constexpr GLsizeiptr ParticleBytes = sizeof(OpenGLParticleSystem::ParticleSnapshot);
 static_assert(sizeof(OpenGLParticleSystem::ParticleSnapshot) == ParticleBytes);
 
 struct DrawArraysIndirectCommand {
@@ -101,7 +102,7 @@ OpenGLParticleSystem::ParticleSnapshot InitializeDiligentParticle(std::uint32_t 
         particle.position[2] = ringRadius * std::sin(theta);
         particle.position[3] = size;
         particle.speed = 8.0f / std::sqrt(ringRadius);
-        particle.isRing = 1.0f;
+        particle.isRing = 1U;
     }
     particle.color = PackColor(red, green, blue, alpha);
     return particle;
@@ -162,11 +163,17 @@ GLuint BuildRenderProgram(const char* vertexPath, const char* fragmentPath) {
 void ConfigureVertexArray(GLuint vao, GLuint buffer) {
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, ParticleBytes, nullptr);
-    glEnableVertexAttribArray(1); glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, ParticleBytes, reinterpret_cast<void*>(16));
-    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(20));
-    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(24));
-    glEnableVertexAttribArray(4); glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, ParticleBytes, reinterpret_cast<void*>(28));
+    using Particle = OpenGLParticleSystem::ParticleSnapshot;
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, ParticleBytes,
+                                                         reinterpret_cast<void*>(offsetof(Particle, position)));
+    glEnableVertexAttribArray(1); glVertexAttribIPointer(1, 1, GL_UNSIGNED_INT, ParticleBytes,
+                                                          reinterpret_cast<void*>(offsetof(Particle, color)));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, ParticleBytes,
+                                                         reinterpret_cast<void*>(offsetof(Particle, speed)));
+    glEnableVertexAttribArray(3); glVertexAttribIPointer(3, 1, GL_UNSIGNED_INT, ParticleBytes,
+                                                          reinterpret_cast<void*>(offsetof(Particle, isRing)));
+    glEnableVertexAttribArray(4); glVertexAttribIPointer(4, 1, GL_UNSIGNED_INT, ParticleBytes,
+                                                          reinterpret_cast<void*>(offsetof(Particle, padding)));
 }
 
 } // namespace

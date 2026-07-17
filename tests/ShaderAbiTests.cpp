@@ -56,5 +56,13 @@ int main() {
         assert(source.find("Particle.") != std::string::npos);
         assert(source.find("struct ParticleData") == std::string::npos);
     }
+
+    const auto transformFeedback = ReadFile(sourceRoot / "src/shaders/glsl410/ParticleSimulationTF.vert");
+    assert(transformFeedback.find("in uint inIsRing") != std::string::npos);
+    assert(transformFeedback.find("in uint inPadding") != std::string::npos);
+    assert(transformFeedback.find("flat out uint tfIsRing") != std::string::npos);
+    assert(transformFeedback.find("flat out uint tfPadding") != std::string::npos);
+    const auto particleRender = ReadFile(sourceRoot / "src/shaders/glsl410/ParticleRender.vert");
+    assert(particleRender.find("in uint inIsRing") != std::string::npos);
     return 0;
 }

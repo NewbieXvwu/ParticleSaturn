@@ -97,7 +97,7 @@ ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot ExpectedDi
         particle.position[2] = ringRadius * std::sin(theta);
         particle.position[3] = size;
         particle.speed = 8.0f / std::sqrt(ringRadius);
-        particle.isRing = 1.0f;
+        particle.isRing = 1U;
     }
     particle.color = PackColor(red, green, blue, alpha);
     return particle;
@@ -114,8 +114,8 @@ void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSys
         for (std::size_t component = 0; component < 4; ++component) AssertNear(actual.position[component], expected.position[component]);
         assert(actual.color == expected.color);
         AssertNear(actual.speed, expected.speed);
-        AssertNear(actual.isRing, expected.isRing);
-        AssertNear(actual.padding, expected.padding);
+        assert(actual.isRing == expected.isRing);
+        assert(actual.padding == expected.padding);
     }
     for (const auto& particle : snapshots) {
         assert(std::isfinite(particle.position[0]));
@@ -123,7 +123,7 @@ void VerifyInitializedParticles(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSys
         assert(std::isfinite(particle.position[2]));
         assert(particle.position[3] > 0.0f);
         assert(particle.color != 0U);
-        assert(particle.isRing == 0.0f || particle.isRing == 1.0f);
+        assert(particle.isRing == 0U || particle.isRing == 1U);
     }
 }
 
@@ -180,8 +180,8 @@ int main(int argc, char* argv[]) {
         for (const auto& particle : secondFrame) {
             for (float position : particle.position) assert(std::isfinite(position));
             assert(particle.color != 0U);
-            assert(particle.isRing == 0.0f || particle.isRing == 1.0f);
-            AssertNear(particle.padding, 0.0f);
+            assert(particle.isRing == 0U || particle.isRing == 1U);
+            assert(particle.padding == 0U);
         }
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);

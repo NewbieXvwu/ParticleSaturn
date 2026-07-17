@@ -28,8 +28,8 @@ void CompareSnapshots(const std::vector<ParticleSaturn::Gpu::Metal::MetalParticl
         }
         assert(metal[index].color == openGl[index].color);
         AssertNear(metal[index].speed, openGl[index].speed);
-        assert(metal[index].isRing == static_cast<std::uint32_t>(openGl[index].isRing));
-        assert(metal[index].padding == static_cast<std::uint32_t>(openGl[index].padding));
+        assert(metal[index].isRing == openGl[index].isRing);
+        assert(metal[index].padding == openGl[index].padding);
     }
 }
 

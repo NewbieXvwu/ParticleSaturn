@@ -2,7 +2,7 @@
 
 layout(location = 0) in vec4 inPosition;
 layout(location = 1) in uint inColor;
-layout(location = 3) in float inIsRing;
+layout(location = 3) in uint inIsRing;
 
 uniform float uTime;
 uniform float uScale;
@@ -70,7 +70,8 @@ void main() {
     vec2 ndcCenter = vec2(viewPosition.x * focalLength / (uAspect * projectedDistance),
                           viewPosition.y * focalLength / projectedDistance);
     float nearMask = distance <= 50.0 ? 1.0 : 0.0;
-    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, inIsRing);
+    float ringFlag = float(inIsRing);
+    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, ringFlag);
     float pointSize = inPosition.w * 350.0 * 0.55 / max(distance, 0.1) * (uScreenHeight / 1080.0) * ringFactor *
                       pow(max(uPixelRatio, 0.0001), 0.8);
     float pixelSize = clamp(pointSize, 0.0, 300.0 * (uScreenHeight / 1080.0));
@@ -80,7 +81,7 @@ void main() {
                   float((inColor >> 16u) & 255u), float((inColor >> 24u) & 255u)) / 255.0;
     vDistance = distance;
     vScale = uScale;
-    vIsRing = inIsRing;
+    vIsRing = ringFlag;
     vDensityCompensation = uDensityCompensation;
     vPointCoord = corner * 0.5 + 0.5;
 }

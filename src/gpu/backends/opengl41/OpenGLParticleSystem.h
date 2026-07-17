@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ParticleAbi.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -8,13 +10,7 @@ namespace ParticleSaturn::Gpu::OpenGL41 {
 class OpenGLParticleSystem {
 public:
     static constexpr std::uint32_t ParticleCount = 1200000;
-    struct ParticleSnapshot {
-        float position[4]{};
-        std::uint32_t color = 0;
-        float speed = 0.0f;
-        float isRing = 0.0f;
-        float padding = 0.0f;
-    };
+    using ParticleSnapshot = ShaderAbi::Particle;
 
     OpenGLParticleSystem() = default;
     ~OpenGLParticleSystem();
