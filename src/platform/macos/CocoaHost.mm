@@ -159,7 +159,7 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
     // Every material must therefore become opaque before that snapshot, not just
     // the system-blur material.
     const bool transparent = !fullscreen_ &&
-        (material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic || systemBlur);
+        (material == App::WindowMaterial::Transparent || systemBlur);
     [window setOpaque:!transparent && !systemBlur];
     [window setBackgroundColor:transparent || systemBlur ? NSColor.clearColor : NSColor.blackColor];
     const bool opaque = !transparent && !systemBlur;

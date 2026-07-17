@@ -897,6 +897,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：全屏转场前，Metal 与 OpenGL 4.1 现会无条件将原生窗口切为不透明黑色，再呈现黑帧并调用 AppKit 全屏动画；透明和应用内 Acrylic 材质不再把透明窗口带入系统的首帧转场。
 
+进展补充（2026-07-17）：已校正 `AppAcrylic` 语义：它仅指 ImGui 面板的应用内合成，窗口本身保持不透明；仅 `Transparent` 使用透明窗口，`SystemBlur` 才创建 `NSVisualEffectView`。OpenGL 的同等材质分派仍待接入。
+
 - [x] `NSApplication` + `NSWindow` 基础宿主
 - [x] `CAMetalLayer` 表面
 - [x] Retina 缩放、多显示器、全屏切换
