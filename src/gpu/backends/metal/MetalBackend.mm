@@ -334,6 +334,16 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
            uiBlurWeak_ != nullptr && uiBlurWeakPingPong_ != nullptr && uiOverlayWeak_ != nullptr;
 }
 
+MetalRenderTargets::~MetalRenderTargets() {
+    const auto releaseTexture = [](void*& texture) {
+        [(id<MTLTexture>)texture release];
+        texture = nullptr;
+    };
+    releaseTexture(sceneHdr_); releaseTexture(bloomStrong_); releaseTexture(bloomPingPong_); releaseTexture(bloomWeak_);
+    releaseTexture(uiScene_); releaseTexture(uiOverlay_); releaseTexture(uiBlur_); releaseTexture(composite_);
+    releaseTexture(uiBlurWeak_); releaseTexture(uiBlurWeakPingPong_); releaseTexture(uiOverlayWeak_);
+}
+
 void* MetalRenderTargets::SceneHdr() const noexcept { return sceneHdr_; }
 void* MetalRenderTargets::BloomStrong() const noexcept { return bloomStrong_; }
 void* MetalRenderTargets::BloomPingPong() const noexcept { return bloomPingPong_; }

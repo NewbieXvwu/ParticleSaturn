@@ -112,6 +112,8 @@ private:
 
 class MetalRenderTargets {
 public:
+    ~MetalRenderTargets();
+
     bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height);
     void* SceneHdr() const noexcept;
     void* BloomStrong() const noexcept;

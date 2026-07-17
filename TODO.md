@@ -958,6 +958,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：BGR AVX2 翻转的目的端改为 8 字节加 16 字节的精确写入，完整八像素块只写 24 字节，不再覆盖下一个块或最终缓冲之外；常规和 AddressSanitizer 构建均通过。本机没有 x86 AVX2 执行环境，跨架构运行验收仍待完成。
 
+进展补充（2026-07-17）：`MetalRenderTargets` 已有明确析构收尾，应用退出时会释放全部 HDR、Bloom 与界面纹理；纹理重建与视觉基准测试通过。缩放中的多帧延迟释放将在帧槽调度接入后完成。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
