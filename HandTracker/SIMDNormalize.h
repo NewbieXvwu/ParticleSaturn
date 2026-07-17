@@ -14,10 +14,20 @@ enum class SIMDMode {
     Scalar // 强制使用标量实现
 };
 
+struct CpuFeatureSet {
+    bool sse2 = false;
+    bool ssse3 = false;
+    bool avx2 = false;
+    bool neon = false;
+};
+
 namespace SIMDNormalize {
 
 // 初始化 SIMD 检测（程序启动时调用一次）
 void Init();
+
+// 返回初始化后缓存的能力快照，供内核注册和分派使用。
+CpuFeatureSet GetCpuFeatures();
 
 // 设置 SIMD 模式
 void SetMode(SIMDMode mode);

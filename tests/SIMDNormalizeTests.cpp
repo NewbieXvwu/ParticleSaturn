@@ -17,6 +17,13 @@ void AssertEqual(const std::vector<float>& left, const std::vector<float>& right
 } // namespace
 
 int main() {
+    const CpuFeatureSet features = SIMDNormalize::GetCpuFeatures();
+    assert(features.avx2 == SIMDNormalize::IsAVX2Supported());
+    assert(features.sse2 == SIMDNormalize::IsSSE2Supported());
+    assert(features.neon == SIMDNormalize::IsNEONSupported());
+    assert(!features.avx2 || features.sse2);
+    SIMDNormalize::SetMode(SIMDMode::Auto);
+    assert(SIMDNormalize::GetCurrentImplementation() != nullptr);
     constexpr int width = 5;
     constexpr int height = 3;
     std::vector<std::uint8_t> pixels(width * height * 3);

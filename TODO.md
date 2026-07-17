@@ -991,6 +991,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：ARM64 TensorFlow Lite/XNNPACK 静态库已重新构建；启用运行时的应用成功编译 OpenGL 手势分支，手势工作线程与实际模型张量契约测试均通过。真实摄像头手势连续性仍待人工端到端验收。
 
+进展补充（2026-07-17）：SIMD 能力检测已输出 `CpuFeatureSet` 快照，归一化、翻转归一化与 BGR 转 RGB 均经统一 `KernelRegistry`/`KernelDispatcher` 选择路径。标量和 ARM NEON 归一化内核已迁入独立编译单元并通过测试；SSE、AVX2 的独立单元和 Windows 专用编译参数仍待迁移。
+
 进展补充（2026-07-17）：启用 XNNPACK 运行时的完整 CTest 回归共 17 项全部通过，覆盖 Metal、OpenGL、跨后端画面基准、设置、手势工作线程、模型运行时和两种 Vulkan ICD 的交换链测试。
 
 - [x] `AVCaptureSession` 实现 `ICameraCapture`

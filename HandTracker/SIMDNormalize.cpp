@@ -2,6 +2,7 @@
 // 支持 AVX2、SSE2 和标量回退
 
 #include "SIMDNormalize.h"
+#include "SIMDNormalizeKernels.h"
 
 #include <cstring>
 #include <iostream>
@@ -41,6 +42,72 @@ static bool     g_hasSSE2     = false;
 static bool     g_hasSSSE3    = false;
 static bool     g_hasNEON     = false;
 static SIMDMode g_currentMode = SIMDMode::Auto;
+
+enum class KernelOperation { Normalize, FlipNormalize, FlipBgrToRgb };
+enum class KernelImplementation { Scalar, SSE2, SSSE3, AVX2, NEON };
+
+class KernelRegistry {
+public:
+    explicit KernelRegistry(CpuFeatureSet features) : features_{features} {}
+
+    bool Supports(KernelImplementation implementation, KernelOperation operation) const {
+        switch (implementation) {
+        case KernelImplementation::NEON:
+            return features_.neon && operation == KernelOperation::Normalize;
+        case KernelImplementation::AVX2:
+#ifdef HAS_AVX2_IMPL
+            return features_.avx2;
+#else
+            return false;
+#endif
+        case KernelImplementation::SSSE3:
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+            return features_.ssse3;
+#else
+            return false;
+#endif
+        case KernelImplementation::SSE2:
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+            return features_.sse2 && operation == KernelOperation::Normalize;
+#else
+            return false;
+#endif
+        case KernelImplementation::Scalar:
+            return true;
+        }
+        return false;
+    }
+
+private:
+    CpuFeatureSet features_;
+};
+
+class KernelDispatcher {
+public:
+    static KernelImplementation Select(SIMDMode mode, KernelOperation operation, CpuFeatureSet features) {
+        const KernelRegistry registry{features};
+        const auto supported = [&registry, operation](KernelImplementation implementation) {
+            return registry.Supports(implementation, operation);
+        };
+        if (mode == SIMDMode::Scalar) return KernelImplementation::Scalar;
+        if (mode == SIMDMode::NEON) return supported(KernelImplementation::NEON) ? KernelImplementation::NEON : KernelImplementation::Scalar;
+        if (mode == SIMDMode::AVX2) {
+            if (supported(KernelImplementation::AVX2)) return KernelImplementation::AVX2;
+            if (supported(KernelImplementation::SSSE3)) return KernelImplementation::SSSE3;
+            if (supported(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
+            return KernelImplementation::Scalar;
+        }
+        if (mode == SIMDMode::SSE) {
+            if (operation == KernelOperation::Normalize && supported(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
+            return supported(KernelImplementation::SSSE3) ? KernelImplementation::SSSE3 : KernelImplementation::Scalar;
+        }
+        for (const auto implementation : {KernelImplementation::NEON, KernelImplementation::AVX2,
+                                          KernelImplementation::SSSE3, KernelImplementation::SSE2}) {
+            if (supported(implementation)) return implementation;
+        }
+        return KernelImplementation::Scalar;
+    }
+};
 
 #if defined(PARTICLESATURN_X86_SIMD)
 static void GetCPUID(int info[4], int function_id) {
@@ -117,6 +184,13 @@ void Init() {
               << ", SSSE3: " << (g_hasSSSE3 ? "Yes" : "No") << std::endl;
 }
 
+CpuFeatureSet GetCpuFeatures() {
+    if (!g_initialized) {
+        Init();
+    }
+    return {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON};
+}
+
 void SetMode(SIMDMode mode) {
     if (!g_initialized) {
         Init();
@@ -163,29 +237,17 @@ const char* GetCurrentImplementation() {
     if (!g_initialized) {
         Init();
     }
-
-    switch (g_currentMode) {
-    case SIMDMode::NEON:
-        return g_hasNEON ? "NEON (forced)" : "NEON (unavailable, using scalar)";
-    case SIMDMode::AVX2:
-        return g_hasAVX2 ? "AVX2 (forced)" : "AVX2 (unavailable, using fallback)";
-    case SIMDMode::SSE:
-        return g_hasSSE2 ? "SSE (forced)" : "SSE (unavailable, using scalar)";
-    case SIMDMode::Scalar:
-        return "Scalar (forced)";
-    case SIMDMode::Auto:
-    default:
-        if (g_hasNEON) {
-            return "NEON (auto)";
-        }
-        if (g_hasAVX2) {
-            return "AVX2 (auto)";
-        }
-        if (g_hasSSE2) {
-            return "SSE (auto)";
-        }
-        return "Scalar (auto)";
+    const auto selected = KernelDispatcher::Select(
+        g_currentMode, KernelOperation::Normalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
+    const bool automatic = g_currentMode == SIMDMode::Auto;
+    switch (selected) {
+    case KernelImplementation::NEON: return automatic ? "NEON (auto)" : "NEON (forced)";
+    case KernelImplementation::AVX2: return automatic ? "AVX2 (auto)" : "AVX2 (forced)";
+    case KernelImplementation::SSSE3: return automatic ? "SSSE3 (auto)" : "SSSE3 (forced)";
+    case KernelImplementation::SSE2: return automatic ? "SSE2 (auto)" : "SSE2 (forced)";
+    case KernelImplementation::Scalar: return automatic ? "Scalar (auto)" : "Scalar (forced fallback)";
     }
+    return "Scalar (forced fallback)";
 }
 
 // ============================================================================
@@ -348,77 +410,32 @@ void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count) {
     if (!g_initialized) {
         Init();
     }
-
-    // 根据模式选择实现
-    SIMDMode effectiveMode = g_currentMode;
-
-    if (effectiveMode == SIMDMode::Auto) {
-        // 自动选择最佳实现
+    const auto implementation = KernelDispatcher::Select(
+        g_currentMode, KernelOperation::Normalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
+    switch (implementation) {
+    case KernelImplementation::NEON:
 #if defined(PARTICLESATURN_NEON_SIMD)
-        if (g_hasNEON) {
-            NormalizeRGB_NEON(src, dst, pixel_count);
-            return;
-        }
-#endif
-#ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            NormalizeRGB_AVX2(src, dst, pixel_count);
-            return;
-        }
-#endif
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
-            NormalizeRGB_SSE(src, dst, pixel_count);
-            return;
-        }
-#endif
-        NormalizeRGB_Scalar(src, dst, pixel_count);
+        Kernels::NormalizeRGBNeon(src, dst, pixel_count);
         return;
-    }
-
-    // 强制指定的模式
-    switch (effectiveMode) {
-    case SIMDMode::NEON:
-#if defined(PARTICLESATURN_NEON_SIMD)
-        if (g_hasNEON) {
-            NormalizeRGB_NEON(src, dst, pixel_count);
-            return;
-        }
 #endif
-        NormalizeRGB_Scalar(src, dst, pixel_count);
         break;
-    case SIMDMode::AVX2:
+    case KernelImplementation::AVX2:
 #ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            NormalizeRGB_AVX2(src, dst, pixel_count);
-            return;
-        }
+        NormalizeRGB_AVX2(src, dst, pixel_count);
+        return;
 #endif
-        // 回退
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
-            NormalizeRGB_SSE(src, dst, pixel_count);
-            return;
-        }
-#endif
-        NormalizeRGB_Scalar(src, dst, pixel_count);
         break;
-
-    case SIMDMode::SSE:
+    case KernelImplementation::SSSE3:
+    case KernelImplementation::SSE2:
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
-            NormalizeRGB_SSE(src, dst, pixel_count);
-            return;
-        }
+        NormalizeRGB_SSE(src, dst, pixel_count);
+        return;
 #endif
-        NormalizeRGB_Scalar(src, dst, pixel_count);
         break;
-
-    case SIMDMode::Scalar:
-    default:
-        NormalizeRGB_Scalar(src, dst, pixel_count);
+    case KernelImplementation::Scalar:
         break;
     }
+    Kernels::NormalizeRGBScalar(src, dst, pixel_count);
 }
 
 // 行级别归一化（用于逐行处理的情况）
@@ -593,58 +610,27 @@ void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int h
     if (!g_initialized) {
         Init();
     }
-
-    SIMDMode effectiveMode = g_currentMode;
-
-    if (effectiveMode == SIMDMode::Auto) {
+    const auto implementation = KernelDispatcher::Select(
+        g_currentMode, KernelOperation::FlipNormalize, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
+    switch (implementation) {
+    case KernelImplementation::AVX2:
 #ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
-            return;
-        }
-#endif
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndNormalize_SSE(src, dst, width, height);
-            return;
-        }
-#endif
-        FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+        FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
         return;
-    }
-
-    switch (effectiveMode) {
-    case SIMDMode::AVX2:
-#ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            FlipHorizontalAndNormalize_AVX2(src, dst, width, height);
-            return;
-        }
 #endif
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndNormalize_SSE(src, dst, width, height);
-            return;
-        }
-#endif
-        FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
         break;
-
-    case SIMDMode::SSE:
+    case KernelImplementation::SSSE3:
 #if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndNormalize_SSE(src, dst, width, height);
-            return;
-        }
+        FlipHorizontalAndNormalize_SSE(src, dst, width, height);
+        return;
 #endif
-        FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
         break;
-
-    case SIMDMode::Scalar:
-    default:
-        FlipHorizontalAndNormalize_Scalar(src, dst, width, height);
+    case KernelImplementation::NEON:
+    case KernelImplementation::SSE2:
+    case KernelImplementation::Scalar:
         break;
     }
+    Kernels::FlipHorizontalAndNormalizeScalar(src, dst, width, height);
 }
 
 // ============================================================================
@@ -764,58 +750,27 @@ void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int h
     if (!g_initialized) {
         Init();
     }
-
-    SIMDMode effectiveMode = g_currentMode;
-
-    if (effectiveMode == SIMDMode::Auto) {
+    const auto implementation = KernelDispatcher::Select(
+        g_currentMode, KernelOperation::FlipBgrToRgb, {g_hasSSE2, g_hasSSSE3, g_hasAVX2, g_hasNEON});
+    switch (implementation) {
+    case KernelImplementation::AVX2:
 #ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            FlipHorizontalAndBGR2RGB_AVX2(src, dst, width, height);
-            return;
-        }
-#endif
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
-            return;
-        }
-#endif
-        FlipHorizontalAndBGR2RGB_Scalar(src, dst, width, height);
+        FlipHorizontalAndBGR2RGB_AVX2(src, dst, width, height);
         return;
-    }
-
-    switch (effectiveMode) {
-    case SIMDMode::AVX2:
-#ifdef HAS_AVX2_IMPL
-        if (g_hasAVX2) {
-            FlipHorizontalAndBGR2RGB_AVX2(src, dst, width, height);
-            return;
-        }
 #endif
-#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
-            return;
-        }
-#endif
-        FlipHorizontalAndBGR2RGB_Scalar(src, dst, width, height);
         break;
-
-    case SIMDMode::SSE:
+    case KernelImplementation::SSSE3:
 #if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
-        if (g_hasSSSE3) {
-            FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
-            return;
-        }
+        FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
+        return;
 #endif
-        FlipHorizontalAndBGR2RGB_Scalar(src, dst, width, height);
         break;
-
-    case SIMDMode::Scalar:
-    default:
-        FlipHorizontalAndBGR2RGB_Scalar(src, dst, width, height);
+    case KernelImplementation::NEON:
+    case KernelImplementation::SSE2:
+    case KernelImplementation::Scalar:
         break;
     }
+    Kernels::FlipHorizontalAndBGR2RGBScalar(src, dst, width, height);
 }
 
 } // namespace SIMDNormalize
