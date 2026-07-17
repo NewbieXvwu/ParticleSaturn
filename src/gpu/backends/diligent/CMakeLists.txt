@@ -15,4 +15,14 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME ParticleSaturnDiligentVulkanAdapterTests COMMAND ParticleSaturnDiligentVulkanAdapterTests
         "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources")
+    if(TARGET ParticleSaturnPlatformMacOS)
+        add_executable(ParticleSaturnDiligentVulkanSurfaceTests
+            "${CMAKE_SOURCE_DIR}/tests/DiligentVulkanSurfaceTests.mm")
+        target_link_libraries(ParticleSaturnDiligentVulkanSurfaceTests PRIVATE
+            ParticleSaturnDiligentVulkanAdapter ParticleSaturnPlatformMacOS)
+        add_dependencies(ParticleSaturnDiligentVulkanSurfaceTests ParticleSaturn.macOS)
+        add_test(NAME ParticleSaturnDiligentVulkanSurfaceTests COMMAND ParticleSaturnDiligentVulkanSurfaceTests
+            "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources")
+        set_tests_properties(ParticleSaturnDiligentVulkanSurfaceTests PROPERTIES TIMEOUT 30)
+    endif()
 endif()
