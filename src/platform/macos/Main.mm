@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -199,6 +200,20 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Gpu::Metal::MetalSurface surface{device, host.NativeMetalLayer()};
         auto size = host.CurrentDrawableSize();
         const auto libraryPath = [[[NSBundle mainBundle] pathForResource:@"ParticleKernels" ofType:@"metallib"] UTF8String];
+        const auto pipelineCachePath = (std::filesystem::temp_directory_path() / "ParticleSaturn-v2.metallibarchive").string();
+        ParticleSaturn::Gpu::Metal::MetalPipelineCache pipelineCache;
+        if (libraryPath != nullptr && pipelineCache.Load(device, pipelineCachePath)) {
+            pipelineCache.AddComputeFunction(device, libraryPath, "InitializeParticles");
+            pipelineCache.AddComputeFunction(device, libraryPath, "SimulateParticles");
+            pipelineCache.AddComputeFunction(device, libraryPath, "ToneMapWithBloom");
+            pipelineCache.AddComputeFunction(device, libraryPath, "BloomDownsample");
+            pipelineCache.AddComputeFunction(device, libraryPath, "KawaseBlur");
+            pipelineCache.AddComputeFunction(device, libraryPath, "AcrylicComposite");
+            pipelineCache.AddComputeFunction(device, libraryPath, "RenderSevenSegmentFps");
+            pipelineCache.AddRenderFunctions(device, libraryPath, "ParticleVertex", "ParticleFragment");
+            pipelineCache.AddRenderFunctions(device, libraryPath, "StarVertex", "StarFragment");
+            pipelineCache.Save(pipelineCachePath);
+        }
         ParticleSaturn::Gpu::Metal::MetalParticleSystem particles;
         ParticleSaturn::Gpu::Metal::MetalStarField stars;
         ParticleSaturn::Gpu::Metal::MetalRenderTargets targets;

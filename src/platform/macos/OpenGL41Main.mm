@@ -123,6 +123,11 @@ public:
 
     void PresentFullscreenBackdrop() {
         SetEnabled(false);
+        // The system takes its full-screen transition snapshot before the GL
+        // drawable is reliably visible.  Set the native window opaque first so
+        // that snapshot cannot expose AppKit's blue backing.
+        [window_ setOpaque:YES];
+        [window_ setBackgroundColor:NSColor.blackColor];
         if (!surface_.MakeCurrent()) return;
         const NSSize bounds = [openGlView_ bounds].size;
         const CGFloat scale = [window_ backingScaleFactor];

@@ -889,6 +889,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Metal 全屏过渡会在切换窗口材质后提交并等待一帧不透明黑色 `CAMetalLayer` 绘制对象，再交给 AppKit 执行动画，避免旧的透明图层进入过渡快照。
 
+进展补充（2026-07-17）：全屏转场前，Metal 与 OpenGL 4.1 现会无条件将原生窗口切为不透明黑色，再呈现黑帧并调用 AppKit 全屏动画；透明和应用内 Acrylic 材质不再把透明窗口带入系统的首帧转场。
+
 - [x] `NSApplication` + `NSWindow` 基础宿主
 - [x] `CAMetalLayer` 表面
 - [x] Retina 缩放、多显示器、全屏切换
@@ -918,7 +920,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Metal 调试面板通过 `AppController` 生成渲染和窗口命令
 - [x] 透明窗口 + `NSVisualEffectView` 经应用命令接入实际帧路径
 - [ ] 三帧并行调度、共享命令队列和延迟资源释放
-- [ ] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
+- [x] 管线缓存（`MTLBinaryArchive`）接入计算和图形管线创建，并验证二次启动命中
 - [x] MSL 着色器编写 + `metallib` 编译
 - [x] Metal 离屏纹理缩放重建释放旧资源
 - [ ] 以共享 GPU API 和渲染图运行 Metal 帧路径

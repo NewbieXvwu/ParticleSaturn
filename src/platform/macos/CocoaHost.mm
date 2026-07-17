@@ -145,7 +145,11 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
     // AppKit substitutes a blue full-screen backing, so retain the scene's
     // opaque black backdrop until the window returns to windowed mode.
     const bool systemBlur = material == App::WindowMaterial::SystemBlur && !fullscreen_;
-    const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic || systemBlur;
+    // AppKit snapshots the NSWindow while beginning the full-screen animation.
+    // Every material must therefore become opaque before that snapshot, not just
+    // the system-blur material.
+    const bool transparent = !fullscreen_ &&
+        (material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic || systemBlur);
     [window setOpaque:!transparent && !systemBlur];
     [window setBackgroundColor:transparent || systemBlur ? NSColor.clearColor : NSColor.blackColor];
     const bool opaque = !transparent && !systemBlur;

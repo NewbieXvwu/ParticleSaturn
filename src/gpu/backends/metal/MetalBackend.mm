@@ -101,11 +101,16 @@ struct SimulationConstants {
 };
 
 constexpr std::size_t ParticleSize = 32;
+id<MTLBinaryArchive> ActivePipelineArchive = nil;
 
 id<MTLComputePipelineState> CreateComputePipeline(id<MTLLibrary> library, NSString* functionName) {
     NSError* error = nil;
     id<MTLFunction> function = [library newFunctionWithName:functionName];
-    id<MTLComputePipelineState> pipeline = [(id<MTLDevice>)[library device] newComputePipelineStateWithFunction:function error:&error];
+    auto* descriptor = [[MTLComputePipelineDescriptor alloc] init];
+    descriptor.computeFunction = function;
+    if (ActivePipelineArchive != nil) descriptor.binaryArchives = @[ActivePipelineArchive];
+    id<MTLComputePipelineState> pipeline = [(id<MTLDevice>)[library device] newComputePipelineStateWithDescriptor:descriptor options:0 reflection:nil error:&error];
+    [descriptor release];
     [function release];
     return error == nil ? pipeline : nil;
 }
@@ -126,6 +131,7 @@ id<MTLRenderPipelineState> CreateRenderPipeline(id<MTLDevice> device, id<MTLLibr
     descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
     descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
     descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    if (ActivePipelineArchive != nil) descriptor.binaryArchives = @[ActivePipelineArchive];
     NSError* error = nil;
     id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
     [descriptor release]; [vertex release]; [fragment release];
@@ -222,7 +228,14 @@ bool MetalPipelineCache::Load(MetalDevice& device, const std::string& path) {
     NSError* error = nil;
     archive_ = [(id<MTLDevice>)device.NativeDevice() newBinaryArchiveWithDescriptor:descriptor error:&error];
     [descriptor release];
+    ActivePipelineArchive = (id<MTLBinaryArchive>)archive_;
     return archive_ != nullptr && error == nil;
+}
+
+MetalPipelineCache::~MetalPipelineCache() {
+    if (ActivePipelineArchive == archive_) ActivePipelineArchive = nil;
+    [(id)archive_ release];
+    archive_ = nullptr;
 }
 
 bool MetalPipelineCache::Save(const std::string& path) {
@@ -244,6 +257,29 @@ bool MetalPipelineCache::AddComputeFunction(MetalDevice& device, const std::stri
     [descriptor release];
     [function release];
     [library release];
+    return added && error == nil;
+}
+
+bool MetalPipelineCache::AddRenderFunctions(MetalDevice& device, const std::string& libraryPath,
+                                             const char* vertexName, const char* fragmentName) {
+    if (archive_ == nullptr) return false;
+    NSError* error = nil;
+    id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
+        newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath.c_str()]] error:&error];
+    if (library == nil || error != nil) return false;
+    auto* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = [library newFunctionWithName:[NSString stringWithUTF8String:vertexName]];
+    descriptor.fragmentFunction = [library newFunctionWithName:[NSString stringWithUTF8String:fragmentName]];
+    descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+    descriptor.colorAttachments[0].blendingEnabled = YES;
+    descriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+    descriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
+    descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    const bool added = [(id<MTLBinaryArchive>)archive_ addRenderPipelineFunctionsWithDescriptor:descriptor error:&error];
+    [descriptor.vertexFunction release]; [descriptor.fragmentFunction release]; [descriptor release]; [library release];
     return added && error == nil;
 }
 
