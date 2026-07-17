@@ -952,6 +952,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：SSSE3 的两条翻转路径也改为精确读取每四像素的 12 字节块；测试覆盖 1 到 9 像素宽度、两行图像和未对齐源数据，并逐元素核对归一化翻转与 BGR 到 RGB 的结果。
 
+进展补充（2026-07-17）：新增 `PARTICLESATURN_SIMD_ADDRESS_SANITIZER`，仅对 SIMD 库与其测试启用 AddressSanitizer；独立 macOS 配置已实际构建并通过任意长度、未对齐输入测试。AVX2 翻转尾部与完整跨架构验收仍待完成。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误
