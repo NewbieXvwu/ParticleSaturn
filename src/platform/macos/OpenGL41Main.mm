@@ -26,6 +26,11 @@
 #include "gpu/backends/opengl41/OpenGLStarField.h"
 #include "gpu/backends/opengl41/OpenGLToneMapper.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
+#include "services/camera/macos/AVFoundationCamera.h"
+#include "services/camera/macos/CameraSelectorWindow.h"
+#include "services/hand_tracking/macos/HandTrackingWorker.h"
+#include "services/hand_tracking/macos/XnnpackRuntime.h"
+#include "services/resources/macos/BundleResources.h"
 
 namespace {
 
@@ -302,6 +307,23 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+        auto camera = std::make_shared<ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera>();
+        auto cameraSelector = std::make_shared<ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow>(*camera);
+        if (!captureBaseline) cameraSelector->StartSaved();
+        auto handRuntime = std::make_shared<ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime>();
+        std::shared_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
+        std::string handTrackingError;
+        if (handRuntime->Load(ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite"),
+                              ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite"), handTrackingError)) {
+            handTracking = std::make_shared<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker>(
+                [handRuntime](const ParticleSaturn::Services::Camera::Frame& input,
+                              ParticleSaturn::Services::HandTracking::MacOS::HandPose& pose, std::string& error) {
+                    return handRuntime->Invoke(input, error) && handRuntime->DecodeLandmarks(pose);
+                });
+            handTracking->Start();
+        }
+#endif
         auto appliedVsyncMode = std::make_shared<int>(initialState.render.vsyncMode);
 
         const NSInteger refreshRate = std::max<NSInteger>(1, [[window screen] maximumFramesPerSecond]);
@@ -315,7 +337,17 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             const float deltaTime = std::clamp(std::chrono::duration<float>(now - *lastFrame).count(), 0.0f, 0.25f);
             *lastFrame = now;
             fpsMeter->AddSample(deltaTime);
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            ParticleSaturn::App::GestureInput gesture;
+            ParticleSaturn::Services::Camera::Frame cameraFrame;
+            if (handTracking && camera->LatestFrame(cameraFrame)) handTracking->Submit(std::move(cameraFrame), controller->State().gesture.handLostDelay);
+            if (handTracking) gesture = handTracking->LatestGesture();
+            const auto frameSnapshot = coordinator->Advance(*controller, deltaTime, gesture);
+            const bool handTracked = gesture.tracked;
+#else
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
+            const bool handTracked = false;
+#endif
             const auto& state = *frameSnapshot.state;
             particles->SetSimulationMode(state.render.analyticParticles
                 ? ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::Analytic
@@ -354,7 +386,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             glEnable(GL_PROGRAM_POINT_SIZE);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE);
             stars->Draw(static_cast<float>(state.scene.simulationTimeSeconds), width, height);
-            if (!state.scene.paused) particles->Simulate(deltaTime, state.scene.zoom, false);
+            if (!state.scene.paused) particles->Simulate(deltaTime, state.scene.zoom, handTracked);
             particles->DrawIndirect(static_cast<float>(state.scene.simulationTimeSeconds), width, height,
                                     state.scene.zoom, state.scene.rotationX, state.scene.rotationY,
                                     state.render.pixelRatio, state.render.densityCompensation,
