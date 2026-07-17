@@ -6,10 +6,13 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "imgui.h"
@@ -48,6 +51,96 @@ private:
     std::size_t next_ = 0;
     float framesPerSecond_ = 60.0f;
 };
+
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+class HandTrackingWorker {
+public:
+    ~HandTrackingWorker() { Stop(); }
+
+    bool Start(const std::string& palmModelPath, const std::string& landmarkModelPath, std::string& error) {
+        if (!runtime_.Load(palmModelPath, landmarkModelPath, error)) return false;
+        worker_ = std::thread([this] { Run(); });
+        return true;
+    }
+
+    void Submit(ParticleSaturn::Services::Camera::Frame frame, int handLostDelay) {
+        std::lock_guard lock{inputMutex_};
+        pendingFrame_ = std::move(frame);
+        pendingLostDelay_ = std::clamp(handLostDelay, 1, 120);
+        hasPendingFrame_ = true;
+        inputReady_.notify_one();
+    }
+
+    ParticleSaturn::App::GestureInput LatestGesture() const {
+        std::lock_guard lock{outputMutex_};
+        ParticleSaturn::App::GestureInput gesture;
+        if (!sample_.tracked || std::chrono::steady_clock::now() - sample_.updatedAt > std::chrono::milliseconds{500}) {
+            return gesture;
+        }
+        gesture.tracked = true;
+        gesture.hasAbsolutePose = true;
+        gesture.rotationXNormalized = sample_.pose.centerX;
+        gesture.rotationYNormalized = sample_.pose.centerY;
+        gesture.scale = sample_.pose.scale;
+        return gesture;
+    }
+
+private:
+    struct Sample {
+        bool tracked = false;
+        ParticleSaturn::Services::HandTracking::MacOS::HandPose pose;
+        std::chrono::steady_clock::time_point updatedAt{};
+    };
+
+    void Stop() {
+        {
+            std::lock_guard lock{inputMutex_};
+            stopping_ = true;
+            inputReady_.notify_one();
+        }
+        if (worker_.joinable()) worker_.join();
+    }
+
+    void Run() {
+        int lostFrames = 0;
+        for (;;) {
+            ParticleSaturn::Services::Camera::Frame frame;
+            int handLostDelay = 1;
+            {
+                std::unique_lock lock{inputMutex_};
+                inputReady_.wait(lock, [this] { return stopping_ || hasPendingFrame_; });
+                if (stopping_) return;
+                frame = std::move(pendingFrame_);
+                handLostDelay = pendingLostDelay_;
+                hasPendingFrame_ = false;
+            }
+            std::string error;
+            ParticleSaturn::Services::HandTracking::MacOS::HandPose pose;
+            const bool tracked = runtime_.Invoke(frame, error) && runtime_.DecodeLandmarks(pose);
+            std::lock_guard lock{outputMutex_};
+            sample_.updatedAt = std::chrono::steady_clock::now();
+            if (tracked) {
+                lostFrames = 0;
+                sample_.tracked = true;
+                sample_.pose = pose;
+            } else if (++lostFrames >= handLostDelay) {
+                sample_.tracked = false;
+            }
+        }
+    }
+
+    ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime runtime_;
+    mutable std::mutex inputMutex_;
+    mutable std::mutex outputMutex_;
+    std::condition_variable inputReady_;
+    std::thread worker_;
+    ParticleSaturn::Services::Camera::Frame pendingFrame_;
+    Sample sample_;
+    int pendingLostDelay_ = 1;
+    bool hasPendingFrame_ = false;
+    bool stopping_ = false;
+};
+#endif
 
 bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t width, std::uint32_t height, const char* path) {
     if (nativeDevice == nullptr || nativeTexture == nullptr || path == nullptr || path[0] == '\0' || width == 0 || height == 0) {
@@ -121,11 +214,11 @@ int main() {
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-        ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTracking;
+        HandTrackingWorker handTracking;
         std::string handTrackingError;
         const auto palmModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
         const auto landmarkModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
-        if (!handTracking.Load(palmModel, landmarkModel, handTrackingError)) {
+        if (!handTracking.Start(palmModel, landmarkModel, handTrackingError)) {
             std::clog << "[HandTracking] " << handTrackingError << '\n';
         }
 #endif
@@ -144,22 +237,14 @@ int main() {
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
             ParticleSaturn::App::GestureInput gesture;
             ParticleSaturn::Services::Camera::Frame cameraFrame;
-            if (handTracking.IsLoaded() && camera.LatestFrame(cameraFrame)) {
-                if (!handTracking.Invoke(cameraFrame, handTrackingError)) {
-                    std::clog << "[HandTracking] " << handTrackingError << '\n';
-                } else {
-                    ParticleSaturn::Services::HandTracking::MacOS::HandPose pose;
-                    if (handTracking.DecodeLandmarks(pose)) {
-                        gesture.tracked = true;
-                        gesture.hasAbsolutePose = true;
-                        gesture.rotationXNormalized = pose.centerX;
-                        gesture.rotationYNormalized = pose.centerY;
-                        gesture.scale = pose.scale;
-                    }
-                }
+            if (camera.LatestFrame(cameraFrame)) {
+                handTracking.Submit(std::move(cameraFrame), controller.State().gesture.handLostDelay);
             }
+            gesture = handTracking.LatestGesture();
+            const bool handTracked = gesture.tracked;
             const auto frame = coordinator.Advance(controller, deltaTime, gesture);
 #else
+            const bool handTracked = false;
             const auto frame = coordinator.Advance(controller, deltaTime);
 #endif
             fpsMeter.AddSample(deltaTime);
@@ -177,7 +262,7 @@ int main() {
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            drawableSize.scale, *frame.state, false, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
+                            drawableSize.scale, *frame.state, handTracked, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();

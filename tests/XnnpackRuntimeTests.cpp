@@ -1,7 +1,17 @@
 #include "services/hand_tracking/macos/XnnpackRuntime.h"
 
 #include <cassert>
+#include <cmath>
 #include <string>
+#include <vector>
+
+namespace {
+
+void AssertNear(float actual, float expected) {
+    assert(std::abs(actual - expected) < 0.001f);
+}
+
+} // namespace
 
 int main() {
     ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime runtime;
@@ -25,5 +35,40 @@ int main() {
         }
         assert(landmarks == 2U && scalars == 2U);
     }
+
+    using ParticleSaturn::Services::HandTracking::MacOS::HandPose;
+    using ParticleSaturn::Services::HandTracking::MacOS::PalmRegion;
+    PalmRegion region;
+    region.centerX = 0.5f;
+    region.centerY = 0.5f;
+    region.width = 0.2f;
+    region.height = 0.2f;
+    region.rotation = 0.0f;
+    ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime::ExpandPalmToHandRegion(region);
+    AssertNear(region.handCenterX, 0.5f);
+    AssertNear(region.handCenterY, 0.4f);
+    AssertNear(region.handSide, 0.52f);
+
+    std::vector<float> screenLandmarks(63U, 112.0f);
+    screenLandmarks[4U * 3U] = 112.0f;
+    screenLandmarks[4U * 3U + 1U] = 112.0f;
+    screenLandmarks[8U * 3U] = 168.0f;
+    screenLandmarks[8U * 3U + 1U] = 112.0f;
+    const std::vector<std::vector<float>> syntheticOutputs{
+        screenLandmarks, std::vector<float>{2.0f}, std::vector<float>{0.2f}, std::vector<float>(63U)};
+    HandPose pose;
+    assert(ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime::DecodeLandmarkOutputs(
+        syntheticOutputs, region, pose));
+    AssertNear(pose.centerX, 0.5f);
+    AssertNear(pose.centerY, 0.4f);
+    AssertNear(pose.scale, 1.38f);
+
+    region.isLeftHand = true;
+    screenLandmarks[0] = 0.0f;
+    const std::vector<std::vector<float>> leftOutputs{screenLandmarks, std::vector<float>{2.0f}};
+    assert(ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime::DecodeLandmarkOutputs(
+        leftOutputs, region, pose));
+    AssertNear(pose.centerX, 0.76f);
+    AssertNear(pose.centerY, 0.4f);
     return 0;
 }

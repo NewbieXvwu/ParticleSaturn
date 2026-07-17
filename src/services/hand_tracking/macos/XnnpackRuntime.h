@@ -2,6 +2,7 @@
 
 #include "services/camera/CameraCapture.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,11 @@ struct PalmRegion {
     float width = 0.0f;
     float height = 0.0f;
     float rotation = 0.0f;
+    std::array<float, 14> keypoints{};
+    float handCenterX = 0.5f;
+    float handCenterY = 0.5f;
+    float handSide = 0.0f;
+    bool isLeftHand = false;
 };
 
 struct HandPose {
@@ -36,6 +42,7 @@ public:
 
     bool Load(const std::string& modelPath, std::string& error);
     bool Invoke(const Camera::Frame& frame, std::string& error);
+    void ClearOutputs() noexcept;
     bool IsLoaded() const noexcept;
     const std::vector<std::vector<float>>& Outputs() const noexcept;
 
@@ -59,10 +66,15 @@ public:
     const std::vector<std::vector<float>>& LandmarkOutputs() const noexcept;
     bool DecodePalm(PalmRegion& region) const;
     bool DecodeLandmarks(HandPose& pose) const;
+    static void ExpandPalmToHandRegion(PalmRegion& region) noexcept;
+    static bool DecodeLandmarkOutputs(const std::vector<std::vector<float>>& outputs, const PalmRegion& region,
+                                      HandPose& pose) noexcept;
 
 private:
     XnnpackModel palm_;
     XnnpackModel landmark_;
+    PalmRegion lastRegion_;
+    bool hasRegion_ = false;
 };
 
 } // namespace ParticleSaturn::Services::HandTracking::MacOS
