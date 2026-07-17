@@ -848,13 +848,15 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：应用状态现补齐窗口位置、窗口化尺寸和快捷键边沿输入状态；主题、噪点、密度补偿、手势参数和窗口几何均有 `AppCommand`，macOS 设置会持久化窗口位置并拒绝无效的图形接口、驱动和窗口材质枚举。Metal 与 OpenGL 启动时恢复窗口位置，运行中持续记录窗口化几何；命令钳制与设置往返、异常值回退均有测试。
 
+进展补充（2026-07-17）：F3、F11、B、Esc 的按下与松开现统一为 `SetInputKeyPressed` 命令，重复按下不会重复触发状态变化，Esc 由命令显式请求退出。Metal 与 OpenGL 入口都消费相同命令效果；Bloom 半径和摄像头调试状态已接入 MD3 面板、状态持久化及应用核心测试。
+
 - [x] 从 `AppState.h` 拆出 `SceneState`/`RenderSettings`/`UiState`/`GestureSettings`/`WindowState`
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`
-- [ ] 补齐 `LodState`、`InputState`、主题、窗口材质和全部旧设置字段，并建立对应命令
+- [x] 补齐 `LodState`、`InputState`、主题、窗口材质和全部旧设置字段，并建立对应命令
 - [x] 接入 macOS `NSEvent` 快捷键与窗口事件，验证 F3/F11/B/Esc 行为
 - [x] 将动态 LOD 接入帧时间决策，验证锁定、粒子数和像素比例联动
-- [ ] 界面改为生成命令，不再直接修改 GPU 资源
+- [x] 界面改为生成命令，渲染器只消费状态快照
 - [ ] 旧渲染器保持运行，验证状态拆分无回归
 
 ### 阶段 3：建立项目图形接口与 Diligent 适配层

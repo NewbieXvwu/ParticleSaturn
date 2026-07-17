@@ -23,6 +23,8 @@ int main() {
     controller.Dispatch(SetBlurStrength{99.0f});
     assert(controller.State().ui.blurStrength == 5.0f);
     assert(controller.State().render.bloomBlurStrength == 2.0f);
+    controller.Dispatch(SetBloomBlurStrength{99.0f});
+    assert(controller.State().render.bloomBlurStrength == 5.0f);
     controller.Dispatch(SetDensityCompensation{9.0f});
     controller.Dispatch(SetNoiseIntensity{-1.0f});
     controller.Dispatch(SetGestureSensitivity{9.0f});
@@ -41,6 +43,26 @@ int main() {
     controller.Dispatch(SetGestureSensitivity{1.0f});
     controller.Dispatch(SetGestureInvertX{false});
     controller.Dispatch(SetGestureInvertY{false});
+
+    controller.Dispatch(SetShowCameraDebug{true});
+    assert(controller.State().ui.showCameraDebug);
+    const auto f3Down = controller.Dispatch(SetInputKeyPressed{InputKey::F3, true});
+    assert(controller.State().input.keyF3Pressed && controller.State().ui.showDebugWindow);
+    assert(!controller.Dispatch(SetInputKeyPressed{InputKey::F3, true}).renderSettingsChanged);
+    controller.Dispatch(SetInputKeyPressed{InputKey::F3, false});
+    assert(!controller.State().input.keyF3Pressed);
+    const bool fullscreenBeforeShortcut = controller.State().window.fullscreen;
+    const auto f11Down = controller.Dispatch(SetInputKeyPressed{InputKey::F11, true});
+    assert(f11Down.windowChanged && controller.State().window.fullscreen != fullscreenBeforeShortcut);
+    controller.Dispatch(SetInputKeyPressed{InputKey::F11, false});
+    const bool blurBeforeShortcut = controller.State().ui.blurEnabled;
+    const auto bDown = controller.Dispatch(SetInputKeyPressed{InputKey::B, true});
+    assert(bDown.renderSettingsChanged && controller.State().ui.blurEnabled != blurBeforeShortcut);
+    controller.Dispatch(SetInputKeyPressed{InputKey::B, false});
+    const auto escapeDown = controller.Dispatch(SetInputKeyPressed{InputKey::Escape, true});
+    assert(escapeDown.exitRequested && controller.State().input.keyEscapePressed);
+    controller.Dispatch(SetInputKeyPressed{InputKey::Escape, false});
+    assert(!controller.State().input.keyEscapePressed);
 
     FrameCoordinator coordinator{0.01};
     const auto frame = coordinator.Advance(controller, 0.025, {true, 2.0f, -1.0f, 0.5f});

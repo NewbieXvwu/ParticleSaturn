@@ -282,22 +282,27 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         id backingScaleObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidChangeBackingPropertiesNotification object:window queue:nil
             usingBlock:^(NSNotification*) { surface->MakeCurrent(); surface->UpdateDrawable(); }];
-        id eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
-            if ([event isARepeat]) return event;
+        id eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent*(NSEvent* event) {
+            if ([event type] == NSEventTypeKeyDown && [event isARepeat]) return nil;
+            const bool pressed = [event type] == NSEventTypeKeyDown;
+            const auto dispatchKey = [&](ParticleSaturn::App::InputKey key) {
+                const auto effect = controller->Dispatch(ParticleSaturn::App::SetInputKeyPressed{key, pressed});
+                if (effect.windowChanged) toggleFullscreen();
+                if (effect.exitRequested) [NSApp terminate:nil];
+                if (pressed && !captureBaseline) settingsPtr->Save(controller->State());
+            };
             switch ([event keyCode]) {
             case 99:
-                controller->Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
-                settings.Save(controller->State());
+                dispatchKey(ParticleSaturn::App::InputKey::F3);
                 return nil;
             case 103:
-                toggleFullscreen();
+                dispatchKey(ParticleSaturn::App::InputKey::F11);
                 return nil;
             case 11:
-                controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller->State().ui.blurEnabled});
-                settings.Save(controller->State());
+                dispatchKey(ParticleSaturn::App::InputKey::B);
                 return nil;
             case 53:
-                [NSApp terminate:nil];
+                dispatchKey(ParticleSaturn::App::InputKey::Escape);
                 return nil;
             default:
                 return event;

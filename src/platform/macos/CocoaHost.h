@@ -17,6 +17,14 @@ enum class HostAction : std::uint8_t {
     ToggleDebugWindow,
     ToggleFullscreen,
     ToggleBlur,
+    KeyF3Down,
+    KeyF3Up,
+    KeyF11Down,
+    KeyF11Up,
+    KeyBDown,
+    KeyBUp,
+    KeyEscapeDown,
+    KeyEscapeUp,
 };
 
 class CocoaHost {

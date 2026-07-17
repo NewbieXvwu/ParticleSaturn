@@ -7,11 +7,14 @@
 
 namespace ParticleSaturn::App {
 
+enum class InputKey : std::uint8_t { F3, F11, B, Escape };
+
 struct SetParticleCount { std::uint32_t value; };
 struct SetPixelRatio { float value; };
 struct SetDensityCompensation { float value; };
 struct SetVSyncMode { int value; };
 struct SetBloomEnabled { bool value; };
+struct SetBloomBlurStrength { float value; };
 struct SetAnalyticParticles { bool value; };
 struct SetBlurEnabled { bool value; };
 struct SetBlurStrength { float value; };
@@ -27,6 +30,8 @@ struct SetWindowBounds { std::int32_t x; std::int32_t y; std::uint32_t width; st
 struct SetGraphicsApi { GraphicsApi value; };
 struct SetVulkanDriver { VulkanDriver value; };
 struct SetLodLocked { bool value; };
+struct SetInputKeyPressed { InputKey key; bool value; };
+struct SetShowCameraDebug { bool value; };
 struct ToggleDebugWindow {};
 struct TogglePause {};
 
@@ -36,6 +41,7 @@ using AppCommand = std::variant<
     SetDensityCompensation,
     SetVSyncMode,
     SetBloomEnabled,
+    SetBloomBlurStrength,
     SetAnalyticParticles,
     SetBlurEnabled,
     SetBlurStrength,
@@ -51,6 +57,8 @@ using AppCommand = std::variant<
     SetGraphicsApi,
     SetVulkanDriver,
     SetLodLocked,
+    SetInputKeyPressed,
+    SetShowCameraDebug,
     ToggleDebugWindow,
     TogglePause>;
 
@@ -58,6 +66,7 @@ struct CommandEffect {
     bool renderSettingsChanged = false;
     bool windowChanged         = false;
     bool restartRequired       = false;
+    bool exitRequested         = false;
 };
 
 } // namespace ParticleSaturn::App

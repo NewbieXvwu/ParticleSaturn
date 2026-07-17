@@ -38,6 +38,10 @@ CommandEffect AppController::Dispatch(const AppCommand& command) {
         } else if constexpr (std::is_same_v<Command, SetBloomEnabled>) {
             effect.renderSettingsChanged = state_.render.bloomEnabled != value.value;
             state_.render.bloomEnabled = value.value;
+        } else if constexpr (std::is_same_v<Command, SetBloomBlurStrength>) {
+            const float strength = Clamp(value.value, 0.0f, 5.0f);
+            effect.renderSettingsChanged = state_.render.bloomBlurStrength != strength;
+            state_.render.bloomBlurStrength = strength;
         } else if constexpr (std::is_same_v<Command, SetAnalyticParticles>) {
             effect.renderSettingsChanged = state_.render.analyticParticles != value.value;
             state_.render.analyticParticles = value.value;
@@ -99,6 +103,35 @@ CommandEffect AppController::Dispatch(const AppCommand& command) {
         } else if constexpr (std::is_same_v<Command, SetLodLocked>) {
             effect.renderSettingsChanged = state_.lod.locked != value.value;
             state_.lod.locked = value.value;
+        } else if constexpr (std::is_same_v<Command, SetInputKeyPressed>) {
+            bool* pressed = nullptr;
+            switch (value.key) {
+            case InputKey::F3: pressed = &state_.input.keyF3Pressed; break;
+            case InputKey::F11: pressed = &state_.input.keyF11Pressed; break;
+            case InputKey::B: pressed = &state_.input.keyBPressed; break;
+            case InputKey::Escape: pressed = &state_.input.keyEscapePressed; break;
+            }
+            if (*pressed == value.value) return effect;
+            *pressed = value.value;
+            if (!value.value) return effect;
+            switch (value.key) {
+            case InputKey::F3:
+                state_.ui.showDebugWindow = !state_.ui.showDebugWindow;
+                break;
+            case InputKey::F11:
+                state_.window.fullscreen = !state_.window.fullscreen;
+                effect.windowChanged = true;
+                break;
+            case InputKey::B:
+                state_.ui.blurEnabled = !state_.ui.blurEnabled;
+                effect.renderSettingsChanged = true;
+                break;
+            case InputKey::Escape:
+                effect.exitRequested = true;
+                break;
+            }
+        } else if constexpr (std::is_same_v<Command, SetShowCameraDebug>) {
+            state_.ui.showCameraDebug = value.value;
         } else if constexpr (std::is_same_v<Command, ToggleDebugWindow>) {
             state_.ui.showDebugWindow = !state_.ui.showDebugWindow;
         } else if constexpr (std::is_same_v<Command, TogglePause>) {

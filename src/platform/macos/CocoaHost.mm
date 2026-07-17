@@ -57,20 +57,21 @@ CocoaHost::CocoaHost(std::uint32_t width, std::uint32_t height, const char* titl
     layer_ = layer;
     metalView_ = view;
     windowDelegate_ = delegate;
-    eventMonitor_ = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
-        if ([event isARepeat]) return event;
+    eventMonitor_ = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent*(NSEvent* event) {
+        if ([event type] == NSEventTypeKeyDown && [event isARepeat]) return nil;
+        const bool pressed = [event type] == NSEventTypeKeyDown;
         switch ([event keyCode]) {
         case 99:
-            if (actionCallback_) actionCallback_(HostAction::ToggleDebugWindow);
+            if (actionCallback_) actionCallback_(pressed ? HostAction::KeyF3Down : HostAction::KeyF3Up);
             return nil;
         case 103:
-            if (actionCallback_) actionCallback_(HostAction::ToggleFullscreen);
+            if (actionCallback_) actionCallback_(pressed ? HostAction::KeyF11Down : HostAction::KeyF11Up);
             return nil;
         case 11:
-            if (actionCallback_) actionCallback_(HostAction::ToggleBlur);
+            if (actionCallback_) actionCallback_(pressed ? HostAction::KeyBDown : HostAction::KeyBUp);
             return nil;
         case 53:
-            RequestExit();
+            if (actionCallback_) actionCallback_(pressed ? HostAction::KeyEscapeDown : HostAction::KeyEscapeUp);
             return nil;
         default:
             return event;

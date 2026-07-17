@@ -76,6 +76,7 @@ struct InputState {
     bool keyBPressed = false;
     bool keyF3Pressed = false;
     bool keyF11Pressed = false;
+    bool keyEscapePressed = false;
 };
 
 struct WindowState {

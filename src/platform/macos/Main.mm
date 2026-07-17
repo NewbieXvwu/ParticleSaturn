@@ -147,6 +147,33 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
                 controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller.State().ui.blurEnabled});
                 break;
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Up:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyF11Up:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyBDown:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyBUp:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeDown:
+            case ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeUp: {
+                const bool pressed = action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down ||
+                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down ||
+                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyBDown ||
+                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeDown;
+                const auto key = (action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down ||
+                                  action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Up)
+                    ? ParticleSaturn::App::InputKey::F3
+                    : (action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down ||
+                       action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Up)
+                    ? ParticleSaturn::App::InputKey::F11
+                    : (action == ParticleSaturn::Platform::MacOS::HostAction::KeyBDown ||
+                       action == ParticleSaturn::Platform::MacOS::HostAction::KeyBUp)
+                    ? ParticleSaturn::App::InputKey::B
+                    : ParticleSaturn::App::InputKey::Escape;
+                const auto effect = controller.Dispatch(ParticleSaturn::App::SetInputKeyPressed{key, pressed});
+                if (effect.windowChanged) host.ToggleFullscreen();
+                if (effect.exitRequested) host.RequestExit();
+                break;
+            }
             }
             if (!captureBaseline) settings.Save(controller.State());
         });
