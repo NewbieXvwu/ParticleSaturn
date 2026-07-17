@@ -8,10 +8,21 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <random>
 #include <vector>
 
 namespace ParticleSaturn::Gpu::Metal {
+
+namespace {
+
+void ReleaseResources(const std::vector<void*>& resources) {
+    for (void* resource : resources) {
+        if (resource != nullptr) [(id)resource release];
+    }
+}
+
+} // namespace
 
 bool MetalDevice::Initialize() {
     device_ = MTLCreateSystemDefaultDevice();
@@ -84,10 +95,13 @@ bool MetalSurface::Present(void* nativeCommandBuffer) {
 std::uint64_t MetalFrameScheduler::BeginFrame() {
     CollectCompletedFrames();
     while (submittedCommandBuffers_.size() >= MaxFramesInFlight) {
-        id<MTLCommandBuffer> oldest = (id<MTLCommandBuffer>)submittedCommandBuffers_.front();
+        const auto oldestFrame = submittedCommandBuffers_.front();
+        id<MTLCommandBuffer> oldest = (id<MTLCommandBuffer>)oldestFrame.commandBuffer;
         [oldest waitUntilCompleted];
         [oldest release];
+        ReleaseResources(oldestFrame.retiredResources);
         submittedCommandBuffers_.erase(submittedCommandBuffers_.begin());
+        lastCompletedFrame_ = std::max(lastCompletedFrame_, oldestFrame.token);
         CollectCompletedFrames();
     }
     lastSubmittedFrame_ = nextFrame_++;
@@ -97,48 +111,43 @@ std::uint64_t MetalFrameScheduler::BeginFrame() {
 void MetalFrameScheduler::Submit(void* nativeCommandBuffer) {
     if (nativeCommandBuffer == nullptr) return;
     [(id<MTLCommandBuffer>)nativeCommandBuffer retain];
-    submittedCommandBuffers_.push_back(nativeCommandBuffer);
+    submittedCommandBuffers_.push_back({lastSubmittedFrame_, nativeCommandBuffer});
 }
 
 void MetalFrameScheduler::RetireResources(std::vector<void*> resources) {
     if (resources.empty()) return;
-    NSMutableArray* retired = [[NSMutableArray alloc] initWithCapacity:resources.size()];
-    for (void* resource : resources) {
-        if (resource != nullptr) [retired addObject:(id)resource];
-    }
-    if ([retired count] == 0) {
-        [retired release];
-        return;
-    }
     if (submittedCommandBuffers_.empty() ||
-        [(id<MTLCommandBuffer>)submittedCommandBuffers_.back() status] >= MTLCommandBufferStatusCompleted) {
-        [retired release];
+        [(id<MTLCommandBuffer>)submittedCommandBuffers_.back().commandBuffer status] >= MTLCommandBufferStatusCompleted) {
+        ReleaseResources(resources);
         return;
     }
-    [(id<MTLCommandBuffer>)submittedCommandBuffers_.back() addCompletedHandler:^(id<MTLCommandBuffer>) {
-        [retired release];
-    }];
+    auto& retired = submittedCommandBuffers_.back().retiredResources;
+    retired.insert(retired.end(), resources.begin(), resources.end());
 }
 
 void MetalFrameScheduler::CollectCompletedFrames() {
     auto next = submittedCommandBuffers_.begin();
     for (auto current = submittedCommandBuffers_.begin(); current != submittedCommandBuffers_.end(); ++current) {
-        const auto status = [(id<MTLCommandBuffer>)*current status];
+        const auto status = [(id<MTLCommandBuffer>)current->commandBuffer status];
         if (status < MTLCommandBufferStatusCompleted) {
             *next++ = *current;
             continue;
         }
-        [(id<MTLCommandBuffer>)*current release];
+        [(id<MTLCommandBuffer>)current->commandBuffer release];
+        ReleaseResources(current->retiredResources);
+        lastCompletedFrame_ = std::max(lastCompletedFrame_, current->token);
     }
     submittedCommandBuffers_.erase(next, submittedCommandBuffers_.end());
 }
 
 bool MetalFrameScheduler::WaitForSubmittedFrames() {
     bool completed = true;
-    for (void* commandBuffer : submittedCommandBuffers_) {
-        [(id<MTLCommandBuffer>)commandBuffer waitUntilCompleted];
-        completed = completed && [(id<MTLCommandBuffer>)commandBuffer status] == MTLCommandBufferStatusCompleted;
-        [(id<MTLCommandBuffer>)commandBuffer release];
+    for (const auto& submitted : submittedCommandBuffers_) {
+        [(id<MTLCommandBuffer>)submitted.commandBuffer waitUntilCompleted];
+        completed = completed && [(id<MTLCommandBuffer>)submitted.commandBuffer status] == MTLCommandBufferStatusCompleted;
+        [(id<MTLCommandBuffer>)submitted.commandBuffer release];
+        ReleaseResources(submitted.retiredResources);
+        lastCompletedFrame_ = std::max(lastCompletedFrame_, submitted.token);
     }
     submittedCommandBuffers_.clear();
     return completed;
@@ -150,6 +159,10 @@ MetalFrameScheduler::~MetalFrameScheduler() {
 
 std::uint64_t MetalFrameScheduler::LastSubmittedFrame() const noexcept {
     return lastSubmittedFrame_;
+}
+
+std::uint64_t MetalFrameScheduler::LastCompletedFrame() const noexcept {
+    return lastCompletedFrame_;
 }
 
 MetalResourceManager::MetalResourceManager(MetalDevice& device) : device_{device} {}
@@ -413,6 +426,7 @@ void* MetalStarField::Buffer() const noexcept { return buffer_; }
 bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height,
                                 MetalFrameScheduler* scheduler) {
     if (width == 0 || height == 0) return false;
+    if (width == width_ && height == height_ && sceneHdr_ != nullptr) return true;
     auto releaseTextures = [](std::array<void*, 11>& textures) {
         for (void*& texture : textures) {
             if (texture != nullptr) {
@@ -446,12 +460,28 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
     }
     std::array<void*, 11> previous{sceneHdr_, bloomStrong_, bloomPingPong_, bloomWeak_, uiScene_, uiOverlay_, uiBlur_,
                                    composite_, uiBlurWeak_, uiBlurWeakPingPong_, uiOverlayWeak_};
+    const auto completedFrame = scheduler == nullptr ? std::numeric_limits<std::uint64_t>::max() : scheduler->LastCompletedFrame();
+    const auto retireAfterFrame = scheduler == nullptr ? 0U : scheduler->LastSubmittedFrame();
+    const std::array<Gpu::TextureDesc, 11> descriptions{{
+        {width, height, 1}, {strongWidth, strongHeight, 1}, {strongWidth, strongHeight, 1},
+        {weakWidth, weakHeight, 1}, {width, height, 1}, {strongWidth, strongHeight, 1},
+        {strongWidth, strongHeight, 1}, {strongWidth, strongHeight, 1}, {weakWidth, weakHeight, 1},
+        {weakWidth, weakHeight, 1}, {weakWidth, weakHeight, 1},
+    }};
+    for (const auto handle : handles_) {
+        if (handle) texturePool_.Release(handle, retireAfterFrame);
+    }
+    for (std::size_t index = 0; index < handles_.size(); ++index) {
+        handles_[index] = texturePool_.Acquire(descriptions[index], completedFrame);
+    }
     sceneHdr_ = replacements[0]; bloomStrong_ = replacements[1]; bloomPingPong_ = replacements[2];
     bloomWeak_ = replacements[3]; uiScene_ = replacements[4]; uiOverlay_ = replacements[5];
     uiBlur_ = replacements[6]; composite_ = replacements[7]; uiBlurWeak_ = replacements[8];
     uiBlurWeakPingPong_ = replacements[9]; uiOverlayWeak_ = replacements[10];
+    width_ = width;
+    height_ = height;
     if (scheduler != nullptr) {
-        scheduler->RetireResources({previous.begin(), previous.end()});
+        scheduler->RetireResources(std::vector<void*>(previous.begin(), previous.end()));
     } else {
         releaseTextures(previous);
     }
@@ -467,6 +497,26 @@ MetalRenderTargets::~MetalRenderTargets() {
     releaseTexture(uiScene_); releaseTexture(uiOverlay_); releaseTexture(uiBlur_); releaseTexture(composite_);
     releaseTexture(uiBlurWeak_); releaseTexture(uiBlurWeakPingPong_); releaseTexture(uiOverlayWeak_);
 }
+
+void* MetalRenderTargets::NativeTexture(Gpu::TextureHandle texture) const noexcept {
+    const std::array<void*, 11> textures{sceneHdr_, bloomStrong_, bloomPingPong_, bloomWeak_, uiScene_, uiOverlay_, uiBlur_,
+                                         composite_, uiBlurWeak_, uiBlurWeakPingPong_, uiOverlayWeak_};
+    for (std::size_t index = 0; index < handles_.size(); ++index) {
+        if (handles_[index] == texture) return textures[index];
+    }
+    return nullptr;
+}
+
+Gpu::TextureHandle MetalRenderTargets::SceneHdrHandle() const noexcept { return handles_[0]; }
+Gpu::TextureHandle MetalRenderTargets::BloomStrongHandle() const noexcept { return handles_[1]; }
+Gpu::TextureHandle MetalRenderTargets::BloomPingPongHandle() const noexcept { return handles_[2]; }
+Gpu::TextureHandle MetalRenderTargets::UiSceneHandle() const noexcept { return handles_[4]; }
+Gpu::TextureHandle MetalRenderTargets::UiBlurHandle() const noexcept { return handles_[6]; }
+Gpu::TextureHandle MetalRenderTargets::CompositeHandle() const noexcept { return handles_[7]; }
+Gpu::TextureHandle MetalRenderTargets::UiBlurWeakHandle() const noexcept { return handles_[8]; }
+Gpu::TextureHandle MetalRenderTargets::UiBlurWeakPingPongHandle() const noexcept { return handles_[9]; }
+Gpu::TextureHandle MetalRenderTargets::UiOverlayHandle() const noexcept { return handles_[5]; }
+Gpu::TextureHandle MetalRenderTargets::UiOverlayWeakHandle() const noexcept { return handles_[10]; }
 
 void* MetalRenderTargets::SceneHdr() const noexcept { return sceneHdr_; }
 void* MetalRenderTargets::BloomStrong() const noexcept { return bloomStrong_; }
@@ -763,9 +813,9 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
                                 std::uint32_t height, float backingScale, const App::AppState& state, bool handTracked,
                                 float deltaTime, std::uint32_t framesPerSecond,
-                                const std::function<void(void*, void*, void*)>& uiRenderer,
+                                const std::function<void(void*, void*, void*, void*)>& uiRenderer,
                                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture) {
-    if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
+    if (width == 0 || height == 0 || !targets.Create(device, width, height, &scheduler_) || !surface.AcquireDrawable()) return false;
     scheduler_.BeginFrame();
     (void)backingScale;
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
@@ -776,16 +826,46 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     id<MTLTexture> drawableTexture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
     MetalSevenSegmentFps fps;
     Render::RenderGraph graph;
-    const auto scene = graph.AddResource({"scene", {width, height, 1}});
-    const auto bloomTexture = graph.AddResource({"bloom", {std::max(1U, width / 6U), std::max(1U, height / 6U), 1}});
+    const auto sceneHandle = targets.SceneHdrHandle();
+    const auto bloomStrongHandle = targets.BloomStrongHandle();
+    const auto bloomPingPongHandle = targets.BloomPingPongHandle();
+    const auto uiSceneHandle = targets.UiSceneHandle();
+    const auto uiBlurHandle = targets.UiBlurHandle();
+    const auto compositeHandle = targets.CompositeHandle();
+    const auto uiBlurWeakHandle = targets.UiBlurWeakHandle();
+    const auto uiBlurWeakPingPongHandle = targets.UiBlurWeakPingPongHandle();
+    const auto uiOverlayHandle = targets.UiOverlayHandle();
+    const auto uiOverlayWeakHandle = targets.UiOverlayWeakHandle();
+    void* const sceneTexture = targets.NativeTexture(sceneHandle);
+    void* const bloomStrongTexture = targets.NativeTexture(bloomStrongHandle);
+    void* const bloomPingPongTexture = targets.NativeTexture(bloomPingPongHandle);
+    void* const uiSceneTexture = targets.NativeTexture(uiSceneHandle);
+    void* const uiBlurTexture = targets.NativeTexture(uiBlurHandle);
+    void* const compositeTexture = targets.NativeTexture(compositeHandle);
+    void* const uiBlurWeakTexture = targets.NativeTexture(uiBlurWeakHandle);
+    void* const uiBlurWeakPingPongTexture = targets.NativeTexture(uiBlurWeakPingPongHandle);
+    void* const uiOverlayTexture = targets.NativeTexture(uiOverlayHandle);
+    void* const uiOverlayWeakTexture = targets.NativeTexture(uiOverlayWeakHandle);
+    if (sceneTexture == nullptr || bloomStrongTexture == nullptr || bloomPingPongTexture == nullptr || uiSceneTexture == nullptr ||
+        uiBlurTexture == nullptr || compositeTexture == nullptr || uiBlurWeakTexture == nullptr ||
+        uiBlurWeakPingPongTexture == nullptr || uiOverlayTexture == nullptr || uiOverlayWeakTexture == nullptr) return false;
+    const auto scene = graph.AddResource({"scene", {width, height, 1}, sceneHandle});
+    const auto bloomStrong = graph.AddResource({"bloom-strong", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, bloomStrongHandle});
+    const auto bloomPingPong = graph.AddResource({"bloom-ping-pong", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, bloomPingPongHandle});
     const auto drawable = graph.AddResource({"drawable", {width, height, 1}});
-    const auto uiScene = graph.AddResource({"ui-scene", {width, height, 1}});
+    const auto uiScene = graph.AddResource({"ui-scene", {width, height, 1}, uiSceneHandle});
+    const auto uiBlur = graph.AddResource({"ui-blur", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, uiBlurHandle});
+    const auto composite = graph.AddResource({"ui-composite", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, compositeHandle});
+    const auto uiBlurWeak = graph.AddResource({"ui-blur-weak", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiBlurWeakHandle});
+    const auto uiBlurWeakPingPong = graph.AddResource({"ui-blur-weak-ping-pong", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiBlurWeakPingPongHandle});
+    const auto uiOverlay = graph.AddResource({"ui-overlay", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, uiOverlayHandle});
+    const auto uiOverlayWeak = graph.AddResource({"ui-overlay-weak", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiOverlayWeakHandle});
     const auto simulation = graph.AddPass("particle-simulation", [&] {
         return state.scene.paused || particles.EncodeSimulation(commands, deltaTime, state.scene.zoom, handTracked, state.render.particleCount);
     });
     const auto scenePass = graph.AddPass("scene-hdr", [&] {
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-        pass.colorAttachments[0].texture = (id<MTLTexture>)targets.SceneHdr();
+        pass.colorAttachments[0].texture = (id<MTLTexture>)sceneTexture;
         pass.colorAttachments[0].loadAction = MTLLoadActionClear;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
@@ -795,20 +875,20 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
         return true;
     });
     const auto bloomPass = graph.AddPass("bloom", [&] {
-        return bloom.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
+        return bloom.Encode(device, commands, libraryPath, sceneTexture, bloomStrongTexture, bloomPingPongTexture,
                             width, height, state.render.bloomBlurStrength);
     });
     const auto toneMapPass = graph.AddPass("tone-map", [&] {
-        return toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), drawableTexture,
+        return toneMapper.Encode(device, commands, libraryPath, sceneTexture, bloomPingPongTexture, drawableTexture,
                                  width, height, bloomStrength, state.window.material == App::WindowMaterial::SystemBlur);
     });
     const auto acrylicPass = graph.AddPass("ui-acrylic", [&] {
         if (!state.ui.blurEnabled) return true;
-        if (!toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
+        if (!toneMapper.Encode(device, commands, libraryPath, sceneTexture, bloomPingPongTexture, uiSceneTexture,
                                width, height, bloomStrength)) return false;
         MetalAcrylic acrylic;
-        return acrylic.Encode(device, commands, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(),
-                              targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
+        return acrylic.Encode(device, commands, libraryPath, uiSceneTexture, uiBlurTexture, compositeTexture,
+                              uiBlurWeakTexture, uiBlurWeakPingPongTexture, uiOverlayTexture, uiOverlayWeakTexture,
                               width, height, state.ui.blurStrength);
     });
     const auto fpsPass = graph.AddPass("seven-segment", [&] {
@@ -821,7 +901,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
         pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-        uiRenderer(commands, encoder, pass);
+        uiRenderer(commands, encoder, pass, uiOverlayTexture);
         [encoder endEncoding];
         return true;
     });
@@ -829,16 +909,24 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     graph.Write(simulation, scene, ResourceUsage::ShaderWrite);
     graph.Write(scenePass, scene, ResourceUsage::RenderTarget);
     graph.Read(bloomPass, scene, ResourceUsage::ShaderRead);
-    graph.Write(bloomPass, bloomTexture, ResourceUsage::ShaderWrite);
+    graph.Write(bloomPass, bloomStrong, ResourceUsage::ShaderWrite);
+    graph.Write(bloomPass, bloomPingPong, ResourceUsage::ShaderWrite);
     graph.Read(toneMapPass, scene, ResourceUsage::ShaderRead);
-    graph.Read(toneMapPass, bloomTexture, ResourceUsage::ShaderRead);
+    graph.Read(toneMapPass, bloomPingPong, ResourceUsage::ShaderRead);
     graph.Write(toneMapPass, drawable, ResourceUsage::RenderTarget);
     graph.Read(acrylicPass, scene, ResourceUsage::ShaderRead);
-    graph.Read(acrylicPass, bloomTexture, ResourceUsage::ShaderRead);
+    graph.Read(acrylicPass, bloomPingPong, ResourceUsage::ShaderRead);
     graph.Write(acrylicPass, uiScene, ResourceUsage::RenderTarget);
+    graph.Write(acrylicPass, uiBlur, ResourceUsage::ShaderWrite);
+    graph.Write(acrylicPass, composite, ResourceUsage::ShaderWrite);
+    graph.Write(acrylicPass, uiBlurWeak, ResourceUsage::ShaderWrite);
+    graph.Write(acrylicPass, uiBlurWeakPingPong, ResourceUsage::ShaderWrite);
+    graph.Write(acrylicPass, uiOverlay, ResourceUsage::ShaderWrite);
+    graph.Write(acrylicPass, uiOverlayWeak, ResourceUsage::ShaderWrite);
     graph.Read(fpsPass, drawable, ResourceUsage::RenderTarget);
     graph.Write(fpsPass, drawable, ResourceUsage::RenderTarget);
     graph.Read(uiPass, drawable, ResourceUsage::RenderTarget);
+    graph.Read(uiPass, uiOverlay, ResourceUsage::ShaderRead);
     graph.Write(uiPass, drawable, ResourceUsage::RenderTarget);
     graph.Read(presentPass, drawable, ResourceUsage::Present);
     if (!graph.Execute()) return false;

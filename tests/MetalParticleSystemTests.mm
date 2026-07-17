@@ -288,6 +288,7 @@ void VerifyFrameScheduler(ParticleSaturn::Gpu::Metal::MetalDevice& device) {
     }
     assert(scheduler.LastSubmittedFrame() == 4);
     assert(scheduler.WaitForSubmittedFrames());
+    assert(scheduler.LastCompletedFrame() == 4);
 }
 
 } // namespace
@@ -320,10 +321,27 @@ int main(int argc, char* argv[]) {
     assert(targets.UiBlurWeak() != nullptr);
     assert(targets.UiBlurWeakPingPong() != nullptr);
     assert(targets.UiOverlayWeak() != nullptr);
+    const auto previousScene = targets.SceneHdrHandle();
+    assert(targets.NativeTexture(previousScene) == targets.SceneHdr());
     assert(targets.Create(device, 640, 360));
+    assert(targets.NativeTexture(previousScene) == nullptr);
+    assert(targets.SceneHdrHandle() != previousScene);
     assert(targets.SceneHdr() != nullptr);
     assert(targets.BloomPingPong() != nullptr);
     assert(targets.Create(device, 320, 180));
+    ParticleSaturn::Gpu::Metal::MetalFrameScheduler resizeScheduler;
+    const auto oldBloom = targets.BloomStrongHandle();
+    assert(resizeScheduler.BeginFrame() == 1);
+    id<MTLCommandBuffer> resizeCommands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    assert(resizeCommands != nil);
+    [resizeCommands commit];
+    resizeScheduler.Submit(resizeCommands);
+    assert(targets.Create(device, 321, 181, &resizeScheduler));
+    const auto resizedBloom = targets.BloomStrongHandle();
+    assert(resizedBloom.index != oldBloom.index);
+    assert(resizeScheduler.WaitForSubmittedFrames());
+    assert(targets.Create(device, 320, 180, &resizeScheduler));
+    assert(targets.BloomStrongHandle().index == oldBloom.index);
     ParticleSaturn::Gpu::Metal::MetalToneMapper toneMapper;
     ParticleSaturn::Gpu::Metal::MetalBloom bloom;
     assert(bloom.Apply(device, argv[1], targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(), 320, 180, 2.0f));

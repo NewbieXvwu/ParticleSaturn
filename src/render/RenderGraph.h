@@ -12,6 +12,7 @@ namespace ParticleSaturn::Render {
 struct GraphResource {
     std::string name;
     Gpu::TextureDesc desc;
+    Gpu::TextureHandle texture;
 };
 
 struct ResourceAccess {
@@ -36,6 +37,7 @@ public:
     bool Execute() const;
 
     const std::vector<RenderPass>& Passes() const noexcept;
+    const std::vector<GraphResource>& Resources() const noexcept;
 
 private:
     void ValidatePass(std::uint32_t pass) const;

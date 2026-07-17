@@ -292,12 +292,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 mutableState.window.windowedWidth = mutableState.window.width;
                 mutableState.window.windowedHeight = mutableState.window.height;
             }
-            if (drawableSize.width != size.width || drawableSize.height != size.height) {
-                if (!targets.Create(device, drawableSize.width, drawableSize.height, &renderer.Scheduler())) return;
-                size = drawableSize;
-            }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            drawableSize.scale, *frame.state, handTracked, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass) {
+                            drawableSize.scale, *frame.state, handTracked, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass, void* uiOverlayTexture) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
@@ -322,7 +318,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                         const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
                         const float right = (position.x + panelSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
                         const float bottom = (position.y + panelSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
-                        MD3::AddImageRounded(drawList, targets.UiOverlay(), position,
+                        MD3::AddImageRounded(drawList, uiOverlayTexture, position,
                                              ImVec2(position.x + panelSize.x, position.y + panelSize.y),
                                              ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, 12.0f);
                     }});

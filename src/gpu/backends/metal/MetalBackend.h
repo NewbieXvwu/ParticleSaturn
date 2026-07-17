@@ -3,7 +3,9 @@
 #include "ParticleAbi.h"
 #include "app/state/AppStates.h"
 #include "gpu/interface/GpuCapabilities.h"
+#include "render/ResourceRegistry.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,13 +54,21 @@ public:
     void RetireResources(std::vector<void*> resources);
     bool WaitForSubmittedFrames();
     std::uint64_t LastSubmittedFrame() const noexcept;
+    std::uint64_t LastCompletedFrame() const noexcept;
 
 private:
+    struct SubmittedFrame {
+        std::uint64_t token = 0;
+        void* commandBuffer = nullptr;
+        std::vector<void*> retiredResources;
+    };
+
     void CollectCompletedFrames();
 
     std::uint64_t nextFrame_ = 1;
     std::uint64_t lastSubmittedFrame_ = 0;
-    std::vector<void*> submittedCommandBuffers_;
+    std::uint64_t lastCompletedFrame_ = 0;
+    std::vector<SubmittedFrame> submittedCommandBuffers_;
 };
 
 class MetalResourceManager {
@@ -135,6 +145,17 @@ public:
 
     bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height,
                 MetalFrameScheduler* scheduler = nullptr);
+    void* NativeTexture(Gpu::TextureHandle texture) const noexcept;
+    Gpu::TextureHandle SceneHdrHandle() const noexcept;
+    Gpu::TextureHandle BloomStrongHandle() const noexcept;
+    Gpu::TextureHandle BloomPingPongHandle() const noexcept;
+    Gpu::TextureHandle UiSceneHandle() const noexcept;
+    Gpu::TextureHandle UiBlurHandle() const noexcept;
+    Gpu::TextureHandle CompositeHandle() const noexcept;
+    Gpu::TextureHandle UiBlurWeakHandle() const noexcept;
+    Gpu::TextureHandle UiBlurWeakPingPongHandle() const noexcept;
+    Gpu::TextureHandle UiOverlayHandle() const noexcept;
+    Gpu::TextureHandle UiOverlayWeakHandle() const noexcept;
     void* SceneHdr() const noexcept;
     void* BloomStrong() const noexcept;
     void* BloomPingPong() const noexcept;
@@ -159,6 +180,10 @@ private:
     void* uiBlurWeak_ = nullptr;
     void* uiBlurWeakPingPong_ = nullptr;
     void* uiOverlayWeak_ = nullptr;
+    std::array<Gpu::TextureHandle, 11> handles_{};
+    Render::TexturePool texturePool_;
+    std::uint32_t width_ = 0;
+    std::uint32_t height_ = 0;
 };
 
 class MetalToneMapper {
@@ -229,7 +254,7 @@ public:
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
                 float backingScale, const App::AppState& state, bool handTracked, float deltaTime,
                 std::uint32_t framesPerSecond,
-                const std::function<void(void*, void*, void*)>& uiRenderer = {},
+                const std::function<void(void*, void*, void*, void*)>& uiRenderer = {},
                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture = {});
 
     bool WaitForSubmittedWork();

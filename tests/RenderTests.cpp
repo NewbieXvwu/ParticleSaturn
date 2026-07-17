@@ -39,6 +39,9 @@ int main() {
     Render::TexturePool pool;
     const Gpu::TextureDesc desc{128, 128, 1};
     const auto first = pool.Acquire(desc, 0);
+    Render::RenderGraph boundGraph;
+    const auto boundResource = boundGraph.AddResource({"bound", desc, first});
+    assert(boundGraph.Resources()[boundResource].texture == first);
     pool.Release(first, 3);
     const auto second = pool.Acquire(desc, 2);
     assert(second.index != first.index);

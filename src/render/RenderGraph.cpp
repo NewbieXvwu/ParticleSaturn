@@ -90,6 +90,10 @@ const std::vector<RenderPass>& RenderGraph::Passes() const noexcept {
     return passes_;
 }
 
+const std::vector<GraphResource>& RenderGraph::Resources() const noexcept {
+    return resources_;
+}
+
 void RenderGraph::ValidatePass(std::uint32_t pass) const {
     if (pass >= passes_.size()) {
         throw std::out_of_range{"render graph pass does not exist"};
