@@ -15,13 +15,15 @@ int main() {
     assert((palmOutputs[0].size() == 2016U || palmOutputs[1].size() == 2016U));
     assert((palmOutputs[0].size() == 2016U * 18U || palmOutputs[1].size() == 2016U * 18U));
     const auto& landmarkOutputs = runtime.LandmarkOutputs();
-    assert(landmarkOutputs.size() == 4U);
-    std::size_t landmarks = 0;
-    std::size_t scalars = 0;
-    for (const auto& output : landmarkOutputs) {
-        landmarks += output.size() == 63U;
-        scalars += output.size() == 1U;
+    if (!landmarkOutputs.empty()) {
+        assert(landmarkOutputs.size() == 4U);
+        std::size_t landmarks = 0;
+        std::size_t scalars = 0;
+        for (const auto& output : landmarkOutputs) {
+            landmarks += output.size() == 63U;
+            scalars += output.size() == 1U;
+        }
+        assert(landmarks == 2U && scalars == 2U);
     }
-    assert(landmarks == 2U && scalars == 2U);
     return 0;
 }

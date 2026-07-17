@@ -133,7 +133,30 @@ bool XnnpackHandTrackingRuntime::Load(const std::string& palmModelPath, const st
 }
 
 bool XnnpackHandTrackingRuntime::Invoke(const Camera::Frame& frame, std::string& error) {
-    return palm_.Invoke(frame, error) && landmark_.Invoke(frame, error);
+    if (!palm_.Invoke(frame, error)) return false;
+    PalmRegion region;
+    if (!DecodePalm(region)) {
+        error.clear();
+        return true;
+    }
+    Camera::Frame roi{224U, 224U, frame.timestampNanoseconds, std::vector<std::uint8_t>(224U * 224U * 3U)};
+    const float side = std::max(region.width, region.height) * 2.6f;
+    const float cosine = std::cos(region.rotation);
+    const float sine = std::sin(region.rotation);
+    for (std::uint32_t y = 0; y < roi.height; ++y) {
+        for (std::uint32_t x = 0; x < roi.width; ++x) {
+            const float localX = (static_cast<float>(x) + 0.5f) / static_cast<float>(roi.width) - 0.5f;
+            const float localY = (static_cast<float>(y) + 0.5f) / static_cast<float>(roi.height) - 0.5f;
+            const float sourceX = region.centerX + side * (localX * cosine - localY * sine);
+            const float sourceY = region.centerY + side * (localX * sine + localY * cosine);
+            const auto pixelX = static_cast<std::uint32_t>(std::clamp(sourceX, 0.0f, 1.0f) * (frame.width - 1U));
+            const auto pixelY = static_cast<std::uint32_t>(std::clamp(sourceY, 0.0f, 1.0f) * (frame.height - 1U));
+            const auto* source = frame.rgb.data() + (static_cast<std::size_t>(pixelY) * frame.width + pixelX) * 3U;
+            auto* destination = roi.rgb.data() + (static_cast<std::size_t>(y) * roi.width + x) * 3U;
+            destination[0] = source[0]; destination[1] = source[1]; destination[2] = source[2];
+        }
+    }
+    return landmark_.Invoke(roi, error);
 }
 
 bool XnnpackHandTrackingRuntime::IsLoaded() const noexcept { return palm_.IsLoaded() && landmark_.IsLoaded(); }
