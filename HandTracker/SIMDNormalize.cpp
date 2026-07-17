@@ -24,6 +24,10 @@
 #include <immintrin.h>
 #endif
 
+#if defined(__SSSE3__)
+#define PARTICLESATURN_HAS_SSSE3_IMPL 1
+#endif
+
 #if defined(PARTICLESATURN_NEON_SIMD)
 #include <arm_neon.h>
 #endif
@@ -34,6 +38,7 @@ namespace SIMDNormalize {
 static bool     g_initialized = false;
 static bool     g_hasAVX2     = false;
 static bool     g_hasSSE2     = false;
+static bool     g_hasSSSE3    = false;
 static bool     g_hasNEON     = false;
 static SIMDMode g_currentMode = SIMDMode::Auto;
 
@@ -70,6 +75,8 @@ void Init() {
         GetCPUID(info, 1);
         // SSE2: EDX bit 26
         g_hasSSE2 = (info[3] & (1 << 26)) != 0;
+        // SSSE3: ECX bit 9, required by _mm_shuffle_epi8.
+        g_hasSSSE3 = (info[2] & (1 << 9)) != 0;
     }
 
     if (maxFunction >= 7) {
@@ -87,7 +94,8 @@ void Init() {
 
     std::cout << "[SIMD] CPU features detected - NEON: " << (g_hasNEON ? "Yes" : "No")
               << ", AVX2: " << (g_hasAVX2 ? "Yes" : "No")
-              << ", SSE2: " << (g_hasSSE2 ? "Yes" : "No") << std::endl;
+              << ", SSE2: " << (g_hasSSE2 ? "Yes" : "No")
+              << ", SSSE3: " << (g_hasSSSE3 ? "Yes" : "No") << std::endl;
 }
 
 void SetMode(SIMDMode mode) {
@@ -409,7 +417,7 @@ static void FlipHorizontalAndNormalize_Scalar(const uint8_t* src, float* dst, in
 // ============================================================================
 // 水平翻转并归一化 - SSE 实现
 // ============================================================================
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
 static void FlipHorizontalAndNormalize_SSE(const uint8_t* src, float* dst, int width, int height) {
     const __m128  scale        = _mm_set1_ps(1.0f / 255.0f);
     const __m128i zero         = _mm_setzero_si128();
@@ -568,8 +576,8 @@ void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int h
             return;
         }
 #endif
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndNormalize_SSE(src, dst, width, height);
             return;
         }
@@ -586,8 +594,8 @@ void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int h
             return;
         }
 #endif
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndNormalize_SSE(src, dst, width, height);
             return;
         }
@@ -596,8 +604,8 @@ void FlipHorizontalAndNormalize(const uint8_t* src, float* dst, int width, int h
         break;
 
     case SIMDMode::SSE:
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndNormalize_SSE(src, dst, width, height);
             return;
         }
@@ -633,7 +641,7 @@ static void FlipHorizontalAndBGR2RGB_Scalar(const uint8_t* src, uint8_t* dst, in
 // ============================================================================
 // 水平翻转并 BGR 转 RGB - SSE 实现
 // ============================================================================
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
 static void FlipHorizontalAndBGR2RGB_SSE(const uint8_t* src, uint8_t* dst, int width, int height) {
     // Mask: Reverse 12 bytes completely.
     // BGR BGR BGR BGR -> (Reverse) -> R G B R G B ...
@@ -746,8 +754,8 @@ void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int h
             return;
         }
 #endif
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
             return;
         }
@@ -764,8 +772,8 @@ void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int h
             return;
         }
 #endif
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
             return;
         }
@@ -774,8 +782,8 @@ void FlipHorizontalAndBGR2RGB(const uint8_t* src, uint8_t* dst, int width, int h
         break;
 
     case SIMDMode::SSE:
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        if (g_hasSSE2) {
+#if defined(PARTICLESATURN_HAS_SSSE3_IMPL)
+        if (g_hasSSSE3) {
             FlipHorizontalAndBGR2RGB_SSE(src, dst, width, height);
             return;
         }
