@@ -11,6 +11,15 @@ struct TfLiteModel;
 
 namespace ParticleSaturn::Services::HandTracking::MacOS {
 
+struct PalmRegion {
+    float confidence = 0.0f;
+    float centerX = 0.5f;
+    float centerY = 0.5f;
+    float width = 0.0f;
+    float height = 0.0f;
+    float rotation = 0.0f;
+};
+
 class XnnpackModel {
 public:
     XnnpackModel() = default;
@@ -41,6 +50,7 @@ public:
     bool IsLoaded() const noexcept;
     const std::vector<std::vector<float>>& PalmOutputs() const noexcept;
     const std::vector<std::vector<float>>& LandmarkOutputs() const noexcept;
+    bool DecodePalm(PalmRegion& region) const;
 
 private:
     XnnpackModel palm_;

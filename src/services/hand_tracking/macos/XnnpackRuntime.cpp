@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 namespace ParticleSaturn::Services::HandTracking::MacOS {
@@ -139,5 +141,41 @@ bool XnnpackHandTrackingRuntime::IsLoaded() const noexcept { return palm_.IsLoad
 const std::vector<std::vector<float>>& XnnpackHandTrackingRuntime::PalmOutputs() const noexcept { return palm_.Outputs(); }
 
 const std::vector<std::vector<float>>& XnnpackHandTrackingRuntime::LandmarkOutputs() const noexcept { return landmark_.Outputs(); }
+
+bool XnnpackHandTrackingRuntime::DecodePalm(PalmRegion& region) const {
+    const auto& outputs = palm_.Outputs();
+    if (outputs.size() != 2U) return false;
+    const auto* scores = outputs[0].size() == 2016U ? &outputs[0] : &outputs[1];
+    const auto* boxes = outputs[0].size() == 2016U * 18U ? &outputs[0] : &outputs[1];
+    if (scores->size() != 2016U || boxes->size() != 2016U * 18U) return false;
+    std::size_t best = 0;
+    float bestScore = -std::numeric_limits<float>::infinity();
+    for (std::size_t index = 0; index < scores->size(); ++index) {
+        if ((*scores)[index] > bestScore) { bestScore = (*scores)[index]; best = index; }
+    }
+    region.confidence = 1.0f / (1.0f + std::exp(-bestScore));
+    if (region.confidence < 0.5f) return false;
+    std::size_t remaining = best;
+    float anchorX = 0.0f;
+    float anchorY = 0.0f;
+    for (const int stride : {8, 16}) {
+        const std::size_t grid = 192U / static_cast<std::size_t>(stride);
+        const std::size_t count = grid * grid * (stride == 8 ? 2U : 6U);
+        if (remaining < count) {
+            const std::size_t cell = remaining / (stride == 8 ? 2U : 6U);
+            anchorX = (static_cast<float>(cell % grid) + 0.5f) / static_cast<float>(grid);
+            anchorY = (static_cast<float>(cell / grid) + 0.5f) / static_cast<float>(grid);
+            break;
+        }
+        remaining -= count;
+    }
+    const float* box = boxes->data() + best * 18U;
+    region.centerX = box[0] / 192.0f + anchorX;
+    region.centerY = box[1] / 192.0f + anchorY;
+    region.width = box[2] / 192.0f;
+    region.height = box[3] / 192.0f;
+    region.rotation = static_cast<float>(M_PI_2) - std::atan2(-(box[9] - box[5]), box[8] - box[4]);
+    return true;
+}
 
 } // namespace ParticleSaturn::Services::HandTracking::MacOS
