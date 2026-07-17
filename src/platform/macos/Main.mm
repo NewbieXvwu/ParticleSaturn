@@ -286,7 +286,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 const auto& state = controller.State();
                 if (state.ui.showDebugWindow) {
                     ImGui::SetNextWindowPos(ImVec2(80.0f, 80.0f), ImGuiCond_Always);
-                    ImGui::SetNextWindowSize(ImVec2(320.0f, 280.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(320.0f, 340.0f), ImGuiCond_Always);
                     ImGui::SetNextWindowBgAlpha(0.0f);
                     ImGui::Begin("Particle Saturn");
                 const ImVec2 panelPosition = ImGui::GetWindowPos();
@@ -294,7 +294,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 const float panelLeft = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.width);
                 const float panelTop = 80.0f * drawableSize.scale / static_cast<float>(drawableSize.height);
                 const float panelRight = (80.0f + 320.0f) * drawableSize.scale / static_cast<float>(drawableSize.width);
-                const float panelBottom = (80.0f + 280.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                const float panelBottom = (80.0f + 340.0f) * drawableSize.scale / static_cast<float>(drawableSize.height);
                 if (state.ui.blurEnabled) {
                     ImGui::GetWindowDrawList()->AddImage((ImTextureID)targets.UiOverlay(), panelPosition,
                                                           ImVec2(panelPosition.x + panelSize.x, panelPosition.y + panelSize.y),
@@ -333,6 +333,28 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
                     controller.Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
                     settings.Save(controller.State());
+                }
+                int graphicsApi = static_cast<int>(state.render.graphicsApi);
+                if (ImGui::Combo("Graphics API", &graphicsApi, "OpenGL 4.1\0Vulkan\0Metal\0")) {
+                    const auto effect = controller.Dispatch(ParticleSaturn::App::SetGraphicsApi{
+                        static_cast<ParticleSaturn::App::GraphicsApi>(graphicsApi)});
+                    settings.Save(controller.State());
+                    if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
+                        [NSApp terminate:nil];
+                        return;
+                    }
+                }
+                if (controller.State().render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
+                    int vulkanDriver = static_cast<int>(state.render.vulkanDriver);
+                    if (ImGui::Combo("Vulkan driver", &vulkanDriver, "MoltenVK\0KosmicKrisp\0")) {
+                        const auto effect = controller.Dispatch(ParticleSaturn::App::SetVulkanDriver{
+                            static_cast<ParticleSaturn::App::VulkanDriver>(vulkanDriver)});
+                        settings.Save(controller.State());
+                        if (effect.restartRequired && ParticleSaturn::Platform::MacOS::RestartApplication()) {
+                            [NSApp terminate:nil];
+                            return;
+                        }
+                    }
                 }
                 const char* pauseLabel = state.scene.paused ? "Resume" : "Pause";
                 if (ImGui::Button(pauseLabel)) {

@@ -842,6 +842,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：macOS 现只有一个应用包入口，启动器读取持久化 `GraphicsApi` 后调用 Metal 或 OpenGL 4.1 运行路径，不再由独立应用包或后端源码常量覆盖选择；`PARTICLESATURN_GRAPHICS_API` 仅用于受控测试覆写。Vulkan 呈现尚未实现，启动器会明确失败。选择器单元测试覆盖持久化值、三种有效覆写和无效输入，视觉基准测试已改为同一可执行文件分别启动两条已实现路径。
 
+进展补充（2026-07-17）：Metal 与 OpenGL 调试面板已接入图形接口和 Vulkan 驱动选择控件，命令先持久化后从统一启动器重启；面板高度和 Metal 的界面模糊采样范围已同步扩展。
+
 - [x] 从 `AppState.h` 拆出 `SceneState`/`RenderSettings`/`UiState`/`GestureSettings`/`WindowState`
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`

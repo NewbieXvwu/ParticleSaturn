@@ -1,4 +1,4 @@
-add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm MacOSBackendSelection.cpp)
+add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm MacOSApplication.mm MacOSBackendSelection.cpp)
 add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")
 target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore" "-framework Metal")
