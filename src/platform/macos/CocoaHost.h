@@ -35,6 +35,7 @@ public:
     void ToggleFullscreen();
     void SetFullscreenActive(bool active);
     void RequestExit();
+    void SetPresentationMode(int vsyncMode);
     void SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;
     void* NativeMetalLayer() const noexcept;

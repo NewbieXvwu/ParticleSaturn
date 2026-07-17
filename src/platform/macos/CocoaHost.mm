@@ -5,6 +5,8 @@
 
 #include "CocoaHost.h"
 
+#include <algorithm>
+
 @interface ParticleSaturnCocoaHostDelegate : NSObject<NSWindowDelegate> {
 @public ParticleSaturn::Platform::MacOS::CocoaHost* owner;
 }
@@ -96,7 +98,8 @@ void CocoaHost::Show() {
 void CocoaHost::Run(const std::function<void()>& frameCallback) {
     if (frameCallback) {
         auto* callback = new std::function<void()>{frameCallback};
-        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer* timer) {
+        const NSInteger refreshRate = std::max<NSInteger>(1, [[(NSWindow*)window_ screen] maximumFramesPerSecond]);
+        NSTimer* timer = [NSTimer timerWithTimeInterval:1.0 / static_cast<double>(refreshRate) repeats:YES block:^(NSTimer* timer) {
             if (![NSApp isRunning]) {
                 [timer invalidate];
                 delete callback;
@@ -104,6 +107,8 @@ void CocoaHost::Run(const std::function<void()>& frameCallback) {
             }
             (*callback)();
         }];
+        [timer setTolerance:0.0];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
     }
     [NSApp run];
 }
@@ -139,6 +144,12 @@ void CocoaHost::SetFullscreenActive(bool active) {
 
 void CocoaHost::RequestExit() {
     [NSApp terminate:nil];
+}
+
+void CocoaHost::SetPresentationMode(int vsyncMode) {
+    // Metal exposes display synchronization as enabled or disabled.  The
+    // adaptive setting follows the synchronized path, matching FIFO fallback.
+    [(CAMetalLayer*)layer_ setDisplaySyncEnabled:vsyncMode != 0];
 }
 
 void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {

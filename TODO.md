@@ -899,6 +899,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：已校正 `AppAcrylic` 语义：它仅指 ImGui 面板的应用内合成，窗口本身保持不透明；仅 `Transparent` 使用透明窗口，`SystemBlur` 才创建 `NSVisualEffectView`。OpenGL 的同等材质分派仍待接入。
 
+进展补充（2026-07-17）：Cocoa 宿主的帧定时器现以窗口当前显示器报告的刷新率驱动，并加入通用运行循环模式；持久化的垂直同步设置会实时映射到 `CAMetalLayer.displaySyncEnabled`，关闭路径保持销毁定时器回调和应用循环。跨显示器迁移时重建显示链接仍待完成。
+
 - [x] `NSApplication` + `NSWindow` 基础宿主
 - [x] `CAMetalLayer` 表面
 - [x] Retina 缩放、多显示器、全屏切换

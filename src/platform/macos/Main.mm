@@ -153,7 +153,9 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         bool baselineCaptured = false;
         std::uint32_t baselineFrameCount = 0;
         auto appliedWindowMaterial = controller.State().window.material;
+        auto appliedVsyncMode = controller.State().render.vsyncMode;
         host.SetWindowMaterial(appliedWindowMaterial);
+        host.SetPresentationMode(appliedVsyncMode);
         ParticleSaturn::App::FrameCoordinator coordinator;
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
@@ -205,6 +207,10 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             if (frame.state->window.material != appliedWindowMaterial) {
                 host.SetWindowMaterial(frame.state->window.material);
                 appliedWindowMaterial = frame.state->window.material;
+            }
+            if (frame.state->render.vsyncMode != appliedVsyncMode) {
+                host.SetPresentationMode(frame.state->render.vsyncMode);
+                appliedVsyncMode = frame.state->render.vsyncMode;
             }
             const auto drawableSize = host.CurrentDrawableSize();
             auto& mutableState = controller.MutableState();
