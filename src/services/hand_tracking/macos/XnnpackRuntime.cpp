@@ -21,6 +21,7 @@ void XnnpackModel::Reset() noexcept {
     model_ = nullptr;
     inputWidth_ = 0;
     inputHeight_ = 0;
+    outputs_.clear();
 }
 
 bool XnnpackModel::Load(const std::string& modelPath, std::string& error) {
@@ -94,11 +95,34 @@ bool XnnpackModel::Invoke(const Camera::Frame& frame, std::string& error) {
         error = "XNNPACK model invocation failed";
         return false;
     }
+    outputs_.clear();
+    const int outputCount = TfLiteInterpreterGetOutputTensorCount(interpreter_);
+    for (int index = 0; index < outputCount; ++index) {
+        const TfLiteTensor* output = TfLiteInterpreterGetOutputTensor(interpreter_, index);
+        if (output == nullptr || TfLiteTensorType(output) != kTfLiteFloat32) {
+            error = "hand model must expose float32 outputs";
+            outputs_.clear();
+            return false;
+        }
+        std::size_t elementCount = 1;
+        for (int dimension = 0; dimension < TfLiteTensorNumDims(output); ++dimension) {
+            elementCount *= static_cast<std::size_t>(TfLiteTensorDim(output, dimension));
+        }
+        std::vector<float> values(elementCount);
+        if (TfLiteTensorCopyToBuffer(output, values.data(), values.size() * sizeof(float)) != kTfLiteOk) {
+            error = "unable to read hand model output";
+            outputs_.clear();
+            return false;
+        }
+        outputs_.push_back(std::move(values));
+    }
     error.clear();
     return true;
 }
 
 bool XnnpackModel::IsLoaded() const noexcept { return interpreter_ != nullptr; }
+
+const std::vector<std::vector<float>>& XnnpackModel::Outputs() const noexcept { return outputs_; }
 
 bool XnnpackHandTrackingRuntime::Load(const std::string& palmModelPath, const std::string& landmarkModelPath, std::string& error) {
     if (!palm_.Load(palmModelPath, error)) return false;

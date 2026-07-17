@@ -3,6 +3,7 @@
 #include "services/camera/CameraCapture.h"
 
 #include <string>
+#include <vector>
 
 struct TfLiteDelegate;
 struct TfLiteInterpreter;
@@ -20,6 +21,7 @@ public:
     bool Load(const std::string& modelPath, std::string& error);
     bool Invoke(const Camera::Frame& frame, std::string& error);
     bool IsLoaded() const noexcept;
+    const std::vector<std::vector<float>>& Outputs() const noexcept;
 
 private:
     void Reset() noexcept;
@@ -29,6 +31,7 @@ private:
     TfLiteInterpreter* interpreter_ = nullptr;
     int inputWidth_ = 0;
     int inputHeight_ = 0;
+    std::vector<std::vector<float>> outputs_;
 };
 
 class XnnpackHandTrackingRuntime {
