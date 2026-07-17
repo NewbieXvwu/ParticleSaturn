@@ -844,12 +844,14 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Metal 与 OpenGL 调试面板已接入图形接口和 Vulkan 驱动选择控件，命令先持久化后从统一启动器重启；面板高度和 Metal 的界面模糊采样范围已同步扩展。
 
+进展补充（2026-07-17）：`LodState` 现以真实帧耗时的平滑值自动降低或恢复粒子数、像素比例，锁定后保持当前配置；锁定、升降档和 `NSUserDefaults` 往返均有测试，Metal 与 OpenGL 面板均提供锁定开关。
+
 - [x] 从 `AppState.h` 拆出 `SceneState`/`RenderSettings`/`UiState`/`GestureSettings`/`WindowState`
 - [x] 建立 `AppCommand` 命令定义
 - [x] 建立 `AppController` 和 `FrameCoordinator`
 - [ ] 补齐 `LodState`、`InputState`、主题、窗口材质和全部旧设置字段，并建立对应命令
 - [x] 接入 macOS `NSEvent` 快捷键与窗口事件，验证 F3/F11/B/Esc 行为
-- [ ] 将动态 LOD 接入帧时间决策，验证锁定、粒子数和像素比例联动
+- [x] 将动态 LOD 接入帧时间决策，验证锁定、粒子数和像素比例联动
 - [ ] 界面改为生成命令，不再直接修改 GPU 资源
 - [ ] 旧渲染器保持运行，验证状态拆分无回归
 

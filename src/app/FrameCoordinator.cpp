@@ -13,14 +13,41 @@ FrameCoordinator::FrameCoordinator(double fixedStepSeconds) : fixedStepSeconds_{
 }
 
 FrameSnapshot FrameCoordinator::Advance(AppController& controller, double elapsedSeconds, const GestureInput& gesture) {
-    accumulator_ += std::clamp(elapsedSeconds, 0.0, 0.25);
+    const double clampedElapsed = std::clamp(elapsedSeconds, 0.0, 0.25);
+    accumulator_ += clampedElapsed;
     auto& state = controller.MutableState();
+    UpdateLod(state, clampedElapsed);
     while (accumulator_ >= fixedStepSeconds_) {
         Update(state, gesture);
         accumulator_ -= fixedStepSeconds_;
     }
     ++frameIndex_;
     return {frameIndex_, static_cast<float>(accumulator_ / fixedStepSeconds_), &state};
+}
+
+void FrameCoordinator::UpdateLod(AppState& state, double elapsedSeconds) {
+    if (elapsedSeconds <= 0.0) return;
+    const float frameSeconds = static_cast<float>(elapsedSeconds);
+    state.lod.smoothedFrameSeconds += (frameSeconds - state.lod.smoothedFrameSeconds) * 0.1f;
+    if (state.lod.locked) return;
+
+    constexpr float SlowFrameSeconds = 1.0f / 50.0f;
+    constexpr float FastFrameSeconds = 1.0f / 75.0f;
+    if (state.lod.smoothedFrameSeconds > SlowFrameSeconds) {
+        if (state.render.particleCount > RenderSettings::MinParticles) {
+            state.render.particleCount = std::max(RenderSettings::MinParticles,
+                state.render.particleCount - std::max(10'000U, state.render.particleCount / 10U));
+        } else {
+            state.render.pixelRatio = std::max(0.25f, state.render.pixelRatio - 0.05f);
+        }
+    } else if (state.lod.smoothedFrameSeconds < FastFrameSeconds) {
+        if (state.render.pixelRatio < 1.0f) {
+            state.render.pixelRatio = std::min(1.0f, state.render.pixelRatio + 0.05f);
+        } else {
+            state.render.particleCount = std::min(RenderSettings::MaxParticles,
+                state.render.particleCount + std::max(10'000U, state.render.particleCount / 20U));
+        }
+    }
 }
 
 void FrameCoordinator::Update(AppState& state, const GestureInput& gesture) {

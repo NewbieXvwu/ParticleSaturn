@@ -66,6 +66,11 @@ struct GestureSettings {
     int handLostDelay   = 10;
 };
 
+struct LodState {
+    bool locked = false;
+    float smoothedFrameSeconds = 1.0f / 60.0f;
+};
+
 struct WindowState {
     std::uint32_t width  = 1920;
     std::uint32_t height = 1080;
@@ -79,6 +84,7 @@ struct AppState {
     RenderSettings render;
     UiState ui;
     GestureSettings gesture;
+    LodState lod;
     WindowState window;
 };
 

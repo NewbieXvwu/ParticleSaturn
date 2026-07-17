@@ -357,6 +357,11 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                         }
                     }
                 }
+                bool lodLocked = state.lod.locked;
+                if (ImGui::Checkbox("Lock dynamic LOD", &lodLocked)) {
+                    controller.Dispatch(ParticleSaturn::App::SetLodLocked{lodLocked});
+                    settings.Save(controller.State());
+                }
                 const char* pauseLabel = state.scene.paused ? "Resume" : "Pause";
                 if (ImGui::Button(pauseLabel)) {
                     controller.Dispatch(ParticleSaturn::App::TogglePause{});

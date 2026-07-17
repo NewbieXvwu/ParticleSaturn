@@ -17,6 +17,7 @@ struct SetFullscreen { bool value; };
 struct SetWindowMaterial { WindowMaterial value; };
 struct SetGraphicsApi { GraphicsApi value; };
 struct SetVulkanDriver { VulkanDriver value; };
+struct SetLodLocked { bool value; };
 struct ToggleDebugWindow {};
 struct TogglePause {};
 
@@ -31,6 +32,7 @@ using AppCommand = std::variant<
     SetWindowMaterial,
     SetGraphicsApi,
     SetVulkanDriver,
+    SetLodLocked,
     ToggleDebugWindow,
     TogglePause>;
 

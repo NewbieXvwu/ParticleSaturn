@@ -24,6 +24,7 @@ constexpr const char* GestureSensitivityKey = "gesture.sensitivity";
 constexpr const char* GestureInvertXKey = "gesture.invertX";
 constexpr const char* GestureInvertYKey = "gesture.invertY";
 constexpr const char* HandLostDelayKey = "gesture.handLostDelay";
+constexpr const char* LodLockedKey = "lod.locked";
 constexpr const char* RotationXKey = "scene.rotationX";
 constexpr const char* RotationYKey = "scene.rotationY";
 constexpr const char* ZoomKey = "scene.zoom";
@@ -66,6 +67,7 @@ App::AppState NSUserDefaultsStore::Load(const App::AppState& defaults) const {
     if (HasValue(values, GestureInvertXKey)) state.gesture.invertX = [values boolForKey:@"gesture.invertX"];
     if (HasValue(values, GestureInvertYKey)) state.gesture.invertY = [values boolForKey:@"gesture.invertY"];
     if (HasValue(values, HandLostDelayKey)) state.gesture.handLostDelay = static_cast<int>([values integerForKey:@"gesture.handLostDelay"]);
+    if (HasValue(values, LodLockedKey)) state.lod.locked = [values boolForKey:@"lod.locked"];
     if (HasValue(values, RotationXKey)) state.scene.rotationX = [values floatForKey:@"scene.rotationX"];
     if (HasValue(values, RotationYKey)) state.scene.rotationY = [values floatForKey:@"scene.rotationY"];
     if (HasValue(values, ZoomKey)) state.scene.zoom = [values floatForKey:@"scene.zoom"];
@@ -111,6 +113,7 @@ void NSUserDefaultsStore::Save(const App::AppState& state) {
     [values setBool:state.gesture.invertX forKey:@"gesture.invertX"];
     [values setBool:state.gesture.invertY forKey:@"gesture.invertY"];
     [values setInteger:state.gesture.handLostDelay forKey:@"gesture.handLostDelay"];
+    [values setBool:state.lod.locked forKey:@"lod.locked"];
     [values setFloat:state.scene.rotationX forKey:@"scene.rotationX"];
     [values setFloat:state.scene.rotationY forKey:@"scene.rotationY"];
     [values setFloat:state.scene.zoom forKey:@"scene.zoom"];

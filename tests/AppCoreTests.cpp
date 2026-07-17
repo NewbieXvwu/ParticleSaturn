@@ -52,5 +52,21 @@ int main() {
     controller.Dispatch(TogglePause{});
     coordinator.Advance(controller, 0.01, {true, 1.0f, 1.0f, 1.0f});
     assert(std::abs(controller.State().scene.simulationTimeSeconds - 0.02) < 0.0001);
+
+    AppController lodController;
+    FrameCoordinator lodCoordinator{1.0 / 120.0};
+    const auto initialParticles = lodController.State().render.particleCount;
+    for (int frame = 0; frame < 16; ++frame) lodCoordinator.Advance(lodController, 0.05);
+    assert(lodController.State().render.particleCount < initialParticles);
+    lodController.Dispatch(SetLodLocked{true});
+    const auto lockedParticles = lodController.State().render.particleCount;
+    for (int frame = 0; frame < 16; ++frame) lodCoordinator.Advance(lodController, 0.05);
+    assert(lodController.State().render.particleCount == lockedParticles);
+    lodController.Dispatch(SetLodLocked{false});
+    lodController.MutableState().render.particleCount = RenderSettings::MinParticles;
+    lodController.MutableState().render.pixelRatio = 1.0f;
+    lodController.MutableState().lod.smoothedFrameSeconds = 1.0f / 240.0f;
+    lodCoordinator.Advance(lodController, 1.0 / 240.0);
+    assert(lodController.State().render.particleCount > RenderSettings::MinParticles);
     return 0;
 }

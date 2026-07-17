@@ -33,6 +33,7 @@ public:
 
 private:
     void Update(AppState& state, const GestureInput& gesture);
+    void UpdateLod(AppState& state, double elapsedSeconds);
 
     double fixedStepSeconds_;
     double accumulator_ = 0.0;

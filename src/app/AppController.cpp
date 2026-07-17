@@ -53,6 +53,9 @@ CommandEffect AppController::Dispatch(const AppCommand& command) {
         } else if constexpr (std::is_same_v<Command, SetVulkanDriver>) {
             effect.restartRequired = state_.render.vulkanDriver != value.value;
             state_.render.vulkanDriver = value.value;
+        } else if constexpr (std::is_same_v<Command, SetLodLocked>) {
+            effect.renderSettingsChanged = state_.lod.locked != value.value;
+            state_.lod.locked = value.value;
         } else if constexpr (std::is_same_v<Command, ToggleDebugWindow>) {
             state_.ui.showDebugWindow = !state_.ui.showDebugWindow;
         } else if constexpr (std::is_same_v<Command, TogglePause>) {

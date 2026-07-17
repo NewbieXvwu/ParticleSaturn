@@ -408,6 +408,11 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                     }
                 }
             }
+            bool lodLocked = state.lod.locked;
+            if (ImGui::Checkbox("Lock dynamic LOD", &lodLocked)) {
+                controller->Dispatch(ParticleSaturn::App::SetLodLocked{lodLocked});
+                settings.Save(controller->State());
+            }
             if (ImGui::Button(state.scene.paused ? "Resume" : "Pause")) {
                 controller->Dispatch(ParticleSaturn::App::TogglePause{});
                 settings.Save(controller->State());

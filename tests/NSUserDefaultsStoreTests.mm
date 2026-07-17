@@ -20,6 +20,7 @@ int main() {
         state.ui.showDebugWindow = true; state.ui.showCameraDebug = true; state.ui.darkMode = false;
         state.ui.blurEnabled = false; state.ui.blurStrength = 4.0f; state.ui.noiseIntensity = 0.2f;
         state.gesture.sensitivity = 2.2f; state.gesture.invertX = true; state.gesture.invertY = true; state.gesture.handLostDelay = 42;
+        state.lod.locked = true;
         state.window.width = 1440U; state.window.height = 900U; state.window.dpiScale = 2.0f;
         state.window.fullscreen = true; state.window.material = ParticleSaturn::App::WindowMaterial::SystemBlur;
         store.Save(state);
@@ -30,6 +31,7 @@ int main() {
         assert(std::abs(loaded.render.densityCompensation - state.render.densityCompensation) < 0.0001f);
         assert(loaded.ui.showDebugWindow == state.ui.showDebugWindow && loaded.ui.darkMode == state.ui.darkMode);
         assert(loaded.gesture.handLostDelay == state.gesture.handLostDelay && loaded.gesture.invertX == state.gesture.invertX);
+        assert(loaded.lod.locked == state.lod.locked);
         assert(loaded.window.width == state.window.width && loaded.window.material == state.window.material);
         [values removePersistentDomainForName:[NSString stringWithUTF8String:suiteName]];
         [values release];
