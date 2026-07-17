@@ -4,8 +4,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -48,6 +51,26 @@ private:
     std::size_t next_ = 0;
     float framesPerSecond_ = 60.0f;
 };
+
+bool WriteBaselinePpm(const char* path, std::uint32_t framebuffer, std::uint32_t width, std::uint32_t height) {
+    if (path == nullptr || path[0] == '\0' || width == 0 || height == 0) return false;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4U);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    if (glGetError() != GL_NO_ERROR) return false;
+    std::ofstream output{path, std::ios::binary};
+    if (!output) return false;
+    output << "P6\n" << width << ' ' << height << "\n255\n";
+    for (std::uint32_t row = 0; row < height; ++row) {
+        const std::uint32_t sourceRow = height - 1U - row;
+        for (std::uint32_t column = 0; column < width; ++column) {
+            const auto* pixel = &pixels[(static_cast<std::size_t>(sourceRow) * width + column) * 4U];
+            output.write(reinterpret_cast<const char*>(pixel), 3);
+        }
+    }
+    return output.good();
+}
 
 class WindowGlass {
 public:
@@ -142,6 +165,10 @@ int main() {
 
         auto controller = std::make_shared<ParticleSaturn::App::AppController>();
         controller->MutableState().render.graphicsApi = ParticleSaturn::App::GraphicsApi::OpenGL41;
+        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        if (captureBaseline) controller->MutableState().scene.paused = true;
+        __block bool baselineCaptured = false;
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
@@ -179,6 +206,12 @@ int main() {
             const bool transparent = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
             if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
                 !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
+            if (captureBaseline && !baselineCaptured) {
+                if (!WriteBaselinePpm(baselinePath, targets->ToneMappedFramebuffer(), width, height)) return;
+                baselineCaptured = true;
+                [NSApp terminate:nil];
+                return;
+            }
             if (state.ui.blurEnabled && !bloom->ApplyUiBlur(*targets, state.ui.blurStrength)) return;
 
             glBindFramebuffer(GL_READ_FRAMEBUFFER, targets->ToneMappedFramebuffer());

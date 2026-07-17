@@ -6,8 +6,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_metal.h"
@@ -45,6 +48,41 @@ private:
     float framesPerSecond_ = 60.0f;
 };
 
+bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t width, std::uint32_t height, const char* path) {
+    if (nativeDevice == nullptr || nativeTexture == nullptr || path == nullptr || path[0] == '\0' || width == 0 || height == 0) {
+        return false;
+    }
+    id<MTLDevice> device = (id<MTLDevice>)nativeDevice;
+    const NSUInteger bytesPerRow = static_cast<NSUInteger>(width) * 4U;
+    id<MTLBuffer> staging = [device newBufferWithLength:bytesPerRow * height options:MTLResourceStorageModeShared];
+    id<MTLCommandQueue> queue = [device newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLBlitCommandEncoder> encoder = [commands blitCommandEncoder];
+    [encoder copyFromTexture:(id<MTLTexture>)nativeTexture sourceSlice:0 sourceLevel:0
+                 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(width, height, 1)
+                   toBuffer:staging destinationOffset:0 destinationBytesPerRow:bytesPerRow
+         destinationBytesPerImage:bytesPerRow * height];
+    [encoder endEncoding];
+    [commands commit];
+    [commands waitUntilCompleted];
+    const bool completed = [commands status] == MTLCommandBufferStatusCompleted;
+    std::ofstream output{path, std::ios::binary};
+    if (completed && output) {
+        output << "P6\n" << width << ' ' << height << "\n255\n";
+        const auto* pixels = static_cast<const std::uint8_t*>([staging contents]);
+        for (std::uint32_t row = 0; row < height; ++row) {
+            for (std::uint32_t column = 0; column < width; ++column) {
+                const auto* pixel = &pixels[(static_cast<std::size_t>(row) * width + column) * 4U];
+                const std::uint8_t rgb[] = {pixel[2], pixel[1], pixel[0]};
+                output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
+            }
+        }
+    }
+    [queue release];
+    [staging release];
+    return completed && output.good();
+}
+
 } // namespace
 
 int main() {
@@ -65,6 +103,10 @@ int main() {
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller;
+        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        if (captureBaseline) controller.MutableState().scene.paused = true;
+        bool baselineCaptured = false;
         ParticleSaturn::App::FrameCoordinator coordinator;
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
@@ -167,6 +209,11 @@ int main() {
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
                                                (id<MTLRenderCommandEncoder>)encoder);
+            }, [&](void* nativeDevice, void* texture, std::uint32_t width, std::uint32_t height) {
+                if (!captureBaseline || baselineCaptured) return true;
+                baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, baselinePath);
+                if (baselineCaptured) [NSApp terminate:nil];
+                return baselineCaptured;
             });
         });
         ImGui_ImplMetal_Shutdown();

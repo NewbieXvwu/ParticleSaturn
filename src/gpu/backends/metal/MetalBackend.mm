@@ -568,7 +568,8 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
                                 std::uint32_t height, float backingScale, const App::AppState& state, bool handTracked,
                                 float deltaTime, std::uint32_t framesPerSecond,
-                                const std::function<void(void*, void*, void*)>& uiRenderer) {
+                                const std::function<void(void*, void*, void*)>& uiRenderer,
+                                const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
     if (!state.scene.paused && !particles.Simulate(deltaTime, state.scene.zoom, handTracked, state.render.particleCount)) return false;
     id<MTLCommandQueue> queue = [(id<MTLDevice>)device.NativeDevice() newCommandQueue];
@@ -590,6 +591,9 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
     if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
                           [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength)) return false;
+    if (sceneCapture && !sceneCapture(device.NativeDevice(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) {
+        return false;
+    }
     if (state.ui.blurEnabled) {
         if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
                               width, height, bloomStrength)) return false;

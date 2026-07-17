@@ -199,7 +199,8 @@ public:
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
                 float backingScale, const App::AppState& state, bool handTracked, float deltaTime,
                 std::uint32_t framesPerSecond,
-                const std::function<void(void*, void*, void*)>& uiRenderer = {});
+                const std::function<void(void*, void*, void*)>& uiRenderer = {},
+                const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture = {});
 };
 
 } // namespace ParticleSaturn::Gpu::Metal

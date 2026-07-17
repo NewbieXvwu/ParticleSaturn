@@ -67,6 +67,17 @@ add_custom_command(TARGET ParticleSaturn.OpenGL41.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/src/shaders/glsl410"
         "$<TARGET_FILE_DIR:ParticleSaturn.OpenGL41.macOS>/../Resources/glsl410"
     VERBATIM)
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnVisualBaselineMetricsTests "${CMAKE_SOURCE_DIR}/tests/VisualBaselineMetricsTests.cpp")
+    add_dependencies(ParticleSaturnVisualBaselineMetricsTests ParticleSaturn.macOS ParticleSaturn.OpenGL41.macOS)
+    add_test(NAME ParticleSaturnVisualBaselineTests
+        COMMAND /bin/sh "${CMAKE_SOURCE_DIR}/tests/RunMacOSVisualBaseline.sh"
+            "$<TARGET_FILE:ParticleSaturn.macOS>"
+            "$<TARGET_FILE:ParticleSaturn.OpenGL41.macOS>"
+            "$<TARGET_FILE:ParticleSaturnVisualBaselineMetricsTests>"
+            "${CMAKE_CURRENT_BINARY_DIR}/visual-baseline")
+    set_tests_properties(ParticleSaturnVisualBaselineTests PROPERTIES TIMEOUT 30)
+endif()
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
