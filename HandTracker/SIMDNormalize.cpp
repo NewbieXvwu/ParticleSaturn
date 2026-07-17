@@ -3,6 +3,7 @@
 
 #include "SIMDNormalize.h"
 
+#include <cstring>
 #include <iostream>
 
 #if defined(_M_X64) || defined(_M_IX86) || defined(__i386__) || defined(__x86_64__)
@@ -187,6 +188,12 @@ static void NormalizeRGB_NEON(const uint8_t* src, float* dst, size_t pixel_count
 // SSE 实现 (一次处理 4 个像素 = 12 个通道)
 // ============================================================================
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+static __m128i Load12Bytes(const uint8_t* source) {
+    std::uint32_t tail = 0;
+    std::memcpy(&tail, source + 8, sizeof(tail));
+    return _mm_unpacklo_epi64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(source)), _mm_cvtsi32_si128(static_cast<int>(tail)));
+}
+
 static void NormalizeRGB_SSE(const uint8_t* src, float* dst, size_t pixel_count) {
     const __m128  scale = _mm_set1_ps(1.0f / 255.0f);
     const __m128i zero  = _mm_setzero_si128();
@@ -197,9 +204,8 @@ static void NormalizeRGB_SSE(const uint8_t* src, float* dst, size_t pixel_count)
     size_t simd_count = (pixel_count / 4) * 4;
 
     for (; i < simd_count; i += 4) {
-        // 加载 12 字节 (4 像素的 RGB) - 使用 16 字节加载，忽略最后 4 字节
-        // 注意：这里可能读取超出边界，但后面的标量处理会覆盖正确值
-        __m128i pixels = _mm_loadu_si128((const __m128i*)(src + i * 3));
+        // 精确读取四个 RGB 像素，最后一个 4 字节块不能跨越输入边界。
+        __m128i pixels = Load12Bytes(src + i * 3);
 
         // 解包 uint8 -> int16 -> int32
         __m128i lo16 = _mm_unpacklo_epi8(pixels, zero); // 前 8 个 uint8 -> 8 个 int16

@@ -32,6 +32,20 @@ int main() {
     SIMDNormalize::NormalizeRGB(pixels.data(), automatic.data(), width * height);
     AssertEqual(scalar, automatic);
 
+    for (const std::size_t count : {0U, 1U, 2U, 3U, 4U, 5U, 7U, 8U, 9U}) {
+        std::vector<std::uint8_t> unaligned(count * 3U + 1U, 0U);
+        for (std::size_t index = 0; index < count * 3U; ++index) {
+            unaligned[index + 1U] = static_cast<std::uint8_t>((index * 19U) % 256U);
+        }
+        std::vector<float> expected(count * 3U);
+        std::vector<float> actual(count * 3U);
+        SIMDNormalize::SetMode(SIMDMode::Scalar);
+        SIMDNormalize::NormalizeRGB(unaligned.data() + 1U, expected.data(), count);
+        SIMDNormalize::SetMode(SIMDMode::Auto);
+        SIMDNormalize::NormalizeRGB(unaligned.data() + 1U, actual.data(), count);
+        AssertEqual(expected, actual);
+    }
+
     std::vector<float> flipped(pixels.size());
     SIMDNormalize::FlipHorizontalAndNormalize(pixels.data(), flipped.data(), width, height);
     for (int y = 0; y < height; ++y) {
