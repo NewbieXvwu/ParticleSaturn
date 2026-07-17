@@ -3,6 +3,7 @@
 #include "gpu/interface/GpuTypes.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -22,15 +23,17 @@ struct RenderPass {
     std::string name;
     std::vector<ResourceAccess> reads;
     std::vector<ResourceAccess> writes;
+    std::function<bool()> execute;
 };
 
 class RenderGraph {
 public:
     std::uint32_t AddResource(GraphResource resource);
-    std::uint32_t AddPass(std::string name);
+    std::uint32_t AddPass(std::string name, std::function<bool()> execute = {});
     void Read(std::uint32_t pass, std::uint32_t resource, Gpu::ResourceUsage usage);
     void Write(std::uint32_t pass, std::uint32_t resource, Gpu::ResourceUsage usage);
     std::vector<std::uint32_t> Compile() const;
+    bool Execute() const;
 
     const std::vector<RenderPass>& Passes() const noexcept;
 

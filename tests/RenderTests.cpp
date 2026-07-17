@@ -2,6 +2,7 @@
 #include "render/ResourceRegistry.h"
 
 #include <cassert>
+#include <string>
 #include <stdexcept>
 
 using namespace ParticleSaturn;
@@ -23,6 +24,17 @@ int main() {
     assert(order[0] == scenePass);
     assert(order[1] == bloomPass);
     assert(order[2] == compositePass);
+    std::string execution;
+    Render::RenderGraph executable;
+    const auto input = executable.AddResource({"input", {1, 1, 1}});
+    const auto output = executable.AddResource({"output", {1, 1, 1}});
+    const auto writer = executable.AddPass("writer", [&] { execution += 'w'; return true; });
+    const auto reader = executable.AddPass("reader", [&] { execution += 'r'; return true; });
+    executable.Write(writer, input, Gpu::ResourceUsage::RenderTarget);
+    executable.Read(reader, input, Gpu::ResourceUsage::ShaderRead);
+    executable.Write(reader, output, Gpu::ResourceUsage::RenderTarget);
+    assert(executable.Execute());
+    assert(execution == "wr");
 
     Render::TexturePool pool;
     const Gpu::TextureDesc desc{128, 128, 1};

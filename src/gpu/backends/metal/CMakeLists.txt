@@ -2,7 +2,7 @@ add_library(ParticleSaturnMetalBackend STATIC MetalBackend.mm)
 add_library(ParticleSaturn.Backend.Metal ALIAS ParticleSaturnMetalBackend)
 set(PARTICLE_ABI_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/generated/shaders")
 target_include_directories(ParticleSaturnMetalBackend PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../.." "${PARTICLE_ABI_OUTPUT_DIRECTORY}")
-target_link_libraries(ParticleSaturnMetalBackend PUBLIC "-framework Foundation" "-framework Metal" "-framework QuartzCore")
+target_link_libraries(ParticleSaturnMetalBackend PUBLIC ParticleSaturnRender "-framework Foundation" "-framework Metal" "-framework QuartzCore")
 add_dependencies(ParticleSaturnMetalBackend ParticleSaturnShaderAbi)
 
 if(BUILD_TESTING)

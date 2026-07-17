@@ -13,12 +13,20 @@ std::uint32_t RenderGraph::AddResource(GraphResource resource) {
     return static_cast<std::uint32_t>(resources_.size() - 1);
 }
 
-std::uint32_t RenderGraph::AddPass(std::string name) {
+std::uint32_t RenderGraph::AddPass(std::string name, std::function<bool()> execute) {
     if (name.empty()) {
         throw std::invalid_argument{"render graph passes require a name"};
     }
-    passes_.push_back({std::move(name), {}, {}});
+    passes_.push_back({std::move(name), {}, {}, std::move(execute)});
     return static_cast<std::uint32_t>(passes_.size() - 1);
+}
+
+bool RenderGraph::Execute() const {
+    for (const auto pass : Compile()) {
+        const auto& callback = passes_[pass].execute;
+        if (callback && !callback()) return false;
+    }
+    return true;
 }
 
 void RenderGraph::Read(std::uint32_t pass, std::uint32_t resource, Gpu::ResourceUsage usage) {
