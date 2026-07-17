@@ -137,18 +137,32 @@ int main() {
             const auto now = std::chrono::steady_clock::now();
             const float deltaTime = std::clamp(std::chrono::duration<float>(now - lastFrameTime).count(), 0.0f, 0.25f);
             lastFrameTime = now;
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            ParticleSaturn::App::GestureInput gesture;
+            ParticleSaturn::Services::Camera::Frame cameraFrame;
+            if (handTracking.IsLoaded() && camera.LatestFrame(cameraFrame)) {
+                if (!handTracking.Invoke(cameraFrame, handTrackingError)) {
+                    std::clog << "[HandTracking] " << handTrackingError << '\n';
+                } else {
+                    ParticleSaturn::Services::HandTracking::MacOS::HandPose pose;
+                    if (handTracking.DecodeLandmarks(pose)) {
+                        gesture.tracked = true;
+                        gesture.hasAbsolutePose = true;
+                        gesture.rotationXNormalized = pose.centerX;
+                        gesture.rotationYNormalized = pose.centerY;
+                        gesture.scale = pose.scale;
+                    }
+                }
+            }
+            const auto frame = coordinator.Advance(controller, deltaTime, gesture);
+#else
             const auto frame = coordinator.Advance(controller, deltaTime);
+#endif
             fpsMeter.AddSample(deltaTime);
             if (frame.state->window.material != appliedWindowMaterial) {
                 host.SetWindowMaterial(frame.state->window.material);
                 appliedWindowMaterial = frame.state->window.material;
             }
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-            ParticleSaturn::Services::Camera::Frame cameraFrame;
-            if (handTracking.IsLoaded() && camera.LatestFrame(cameraFrame) && !handTracking.Invoke(cameraFrame, handTrackingError)) {
-                std::clog << "[HandTracking] " << handTrackingError << '\n';
-            }
-#endif
             const auto drawableSize = host.CurrentDrawableSize();
             auto& mutableState = controller.MutableState();
             mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
