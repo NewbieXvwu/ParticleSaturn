@@ -1,14 +1,7 @@
 #include <metal_stdlib>
+#include "Particle.metal"
 
 using namespace metal;
-
-struct Particle {
-    float4 position;
-    uint color;
-    float speed;
-    uint isRing;
-    uint padding;
-};
 
 struct SimulationConstants {
     float deltaTime;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ParticleAbi.h"
 #include "app/state/AppStates.h"
 #include "gpu/interface/GpuCapabilities.h"
 
@@ -69,14 +70,7 @@ class MetalParticleSystem {
 public:
     static constexpr std::uint32_t ParticleCount = 1200000;
 
-    struct ParticleSnapshot {
-        float position[4]{};
-        std::uint32_t color = 0;
-        float speed = 0.0f;
-        std::uint32_t isRing = 0;
-        std::uint32_t padding = 0;
-    };
-    static_assert(sizeof(ParticleSnapshot) == 32);
+    using ParticleSnapshot = ShaderAbi::Particle;
 
     bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
     bool Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount);
