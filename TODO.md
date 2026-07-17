@@ -954,6 +954,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：新增 `PARTICLESATURN_SIMD_ADDRESS_SANITIZER`，仅对 SIMD 库与其测试启用 AddressSanitizer；独立 macOS 配置已实际构建并通过任意长度、未对齐输入测试。AVX2 翻转尾部与完整跨架构验收仍待完成。
 
+进展补充（2026-07-17）：AVX2 翻转的两个四像素子块现复用精确 12 字节装载器，消除其源端 16 字节跨界读取；常规和 AddressSanitizer 构建均通过。BGR AVX2 的目的端尾部存储仍待收紧。
+
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
 - [x] 设备唯一标识、热插拔、占用错误

@@ -516,8 +516,8 @@ __declspec(noinline) static void FlipHorizontalAndNormalize_AVX2(const uint8_t* 
             int src_offset_hi = (width - 4 - x) * 3; // Chunk 1 (dst 0..3)
             int src_offset_lo = (width - 8 - x) * 3; // Chunk 2 (dst 4..7)
 
-            __m128i v_lo = _mm_loadu_si128((const __m128i*)(src_row + src_offset_lo));
-            __m128i v_hi = _mm_loadu_si128((const __m128i*)(src_row + src_offset_hi));
+            __m128i v_lo = Load12Bytes(src_row + src_offset_lo);
+            __m128i v_hi = Load12Bytes(src_row + src_offset_hi);
 
             __m256i ymm = _mm256_inserti128_si256(_mm256_castsi128_si256(v_lo), v_hi, 1);
 
@@ -720,8 +720,8 @@ __declspec(noinline) static void FlipHorizontalAndBGR2RGB_AVX2(const uint8_t* sr
             int src_offset_hi = (width - 4 - x) * 3;
             int src_offset_lo = (width - 8 - x) * 3;
 
-            __m128i v_lo = _mm_loadu_si128((const __m128i*)(src_row + src_offset_lo));
-            __m128i v_hi = _mm_loadu_si128((const __m128i*)(src_row + src_offset_hi));
+            __m128i v_lo = Load12Bytes(src_row + src_offset_lo);
+            __m128i v_hi = Load12Bytes(src_row + src_offset_hi);
 
             __m256i ymm = _mm256_inserti128_si256(_mm256_castsi128_si256(v_lo), v_hi, 1);
 
