@@ -89,7 +89,14 @@ bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t wid
 int main() {
     @autoreleasepool {
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
-        auto initialState = settings.Load({});
+        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        auto initialState = captureBaseline ? ParticleSaturn::App::AppState{} : settings.Load({});
+        if (captureBaseline) {
+            initialState.window.width = 1512;
+            initialState.window.height = 827;
+            initialState.scene.paused = true;
+        }
         initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::Metal;
         ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
         ParticleSaturn::Gpu::Metal::MetalDevice device;
@@ -107,9 +114,6 @@ int main() {
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller{initialState};
-        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
-        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
-        if (captureBaseline) controller.MutableState().scene.paused = true;
         bool baselineCaptured = false;
         auto appliedWindowMaterial = controller.State().window.material;
         host.SetWindowMaterial(appliedWindowMaterial);

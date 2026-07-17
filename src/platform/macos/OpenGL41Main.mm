@@ -95,8 +95,10 @@ public:
             [visualEffect_ addSubview:openGlView_];
             [openGlView_ setFrame:[visualEffect_ bounds]];
             [openGlView_ setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-            [openGlView_ setWantsLayer:YES];
-            [[openGlView_ layer] setOpaque:NO];
+            // NSOpenGLContext owns its drawable.  A layer-backed NSView forces
+            // that drawable opaque on current macOS drivers, hiding the visual
+            // effect view below it even when the OpenGL pixels carry alpha.
+            [openGlView_ setWantsLayer:NO];
             surface_.SetView(openGlView_);
             surface_.SetTransparent(true);
         } else {
@@ -109,8 +111,7 @@ public:
             }
             [window_ setOpaque:YES];
             [window_ setBackgroundColor:NSColor.blackColor];
-            [openGlView_ setWantsLayer:YES];
-            [[openGlView_ layer] setOpaque:YES];
+            [openGlView_ setWantsLayer:NO];
             surface_.SetTransparent(false);
         }
         enabled_ = enabled;
@@ -132,16 +133,28 @@ int main() {
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
         __block ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
-        auto initialState = settings.Load({});
+        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        auto initialState = captureBaseline ? ParticleSaturn::App::AppState{} : settings.Load({});
+        if (captureBaseline) {
+            initialState.window.width = 1512;
+            initialState.window.height = 827;
+            initialState.scene.paused = true;
+        }
         initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::OpenGL41;
-        const NSRect frame = NSMakeRect(0, 0, initialState.window.width, initialState.window.height);
+        const NSRect visibleFrame = [[NSScreen mainScreen] visibleFrame];
+        const NSSize maximumContentSize = [NSWindow contentRectForFrameRect:visibleFrame
+                                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                                                              NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable].size;
+        const NSRect frame = NSMakeRect(0, 0, std::min<CGFloat>(initialState.window.width, maximumContentSize.width),
+                                        std::min<CGFloat>(initialState.window.height, maximumContentSize.height));
         const auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
         auto* window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
         [window setTitle:@"Particle Saturn - OpenGL 4.1"];
         [window setReleasedWhenClosed:NO];
         auto* view = [[NSView alloc] initWithFrame:frame];
-        [view setWantsLayer:YES];
+        [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
         [window setContentView:view];
 
         auto surface = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface>(view);
@@ -169,9 +182,6 @@ int main() {
         if (!ImGui_ImplOSX_Init(view) || !ImGui_ImplOpenGL3_Init("#version 410")) return 1;
 
         auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
-        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
-        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
-        if (captureBaseline) controller->MutableState().scene.paused = true;
         __block bool baselineCaptured = false;
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
@@ -185,13 +195,14 @@ int main() {
             fpsMeter->AddSample(deltaTime);
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
             const auto& state = *frameSnapshot.state;
-            const float backingScale = [window backingScaleFactor];
             const NSSize logicalSize = [view bounds].size;
+            const NSRect backingBounds = [view convertRectToBacking:[view bounds]];
+            const float backingScale = [window backingScaleFactor];
             controller->MutableState().window.width = static_cast<std::uint32_t>(logicalSize.width);
             controller->MutableState().window.height = static_cast<std::uint32_t>(logicalSize.height);
             controller->MutableState().window.dpiScale = backingScale;
-            const auto width = static_cast<std::uint32_t>(std::max(1.0, logicalSize.width * backingScale));
-            const auto height = static_cast<std::uint32_t>(std::max(1.0, logicalSize.height * backingScale));
+            const auto width = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.width));
+            const auto height = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.height));
             if (targets->Width() != width || targets->Height() != height) {
                 if (!targets->Create(width, height)) return;
             }
@@ -221,9 +232,7 @@ int main() {
             }
             if (state.ui.blurEnabled && !bloom->ApplyUiBlur(*targets, state.ui.blurStrength)) return;
 
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, targets->ToneMappedFramebuffer());
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-            glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            if (!toneMapper->Present(*targets, transparent)) return;
             if (!sevenSegment->Render(0, width, height, fpsMeter->Value())) return;
 
             ImGui_ImplOpenGL3_NewFrame();
