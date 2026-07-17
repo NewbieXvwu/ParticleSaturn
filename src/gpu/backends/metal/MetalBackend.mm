@@ -80,8 +80,50 @@ bool MetalSurface::Present(void* nativeCommandBuffer) {
 }
 
 std::uint64_t MetalFrameScheduler::BeginFrame() {
+    CollectCompletedFrames();
+    while (submittedCommandBuffers_.size() >= MaxFramesInFlight) {
+        id<MTLCommandBuffer> oldest = (id<MTLCommandBuffer>)submittedCommandBuffers_.front();
+        [oldest waitUntilCompleted];
+        [oldest release];
+        submittedCommandBuffers_.erase(submittedCommandBuffers_.begin());
+        CollectCompletedFrames();
+    }
     lastSubmittedFrame_ = nextFrame_++;
     return lastSubmittedFrame_;
+}
+
+void MetalFrameScheduler::Submit(void* nativeCommandBuffer) {
+    if (nativeCommandBuffer == nullptr) return;
+    [(id<MTLCommandBuffer>)nativeCommandBuffer retain];
+    submittedCommandBuffers_.push_back(nativeCommandBuffer);
+}
+
+void MetalFrameScheduler::CollectCompletedFrames() {
+    auto next = submittedCommandBuffers_.begin();
+    for (auto current = submittedCommandBuffers_.begin(); current != submittedCommandBuffers_.end(); ++current) {
+        const auto status = [(id<MTLCommandBuffer>)*current status];
+        if (status < MTLCommandBufferStatusCompleted) {
+            *next++ = *current;
+            continue;
+        }
+        [(id<MTLCommandBuffer>)*current release];
+    }
+    submittedCommandBuffers_.erase(next, submittedCommandBuffers_.end());
+}
+
+bool MetalFrameScheduler::WaitForSubmittedFrames() {
+    bool completed = true;
+    for (void* commandBuffer : submittedCommandBuffers_) {
+        [(id<MTLCommandBuffer>)commandBuffer waitUntilCompleted];
+        completed = completed && [(id<MTLCommandBuffer>)commandBuffer status] == MTLCommandBufferStatusCompleted;
+        [(id<MTLCommandBuffer>)commandBuffer release];
+    }
+    submittedCommandBuffers_.clear();
+    return completed;
+}
+
+MetalFrameScheduler::~MetalFrameScheduler() {
+    WaitForSubmittedFrames();
 }
 
 std::uint64_t MetalFrameScheduler::LastSubmittedFrame() const noexcept {
@@ -655,28 +697,8 @@ MetalFrameRenderer::~MetalFrameRenderer() {
     WaitForSubmittedWork();
 }
 
-void MetalFrameRenderer::CollectCompletedWork() {
-    auto next = submittedCommandBuffers_.begin();
-    for (auto current = submittedCommandBuffers_.begin(); current != submittedCommandBuffers_.end(); ++current) {
-        const auto status = [(id<MTLCommandBuffer>)*current status];
-        if (status < MTLCommandBufferStatusCompleted) {
-            *next++ = *current;
-            continue;
-        }
-        [(id<MTLCommandBuffer>)*current release];
-    }
-    submittedCommandBuffers_.erase(next, submittedCommandBuffers_.end());
-}
-
 bool MetalFrameRenderer::WaitForSubmittedWork() {
-    bool completed = true;
-    for (void* commandBuffer : submittedCommandBuffers_) {
-        [(id<MTLCommandBuffer>)commandBuffer waitUntilCompleted];
-        completed = completed && [(id<MTLCommandBuffer>)commandBuffer status] == MTLCommandBufferStatusCompleted;
-        [(id<MTLCommandBuffer>)commandBuffer release];
-    }
-    submittedCommandBuffers_.clear();
-    return completed;
+    return scheduler_.WaitForSubmittedFrames();
 }
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
@@ -687,7 +709,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
                                 const std::function<void(void*, void*, void*)>& uiRenderer,
                                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
-    CollectCompletedWork();
+    scheduler_.BeginFrame();
     (void)backingScale;
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
     if (commands == nil) return false;
@@ -730,8 +752,7 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     }
     if (!surface.Present(commands)) return false;
     [commands commit];
-    [commands retain];
-    submittedCommandBuffers_.push_back(commands);
+    scheduler_.Submit(commands);
     if (!sceneCapture) return true;
     [commands waitUntilCompleted];
     return [commands status] == MTLCommandBufferStatusCompleted && sceneCapture(device.NativeDevice(), drawableTexture, width, height);

@@ -43,12 +43,21 @@ private:
 
 class MetalFrameScheduler {
 public:
+    static constexpr std::size_t MaxFramesInFlight = 3;
+
+    ~MetalFrameScheduler();
+
     std::uint64_t BeginFrame();
+    void Submit(void* nativeCommandBuffer);
+    bool WaitForSubmittedFrames();
     std::uint64_t LastSubmittedFrame() const noexcept;
 
 private:
+    void CollectCompletedFrames();
+
     std::uint64_t nextFrame_ = 1;
     std::uint64_t lastSubmittedFrame_ = 0;
+    std::vector<void*> submittedCommandBuffers_;
 };
 
 class MetalResourceManager {
@@ -222,8 +231,7 @@ public:
     bool WaitForSubmittedWork();
 
 private:
-    void CollectCompletedWork();
-    std::vector<void*> submittedCommandBuffers_;
+    MetalFrameScheduler scheduler_;
 };
 
 } // namespace ParticleSaturn::Gpu::Metal
