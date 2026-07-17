@@ -15,6 +15,7 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_osx.h"
 
+#include "MacOSApplication.h"
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/opengl41/OpenGL41Surface.h"
@@ -151,7 +152,7 @@ private:
 
 } // namespace
 
-int main() {
+int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -165,7 +166,6 @@ int main() {
             initialState.window.height = 827;
             initialState.scene.paused = true;
         }
-        initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::OpenGL41;
         const NSRect visibleFrame = [[NSScreen mainScreen] visibleFrame];
         const NSSize maximumContentSize = [NSWindow contentRectForFrameRect:visibleFrame
                                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |

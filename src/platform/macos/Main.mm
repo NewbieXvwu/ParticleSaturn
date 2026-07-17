@@ -20,6 +20,7 @@
 #include "imgui_impl_osx.h"
 
 #include "CocoaHost.h"
+#include "MacOSApplication.h"
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/metal/MetalBackend.h"
@@ -179,7 +180,7 @@ bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t wid
 
 } // namespace
 
-int main() {
+int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
     @autoreleasepool {
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
@@ -190,7 +191,6 @@ int main() {
             initialState.window.height = 827;
             initialState.scene.paused = true;
         }
-        initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::Metal;
         ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
         ParticleSaturn::Gpu::Metal::MetalDevice device;
         if (!device.Initialize()) {

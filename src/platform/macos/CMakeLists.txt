@@ -1,21 +1,24 @@
-add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm)
+add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm MacOSBackendSelection.cpp)
 add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")
 target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore" "-framework Metal")
 
 add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
+    LauncherMain.mm
     Main.mm
+    OpenGL41Main.mm
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
     "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_metal.mm")
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_metal.mm"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp")
 set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
-target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnMacOSSettings)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnOpenGL41Backend ParticleSaturnMacOSSettings)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera)
 if(TARGET ParticleSaturnMacOSHandTracking)
@@ -24,8 +27,9 @@ if(TARGET ParticleSaturnMacOSHandTracking)
 endif()
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
 target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
-target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController")
-add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders)
+target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController" "-framework QuartzCore")
+target_compile_definitions(ParticleSaturn.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
+add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders)
 add_custom_target(ParticleSaturnMacOSMetalResource ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
@@ -52,33 +56,16 @@ if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
 endif()
 
-add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE
-    OpenGL41Main.mm
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp")
-set_target_properties(ParticleSaturn.OpenGL41.macOS PROPERTIES
-    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.opengl41")
-target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore ParticleSaturnMacOSSettings "-framework GameController" "-framework QuartzCore")
-target_include_directories(ParticleSaturn.OpenGL41.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
-target_compile_definitions(ParticleSaturn.OpenGL41.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
-add_dependencies(ParticleSaturn.OpenGL41.macOS ParticleSaturnOpenGL41Shaders)
-add_custom_command(TARGET ParticleSaturn.OpenGL41.macOS POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.OpenGL41.macOS>/../Resources/glsl410"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/src/shaders/glsl410"
-        "$<TARGET_FILE_DIR:ParticleSaturn.OpenGL41.macOS>/../Resources/glsl410"
-    VERBATIM)
 if(BUILD_TESTING)
+    add_executable(ParticleSaturnMacOSBackendSelectionTests "${CMAKE_SOURCE_DIR}/tests/MacOSBackendSelectionTests.cpp")
+    target_link_libraries(ParticleSaturnMacOSBackendSelectionTests PRIVATE ParticleSaturnPlatformMacOS)
+    add_test(NAME ParticleSaturnMacOSBackendSelectionTests COMMAND ParticleSaturnMacOSBackendSelectionTests)
     add_executable(ParticleSaturnVisualBaselineMetricsTests "${CMAKE_SOURCE_DIR}/tests/VisualBaselineMetricsTests.cpp")
-    add_dependencies(ParticleSaturnVisualBaselineMetricsTests ParticleSaturn.macOS ParticleSaturn.OpenGL41.macOS)
+    add_dependencies(ParticleSaturnVisualBaselineMetricsTests ParticleSaturn.macOS)
     add_test(NAME ParticleSaturnVisualBaselineTests
         COMMAND /bin/sh "${CMAKE_SOURCE_DIR}/tests/RunMacOSVisualBaseline.sh"
             "$<TARGET_FILE:ParticleSaturn.macOS>"
-            "$<TARGET_FILE:ParticleSaturn.OpenGL41.macOS>"
+            "$<TARGET_FILE:ParticleSaturn.macOS>"
             "$<TARGET_FILE:ParticleSaturnVisualBaselineMetricsTests>"
             "${CMAKE_CURRENT_BINARY_DIR}/visual-baseline")
     set_tests_properties(ParticleSaturnVisualBaselineTests PROPERTIES TIMEOUT 30)
@@ -87,6 +74,9 @@ add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/ParticleKernels.metallib"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/glsl410"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/src/shaders/glsl410"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/glsl410"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/palm_detection_full.tflite"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite"

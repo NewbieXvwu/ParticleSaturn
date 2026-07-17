@@ -14,7 +14,8 @@ mkdir -p "$output_dir"
 capture() {
     application="$1"
     image="$2"
-    PARTICLESATURN_CAPTURE_BASELINE="$image" "$application" &
+    backend="$3"
+    PARTICLESATURN_CAPTURE_BASELINE="$image" PARTICLESATURN_GRAPHICS_API="$backend" "$application" &
     process_id=$!
     attempts=0
     while [ ! -f "$image" ] && [ "$attempts" -lt 200 ]; do
@@ -29,6 +30,6 @@ capture() {
     wait "$process_id"
 }
 
-capture "$metal_app" "$metal_image"
-capture "$opengl_app" "$opengl_image"
+capture "$metal_app" "$metal_image" metal
+capture "$opengl_app" "$opengl_image" opengl41
 "$metrics" "$metal_image" "$opengl_image" 2.0 0.04
