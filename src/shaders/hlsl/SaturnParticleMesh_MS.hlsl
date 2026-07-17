@@ -4,14 +4,8 @@
 #define MAX_VERTS (GROUP_SIZE * VERTS_PER_PARTICLE)  // 128
 #define MAX_PRIMS (GROUP_SIZE * PRIMS_PER_PARTICLE)  // 64
 
-struct ParticleData
-{
-    float4 pos;
-    uint   color;
-    float  speed;
-    float  isRing;
-    float  pad;
-};
+#include "Particle.hlsl"
+typedef Particle ParticleData;
 
 StructuredBuffer<ParticleData> g_Particles;
 
@@ -110,7 +104,7 @@ void main(
     float uPixelRatio   = uRenderParams.y;
     float uScreenHeight = uRenderParams.z;
 
-    float4 worldPos   = MulRows(float4(p.pos.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
+    float4 worldPos   = MulRows(float4(p.position.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
     float4 mvPosition = MulRows(worldPos, uViewRow0, uViewRow1, uViewRow2, uViewRow3);
 
     float dist = -mvPosition.z;
@@ -128,13 +122,13 @@ void main(
     {
         // 点大小计算（与 Vertex Pulling VS 保持一致）
         float invDist = 1.0 / max(dist, 0.1);
-        float basePointSize = p.pos.w * 350.0 * invDist * 0.55;
+        float basePointSize = p.position.w * 350.0 * invDist * 0.55;
         float screenScale = uScreenHeight / 1080.0;
         float pointSize = basePointSize * screenScale;
 
         // ringFactor：仅对本体粒子在近距离略缩小（与 Vertex Pulling 一致）
         float nearMask = (dist <= 50.0) ? 1.0 : 0.0;
-        float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, p.isRing);
+        float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, float(p.isRing));
         float pixelFactor = pow(max(uPixelRatio, 0.0001), 0.8);
         pointSize *= ringFactor * pixelFactor;
 
@@ -171,7 +165,7 @@ void main(
         v.vDist = dist;
         v.vOpacity = valid ? vOpacity : 0.0;
         v.vScaleFactor = vScaleFactor;
-        v.vIsRing = p.isRing;
+        v.vIsRing = float(p.isRing);
 
         if (valid)
         {

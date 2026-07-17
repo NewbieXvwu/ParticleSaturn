@@ -265,7 +265,9 @@ file(GLOB GLSL_SHADER_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/glsl/*.glsl")
 add_custom_command(
     OUTPUT "${SHADER_BYTECODES_HEADER}"
     COMMAND PowerShell -NoProfile -ExecutionPolicy Bypass -File "${SHADER_COMPILE_SCRIPT}"
+        -AbiOutputDir "${CMAKE_BINARY_DIR}/generated/shaders"
     DEPENDS ${HLSL_SHADER_SOURCES} ${GLSL_SHADER_SOURCES} "${SHADER_COMPILE_SCRIPT}"
+        "${CMAKE_BINARY_DIR}/generated/shaders/Particle.hlsl" "${CMAKE_BINARY_DIR}/generated/shaders/Particle.glsl"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling shaders to bytecode..."
     VERBATIM
@@ -274,6 +276,7 @@ add_custom_command(
 add_custom_target(CompileShaders
     DEPENDS "${SHADER_BYTECODES_HEADER}"
 )
+add_dependencies(CompileShaders ParticleSaturnShaderAbi)
 
 particlesaturn_apply_third_party_patch(imgui-md3)
 

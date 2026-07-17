@@ -1,15 +1,10 @@
 #version 450
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+#extension GL_GOOGLE_include_directive : enable
+#include "Particle.glsl"
+#define ParticleData Particle
 
-struct ParticleData
-{
-    vec4  pos;
-    uint  color;
-    float speed;
-    float isRing;
-    float pad;
-};
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 layout(set=0, binding=0, std430) writeonly buffer g_ParticlesOut
 {
@@ -68,7 +63,7 @@ void main()
     vec3 colRGB = vec3(1.0);
     float alpha = 1.0;
     float speed = 0.0;
-    float isRing = 0.0;
+    uint isRing = 0u;
 
     float R = uRadius;
 
@@ -97,7 +92,7 @@ void main()
         pos.w = 1.0 + random01(rngState) * 0.8;
         alpha = 0.8;
         speed = 0.0;
-        isRing = 0.0;
+        isRing = 0u;
     }
     else
     {
@@ -160,14 +155,14 @@ void main()
         pos.w = s;
         alpha = o;
         speed = 8.0 / sqrt(rad);
-        isRing = 1.0;
+        isRing = 1u;
     }
 
     ParticleData p;
-    p.pos = pos;
+    p.position = pos;
     p.color = packRGBA8(colRGB.x, colRGB.y, colRGB.z, alpha);
     p.speed = speed;
     p.isRing = isRing;
-    p.pad = 0.0;
+    p.padding = 0u;
     particlesOut[id] = p;
 }

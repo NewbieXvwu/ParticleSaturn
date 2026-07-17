@@ -18,7 +18,11 @@ if(BUILD_TESTING)
     add_executable(ParticleSaturnShaderAbiTests "${CMAKE_SOURCE_DIR}/tests/ShaderAbiTests.cpp")
     add_dependencies(ParticleSaturnShaderAbiTests ParticleSaturnShaderAbi)
     target_include_directories(ParticleSaturnShaderAbiTests PRIVATE "${PARTICLE_ABI_OUTPUT_DIRECTORY}")
-    target_compile_definitions(ParticleSaturnShaderAbiTests PRIVATE PARTICLESATURN_PARTICLE_ABI_MSL_PATH="${PARTICLE_ABI_MSL}")
+    target_compile_definitions(ParticleSaturnShaderAbiTests PRIVATE
+        PARTICLESATURN_PARTICLE_ABI_HLSL_PATH="${PARTICLE_ABI_HLSL}"
+        PARTICLESATURN_PARTICLE_ABI_GLSL_PATH="${PARTICLE_ABI_GLSL}"
+        PARTICLESATURN_PARTICLE_ABI_MSL_PATH="${PARTICLE_ABI_MSL}"
+        PARTICLESATURN_SOURCE_DIRECTORY="${CMAKE_SOURCE_DIR}")
     target_compile_features(ParticleSaturnShaderAbiTests PRIVATE cxx_std_20)
     add_test(NAME ParticleSaturnShaderAbiTests COMMAND ParticleSaturnShaderAbiTests)
 endif()

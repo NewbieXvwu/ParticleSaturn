@@ -1,11 +1,5 @@
-struct ParticleData
-{
-    float4 pos;
-    uint   color;
-    float  speed;
-    float  isRing;
-    float  pad;
-};
+#include "Particle.hlsl"
+typedef Particle ParticleData;
 
 RWStructuredBuffer<ParticleData> g_ParticlesOut;
 
@@ -67,7 +61,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float3 colRGB = float3(1, 1, 1);
     float alpha = 1.0;
     float speed = 0.0;
-    float isRing = 0.0;
+    uint isRing = 0u;
 
     float R = uRadius;
 
@@ -96,7 +90,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
         pos.w = 1.0 + Random01(rngState) * 0.8;
         alpha = 0.8;
         speed = 0.0;
-        isRing = 0.0;
+        isRing = 0u;
     }
     else
     {
@@ -159,14 +153,14 @@ void main(uint3 DTid : SV_DispatchThreadID)
         pos.w = s;
         alpha = o;
         speed = 8.0 / sqrt(rad);
-        isRing = 1.0;
+        isRing = 1u;
     }
 
     ParticleData p;
-    p.pos = pos;
+    p.position = pos;
     p.color = PackRGBA8(colRGB.x, colRGB.y, colRGB.z, alpha);
     p.speed = speed;
     p.isRing = isRing;
-    p.pad = 0.0;
+    p.padding = 0u;
     g_ParticlesOut[id] = p;
 }

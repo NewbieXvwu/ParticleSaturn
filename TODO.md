@@ -864,7 +864,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 4：建立共享渲染图和 GPU ABI
 
-进展（2026-07-17）：`RenderGraph` 会根据资源读写关系编排通道，`TexturePool` 按帧令牌延迟回收。`particle_abi.json` 通过 CMake 生成 32 字节粒子结构的 C++、HLSL、GLSL 和 MSL 声明。MSL 编译目标依赖生成 ABI 并显式加入生成目录，`ParticleKernels.metal` 直接包含 `Particle.metal`；Metal 后端的粒子读回类型改为 C++ 生成结构。ABI 测试校验 MSL 字段文本、C++ 大小与偏移，Metal 编译和跨后端粒子读回测试均已通过。HLSL、GLSL 生产着色器仍需从各自手写 `ParticleData` 迁移到生成定义。
+进展（2026-07-17）：`RenderGraph` 会根据资源读写关系编排通道，`TexturePool` 按帧令牌延迟回收。`particle_abi.json` 通过 CMake 生成 32 字节粒子结构的 C++、HLSL、GLSL 和 MSL 声明。MSL 编译目标依赖生成 ABI 并显式加入生成目录，`ParticleKernels.metal` 直接包含 `Particle.metal`；Metal 后端的粒子读回类型改为 C++ 生成结构。HLSL、GLSL 的粒子顶点、计算、初始化和网格着色器都已直接包含生成结构，环标记的浮点消费改为显式整数转换；Windows 着色器脚本会先调用同一 CMake 生成器并向 DXC、FXC、glslang 传入生成目录。ABI 测试禁止这些生产着色器重新声明 `ParticleData`，并校验四种生成语言的字段；本机已实际编译 GLSL 与 glslang HLSL 前端的粒子顶点、计算和初始化着色器，Metal 编译、跨后端粒子读回和完整测试均已通过。OpenGL 4.1 变换反馈仍使用专用顶点属性适配器，受控纹理桥接和四种路径的完整渲染图尚未完成。
 
 - [x] 实现固定通道渲染图
 - [x] 实现纹理池和延迟释放队列

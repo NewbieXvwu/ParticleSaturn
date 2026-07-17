@@ -1,11 +1,5 @@
-struct ParticleData
-{
-    float4 pos;
-    uint   color;
-    float  speed;
-    float  isRing;
-    float  pad;
-};
+#include "Particle.hlsl"
+typedef Particle ParticleData;
 
 StructuredBuffer<ParticleData>   g_ParticlesIn;
 RWStructuredBuffer<ParticleData> g_ParticlesOut;
@@ -44,7 +38,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
     ParticleData p = g_ParticlesIn[id];
 
     float c, s;
-    if (p.isRing < 0.5)
+    if (p.isRing == 0u)
     {
         c = s_bodyAngleCos;
         s = s_bodyAngleSin;
@@ -56,12 +50,12 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
         s = sin(angle);
     }
 
-    g_ParticlesOut[id].pos.x = p.pos.x * c - p.pos.z * s;
-    g_ParticlesOut[id].pos.y = p.pos.y;
-    g_ParticlesOut[id].pos.z = p.pos.x * s + p.pos.z * c;
-    g_ParticlesOut[id].pos.w = p.pos.w;
+    g_ParticlesOut[id].position.x = p.position.x * c - p.position.z * s;
+    g_ParticlesOut[id].position.y = p.position.y;
+    g_ParticlesOut[id].position.z = p.position.x * s + p.position.z * c;
+    g_ParticlesOut[id].position.w = p.position.w;
     g_ParticlesOut[id].color = p.color;
     g_ParticlesOut[id].speed = p.speed;
     g_ParticlesOut[id].isRing = p.isRing;
-    g_ParticlesOut[id].pad = p.pad;
+    g_ParticlesOut[id].padding = p.padding;
 }

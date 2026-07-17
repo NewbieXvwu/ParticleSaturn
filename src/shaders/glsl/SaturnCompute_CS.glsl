@@ -1,15 +1,10 @@
 #version 450
 
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+#extension GL_GOOGLE_include_directive : enable
+#include "Particle.glsl"
+#define ParticleData Particle
 
-struct ParticleData
-{
-    vec4  pos;
-    uint  color;
-    float speed;
-    float isRing;
-    float pad;
-};
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 layout(set=0, binding=0, std430) readonly buffer g_ParticlesIn
 {
@@ -54,7 +49,7 @@ void main()
     ParticleData p = particlesIn[id];
 
     float c, s;
-    if (p.isRing < 0.5)
+    if (p.isRing == 0u)
     {
         c = s_bodyAngleCos;
         s = s_bodyAngleSin;
@@ -66,12 +61,12 @@ void main()
         s = sin(angle);
     }
 
-    particlesOut[id].pos.x = p.pos.x * c - p.pos.z * s;
-    particlesOut[id].pos.y = p.pos.y;
-    particlesOut[id].pos.z = p.pos.x * s + p.pos.z * c;
-    particlesOut[id].pos.w = p.pos.w;
+    particlesOut[id].position.x = p.position.x * c - p.position.z * s;
+    particlesOut[id].position.y = p.position.y;
+    particlesOut[id].position.z = p.position.x * s + p.position.z * c;
+    particlesOut[id].position.w = p.position.w;
     particlesOut[id].color = p.color;
     particlesOut[id].speed = p.speed;
     particlesOut[id].isRing = p.isRing;
-    particlesOut[id].pad = p.pad;
+    particlesOut[id].padding = p.padding;
 }

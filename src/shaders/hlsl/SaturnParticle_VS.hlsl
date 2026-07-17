@@ -1,11 +1,5 @@
-struct ParticleData
-{
-    float4 pos;
-    uint   color;
-    float  speed;
-    float  isRing;
-    float  pad;
-};
+#include "Particle.hlsl"
+typedef Particle ParticleData;
 
 StructuredBuffer<ParticleData> g_Particles;
 
@@ -106,7 +100,7 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
     const float uPixelRatio  = uRenderParams.y;
     const float uScreenHeight= uRenderParams.z;
 
-    float4 worldPos = MulRows(float4(p.pos.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
+    float4 worldPos = MulRows(float4(p.position.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
     float4 mvPosition  = MulRows(worldPos,                    uViewRow0,  uViewRow1,  uViewRow2,  uViewRow3);
 
     float dist = -mvPosition.z;
@@ -134,10 +128,10 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
     if (chaosIntensity > 0.001)
     {
         float highFreqTime = uTimeParams.x * 40.0;
-        float3 posScaled   = p.pos.xyz * 10.0;
-        float hashX = Hash(p.pos.y * 43758.5) * 0.5;
-        float hashY = Hash(p.pos.x * 43758.5) * 0.5;
-        float hashZ = Hash(p.pos.z * 43758.5) * 0.5;
+        float3 posScaled   = p.position.xyz * 10.0;
+        float hashX = Hash(p.position.y * 43758.5) * 0.5;
+        float hashY = Hash(p.position.x * 43758.5) * 0.5;
+        float hashZ = Hash(p.position.z * 43758.5) * 0.5;
         noiseVec = float3(
             FastSin(highFreqTime + posScaled.x) * hashX,
             FastSin(highFreqTime + posScaled.y + 1.5708) * hashY,
@@ -149,13 +143,13 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
     float4 clipPos  = MulRows(mvPosition, uProjRow0, uProjRow1, uProjRow2, uProjRow3);
 
     float invDist = 1.0 / max(dist, 0.1);
-    float basePointSize = p.pos.w * 350.0 * invDist * 0.55;
+    float basePointSize = p.position.w * 350.0 * invDist * 0.55;
     float screenScale = uScreenHeight / 1080.0;
     float pointSize = basePointSize * screenScale;
 
     // ringFactor：仅对本体粒子在近距离略缩小
     float nearMask = (dist <= 50.0) ? 1.0 : 0.0;
-    float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, p.isRing);
+    float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, float(p.isRing));
     pointSize *= ringFactor * pow(max(uPixelRatio, 0.0001), 0.8);
 
     float px = clamp(pointSize, 0.0, 300.0 * screenScale);
@@ -171,6 +165,6 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
     o.vDist        = dist;
     o.vOpacity     = col.a;
     o.vScaleFactor = uScale;
-    o.vIsRing      = p.isRing;
+    o.vIsRing      = float(p.isRing);
     return o;
 }

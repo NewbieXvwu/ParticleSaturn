@@ -1,13 +1,8 @@
 #version 450
 
-struct ParticleData
-{
-    vec4  pos;
-    uint  color;
-    float speed;
-    float isRing;
-    float pad;
-};
+#extension GL_GOOGLE_include_directive : enable
+#include "Particle.glsl"
+#define ParticleData Particle
 
 // Vulkan 下建议显式指定 set/binding，避免不同驱动/编译器对默认绑定行为不一致。
 layout(set=0, binding=0, std430) readonly buffer g_Particles
@@ -97,7 +92,7 @@ void main()
     col.b = float((p.color >> 16) & 0xFFu) / 255.0;
     col.a = float((p.color >> 24) & 0xFFu) / 255.0;
 
-    vec4 worldPos = mulRows(vec4(p.pos.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
+    vec4 worldPos = mulRows(vec4(p.position.xyz * uScale, 1.0), uModelRow0, uModelRow1, uModelRow2, uModelRow3);
     vec4 mvPosition  = mulRows(worldPos,                   uViewRow0,  uViewRow1,  uViewRow2,  uViewRow3);
 
     float dist = -mvPosition.z;
@@ -122,10 +117,10 @@ void main()
     if (chaosIntensity > 0.001)
     {
         float highFreqTime = uTimeParams.x * 40.0;
-        vec3 posScaled = p.pos.xyz * 10.0;
-        float hashX = hash(p.pos.y * 43758.5) * 0.5;
-        float hashY = hash(p.pos.x * 43758.5) * 0.5;
-        float hashZ = hash(p.pos.z * 43758.5) * 0.5;
+        vec3 posScaled = p.position.xyz * 10.0;
+        float hashX = hash(p.position.y * 43758.5) * 0.5;
+        float hashY = hash(p.position.x * 43758.5) * 0.5;
+        float hashZ = hash(p.position.z * 43758.5) * 0.5;
         noiseVec = vec3(
             fastSin(highFreqTime + posScaled.x) * hashX,
             fastSin(highFreqTime + posScaled.y + 1.5708) * hashY,
@@ -137,11 +132,11 @@ void main()
     vec4 clipPos  = mulRows(mvPosition, uProjRow0, uProjRow1, uProjRow2, uProjRow3);
 
     float invDist = 1.0 / max(dist, 0.1);
-    float basePointSize = p.pos.w * 350.0 * invDist * 0.55;
+    float basePointSize = p.position.w * 350.0 * invDist * 0.55;
     float screenScale = uScreenHeight / 1080.0;
     float pointSize = basePointSize * screenScale;
     float nearMask = (dist <= 50.0) ? 1.0 : 0.0;
-    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, p.isRing);
+    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, float(p.isRing));
     pointSize *= ringFactor * pow(max(uPixelRatio, 0.0001), 0.8);
     float px = clamp(pointSize, 0.0, 300.0 * screenScale);
 
@@ -156,5 +151,5 @@ void main()
     vDist  = dist;
     vOpacity = col.a;
     vScaleFactor = uScale;
-    vIsRing = p.isRing;
+    vIsRing = float(p.isRing);
 }

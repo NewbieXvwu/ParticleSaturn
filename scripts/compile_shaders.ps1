@@ -5,7 +5,8 @@
 
 param(
     [switch]$Clean,
-    [switch]$VerboseOutput
+    [switch]$VerboseOutput,
+    [string]$AbiOutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,11 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 $ShaderSrcDir = Join-Path $ProjectRoot "src\shaders"
 $GeneratedDir = Join-Path $ProjectRoot "src\generated"
 $OutputHeader = Join-Path $GeneratedDir "ShaderBytecodes.h"
+$AbiGenerator = Join-Path $ProjectRoot "cmake\GenerateShaderAbi.cmake"
+$AbiInput = Join-Path $ShaderSrcDir "abi\particle_abi.json"
+if ([string]::IsNullOrWhiteSpace($AbiOutputDir)) {
+    $AbiOutputDir = Join-Path $ProjectRoot "build\generated\shaders"
+}
 
 # Ensure output directory exists
 if (-not (Test-Path $GeneratedDir)) {
@@ -27,6 +33,12 @@ if ($Clean) {
         Remove-Item $OutputHeader -Force
     }
     exit 0
+}
+
+& cmake "-DINPUT=$AbiInput" "-DOUTPUT_DIRECTORY=$AbiOutputDir" -P $AbiGenerator
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Unable to generate particle ABI includes."
+    exit 1
 }
 
 # ============================================================================
@@ -152,15 +164,15 @@ function Compile-HLSL {
             return $false
         }
         $compiler = $DXC
-        $args = @("-T", $Profile, "-E", $EntryPoint, "-Fo", $OutputFile, $InputFile, "-O3")
+        $args = @("-T", $Profile, "-E", $EntryPoint, "-Fo", $OutputFile, "-I", $AbiOutputDir, $InputFile, "-O3")
     } else {
         # SM 5.x: prefer FXC for D3D11 compatibility (true DXBC format)
         # DXC's SM 5.0 output may not work correctly on D3D11
         $compiler = if ($FXC) { $FXC } else { $DXC }
         if ($compiler -eq $FXC) {
-            $args = @("/T", $Profile, "/E", $EntryPoint, "/Fo", $OutputFile, "/O3", $InputFile)
+            $args = @("/T", $Profile, "/E", $EntryPoint, "/Fo", $OutputFile, "/I", $AbiOutputDir, "/O3", $InputFile)
         } else {
-            $args = @("-T", $Profile, "-E", $EntryPoint, "-Fo", $OutputFile, $InputFile, "-O3")
+            $args = @("-T", $Profile, "-E", $EntryPoint, "-Fo", $OutputFile, "-I", $AbiOutputDir, $InputFile, "-O3")
         }
     }
 
@@ -187,7 +199,7 @@ function Compile-GLSL {
 
     if (-not $GLSLANG) { return $false }
 
-    $args = @("-V", "-S", $Stage, "-o", $OutputFile, $InputFile)
+    $args = @("-V", "-S", $Stage, "-I$AbiOutputDir", "-o", $OutputFile, $InputFile)
 
     if ($VerboseOutput) {
         Write-Host "  $GLSLANG $($args -join ' ')"
