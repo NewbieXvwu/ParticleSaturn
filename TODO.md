@@ -1058,7 +1058,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 ### 阶段 10：四路径一致性与性能回归
 
-进展补充（2026-07-17）：新增线程安全的结构化 `DiagnosticBus`；AVFoundation 的权限、设备、格式协商、输入、会话和断开错误，Vulkan 的 ICD/Loader/环境/重启错误，以及 XNNPACK 的帧布局、模型、委托、张量和输入契约错误均已发布为带领域、代码、严重级别和时间戳的记录。崩溃诊断和界面展示接入仍待完成。
+进展补充（2026-07-17）：新增线程安全的结构化 `DiagnosticBus`；AVFoundation 的权限、设备、格式协商、输入、会话和断开错误，Vulkan 的 ICD/Loader/环境/重启错误，以及 XNNPACK 的帧布局、模型、委托、张量和输入契约错误均已发布为带领域、代码、严重级别和时间戳的记录。MD3 调试面板会显示最近诊断；崩溃诊断仍待完成。
 
 进展（2026-07-16）：新增 `ParticleSaturnCrossBackendParticleTests`，在同一进程以固定种子 `0x53415455` 初始化 Metal 与 OpenGL 4.1 粒子系统，直接读回并比较前 64 个粒子的全部字段；随后连续执行四次 `1/120` 秒模拟，逐帧核对三缓冲轮转后的可见缓冲。位置容差为 `0.002`，颜色、环带标志和填充字段严格相等。测试为 OpenGL 离屏变换反馈绑定完整的 1×1 HDR 帧缓冲，避免无 drawable 的默认帧缓冲使模拟命令失效。另有 `PARTICLESATURN_CAPTURE_BASELINE` 基准捕获模式：两条实际应用路径均固定暂停状态并在色调映射后输出 PPM；`ParticleSaturnVisualBaselineTests` 会自动启动 Metal 与 OpenGL 应用各一帧、比较 1280×720 逻辑窗口对应的实际像素图，当前阈值为平均通道差异不超过 `2.0` 且 RGB 最大通道差异超过 `8` 的像素比例不超过 `4%`。双 Vulkan 路径尚无呈现实现，四模式基准验收保持未完成。
 

@@ -6,6 +6,7 @@
 
 #include "MD3.h"
 #include "app/AppController.h"
+#include "services/diagnostics/DiagnosticBus.h"
 
 namespace ParticleSaturn::Platform::MacOS {
 namespace {
@@ -211,6 +212,20 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             DispatchAndSave(controller, ParticleSaturn::App::TogglePause{}, callbacks);
         }
         ImGui::TextDisabled("Zoom: %.2f", state.scene.zoom);
+        MD3::EndCollapsingHeader();
+    }
+
+    if (MD3::BeginCollapsingHeader("Diagnostics")) {
+        const auto records = ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Snapshot();
+        if (records.empty()) {
+            ImGui::TextDisabled("No diagnostics");
+        } else {
+            const auto& record = records.back();
+            const ImVec4 color = record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error
+                ? MD3::GetContext().colors.error : MD3::GetContext().colors.primary;
+            ImGui::TextColored(color, "%s: %s", record.domain.c_str(), record.code.c_str());
+            ImGui::TextWrapped("%s", record.message.c_str());
+        }
         MD3::EndCollapsingHeader();
     }
 
