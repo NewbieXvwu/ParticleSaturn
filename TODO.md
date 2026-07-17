@@ -908,7 +908,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Retina 缩放、多显示器、全屏切换
 - [x] `MetalDevice`、`MetalSurface`、`MetalFrameScheduler` 基础
 - [x] `MetalResourceManager`、`MetalCommandContext` 基础
-- [ ] 接入 `NSEvent`、显示器刷新节奏、可配置呈现模式和窗口关闭收尾
+- [x] 接入 `NSEvent`、显示器刷新节奏、可配置呈现模式和窗口关闭收尾
 - [x] 将窗口材质状态实际应用到 `CocoaHost`，验证透明、系统模糊、应用内 Acrylic 与全屏切换
 
 ### 阶段 6：Metal 渲染通道完整迁移
