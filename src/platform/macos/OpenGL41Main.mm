@@ -23,6 +23,7 @@
 #include "gpu/backends/opengl41/OpenGLSevenSegmentFps.h"
 #include "gpu/backends/opengl41/OpenGLStarField.h"
 #include "gpu/backends/opengl41/OpenGLToneMapper.h"
+#include "services/settings/macos/NSUserDefaultsStore.h"
 
 namespace {
 
@@ -130,7 +131,10 @@ int main() {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-        const NSRect frame = NSMakeRect(0, 0, 1280, 720);
+        __block ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
+        auto initialState = settings.Load({});
+        initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::OpenGL41;
+        const NSRect frame = NSMakeRect(0, 0, initialState.window.width, initialState.window.height);
         const auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
         auto* window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
@@ -143,6 +147,7 @@ int main() {
         auto surface = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface>(view);
         if (!surface->MakeCurrent()) return 1;
         auto glass = std::make_shared<WindowGlass>(window, view, *surface);
+        glass->SetEnabled(initialState.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur);
         const auto shaderDirectory = ShaderDirectory();
         auto particles = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem>();
         auto stars = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLStarField>();
@@ -163,8 +168,7 @@ int main() {
         ImGui::StyleColorsDark();
         if (!ImGui_ImplOSX_Init(view) || !ImGui_ImplOpenGL3_Init("#version 410")) return 1;
 
-        auto controller = std::make_shared<ParticleSaturn::App::AppController>();
-        controller->MutableState().render.graphicsApi = ParticleSaturn::App::GraphicsApi::OpenGL41;
+        auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         if (captureBaseline) controller->MutableState().scene.paused = true;
@@ -183,6 +187,9 @@ int main() {
             const auto& state = *frameSnapshot.state;
             const float backingScale = [window backingScaleFactor];
             const NSSize logicalSize = [view bounds].size;
+            controller->MutableState().window.width = static_cast<std::uint32_t>(logicalSize.width);
+            controller->MutableState().window.height = static_cast<std::uint32_t>(logicalSize.height);
+            controller->MutableState().window.dpiScale = backingScale;
             const auto width = static_cast<std::uint32_t>(std::max(1.0, logicalSize.width * backingScale));
             const auto height = static_cast<std::uint32_t>(std::max(1.0, logicalSize.height * backingScale));
             if (targets->Width() != width || targets->Height() != height) {
@@ -248,14 +255,17 @@ int main() {
                                  static_cast<int>(ParticleSaturn::App::RenderSettings::MinParticles),
                                  static_cast<int>(ParticleSaturn::App::RenderSettings::MaxParticles))) {
                 controller->Dispatch(ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)});
+                settings.Save(controller->State());
             }
             bool bloomEnabled = state.render.bloomEnabled;
             if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
                 controller->Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
+                settings.Save(controller->State());
             }
             bool blurEnabled = state.ui.blurEnabled;
             if (ImGui::Checkbox("UI blur", &blurEnabled)) {
                 controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
+                settings.Save(controller->State());
             }
             bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
             if (ImGui::Checkbox("Window glass", &glassEnabled)) {
@@ -263,19 +273,23 @@ int main() {
                                                    : ParticleSaturn::App::WindowMaterial::Solid;
                 controller->Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
                 glass->SetEnabled(glassEnabled);
+                settings.Save(controller->State());
             }
             float blurStrength = state.ui.blurStrength;
             if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
                 controller->Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
+                settings.Save(controller->State());
             }
             if (ImGui::Button(state.scene.paused ? "Resume" : "Pause")) {
                 controller->Dispatch(ParticleSaturn::App::TogglePause{});
+                settings.Save(controller->State());
             }
             ImGui::SameLine();
             if (ImGui::Button("Fullscreen")) {
                 const bool fullscreen = !state.window.fullscreen;
                 controller->Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
                 [window toggleFullScreen:nil];
+                settings.Save(controller->State());
             }
             ImGui::End();
             ImGui::Render();
@@ -291,6 +305,7 @@ int main() {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplOSX_Shutdown();
         ImGui::DestroyContext();
+        if (!captureBaseline) settings.Save(controller->State());
         glass->SetEnabled(false);
         glass.reset();
         [view release];

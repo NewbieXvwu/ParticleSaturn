@@ -934,7 +934,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] Palm 检测、区域裁剪对齐、Landmark 解析与 `GestureInput` 发布
 - [ ] 摄像头与推理线程仅交换最新不可变样本，主循环实际驱动旋转和缩放
 - [x] 模型通过 `NSBundle` 定位
-- [ ] macOS 设置（`NSUserDefaults`）接入启动加载、变更保存和所有应用状态
+- [x] macOS 设置（`NSUserDefaults`）接入启动加载、变更保存和所有应用状态
 
 ### 阶段 8：OpenGL 4.1 变换反馈及全部后处理
 
