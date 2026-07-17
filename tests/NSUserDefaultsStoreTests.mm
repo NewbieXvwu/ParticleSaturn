@@ -14,7 +14,7 @@ int main() {
         state.scene.rotationX = -0.45f; state.scene.rotationY = 1.25f; state.scene.zoom = 1.75f;
         state.scene.randomSeed = 0x10203040U; state.scene.paused = true;
         state.render.particleCount = 777777U; state.render.pixelRatio = 0.8f; state.render.densityCompensation = 0.91f;
-        state.render.vsyncMode = 1; state.render.bloomEnabled = false; state.render.bloomBlurStrength = 3.5f;
+        state.render.vsyncMode = 1; state.render.bloomEnabled = false; state.render.analyticParticles = true; state.render.bloomBlurStrength = 3.5f;
         state.render.graphicsApi = ParticleSaturn::App::GraphicsApi::Metal;
         state.render.vulkanDriver = ParticleSaturn::App::VulkanDriver::KosmicKrisp;
         state.ui.showDebugWindow = true; state.ui.showCameraDebug = true; state.ui.darkMode = false;
@@ -30,6 +30,7 @@ int main() {
         assert(std::abs(loaded.scene.rotationX - state.scene.rotationX) < 0.0001f);
         assert(loaded.scene.randomSeed == state.scene.randomSeed && loaded.scene.paused == state.scene.paused);
         assert(loaded.render.particleCount == state.render.particleCount && loaded.render.graphicsApi == state.render.graphicsApi);
+        assert(loaded.render.analyticParticles == state.render.analyticParticles);
         assert(std::abs(loaded.render.densityCompensation - state.render.densityCompensation) < 0.0001f);
         assert(loaded.ui.showDebugWindow == state.ui.showDebugWindow && loaded.ui.darkMode == state.ui.darkMode);
         assert(loaded.gesture.handLostDelay == state.gesture.handLostDelay && loaded.gesture.invertX == state.gesture.invertX);
