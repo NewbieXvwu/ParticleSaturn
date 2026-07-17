@@ -4,6 +4,7 @@
 #include "MetalBackend.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <random>
@@ -362,23 +363,14 @@ void* MetalStarField::Buffer() const noexcept { return buffer_; }
 
 bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height) {
     if (width == 0 || height == 0) return false;
-    auto releaseTexture = [](void*& texture) {
-        if (texture != nullptr) {
-            [(id<MTLTexture>)texture release];
-            texture = nullptr;
+    auto releaseTextures = [](std::array<void*, 11>& textures) {
+        for (void*& texture : textures) {
+            if (texture != nullptr) {
+                [(id<MTLTexture>)texture release];
+                texture = nullptr;
+            }
         }
     };
-    releaseTexture(sceneHdr_);
-    releaseTexture(bloomStrong_);
-    releaseTexture(bloomPingPong_);
-    releaseTexture(bloomWeak_);
-    releaseTexture(uiScene_);
-    releaseTexture(uiOverlay_);
-    releaseTexture(uiBlur_);
-    releaseTexture(composite_);
-    releaseTexture(uiBlurWeak_);
-    releaseTexture(uiBlurWeakPingPong_);
-    releaseTexture(uiOverlayWeak_);
     auto* descriptor = [[MTLTextureDescriptor alloc] init];
     [descriptor setTextureType:MTLTextureType2D];
     [descriptor setPixelFormat:MTLPixelFormatRGBA16Float];
@@ -388,21 +380,28 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
         [descriptor setWidth:textureWidth]; [descriptor setHeight:textureHeight];
         return [(id<MTLDevice>)device.NativeDevice() newTextureWithDescriptor:descriptor];
     };
-    sceneHdr_ = create(width, height);
-    bloomStrong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
-    bloomPingPong_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
-    bloomWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
-    uiScene_ = create(width, height);
-    uiOverlay_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
-    uiBlur_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
-    composite_ = create(std::max(1U, width / 6U), std::max(1U, height / 6U));
-    uiBlurWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
-    uiBlurWeakPingPong_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
-    uiOverlayWeak_ = create(std::max(1U, width / 12U), std::max(1U, height / 12U));
+    const std::uint32_t strongWidth = std::max(1U, width / 6U);
+    const std::uint32_t strongHeight = std::max(1U, height / 6U);
+    const std::uint32_t weakWidth = std::max(1U, width / 12U);
+    const std::uint32_t weakHeight = std::max(1U, height / 12U);
+    std::array<void*, 11> replacements{
+        create(width, height), create(strongWidth, strongHeight), create(strongWidth, strongHeight),
+        create(weakWidth, weakHeight), create(width, height), create(strongWidth, strongHeight),
+        create(strongWidth, strongHeight), create(strongWidth, strongHeight), create(weakWidth, weakHeight),
+        create(weakWidth, weakHeight), create(weakWidth, weakHeight)};
     [descriptor release];
-    return sceneHdr_ != nullptr && bloomStrong_ != nullptr && bloomPingPong_ != nullptr && bloomWeak_ != nullptr &&
-           uiScene_ != nullptr && uiOverlay_ != nullptr && uiBlur_ != nullptr && composite_ != nullptr &&
-           uiBlurWeak_ != nullptr && uiBlurWeakPingPong_ != nullptr && uiOverlayWeak_ != nullptr;
+    if (std::any_of(replacements.begin(), replacements.end(), [](void* texture) { return texture == nullptr; })) {
+        releaseTextures(replacements);
+        return false;
+    }
+    std::array<void*, 11> previous{sceneHdr_, bloomStrong_, bloomPingPong_, bloomWeak_, uiScene_, uiOverlay_, uiBlur_,
+                                   composite_, uiBlurWeak_, uiBlurWeakPingPong_, uiOverlayWeak_};
+    sceneHdr_ = replacements[0]; bloomStrong_ = replacements[1]; bloomPingPong_ = replacements[2];
+    bloomWeak_ = replacements[3]; uiScene_ = replacements[4]; uiOverlay_ = replacements[5];
+    uiBlur_ = replacements[6]; composite_ = replacements[7]; uiBlurWeak_ = replacements[8];
+    uiBlurWeakPingPong_ = replacements[9]; uiOverlayWeak_ = replacements[10];
+    releaseTextures(previous);
+    return true;
 }
 
 MetalRenderTargets::~MetalRenderTargets() {
