@@ -39,6 +39,8 @@ public:
     void* NativeView() const noexcept;
 
 private:
+    void PresentFullscreenBackdrop();
+
     void* window_ = nullptr;
     void* layer_ = nullptr;
     void* metalView_ = nullptr;

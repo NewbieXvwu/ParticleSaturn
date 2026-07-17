@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/CATransaction.h>
 #import <OpenGL/gl3.h>
 
 #include <algorithm>
@@ -119,6 +120,27 @@ public:
 
     bool IsEnabled() const noexcept { return enabled_; }
 
+    void PresentFullscreenBackdrop() {
+        SetEnabled(false);
+        if (!surface_.MakeCurrent()) return;
+        const NSSize bounds = [openGlView_ bounds].size;
+        const CGFloat scale = [window_ backingScaleFactor];
+        const GLsizei width = static_cast<GLsizei>(bounds.width * scale);
+        const GLsizei height = static_cast<GLsizei>(bounds.height * scale);
+        if (width <= 0 || height <= 0) return;
+        GLboolean scissorEnabled = GL_FALSE;
+        glGetBooleanv(GL_SCISSOR_TEST, &scissorEnabled);
+        if (scissorEnabled == GL_TRUE) glDisable(GL_SCISSOR_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        if (scissorEnabled == GL_TRUE) glEnable(GL_SCISSOR_TEST);
+        surface_.Present();
+        [window_ displayIfNeeded];
+        [CATransaction flush];
+    }
+
 private:
     NSWindow* window_ = nil;
     NSView* openGlView_ = nil;
@@ -185,11 +207,15 @@ int main() {
 
         auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
         auto* settingsPtr = &settings;
+        controller->MutableState().window.fullscreen =
+            ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
         auto toggleFullscreen = [&] {
+            const bool nativeFullscreen = ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
+            controller->MutableState().window.fullscreen = nativeFullscreen;
             const auto effect = controller->Dispatch(ParticleSaturn::App::SetFullscreen{
-                !controller->State().window.fullscreen});
+                !nativeFullscreen});
             if (!effect.windowChanged) return;
-            if (controller->State().window.fullscreen) glass->SetEnabled(false);
+            if (!nativeFullscreen) glass->PresentFullscreenBackdrop();
             [window toggleFullScreen:nil];
             settingsPtr->Save(controller->State());
         };
@@ -199,10 +225,34 @@ int main() {
         id fullscreenExitObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil
             usingBlock:^(NSNotification*) {
+                controller->MutableState().window.fullscreen = false;
+                surface->MakeCurrent();
+                surface->UpdateDrawable();
                 if (controller->State().window.material == ParticleSaturn::App::WindowMaterial::SystemBlur) {
                     glass->SetEnabled(true);
                 }
+                settingsPtr->Save(controller->State());
             }];
+        id fullscreenWillEnterObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowWillEnterFullScreenNotification object:window queue:nil
+            usingBlock:^(NSNotification*) {
+                controller->MutableState().window.fullscreen = true;
+                glass->PresentFullscreenBackdrop();
+            }];
+        id fullscreenEnterObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowDidEnterFullScreenNotification object:window queue:nil
+            usingBlock:^(NSNotification*) {
+                controller->MutableState().window.fullscreen = true;
+                surface->MakeCurrent();
+                surface->UpdateDrawable();
+                settingsPtr->Save(controller->State());
+            }];
+        id resizeObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowDidResizeNotification object:window queue:nil
+            usingBlock:^(NSNotification*) { surface->MakeCurrent(); surface->UpdateDrawable(); }];
+        id backingScaleObserver = [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSWindowDidChangeBackingPropertiesNotification object:window queue:nil
+            usingBlock:^(NSNotification*) { surface->MakeCurrent(); surface->UpdateDrawable(); }];
         id eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
             if ([event isARepeat]) return event;
             switch ([event keyCode]) {
@@ -362,6 +412,10 @@ int main() {
         if (!captureBaseline) settings.Save(controller->State());
         [NSEvent removeMonitor:eventMonitor];
         [[NSNotificationCenter defaultCenter] removeObserver:fullscreenExitObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:fullscreenWillEnterObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:fullscreenEnterObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:resizeObserver];
+        [[NSNotificationCenter defaultCenter] removeObserver:backingScaleObserver];
         [[NSNotificationCenter defaultCenter] removeObserver:closeObserver];
         glass->SetEnabled(false);
         glass.reset();

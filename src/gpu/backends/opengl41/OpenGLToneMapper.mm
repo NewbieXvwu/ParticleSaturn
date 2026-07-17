@@ -100,6 +100,8 @@ bool OpenGLToneMapper::Present(const OpenGLRenderTargets& targets, bool transpar
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     } else {
         glDisable(GL_BLEND);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
     }
     glUseProgram(presentProgram_);
     glActiveTexture(GL_TEXTURE0);

@@ -1,5 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/CATransaction.h>
+#import <Metal/Metal.h>
 
 #include "CocoaHost.h"
 
@@ -111,7 +113,12 @@ void CocoaHost::SetActionCallback(std::function<void(HostAction)> callback) {
 }
 
 void CocoaHost::ToggleFullscreen() {
-    if (!fullscreen_) SetFullscreenActive(true);
+    if (!fullscreen_) {
+        SetFullscreenActive(true);
+        PresentFullscreenBackdrop();
+        [(NSWindow*)window_ displayIfNeeded];
+        [CATransaction flush];
+    }
     [(NSWindow*)window_ toggleFullScreen:nil];
 }
 
@@ -141,8 +148,11 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
     const bool transparent = material == App::WindowMaterial::Transparent || material == App::WindowMaterial::AppAcrylic || systemBlur;
     [window setOpaque:!transparent && !systemBlur];
     [window setBackgroundColor:transparent || systemBlur ? NSColor.clearColor : NSColor.blackColor];
+    const bool opaque = !transparent && !systemBlur;
     [metalView setWantsLayer:YES];
-    [[metalView layer] setOpaque:!transparent && !systemBlur];
+    auto* layer = (CAMetalLayer*)[metalView layer];
+    [layer setOpaque:opaque];
+    [layer setBackgroundColor:(opaque ? NSColor.blackColor : NSColor.clearColor).CGColor];
     if (!systemBlur) return;
     auto* visual = [[NSVisualEffectView alloc] initWithFrame:[[window contentView] bounds]];
     [visual setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -154,6 +164,28 @@ void CocoaHost::SetWindowMaterial(App::WindowMaterial material) {
     [metalView setFrame:[visual bounds]];
     [metalView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     visualEffectView_ = visual;
+}
+
+void CocoaHost::PresentFullscreenBackdrop() {
+    auto* layer = (CAMetalLayer*)layer_;
+    id<MTLDevice> device = [layer device];
+    if (device == nil) return;
+
+    id<CAMetalDrawable> drawable = [layer nextDrawable];
+    if (drawable == nil) return;
+    id<MTLCommandQueue> queue = [device newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    auto* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    descriptor.colorAttachments[0].texture = drawable.texture;
+    descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+    descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:descriptor];
+    [encoder endEncoding];
+    [commands presentDrawable:drawable];
+    [commands commit];
+    [commands waitUntilCompleted];
+    [queue release];
 }
 
 DrawableSize CocoaHost::CurrentDrawableSize() const {

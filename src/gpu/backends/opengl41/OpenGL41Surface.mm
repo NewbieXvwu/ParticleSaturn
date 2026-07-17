@@ -32,11 +32,16 @@ bool OpenGL41Surface::MakeCurrent() {
     return true;
 }
 
+bool OpenGL41Surface::UpdateDrawable() {
+    if (context_ == nullptr) return false;
+    [(NSOpenGLContext*)context_ update];
+    return true;
+}
+
 bool OpenGL41Surface::SetView(void* nativeView) {
     if (context_ == nullptr || nativeView == nullptr) return false;
     [(NSOpenGLContext*)context_ setView:(NSView*)nativeView];
-    [(NSOpenGLContext*)context_ update];
-    return true;
+    return UpdateDrawable();
 }
 
 bool OpenGL41Surface::SetTransparent(bool transparent) {

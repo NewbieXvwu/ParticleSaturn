@@ -1,7 +1,7 @@
 add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm)
 add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")
-target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore")
+target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore" "-framework Metal")
 
 add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     Main.mm
@@ -63,7 +63,7 @@ add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE
 set_target_properties(ParticleSaturn.OpenGL41.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.opengl41")
-target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore ParticleSaturnMacOSSettings "-framework GameController")
+target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore ParticleSaturnMacOSSettings "-framework GameController" "-framework QuartzCore")
 target_include_directories(ParticleSaturn.OpenGL41.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_compile_definitions(ParticleSaturn.OpenGL41.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.OpenGL41.macOS ParticleSaturnOpenGL41Shaders)
