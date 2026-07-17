@@ -34,6 +34,7 @@
 #include "services/hand_tracking/macos/XnnpackRuntime.h"
 #include "services/resources/macos/BundleResources.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
+#include "services/diagnostics/macos/MacOSCrashHandler.h"
 
 namespace {
 
@@ -118,6 +119,7 @@ std::string PipelineArchivePath(id<MTLDevice> device, const char* libraryPath) {
 
 int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
     @autoreleasepool {
+        ParticleSaturn::Services::Diagnostics::MacOS::InstallCrashHandler();
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
