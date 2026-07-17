@@ -3,6 +3,11 @@
 
 #include "AVFoundationCamera.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
+
 @interface ParticleSaturnVideoDelegate : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate> {
 @public ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera* owner;
 }
@@ -31,6 +36,43 @@ Authorization ConvertAuthorization(AVAuthorizationStatus status) {
     case AVAuthorizationStatusNotDetermined: return Authorization::NotDetermined;
     }
     return Authorization::Denied;
+}
+
+bool ConfigureDevice(AVCaptureDevice* device, std::uint32_t requestedWidth, std::uint32_t requestedHeight,
+                     NSError** error) {
+    AVCaptureDeviceFormat* selectedFormat = nil;
+    AVFrameRateRange* selectedRange = nil;
+    double selectedFrameRate = 0.0;
+    double bestDistance = std::numeric_limits<double>::max();
+    constexpr double requestedFrameRate = 30.0;
+    for (AVCaptureDeviceFormat* format in device.formats) {
+        const CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+        for (AVFrameRateRange* range in format.videoSupportedFrameRateRanges) {
+            const double negotiatedFrameRate = std::clamp(requestedFrameRate, range.minFrameRate, range.maxFrameRate);
+            const auto widthDistance = static_cast<std::uint64_t>(std::abs(dimensions.width - static_cast<int>(requestedWidth)));
+            const auto heightDistance = static_cast<std::uint64_t>(std::abs(dimensions.height - static_cast<int>(requestedHeight)));
+            const double distance = static_cast<double>(widthDistance + heightDistance) +
+                                    std::abs(negotiatedFrameRate - requestedFrameRate) * 1000.0;
+            if (distance < bestDistance) {
+                selectedFormat = format;
+                selectedRange = range;
+                selectedFrameRate = negotiatedFrameRate;
+                bestDistance = distance;
+            }
+        }
+    }
+    if (selectedFormat == nil || selectedRange == nil) {
+        if (error != nullptr) *error = [NSError errorWithDomain:@"ParticleSaturnCamera" code:1
+            userInfo:@{NSLocalizedDescriptionKey: @"camera does not expose a usable video format"}];
+        return false;
+    }
+    if (![device lockForConfiguration:error]) return false;
+    device.activeFormat = selectedFormat;
+    const CMTime duration = CMTimeMakeWithSeconds(1.0 / selectedFrameRate, 1000000000);
+    device.activeVideoMinFrameDuration = duration;
+    device.activeVideoMaxFrameDuration = duration;
+    [device unlockForConfiguration];
+    return true;
 }
 
 } // namespace
@@ -77,6 +119,11 @@ bool AVFoundationCamera::Start(const std::string& deviceId, std::uint32_t width,
         return false;
     }
     NSError* error = nil;
+    if (!ConfigureDevice(device, width, height, &error)) {
+        std::lock_guard lock{mutex_};
+        error_ = [[error localizedDescription] UTF8String];
+        return false;
+    }
     auto* input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (input == nil) {
         std::lock_guard lock{mutex_};
@@ -96,12 +143,18 @@ bool AVFoundationCamera::Start(const std::string& deviceId, std::uint32_t width,
         std::lock_guard lock{mutex_}; error_ = "camera session cannot accept input or output"; return false;
     }
     [session addInput:input]; [session addOutput:output];
+    AVCaptureConnection* connection = [output connectionWithMediaType:AVMediaTypeVideo];
+    if (connection != nil && [connection isVideoRotationAngleSupported:0.0]) {
+        [connection setVideoRotationAngle:0.0];
+    }
+    if (connection != nil && [connection isVideoMirroringSupported]) {
+        [connection setVideoMirrored:device.position == AVCaptureDevicePositionFront];
+    }
     [session startRunning];
     {
         std::lock_guard lock{mutex_};
         session_ = session; output_ = output; delegate_ = delegate; activeDeviceId_ = deviceId; hasFrame_ = false; error_.clear();
     }
-    (void)width; (void)height;
     return true;
 }
 
@@ -134,11 +187,11 @@ void AVFoundationCamera::PublishPixelBuffer(void* pixelBuffer, std::uint64_t tim
     const auto height = static_cast<std::uint32_t>(CVPixelBufferGetHeight(buffer));
     const auto stride = CVPixelBufferGetBytesPerRow(buffer);
     const auto* source = static_cast<const std::uint8_t*>(CVPixelBufferGetBaseAddress(buffer));
-    Frame frame{width, height, timestampNanoseconds, std::vector<std::uint8_t>(width * height * 3)};
-    for (std::uint32_t y = 0; y < height; ++y) for (std::uint32_t x = 0; x < width; ++x) {
-        const auto* pixel = source + y * stride + x * 4;
-        auto* target = frame.rgb.data() + (y * width + x) * 3;
-        target[0] = pixel[2]; target[1] = pixel[1]; target[2] = pixel[0];
+    Frame frame{width, height, timestampNanoseconds, width * 4U, PixelFormat::BGRA32, FrameOrientation::Up,
+                false, std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4U)};
+    for (std::uint32_t y = 0; y < height; ++y) {
+        std::memcpy(frame.pixels.data() + static_cast<std::size_t>(y) * frame.bytesPerRow,
+                    source + static_cast<std::size_t>(y) * stride, frame.bytesPerRow);
     }
     CVPixelBufferUnlockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
     std::lock_guard lock{mutex_}; latestFrame_ = std::move(frame); hasFrame_ = true;

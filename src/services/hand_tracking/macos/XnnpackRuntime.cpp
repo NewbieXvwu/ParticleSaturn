@@ -10,7 +10,128 @@
 #include <limits>
 #include <vector>
 
+#if defined(__aarch64__) || defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
+
 namespace ParticleSaturn::Services::HandTracking::MacOS {
+
+namespace {
+
+bool FrameLayoutIsValid(const Camera::Frame& frame) {
+    if (frame.width == 0 || frame.height == 0) return false;
+    const std::uint32_t bytesPerPixel = frame.pixelFormat == Camera::PixelFormat::BGRA32 ? 4U : 3U;
+    if (frame.bytesPerRow < frame.width * bytesPerPixel) return false;
+    return frame.pixels.size() >= static_cast<std::size_t>(frame.bytesPerRow) * frame.height;
+}
+
+void MapOrientedPixel(const Camera::Frame& frame, std::uint32_t orientedX, std::uint32_t orientedY,
+                      std::uint32_t& sourceX, std::uint32_t& sourceY) {
+    switch (frame.orientation) {
+    case Camera::FrameOrientation::Up:
+        sourceX = orientedX;
+        sourceY = orientedY;
+        break;
+    case Camera::FrameOrientation::Down:
+        sourceX = frame.width - 1U - orientedX;
+        sourceY = frame.height - 1U - orientedY;
+        break;
+    case Camera::FrameOrientation::Left:
+        sourceX = frame.width - 1U - orientedY;
+        sourceY = orientedX;
+        break;
+    case Camera::FrameOrientation::Right:
+        sourceX = orientedY;
+        sourceY = frame.height - 1U - orientedX;
+        break;
+    }
+}
+
+#if defined(__aarch64__) || defined(__ARM_NEON)
+float32x4_t Normalize4(uint8x8_t values, bool high) {
+    const uint16x8_t widened16 = vmovl_u8(values);
+    const uint16x4_t selected16 = high ? vget_high_u16(widened16) : vget_low_u16(widened16);
+    return vmulq_n_f32(vcvtq_f32_u32(vmovl_u16(selected16)), 1.0f / 255.0f);
+}
+
+void StoreNormalizedRgb8(const uint8x8_t red, const uint8x8_t green, const uint8x8_t blue, float* target) {
+    const float32x4x3_t low{{Normalize4(red, false), Normalize4(green, false), Normalize4(blue, false)}};
+    const float32x4x3_t high{{Normalize4(red, true), Normalize4(green, true), Normalize4(blue, true)}};
+    vst3q_f32(target, low);
+    vst3q_f32(target + 12, high);
+}
+#endif
+
+} // namespace
+
+bool PreprocessCameraFrameToTensor(const Camera::Frame& frame, std::uint32_t targetWidth,
+                                   std::uint32_t targetHeight, float* target, std::string& error) {
+    if (!FrameLayoutIsValid(frame) || targetWidth == 0 || targetHeight == 0 || target == nullptr) {
+        error = "camera frame layout is invalid";
+        return false;
+    }
+    const bool rotated = frame.orientation == Camera::FrameOrientation::Left ||
+                         frame.orientation == Camera::FrameOrientation::Right;
+    const std::uint32_t orientedWidth = rotated ? frame.height : frame.width;
+    const std::uint32_t orientedHeight = rotated ? frame.width : frame.height;
+    const std::uint32_t bytesPerPixel = frame.pixelFormat == Camera::PixelFormat::BGRA32 ? 4U : 3U;
+    constexpr float scale = 1.0f / 255.0f;
+#if defined(__aarch64__) || defined(__ARM_NEON)
+    if (!rotated && !frame.mirrored && targetWidth == frame.width && targetHeight == frame.height) {
+        for (std::uint32_t y = 0; y < targetHeight; ++y) {
+            const auto* source = frame.pixels.data() + static_cast<std::size_t>(y) * frame.bytesPerRow;
+            auto* destination = target + static_cast<std::size_t>(y) * targetWidth * 3U;
+            std::uint32_t x = 0;
+            if (frame.pixelFormat == Camera::PixelFormat::BGRA32) {
+                for (; x + 8U <= targetWidth; x += 8U) {
+                    const uint8x8x4_t bgra = vld4_u8(source + x * 4U);
+                    StoreNormalizedRgb8(bgra.val[2], bgra.val[1], bgra.val[0], destination + x * 3U);
+                }
+            } else {
+                for (; x + 8U <= targetWidth; x += 8U) {
+                    const uint8x8x3_t rgb = vld3_u8(source + x * 3U);
+                    StoreNormalizedRgb8(rgb.val[0], rgb.val[1], rgb.val[2], destination + x * 3U);
+                }
+            }
+            for (; x < targetWidth; ++x) {
+                const auto* pixel = source + x * bytesPerPixel;
+                auto* output = destination + x * 3U;
+                if (frame.pixelFormat == Camera::PixelFormat::BGRA32) {
+                    output[0] = pixel[2] * scale; output[1] = pixel[1] * scale; output[2] = pixel[0] * scale;
+                } else {
+                    output[0] = pixel[0] * scale; output[1] = pixel[1] * scale; output[2] = pixel[2] * scale;
+                }
+            }
+        }
+        error.clear();
+        return true;
+    }
+#endif
+    for (std::uint32_t y = 0; y < targetHeight; ++y) {
+        const std::uint32_t orientedY = std::min(orientedHeight - 1U, y * orientedHeight / targetHeight);
+        for (std::uint32_t x = 0; x < targetWidth; ++x) {
+            std::uint32_t orientedX = std::min(orientedWidth - 1U, x * orientedWidth / targetWidth);
+            if (frame.mirrored) orientedX = orientedWidth - 1U - orientedX;
+            std::uint32_t sourceX = 0;
+            std::uint32_t sourceY = 0;
+            MapOrientedPixel(frame, orientedX, orientedY, sourceX, sourceY);
+            const auto* source = frame.pixels.data() + static_cast<std::size_t>(sourceY) * frame.bytesPerRow +
+                                 static_cast<std::size_t>(sourceX) * bytesPerPixel;
+            auto* destination = target + (static_cast<std::size_t>(y) * targetWidth + x) * 3U;
+            if (frame.pixelFormat == Camera::PixelFormat::BGRA32) {
+                destination[0] = source[2] * scale;
+                destination[1] = source[1] * scale;
+                destination[2] = source[0] * scale;
+            } else {
+                destination[0] = source[0] * scale;
+                destination[1] = source[1] * scale;
+                destination[2] = source[2] * scale;
+            }
+        }
+    }
+    error.clear();
+    return true;
+}
 
 XnnpackModel::~XnnpackModel() { Reset(); }
 
@@ -74,26 +195,17 @@ bool XnnpackModel::Invoke(const Camera::Frame& frame, std::string& error) {
         error = "XNNPACK model is not loaded";
         return false;
     }
-    const std::size_t sourceBytes = static_cast<std::size_t>(frame.width) * frame.height * 3U;
-    if (frame.width == 0 || frame.height == 0 || frame.rgb.size() != sourceBytes) {
-        error = "camera frame is not tightly packed RGB";
+    TfLiteTensor* tensor = TfLiteInterpreterGetInputTensor(interpreter_, 0);
+    auto* input = static_cast<float*>(TfLiteTensorData(tensor));
+    if (input == nullptr) {
+        error = "XNNPACK input tensor is unavailable";
         return false;
     }
-    std::vector<float> input(static_cast<std::size_t>(inputWidth_) * inputHeight_ * 3U);
-    for (int y = 0; y < inputHeight_; ++y) {
-        const std::uint32_t sourceY = std::min(frame.height - 1U, static_cast<std::uint32_t>(y) * frame.height / inputHeight_);
-        for (int x = 0; x < inputWidth_; ++x) {
-            const std::uint32_t sourceX = std::min(frame.width - 1U, static_cast<std::uint32_t>(x) * frame.width / inputWidth_);
-            const auto* source = frame.rgb.data() + (static_cast<std::size_t>(sourceY) * frame.width + sourceX) * 3U;
-            auto* target = input.data() + (static_cast<std::size_t>(y) * inputWidth_ + x) * 3U;
-            target[0] = source[0] * (1.0f / 255.0f);
-            target[1] = source[1] * (1.0f / 255.0f);
-            target[2] = source[2] * (1.0f / 255.0f);
-        }
+    if (!PreprocessCameraFrameToTensor(frame, static_cast<std::uint32_t>(inputWidth_),
+                                       static_cast<std::uint32_t>(inputHeight_), input, error)) {
+        return false;
     }
-    TfLiteTensor* tensor = TfLiteInterpreterGetInputTensor(interpreter_, 0);
-    if (TfLiteTensorCopyFromBuffer(tensor, input.data(), input.size() * sizeof(float)) != kTfLiteOk ||
-        TfLiteInterpreterInvoke(interpreter_) != kTfLiteOk) {
+    if (TfLiteInterpreterInvoke(interpreter_) != kTfLiteOk) {
         error = "XNNPACK model invocation failed";
         return false;
     }
@@ -145,21 +257,36 @@ bool XnnpackHandTrackingRuntime::Invoke(const Camera::Frame& frame, std::string&
     }
     lastRegion_ = region;
     hasRegion_ = true;
-    Camera::Frame roi{224U, 224U, frame.timestampNanoseconds, std::vector<std::uint8_t>(224U * 224U * 3U)};
+    Camera::Frame roi{224U, 224U, frame.timestampNanoseconds, 224U * 3U, Camera::PixelFormat::RGB24,
+                      Camera::FrameOrientation::Up, false, std::vector<std::uint8_t>(224U * 224U * 3U)};
     const float cosine = std::cos(region.rotation);
     const float sine = std::sin(region.rotation);
+    const bool rotated = frame.orientation == Camera::FrameOrientation::Left ||
+                         frame.orientation == Camera::FrameOrientation::Right;
+    const std::uint32_t orientedWidth = rotated ? frame.height : frame.width;
+    const std::uint32_t orientedHeight = rotated ? frame.width : frame.height;
     for (std::uint32_t y = 0; y < roi.height; ++y) {
         for (std::uint32_t x = 0; x < roi.width; ++x) {
             const float localX = (static_cast<float>(x) + 0.5f) / static_cast<float>(roi.width) - 0.5f;
             const float localY = (static_cast<float>(y) + 0.5f) / static_cast<float>(roi.height) - 0.5f;
             const float sourceX = region.handCenterX + region.handSide * (localX * cosine - localY * sine);
             const float sourceY = region.handCenterY + region.handSide * (localX * sine + localY * cosine);
-            const auto pixelX = static_cast<std::uint32_t>(std::clamp(sourceX, 0.0f, 1.0f) * (frame.width - 1U));
-            const auto pixelY = static_cast<std::uint32_t>(std::clamp(sourceY, 0.0f, 1.0f) * (frame.height - 1U));
-            const auto* source = frame.rgb.data() + (static_cast<std::size_t>(pixelY) * frame.width + pixelX) * 3U;
+            std::uint32_t sampleX = static_cast<std::uint32_t>(std::clamp(sourceX, 0.0f, 1.0f) * (orientedWidth - 1U));
+            const std::uint32_t sampleY = static_cast<std::uint32_t>(std::clamp(sourceY, 0.0f, 1.0f) * (orientedHeight - 1U));
+            if (frame.mirrored) sampleX = orientedWidth - 1U - sampleX;
+            std::uint32_t sourcePixelX = 0;
+            std::uint32_t sourcePixelY = 0;
+            MapOrientedPixel(frame, sampleX, sampleY, sourcePixelX, sourcePixelY);
+            const std::uint32_t sourceBytesPerPixel = frame.pixelFormat == Camera::PixelFormat::BGRA32 ? 4U : 3U;
+            const auto* source = frame.pixels.data() + static_cast<std::size_t>(sourcePixelY) * frame.bytesPerRow +
+                                 static_cast<std::size_t>(sourcePixelX) * sourceBytesPerPixel;
             const std::uint32_t destinationX = region.isLeftHand ? roi.width - 1U - x : x;
-            auto* destination = roi.rgb.data() + (static_cast<std::size_t>(y) * roi.width + destinationX) * 3U;
-            destination[0] = source[0]; destination[1] = source[1]; destination[2] = source[2];
+            auto* destination = roi.pixels.data() + (static_cast<std::size_t>(y) * roi.width + destinationX) * 3U;
+            if (frame.pixelFormat == Camera::PixelFormat::BGRA32) {
+                destination[0] = source[2]; destination[1] = source[1]; destination[2] = source[0];
+            } else {
+                destination[0] = source[0]; destination[1] = source[1]; destination[2] = source[2];
+            }
         }
     }
     return landmark_.Invoke(roi, error);
