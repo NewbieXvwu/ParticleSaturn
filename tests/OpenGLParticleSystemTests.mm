@@ -191,6 +191,15 @@ int main(int argc, char* argv[]) {
         const float angle = (initial.isRing == 0U ? 0.03f : initial.speed * 0.2f) * (2.0f / 120.0f);
         AssertNear(analyticFrame[0].position[0], initial.position[0] * std::cos(angle) - initial.position[2] * std::sin(angle));
         AssertNear(analyticFrame[0].position[2], initial.position[0] * std::sin(angle) + initial.position[2] * std::cos(angle));
+        std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> pausedFrame;
+        assert(particles.ReadBack(pausedFrame, 1));
+        AssertNear(pausedFrame[0].position[0], analyticFrame[0].position[0]);
+        AssertNear(pausedFrame[0].position[2], analyticFrame[0].position[2]);
+        std::vector<ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::ParticleSnapshot> resumedFrame;
+        particles.Simulate(1.0f / 120.0f, 1.0f, false);
+        assert(particles.ReadBack(resumedFrame, 1));
+        assert(std::abs(resumedFrame[0].position[0] - pausedFrame[0].position[0]) > 0.000001f ||
+               std::abs(resumedFrame[0].position[2] - pausedFrame[0].position[2]) > 0.000001f);
         particles.SetSimulationMode(ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::TransformFeedback);
         particles.DrawIndirect();
         assert(glGetError() == GL_NO_ERROR);
