@@ -1,6 +1,8 @@
 add_library(ParticleSaturnDiligentVulkanAdapter STATIC DiligentVulkanAdapter.cpp)
 add_library(ParticleSaturn.Backend.DiligentVulkan ALIAS ParticleSaturnDiligentVulkanAdapter)
 target_include_directories(ParticleSaturnDiligentVulkanAdapter PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../..")
+target_include_directories(ParticleSaturnDiligentVulkanAdapter PRIVATE
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface")
 target_link_libraries(ParticleSaturnDiligentVulkanAdapter
     PUBLIC ParticleSaturnVulkanRuntime Diligent-GraphicsEngineVk-static)
 

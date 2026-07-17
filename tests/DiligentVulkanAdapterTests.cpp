@@ -45,5 +45,7 @@ int main(int argc, char* argv[]) {
     assert(adapter.Capabilities().supportsCompute);
     assert(adapter.Capabilities().supportsStorageBuffer);
     assert(adapter.Capabilities().supportsIndirectDraw);
+    assert(!adapter.CreateSwapChain(nullptr, 0, 0, error));
+    assert(!error.empty());
     return 0;
 }

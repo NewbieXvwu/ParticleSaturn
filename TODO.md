@@ -969,6 +969,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展（2026-07-16）：已安装并验证 MoltenVK 1.4.1、Vulkan Loader 1.4.350.1；`vulkaninfo` 成功枚举 Apple M5 Pro 和 `VK_KHR_portability_enumeration`。应用包构建会复制 Loader、MoltenVK 与 ICD，`VulkanDriverRuntime` 通过单个 ICD 设置 `VK_DRIVER_FILES`、包内 Loader 绝对路径与动态库回退路径，并可按新选择启动替代进程供调用方结束当前进程。KosmicKrisp 已使用上游 Mesa 提交 `584a0997c8e4e93cfd517abe7db41c369642460a` 构建，应用包复制其动态库和经相对路径改写的 ICD；当发布目录仅包含动态库时，CMake 自动生成等价的相对路径 ICD 描述，避免构建环境因缺少独立 JSON 文件而跳过 KosmicKrisp。DiligentCore 的 Vulkan 静态后端已在 macOS 完整构建。其锁定的 `glslang` 提交 `a57276b` 已不再由上游远端提供，构建使用当前可获取的 Diligent 维护分支提交 `b5782e52`；其余嵌套依赖均恢复父仓库锁定版本。项目维护的 ImGui、TensorFlow Lite 与 Diligent 补丁现统一存放于 `patches/`，由 `scripts/apply_third_party_patch.cmake` 以可重复调用的方式应用；Shell、Windows 批处理和 macOS/Windows 构建入口均转发到该入口，主 CMake 配置会自动应用 ImGui 与 Diligent 补丁。`patches/diligent-volk-loader-path.patch` 使旧 volk 从 `PARTICLESATURN_VULKAN_LOADER` 读取包内 Loader 的绝对路径。`DiligentVulkanAdapter` 会在选择 ICD 后创建带 portability 枚举的无表面设备、读取适配器信息并映射计算、存储缓冲、间接绘制等能力；测试以独立进程分别实际创建 MoltenVK 和 KosmicKrisp 设备。
 
+进展补充（2026-07-17）：适配器已新增 macOS 原生视图交换链创建、尺寸重建和后备缓冲清除呈现接口，直接使用 Diligent 的 `MacOSNativeWindow` 绑定现有 Cocoa 视图；尚未接入生产渲染通道或统一启动器。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
