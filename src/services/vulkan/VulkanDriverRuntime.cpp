@@ -1,4 +1,5 @@
 #include "VulkanDriverRuntime.h"
+#include "services/diagnostics/DiagnosticBus.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -10,26 +11,34 @@ extern char** environ;
 
 namespace ParticleSaturn::Services::Vulkan {
 
+namespace {
+bool ReportFailure(std::string& error, const char* code) {
+    ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Publish(
+        "vulkan", code, error, ParticleSaturn::Services::Diagnostics::Severity::Error);
+    return false;
+}
+} // namespace
+
 bool ConfigureDriver(App::VulkanDriver driver, const std::string& bundleResources, std::string& error) {
     const char* name = driver == App::VulkanDriver::MoltenVK ? "MoltenVK_icd.json" : "KosmicKrisp_icd.json";
     const auto path = std::filesystem::path{bundleResources} / "Vulkan" / "etc" / "vulkan" / "icd.d" / name;
     if (!std::filesystem::is_regular_file(path)) {
         error = "selected Vulkan driver ICD is missing: " + path.string();
-        return false;
+        return ReportFailure(error, "icd-missing");
     }
     if (setenv("VK_DRIVER_FILES", path.c_str(), 1) != 0) {
         error = "unable to set VK_DRIVER_FILES";
-        return false;
+        return ReportFailure(error, "driver-files-env");
     }
     const auto loaderDirectory = (std::filesystem::path{bundleResources} / "Vulkan" / "lib").string();
     const auto loaderPath = (std::filesystem::path{loaderDirectory} / "libvulkan.1.dylib").string();
     if (!std::filesystem::is_regular_file(loaderPath)) {
         error = "packaged Vulkan loader is missing: " + loaderPath;
-        return false;
+        return ReportFailure(error, "loader-missing");
     }
     if (setenv("PARTICLESATURN_VULKAN_LOADER", loaderPath.c_str(), 1) != 0) {
         error = "unable to set PARTICLESATURN_VULKAN_LOADER";
-        return false;
+        return ReportFailure(error, "loader-env");
     }
     const char* fallbackPath = std::getenv("DYLD_FALLBACK_LIBRARY_PATH");
     const std::string loaderSearchPath = fallbackPath == nullptr || fallbackPath[0] == '\0'
@@ -37,7 +46,7 @@ bool ConfigureDriver(App::VulkanDriver driver, const std::string& bundleResource
         : loaderDirectory + ':' + fallbackPath;
     if (setenv("DYLD_FALLBACK_LIBRARY_PATH", loaderSearchPath.c_str(), 1) != 0) {
         error = "unable to set DYLD_FALLBACK_LIBRARY_PATH";
-        return false;
+        return ReportFailure(error, "fallback-env");
     }
     std::clog << "[Vulkan] selected ICD " << name << " at " << path << '\n';
     error.clear();
@@ -49,7 +58,7 @@ bool RestartWithDriver(App::VulkanDriver driver, const std::string& bundleResour
     if (!ConfigureDriver(driver, bundleResources, error)) return false;
     if (executable.empty()) {
         error = "restart executable is empty";
-        return false;
+        return ReportFailure(error, "restart-executable");
     }
     std::vector<char*> argv;
     argv.reserve(arguments.size() + 2);
@@ -60,7 +69,7 @@ bool RestartWithDriver(App::VulkanDriver driver, const std::string& bundleResour
     const int result = posix_spawn(&child, executable.c_str(), nullptr, nullptr, argv.data(), environ);
     if (result != 0) {
         error = "unable to restart selected Vulkan driver process";
-        return false;
+        return ReportFailure(error, "restart-spawn");
     }
     processId = static_cast<int>(child);
     error.clear();
