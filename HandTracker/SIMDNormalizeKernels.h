@@ -10,5 +10,6 @@ void FlipHorizontalAndNormalizeScalar(const std::uint8_t* src, float* dst, int w
 void FlipHorizontalAndBGR2RGBScalar(const std::uint8_t* src, std::uint8_t* dst, int width, int height);
 
 void NormalizeRGBNeon(const std::uint8_t* src, float* dst, std::size_t pixelCount);
+void NormalizeRGBSse2(const std::uint8_t* src, float* dst, std::size_t pixelCount);
 
 } // namespace SIMDNormalize::Kernels

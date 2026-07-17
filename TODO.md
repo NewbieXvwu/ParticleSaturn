@@ -993,6 +993,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：SIMD 能力检测已输出 `CpuFeatureSet` 快照，归一化、翻转归一化与 BGR 转 RGB 均经统一 `KernelRegistry`/`KernelDispatcher` 选择路径。标量和 ARM NEON 归一化内核已迁入独立编译单元并通过测试；SSE、AVX2 的独立单元和 Windows 专用编译参数仍待迁移。
 
+进展补充（2026-07-17）：SSE2 RGB 归一化内核已迁入 Windows 专用编译单元，并以 `/arch:SSE2` 单独编译；当前 macOS ARM64 回归验证不编译 x86 源文件，标量与 NEON 路径保持通过。SSSE3 翻转和 AVX2 内核仍待迁移。
+
 进展补充（2026-07-17）：启用 XNNPACK 运行时的完整 CTest 回归共 17 项全部通过，覆盖 Metal、OpenGL、跨后端画面基准、设置、手势工作线程、模型运行时和两种 Vulkan ICD 的交换链测试。
 
 - [x] `AVCaptureSession` 实现 `ICameraCapture`

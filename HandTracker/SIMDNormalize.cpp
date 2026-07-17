@@ -428,7 +428,7 @@ void NormalizeRGB(const uint8_t* src, float* dst, size_t pixel_count) {
     case KernelImplementation::SSSE3:
     case KernelImplementation::SSE2:
 #if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-        NormalizeRGB_SSE(src, dst, pixel_count);
+        Kernels::NormalizeRGBSse2(src, dst, pixel_count);
         return;
 #endif
         break;
