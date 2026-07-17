@@ -10,5 +10,18 @@ int main() {
     assert(runtime.IsLoaded());
     ParticleSaturn::Services::Camera::Frame frame{64, 48, 0, std::vector<std::uint8_t>(64U * 48U * 3U, 127U)};
     assert(runtime.Invoke(frame, error));
+    const auto& palmOutputs = runtime.PalmOutputs();
+    assert(palmOutputs.size() == 2U);
+    assert((palmOutputs[0].size() == 2016U || palmOutputs[1].size() == 2016U));
+    assert((palmOutputs[0].size() == 2016U * 18U || palmOutputs[1].size() == 2016U * 18U));
+    const auto& landmarkOutputs = runtime.LandmarkOutputs();
+    assert(landmarkOutputs.size() == 4U);
+    std::size_t landmarks = 0;
+    std::size_t scalars = 0;
+    for (const auto& output : landmarkOutputs) {
+        landmarks += output.size() == 63U;
+        scalars += output.size() == 1U;
+    }
+    assert(landmarks == 2U && scalars == 2U);
     return 0;
 }

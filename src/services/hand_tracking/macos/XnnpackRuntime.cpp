@@ -136,4 +136,8 @@ bool XnnpackHandTrackingRuntime::Invoke(const Camera::Frame& frame, std::string&
 
 bool XnnpackHandTrackingRuntime::IsLoaded() const noexcept { return palm_.IsLoaded() && landmark_.IsLoaded(); }
 
+const std::vector<std::vector<float>>& XnnpackHandTrackingRuntime::PalmOutputs() const noexcept { return palm_.Outputs(); }
+
+const std::vector<std::vector<float>>& XnnpackHandTrackingRuntime::LandmarkOutputs() const noexcept { return landmark_.Outputs(); }
+
 } // namespace ParticleSaturn::Services::HandTracking::MacOS

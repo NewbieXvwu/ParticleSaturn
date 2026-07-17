@@ -39,6 +39,8 @@ public:
     bool Load(const std::string& palmModelPath, const std::string& landmarkModelPath, std::string& error);
     bool Invoke(const Camera::Frame& frame, std::string& error);
     bool IsLoaded() const noexcept;
+    const std::vector<std::vector<float>>& PalmOutputs() const noexcept;
+    const std::vector<std::vector<float>>& LandmarkOutputs() const noexcept;
 
 private:
     XnnpackModel palm_;
