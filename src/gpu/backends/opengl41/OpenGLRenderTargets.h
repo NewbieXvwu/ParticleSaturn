@@ -1,5 +1,8 @@
 #pragma once
 
+#include "render/ResourceRegistry.h"
+
+#include <array>
 #include <cstdint>
 
 namespace ParticleSaturn::Gpu::OpenGL41 {
@@ -12,6 +15,14 @@ public:
     OpenGLRenderTargets& operator=(const OpenGLRenderTargets&) = delete;
 
     bool Create(std::uint32_t width, std::uint32_t height);
+    std::uint32_t NativeTexture(Gpu::TextureHandle handle) const noexcept;
+    std::uint32_t NativeFramebuffer(Gpu::TextureHandle handle) const noexcept;
+    Gpu::TextureHandle SceneHandle() const noexcept;
+    Gpu::TextureHandle BloomStrongHandle() const noexcept;
+    Gpu::TextureHandle BloomPingPongHandle() const noexcept;
+    Gpu::TextureHandle BloomWeakHandle() const noexcept;
+    Gpu::TextureHandle BloomWeakPingPongHandle() const noexcept;
+    Gpu::TextureHandle ToneMappedHandle() const noexcept;
     std::uint32_t SceneFramebuffer() const noexcept;
     std::uint32_t BloomStrongFramebuffer() const noexcept;
     std::uint32_t BloomPingPongFramebuffer() const noexcept;
@@ -42,6 +53,9 @@ private:
     std::uint32_t bloomWeakTexture_ = 0;
     std::uint32_t bloomWeakPingPongTexture_ = 0;
     std::uint32_t toneMappedTexture_ = 0;
+    std::array<Gpu::TextureHandle, 6> handles_{};
+    Render::TexturePool texturePool_;
+    std::uint64_t resourceGeneration_ = 0;
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
 };

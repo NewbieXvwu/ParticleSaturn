@@ -881,6 +881,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Metal 的离屏目标现在由 `MetalFrameRenderer` 在每帧进入渲染图前按可绘制尺寸检查和重建，宿主不再直接控制缩放资源。`RenderGraph` 资源声明携带受控 `TextureHandle`，场景、Bloom、界面模糊、Acrylic 及界面覆盖层均通过句柄解析 Metal 原生纹理，缩放后的旧句柄立即失效。`MetalFrameScheduler` 为每个在途帧保存待回收对象，完成轮询或等待后统一释放，避免向已提交命令缓冲注册完成回调；回归测试覆盖句柄失效、在途帧期间不复用同尺寸 Bloom 纹理、完成后复用及 Metal/OpenGL 画面基准。
 
+进展补充（2026-07-17）：OpenGL 4.1 生产帧已迁入共享 `RenderGraph`。`OpenGLFrameRenderer` 通过图回调执行星空、粒子模拟与绘制、Bloom、色调映射、基准捕获、界面 Acrylic、七段 FPS、ImGui 和交换，缩放重建也由渲染器统一触发。全部离屏纹理使用 `TextureHandle` 声明到图资源并由后端解析原生纹理或帧缓冲，缩放后旧句柄立即失效；OpenGL 粒子测试覆盖句柄与原生资源映射，完整画面基准保持通过。
+
 - [x] 实现固定通道渲染图
 - [x] 实现纹理池和延迟释放队列
 - [x] 建立 ABI 描述文件和生成工具
@@ -1036,7 +1038,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] GLSL 410 着色器编写
 - [x] 解析式粒子路径，含用户切换、NSUserDefaults 持久化、暂停/恢复/手势连续性验证
 - [ ] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为
-- [ ] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
+- [x] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 

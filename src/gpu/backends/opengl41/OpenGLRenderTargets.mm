@@ -47,6 +47,12 @@ void OpenGLRenderTargets::Destroy() noexcept {
 
 bool OpenGLRenderTargets::Create(std::uint32_t width, std::uint32_t height) {
     if (width == 0 || height == 0) return false;
+    if (width == width_ && height == height_ && sceneTexture_ != 0) return true;
+    ++resourceGeneration_;
+    for (const auto handle : handles_) {
+        if (handle) texturePool_.Release(handle, resourceGeneration_);
+    }
+    handles_.fill({});
     Destroy();
     const auto strongWidth = std::max(1U, width / 6U);
     const auto strongHeight = std::max(1U, height / 6U);
@@ -67,10 +73,48 @@ bool OpenGLRenderTargets::Create(std::uint32_t width, std::uint32_t height) {
                                          toneMappedFramebuffer_, toneMappedTexture_);
     width_ = width;
     height_ = height;
-    if (scene && strong && strongPingPong && weak && weakPingPong && toneMapped && glGetError() == GL_NO_ERROR) return true;
+    if (scene && strong && strongPingPong && weak && weakPingPong && toneMapped && glGetError() == GL_NO_ERROR) {
+        const std::array<Gpu::TextureDesc, 6> descriptions{{
+            {width, height, 1}, {strongWidth, strongHeight, 1}, {strongWidth, strongHeight, 1},
+            {weakWidth, weakHeight, 1}, {weakWidth, weakHeight, 1}, {width, height, 1},
+        }};
+        for (std::size_t index = 0; index < handles_.size(); ++index) {
+            handles_[index] = texturePool_.Acquire(descriptions[index], resourceGeneration_);
+        }
+        return true;
+    }
     Destroy();
     return false;
 }
+
+std::uint32_t OpenGLRenderTargets::NativeTexture(Gpu::TextureHandle handle) const noexcept {
+    const std::array<std::uint32_t, 6> textures{
+        sceneTexture_, bloomStrongTexture_, bloomPingPongTexture_, bloomWeakTexture_, bloomWeakPingPongTexture_,
+        toneMappedTexture_,
+    };
+    for (std::size_t index = 0; index < handles_.size(); ++index) {
+        if (handles_[index] == handle) return textures[index];
+    }
+    return 0;
+}
+
+std::uint32_t OpenGLRenderTargets::NativeFramebuffer(Gpu::TextureHandle handle) const noexcept {
+    const std::array<std::uint32_t, 6> framebuffers{
+        sceneFramebuffer_, bloomStrongFramebuffer_, bloomPingPongFramebuffer_, bloomWeakFramebuffer_,
+        bloomWeakPingPongFramebuffer_, toneMappedFramebuffer_,
+    };
+    for (std::size_t index = 0; index < handles_.size(); ++index) {
+        if (handles_[index] == handle) return framebuffers[index];
+    }
+    return 0;
+}
+
+Gpu::TextureHandle OpenGLRenderTargets::SceneHandle() const noexcept { return handles_[0]; }
+Gpu::TextureHandle OpenGLRenderTargets::BloomStrongHandle() const noexcept { return handles_[1]; }
+Gpu::TextureHandle OpenGLRenderTargets::BloomPingPongHandle() const noexcept { return handles_[2]; }
+Gpu::TextureHandle OpenGLRenderTargets::BloomWeakHandle() const noexcept { return handles_[3]; }
+Gpu::TextureHandle OpenGLRenderTargets::BloomWeakPingPongHandle() const noexcept { return handles_[4]; }
+Gpu::TextureHandle OpenGLRenderTargets::ToneMappedHandle() const noexcept { return handles_[5]; }
 
 std::uint32_t OpenGLRenderTargets::SceneFramebuffer() const noexcept { return sceneFramebuffer_; }
 std::uint32_t OpenGLRenderTargets::BloomStrongFramebuffer() const noexcept { return bloomStrongFramebuffer_; }

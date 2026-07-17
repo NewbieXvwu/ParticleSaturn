@@ -25,6 +25,7 @@
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/opengl41/OpenGL41Surface.h"
 #include "gpu/backends/opengl41/OpenGLBloom.h"
+#include "gpu/backends/opengl41/OpenGLFrameRenderer.h"
 #include "gpu/backends/opengl41/OpenGLParticleSystem.h"
 #include "gpu/backends/opengl41/OpenGLRenderTargets.h"
 #include "gpu/backends/opengl41/OpenGLSevenSegmentFps.h"
@@ -273,6 +274,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto bloom = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLBloom>();
         auto toneMapper = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLToneMapper>();
         auto sevenSegment = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLSevenSegmentFps>();
+        auto frameRenderer = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGLFrameRenderer>();
         if (!particles->Initialize((shaderDirectory / "ParticleSimulationTF.vert").c_str(),
                                    (shaderDirectory / "ParticleRender.vert").c_str(),
                                    (shaderDirectory / "ParticleRender.frag").c_str()) ||
@@ -362,8 +364,8 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 return event;
             }
         }];
-        __block bool baselineCaptured = false;
-        __block std::uint32_t baselineFrameCount = 0;
+        auto baselineCaptured = std::make_shared<bool>(false);
+        auto baselineFrameCount = std::make_shared<std::uint32_t>(0);
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
@@ -461,74 +463,57 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             }
             const auto width = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.width));
             const auto height = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.height));
-            if (targets->Width() != width || targets->Height() != height) {
-                if (!targets->Create(width, height)) return;
-            }
-
-            glBindFramebuffer(GL_FRAMEBUFFER, targets->SceneFramebuffer());
-            glViewport(0, 0, width, height);
-            glClearColor(0.002f, 0.003f, 0.008f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glEnable(GL_BLEND);
-            glEnable(GL_PROGRAM_POINT_SIZE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            stars->Draw(static_cast<float>(state.scene.simulationTimeSeconds), width, height);
-            if (!state.scene.paused) particles->Simulate(deltaTime, state.scene.zoom, handTracked);
-            particles->DrawIndirect(static_cast<float>(state.scene.simulationTimeSeconds), width, height,
-                                    state.scene.zoom, state.scene.rotationX, state.scene.rotationY,
-                                    state.render.pixelRatio, state.render.densityCompensation,
-                                    state.render.particleCount);
-            glDisable(GL_BLEND);
             const bool transparent = glass->IsTransparent();
-            if (!bloom->Apply(*targets, state.render.bloomBlurStrength) ||
-                !toneMapper->Apply(*targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent)) return;
-            if (captureBaseline && !baselineCaptured) {
-                if (++baselineFrameCount < 3U) return;
-                if (!WriteBaselinePpm(baselinePath, targets->ToneMappedFramebuffer(), width, height)) return;
-                baselineCaptured = true;
+            ParticleSaturn::Gpu::OpenGL41::OpenGLFrameCallbacks callbacks;
+            callbacks.capture = [&](std::uint32_t framebuffer, std::uint32_t captureWidth, std::uint32_t captureHeight) {
+                if (!captureBaseline || *baselineCaptured) return true;
+                if (++*baselineFrameCount < 3U) return false;
+                if (!WriteBaselinePpm(baselinePath, framebuffer, captureWidth, captureHeight)) return false;
+                *baselineCaptured = true;
                 [NSApp terminate:nil];
-                return;
-            }
-            if (state.ui.blurEnabled && !bloom->ApplyUiBlur(*targets, state.ui.blurStrength)) return;
-
-            if (!toneMapper->Present(*targets, transparent)) return;
-            if (!sevenSegment->Render(0, width, height, fpsMeter->Value())) return;
-
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplOSX_NewFrame(view);
-            ImGui::NewFrame();
-            MD3::BeginFrame(deltaTime);
-            MD3::SetDpiScale(1.0f);
-            MD3::SetScreenSize(static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height));
-            MD3::SetBlurTexture(state.ui.blurEnabled ? targets->BloomStrongTexture() : 0, state.ui.blurEnabled);
-            MD3::SetBlurTexture2(state.ui.blurEnabled ? targets->BloomWeakTexture() : 0);
-            ParticleSaturn::Platform::MacOS::RenderMd3Panel(*controller, "OpenGL 4.1", fpsMeter->Value(), true, {
-                [&] { if (!captureBaseline) settingsPtr->Save(controller->State()); },
-                [&] { toggleFullscreen(); },
-                [&] {
+                return false;
+            };
+            callbacks.renderUi = [&](std::uint32_t strongBlurTexture, std::uint32_t weakBlurTexture) {
+                ImGui_ImplOpenGL3_NewFrame();
+                ImGui_ImplOSX_NewFrame(view);
+                ImGui::NewFrame();
+                MD3::BeginFrame(deltaTime);
+                MD3::SetDpiScale(1.0f);
+                MD3::SetScreenSize(static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height));
+                MD3::SetBlurTexture(state.ui.blurEnabled ? strongBlurTexture : 0, state.ui.blurEnabled);
+                MD3::SetBlurTexture2(state.ui.blurEnabled ? weakBlurTexture : 0);
+                ParticleSaturn::Platform::MacOS::RenderMd3Panel(*controller, "OpenGL 4.1", fpsMeter->Value(), true, {
+                    [&] { if (!captureBaseline) settingsPtr->Save(controller->State()); },
+                    [&] { toggleFullscreen(); },
+                    [&] {
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-                    if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
-                    cameraSelector->Show();
+                        if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
+                        cameraSelector->Show();
 #endif
-                },
-                [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
-                [&](ParticleSaturn::App::WindowMaterial material) { glass->ApplyMaterial(material, controller->State().window.fullscreen); },
-                [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
-                    const float left = position.x / static_cast<float>(logicalSize.width);
-                    const float top = position.y / static_cast<float>(logicalSize.height);
-                    const float right = (position.x + panelSize.x) / static_cast<float>(logicalSize.width);
-                    const float bottom = (position.y + panelSize.y) / static_cast<float>(logicalSize.height);
-                    MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(targets->BloomStrongTexture())), position,
-                                         ImVec2(position.x + panelSize.x, position.y + panelSize.y),
-                                         ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
-                                         12.0f * backingScale);
-                }});
-            MD3::EndFrame();
-            ImGui::Render();
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glViewport(0, 0, width, height);
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            surface->Present();
+                    },
+                    [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
+                    [&](ParticleSaturn::App::WindowMaterial material) { glass->ApplyMaterial(material, controller->State().window.fullscreen); },
+                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
+                        const float left = position.x / static_cast<float>(logicalSize.width);
+                        const float top = position.y / static_cast<float>(logicalSize.height);
+                        const float right = (position.x + panelSize.x) / static_cast<float>(logicalSize.width);
+                        const float bottom = (position.y + panelSize.y) / static_cast<float>(logicalSize.height);
+                        MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(strongBlurTexture)), position,
+                                             ImVec2(position.x + panelSize.x, position.y + panelSize.y),
+                                             ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
+                                             12.0f * backingScale);
+                    }});
+                MD3::EndFrame();
+                ImGui::Render();
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, width, height);
+                ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                return glGetError() == GL_NO_ERROR;
+            };
+            callbacks.present = [&] { surface->Present(); };
+            if (!frameRenderer->Render(*particles, *stars, *targets, *bloom, *toneMapper, *sevenSegment,
+                                       width, height, state, handTracked, deltaTime, fpsMeter->Value(), transparent,
+                                       callbacks)) return;
         }];
         [frameTimer setTolerance:0.0];
         [[NSRunLoop mainRunLoop] addTimer:frameTimer forMode:NSRunLoopCommonModes];

@@ -164,6 +164,13 @@ int main(int argc, char* argv[]) {
         assert(targets.BloomWeakFramebuffer() != 0);
         assert(targets.ToneMappedFramebuffer() != 0);
         assert(targets.SceneTexture() != 0);
+        const auto originalSceneHandle = targets.SceneHandle();
+        assert(targets.NativeTexture(originalSceneHandle) == targets.SceneTexture());
+        assert(targets.NativeFramebuffer(originalSceneHandle) == targets.SceneFramebuffer());
+        assert(targets.Create(960, 540));
+        assert(targets.NativeTexture(originalSceneHandle) == 0);
+        assert(targets.SceneHandle() != originalSceneHandle);
+        assert(targets.Create(1920, 1080));
         glBindFramebuffer(GL_FRAMEBUFFER, targets.SceneFramebuffer());
         glViewport(0, 0, 1920, 1080);
         particles.Simulate(1.0f / 120.0f, 1.0f, false);
