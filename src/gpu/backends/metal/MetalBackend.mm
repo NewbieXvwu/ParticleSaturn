@@ -67,8 +67,14 @@ void* MetalSurface::NativeDrawable() const noexcept {
 bool MetalSurface::Present(MetalDevice& device) {
     if (drawable_ == nullptr) return false;
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
-    [commands presentDrawable:(id<CAMetalDrawable>)drawable_];
+    if (!Present(commands)) return false;
     [commands commit];
+    return true;
+}
+
+bool MetalSurface::Present(void* nativeCommandBuffer) {
+    if (drawable_ == nullptr || nativeCommandBuffer == nullptr) return false;
+    [(id<MTLCommandBuffer>)nativeCommandBuffer presentDrawable:(id<CAMetalDrawable>)drawable_];
     drawable_ = nullptr;
     return true;
 }
@@ -184,9 +190,26 @@ bool MetalParticleSystem::Initialize(MetalDevice& device, const char* libraryPat
 
 bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount) {
     if (commandQueue_ == nil) return false;
+    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+    const auto renderIndex = renderIndex_;
+    const auto readIndex = readIndex_;
+    const auto writeIndex = writeIndex_;
+    if (!EncodeSimulation(commandBuffer, deltaTime, handScale, handTracked, particleCount)) return false;
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+    if ([commandBuffer status] == MTLCommandBufferStatusCompleted) return true;
+    renderIndex_ = renderIndex;
+    readIndex_ = readIndex;
+    writeIndex_ = writeIndex;
+    return false;
+}
+
+bool MetalParticleSystem::EncodeSimulation(void* nativeCommandBuffer, float deltaTime, float handScale, bool handTracked,
+                                           std::uint32_t particleCount) {
+    if (nativeCommandBuffer == nullptr || commandQueue_ == nil) return false;
     const SimulationConstants constants{deltaTime, handScale, handTracked ? 1.0f : 0.0f,
                                         std::clamp(particleCount, 1U, ParticleCount)};
-    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = (id<MTLCommandBuffer>)nativeCommandBuffer;
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     [encoder setComputePipelineState:(id<MTLComputePipelineState>)simulationPipeline_];
     [encoder setBuffer:(id<MTLBuffer>)buffers_[readIndex_] offset:0 atIndex:0];
@@ -194,9 +217,6 @@ bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTr
     [encoder setBytes:&constants length:sizeof(constants) atIndex:2];
     Dispatch(encoder, (id<MTLComputePipelineState>)simulationPipeline_, ParticleCount);
     [encoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    if ([commandBuffer status] != MTLCommandBufferStatusCompleted) return false;
     const auto previousRender = renderIndex_;
     renderIndex_ = readIndex_;
     readIndex_ = writeIndex_;
@@ -365,8 +385,19 @@ void* MetalRenderTargets::UiBlurWeak() const noexcept { return uiBlurWeak_; }
 void* MetalRenderTargets::UiBlurWeakPingPong() const noexcept { return uiBlurWeakPingPong_; }
 void* MetalRenderTargets::UiOverlayWeak() const noexcept { return uiOverlayWeak_; }
 
-bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
-                            std::uint32_t width, std::uint32_t height, float bloomStrength, bool transparent) {
+bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture,
+                            void* outputTexture, std::uint32_t width, std::uint32_t height, float bloomStrength,
+                            bool transparent) {
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    if (!Encode(device, commands, libraryPath, hdrTexture, bloomTexture, outputTexture, width, height, bloomStrength, transparent)) return false;
+    [commands commit]; [commands waitUntilCompleted];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalToneMapper::Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* hdrTexture,
+                              void* bloomTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
+                              float bloomStrength, bool transparent) {
+    if (nativeCommandBuffer == nullptr || width == 0 || height == 0) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
@@ -375,7 +406,7 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"ToneMapWithBloom");
     [library release];
     if (pipeline == nil) return false;
-    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:pipeline];
     [encoder setTexture:(id<MTLTexture>)hdrTexture atIndex:0];
@@ -387,13 +418,22 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
     [encoder setBytes:&transparentValue length:sizeof(transparentValue) atIndex:1];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1)
       threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
-    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
+    [encoder endEncoding];
     [pipeline release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
+    return true;
 }
 
 bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* bloomA, void* bloomB,
                        std::uint32_t width, std::uint32_t height, float blurStrength) {
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    if (!Encode(device, commands, libraryPath, sceneHdr, bloomA, bloomB, width, height, blurStrength)) return false;
+    [commands commit]; [commands waitUntilCompleted];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalBloom::Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* sceneHdr,
+                        void* bloomA, void* bloomB, std::uint32_t width, std::uint32_t height, float blurStrength) {
+    if (nativeCommandBuffer == nullptr || sceneHdr == nullptr || bloomA == nullptr || bloomB == nullptr || width == 0 || height == 0) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice() newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
@@ -406,7 +446,7 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
     // therefore describe that source, matching Diligent's RenderBloom pass.
     struct BloomConstants { float texelX, texelY, offset, threshold; } constants{
         1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 1.0f};
-    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:downsample]; [encoder setTexture:(id<MTLTexture>)sceneHdr atIndex:0]; [encoder setTexture:(id<MTLTexture>)bloomA atIndex:1];
     [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
@@ -425,16 +465,27 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
         [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
         [encoder dispatchThreads:MTLSizeMake(bloomWidth, bloomHeight, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
     }
-    [commands commit]; [commands waitUntilCompleted]; [downsample release]; [blur release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
+    [downsample release]; [blur release];
+    return true;
 }
 
 bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
                          void* blurWeakA, void* blurWeakB, void* outputTexture, void* weakOutputTexture,
                          std::uint32_t width, std::uint32_t height, float blurStrength) {
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    if (!Encode(device, commands, libraryPath, uiSceneTexture, blurA, blurB, blurWeakA, blurWeakB, outputTexture,
+                weakOutputTexture, width, height, blurStrength)) return false;
+    [commands commit]; [commands waitUntilCompleted];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalAcrylic::Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath,
+                          void* uiSceneTexture, void* blurA, void* blurB, void* blurWeakA, void* blurWeakB,
+                          void* outputTexture, void* weakOutputTexture, std::uint32_t width, std::uint32_t height,
+                          float blurStrength) {
     if (uiSceneTexture == nullptr || blurA == nullptr || blurB == nullptr || blurWeakA == nullptr ||
         blurWeakB == nullptr || outputTexture == nullptr || weakOutputTexture == nullptr ||
-        width == 0 || height == 0 || blurStrength < 0.0f) return false;
+        nativeCommandBuffer == nullptr || width == 0 || height == 0 || blurStrength < 0.0f) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
@@ -449,7 +500,7 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* uiS
     const std::uint32_t blurHeight = std::max(1U, height / 6U);
     struct BloomConstants { float texelX, texelY, offset, threshold; } blurConstants{
         1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 0.0f};
-    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:downsample];
     [encoder setTexture:(id<MTLTexture>)uiSceneTexture atIndex:0];
@@ -531,14 +582,22 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* uiS
     [encoder dispatchThreads:MTLSizeMake(weakWidth, weakHeight, 1)
       threadsPerThreadgroup:MTLSizeMake([composite threadExecutionWidth], 1, 1)];
     [encoder endEncoding];
-    [commands commit]; [commands waitUntilCompleted];
     [downsample release]; [blur release]; [composite release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
+    return true;
 }
 
 bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, void* outputTexture,
                                   std::uint32_t width, std::uint32_t height, std::uint32_t framesPerSecond) {
-    if (outputTexture == nullptr || width == 0 || height == 0 || framesPerSecond > 999) return false;
+    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    if (!Encode(device, commands, libraryPath, outputTexture, width, height, framesPerSecond)) return false;
+    [commands commit]; [commands waitUntilCompleted];
+    return [commands status] == MTLCommandBufferStatusCompleted;
+}
+
+bool MetalSevenSegmentFps::Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath,
+                                  void* outputTexture, std::uint32_t width, std::uint32_t height,
+                                  std::uint32_t framesPerSecond) {
+    if (nativeCommandBuffer == nullptr || outputTexture == nullptr || width == 0 || height == 0 || framesPerSecond > 999) return false;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
@@ -546,16 +605,16 @@ bool MetalSevenSegmentFps::Render(MetalDevice& device, const char* libraryPath, 
     id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"RenderSevenSegmentFps");
     [library release];
     if (pipeline == nil) return false;
-    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
     id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:pipeline];
     [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:0];
     [encoder setBytes:&framesPerSecond length:sizeof(framesPerSecond) atIndex:0];
     [encoder dispatchThreads:MTLSizeMake(width, height, 1)
       threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
-    [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
+    [encoder endEncoding];
     [pipeline release];
-    return [commands status] == MTLCommandBufferStatusCompleted;
+    return true;
 }
 
 bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryPath) {
@@ -592,6 +651,34 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
        indirectBufferOffset:0];
 }
 
+MetalFrameRenderer::~MetalFrameRenderer() {
+    WaitForSubmittedWork();
+}
+
+void MetalFrameRenderer::CollectCompletedWork() {
+    auto next = submittedCommandBuffers_.begin();
+    for (auto current = submittedCommandBuffers_.begin(); current != submittedCommandBuffers_.end(); ++current) {
+        const auto status = [(id<MTLCommandBuffer>)*current status];
+        if (status < MTLCommandBufferStatusCompleted) {
+            *next++ = *current;
+            continue;
+        }
+        [(id<MTLCommandBuffer>)*current release];
+    }
+    submittedCommandBuffers_.erase(next, submittedCommandBuffers_.end());
+}
+
+bool MetalFrameRenderer::WaitForSubmittedWork() {
+    bool completed = true;
+    for (void* commandBuffer : submittedCommandBuffers_) {
+        [(id<MTLCommandBuffer>)commandBuffer waitUntilCompleted];
+        completed = completed && [(id<MTLCommandBuffer>)commandBuffer status] == MTLCommandBufferStatusCompleted;
+        [(id<MTLCommandBuffer>)commandBuffer release];
+    }
+    submittedCommandBuffers_.clear();
+    return completed;
+}
+
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                                 MetalParticleRenderer& particleRenderer,
                                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width,
@@ -600,8 +687,12 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
                                 const std::function<void(void*, void*, void*)>& uiRenderer,
                                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture) {
     if (width == 0 || height == 0 || !surface.AcquireDrawable()) return false;
-    if (!state.scene.paused && !particles.Simulate(deltaTime, state.scene.zoom, handTracked, state.render.particleCount)) return false;
+    CollectCompletedWork();
+    (void)backingScale;
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
+    if (commands == nil) return false;
+    if (!state.scene.paused &&
+        !particles.EncodeSimulation(commands, deltaTime, state.scene.zoom, handTracked, state.render.particleCount)) return false;
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = (id<MTLTexture>)targets.SceneHdr();
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
@@ -610,41 +701,40 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
     particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
     [encoder endEncoding];
-    [commands commit]; [commands waitUntilCompleted];
-    if ([commands status] != MTLCommandBufferStatusCompleted) return false;
     MetalBloom bloom;
-    if (!bloom.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
-                     width, height, state.render.bloomBlurStrength)) return false;
+    if (!bloom.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomStrong(), targets.BloomPingPong(),
+                      width, height, state.render.bloomBlurStrength)) return false;
     MetalToneMapper toneMapper;
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
-    if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(),
-                          [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, bloomStrength,
-                          state.window.material == App::WindowMaterial::SystemBlur)) return false;
-    if (sceneCapture && !sceneCapture(device.NativeDevice(), [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height)) {
-        return false;
-    }
+    id<MTLTexture> drawableTexture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
+    if (!toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), drawableTexture,
+                           width, height, bloomStrength, state.window.material == App::WindowMaterial::SystemBlur)) return false;
     if (state.ui.blurEnabled) {
-        if (!toneMapper.Apply(device, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
-                              width, height, bloomStrength)) return false;
+        if (!toneMapper.Encode(device, commands, libraryPath, targets.SceneHdr(), targets.BloomPingPong(), targets.UiScene(),
+                               width, height, bloomStrength)) return false;
         MetalAcrylic acrylic;
-        if (!acrylic.Apply(device, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(),
-                           targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
-                           width, height, state.ui.blurStrength)) return false;
+        if (!acrylic.Encode(device, commands, libraryPath, targets.UiScene(), targets.UiBlur(), targets.Composite(),
+                            targets.UiBlurWeak(), targets.UiBlurWeakPingPong(), targets.UiOverlay(), targets.UiOverlayWeak(),
+                            width, height, state.ui.blurStrength)) return false;
     }
     MetalSevenSegmentFps fps;
-    if (!fps.Render(device, libraryPath, [(id<CAMetalDrawable>)surface.NativeDrawable() texture], width, height, framesPerSecond)) return false;
+    if (!fps.Encode(device, commands, libraryPath, drawableTexture, width, height, framesPerSecond)) return false;
     if (uiRenderer) {
-        commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
         pass = [MTLRenderPassDescriptor renderPassDescriptor];
-        pass.colorAttachments[0].texture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
+        pass.colorAttachments[0].texture = drawableTexture;
         pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         encoder = [commands renderCommandEncoderWithDescriptor:pass];
         uiRenderer(commands, encoder, pass);
-        [encoder endEncoding]; [commands commit]; [commands waitUntilCompleted];
-        if ([commands status] != MTLCommandBufferStatusCompleted) return false;
+        [encoder endEncoding];
     }
-    return surface.Present(device);
+    if (!surface.Present(commands)) return false;
+    [commands commit];
+    [commands retain];
+    submittedCommandBuffers_.push_back(commands);
+    if (!sceneCapture) return true;
+    [commands waitUntilCompleted];
+    return [commands status] == MTLCommandBufferStatusCompleted && sceneCapture(device.NativeDevice(), drawableTexture, width, height);
 }
 
 bool MetalIndirectDraw::Create(MetalDevice& device, std::uint32_t vertexCount) {

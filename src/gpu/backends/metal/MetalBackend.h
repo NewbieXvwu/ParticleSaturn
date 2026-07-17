@@ -32,6 +32,7 @@ public:
     MetalSurface(MetalDevice& device, void* nativeLayer);
     bool AcquireDrawable();
     bool Present(MetalDevice& device);
+    bool Present(void* nativeCommandBuffer);
     void* NativeDrawable() const noexcept;
 
 private:
@@ -78,6 +79,8 @@ public:
 
     bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
     bool Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount);
+    bool EncodeSimulation(void* nativeCommandBuffer, float deltaTime, float handScale, bool handTracked,
+                          std::uint32_t particleCount);
     bool ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const;
     void* RenderBuffer() const noexcept;
 
@@ -149,12 +152,17 @@ class MetalToneMapper {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
                std::uint32_t width, std::uint32_t height, float bloomStrength, bool transparent = false);
+    bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* hdrTexture,
+                void* bloomTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
+                float bloomStrength, bool transparent = false);
 };
 
 class MetalBloom {
 public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* bloomA, void* bloomB,
                std::uint32_t width, std::uint32_t height, float blurStrength);
+    bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* sceneHdr,
+                void* bloomA, void* bloomB, std::uint32_t width, std::uint32_t height, float blurStrength);
 };
 
 class MetalAcrylic {
@@ -162,12 +170,17 @@ public:
     bool Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
                void* blurWeakA, void* blurWeakB, void* outputTexture, void* weakOutputTexture,
                std::uint32_t width, std::uint32_t height, float blurStrength);
+    bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* uiSceneTexture,
+                void* blurA, void* blurB, void* blurWeakA, void* blurWeakB, void* outputTexture,
+                void* weakOutputTexture, std::uint32_t width, std::uint32_t height, float blurStrength);
 };
 
 class MetalSevenSegmentFps {
 public:
     bool Render(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
                 std::uint32_t height, std::uint32_t framesPerSecond);
+    bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* outputTexture,
+                std::uint32_t width, std::uint32_t height, std::uint32_t framesPerSecond);
 };
 
 class MetalIndirectDraw {
@@ -196,6 +209,8 @@ private:
 
 class MetalFrameRenderer {
 public:
+    ~MetalFrameRenderer();
+
     bool Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
                 MetalParticleRenderer& particleRenderer,
                 MetalRenderTargets& targets, const char* libraryPath, std::uint32_t width, std::uint32_t height,
@@ -203,6 +218,12 @@ public:
                 std::uint32_t framesPerSecond,
                 const std::function<void(void*, void*, void*)>& uiRenderer = {},
                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture = {});
+
+    bool WaitForSubmittedWork();
+
+private:
+    void CollectCompletedWork();
+    std::vector<void*> submittedCommandBuffers_;
 };
 
 } // namespace ParticleSaturn::Gpu::Metal
