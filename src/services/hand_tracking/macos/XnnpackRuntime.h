@@ -20,6 +20,13 @@ struct PalmRegion {
     float rotation = 0.0f;
 };
 
+struct HandPose {
+    float confidence = 0.0f;
+    float centerX = 0.5f;
+    float centerY = 0.5f;
+    float scale = 1.0f;
+};
+
 class XnnpackModel {
 public:
     XnnpackModel() = default;
@@ -51,6 +58,7 @@ public:
     const std::vector<std::vector<float>>& PalmOutputs() const noexcept;
     const std::vector<std::vector<float>>& LandmarkOutputs() const noexcept;
     bool DecodePalm(PalmRegion& region) const;
+    bool DecodeLandmarks(HandPose& pose) const;
 
 private:
     XnnpackModel palm_;

@@ -201,4 +201,25 @@ bool XnnpackHandTrackingRuntime::DecodePalm(PalmRegion& region) const {
     return true;
 }
 
+bool XnnpackHandTrackingRuntime::DecodeLandmarks(HandPose& pose) const {
+    const auto& outputs = landmark_.Outputs();
+    const std::vector<float>* landmarks = nullptr;
+    float presence = 0.0f;
+    for (const auto& output : outputs) {
+        if (output.size() == 63U && landmarks == nullptr) landmarks = &output;
+        if (output.size() == 1U) presence = std::max(presence, 1.0f / (1.0f + std::exp(-output[0])));
+    }
+    if (landmarks == nullptr || presence < 0.5f) return false;
+    float maximum = 0.0f;
+    for (std::size_t index = 0; index < 21U; ++index) maximum = std::max(maximum, std::abs((*landmarks)[index * 3U]));
+    const float coordinateScale = maximum > 2.0f ? 1.0f / 224.0f : 1.0f;
+    pose.confidence = presence;
+    pose.centerX = (*landmarks)[0] * coordinateScale;
+    pose.centerY = (*landmarks)[1] * coordinateScale;
+    const float dx = ((*landmarks)[12] - (*landmarks)[0]) * coordinateScale;
+    const float dy = ((*landmarks)[13] - (*landmarks)[1]) * coordinateScale;
+    pose.scale = std::clamp(std::sqrt(dx * dx + dy * dy) * 6.0f, 0.1f, 10.0f);
+    return true;
+}
+
 } // namespace ParticleSaturn::Services::HandTracking::MacOS
