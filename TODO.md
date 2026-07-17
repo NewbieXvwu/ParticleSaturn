@@ -901,6 +901,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：Cocoa 宿主的帧定时器现以窗口当前显示器报告的刷新率驱动，并加入通用运行循环模式；持久化的垂直同步设置会实时映射到 `CAMetalLayer.displaySyncEnabled`，关闭路径保持销毁定时器回调和应用循环。跨显示器迁移时重建显示链接仍待完成。
 
+进展补充（2026-07-17）：OpenGL 4.1 宿主已同步使用当前显示器刷新率创建帧定时器，且将 `vsyncMode` 映射为 `NSOpenGLContextParameterSwapInterval` 的即时或同步交换；设置变更会在下一帧应用，`-1` 自适应模式遵循同步回退语义。
+
 - [x] `NSApplication` + `NSWindow` 基础宿主
 - [x] `CAMetalLayer` 表面
 - [x] Retina 缩放、多显示器、全屏切换

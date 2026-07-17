@@ -14,6 +14,7 @@ public:
     bool UpdateDrawable();
     bool SetView(void* nativeView);
     bool SetTransparent(bool transparent);
+    bool SetVSyncMode(int vsyncMode);
     void Present();
 
 private:

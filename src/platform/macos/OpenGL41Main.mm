@@ -207,6 +207,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
 
         auto surface = std::make_shared<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface>(view);
         if (!surface->MakeCurrent()) return 1;
+        if (!surface->SetVSyncMode(initialState.render.vsyncMode)) return 1;
         auto glass = std::make_shared<WindowGlass>(window, view, *surface);
         glass->ApplyMaterial(initialState.window.material, false);
         const auto shaderDirectory = ShaderDirectory();
@@ -301,8 +302,10 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
+        auto appliedVsyncMode = std::make_shared<int>(initialState.render.vsyncMode);
 
-        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer* timer) {
+        const NSInteger refreshRate = std::max<NSInteger>(1, [[window screen] maximumFramesPerSecond]);
+        NSTimer* frameTimer = [NSTimer timerWithTimeInterval:1.0 / static_cast<double>(refreshRate) repeats:YES block:^(NSTimer* timer) {
             if (![NSApp isRunning]) {
                 [timer invalidate];
                 return;
@@ -314,6 +317,10 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             fpsMeter->AddSample(deltaTime);
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
             const auto& state = *frameSnapshot.state;
+            if (*appliedVsyncMode != state.render.vsyncMode) {
+                if (!surface->SetVSyncMode(state.render.vsyncMode)) return;
+                *appliedVsyncMode = state.render.vsyncMode;
+            }
             const NSSize logicalSize = [view bounds].size;
             const NSRect backingBounds = [view convertRectToBacking:[view bounds]];
             const float backingScale = [window backingScaleFactor];
@@ -463,6 +470,8 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             surface->Present();
         }];
+        [frameTimer setTolerance:0.0];
+        [[NSRunLoop mainRunLoop] addTimer:frameTimer forMode:NSRunLoopCommonModes];
         [window makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
         [NSApp run];

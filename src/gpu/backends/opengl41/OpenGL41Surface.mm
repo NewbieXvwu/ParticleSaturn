@@ -52,6 +52,15 @@ bool OpenGL41Surface::SetTransparent(bool transparent) {
     return true;
 }
 
+bool OpenGL41Surface::SetVSyncMode(int vsyncMode) {
+    if (context_ == nullptr) return false;
+    // OpenGL exposes only immediate and synchronized swaps.  Adaptive maps to
+    // synchronized presentation, matching the Metal fallback.
+    GLint interval = vsyncMode == 0 ? 0 : 1;
+    [(NSOpenGLContext*)context_ setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
+    return true;
+}
+
 void OpenGL41Surface::Present() {
     [(NSOpenGLContext*)context_ flushBuffer];
 }
