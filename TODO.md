@@ -878,7 +878,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 实现纹理池和延迟释放队列
 - [x] 建立 ABI 描述文件和生成工具
 - [x] 生成 C++/HLSL/GLSL 结构声明
-- [ ] 生成 MSL 声明并让四种语言的实际着色器与后端消费生成 ABI
+- [x] 生成 MSL 声明并让四种语言的实际着色器与后端消费生成 ABI
 - [ ] 由 `RenderGraph` 执行所有生产帧通道，接入资源生命周期和缩放重建
 - [ ] Windows 三个 Diligent 后端全部恢复一致
 - [ ] 着色器构建目标平台中立化
