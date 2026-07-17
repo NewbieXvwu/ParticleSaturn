@@ -15,7 +15,7 @@ set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
-target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend)
+target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnMacOSSettings)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera)
 if(TARGET ParticleSaturnMacOSHandTracking)
@@ -58,7 +58,7 @@ add_executable(ParticleSaturn.OpenGL41.macOS MACOSX_BUNDLE
 set_target_properties(ParticleSaturn.OpenGL41.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.opengl41")
-target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore "-framework GameController")
+target_link_libraries(ParticleSaturn.OpenGL41.macOS PRIVATE ParticleSaturnOpenGL41Backend ParticleSaturnAppCore ParticleSaturnMacOSSettings "-framework GameController")
 target_include_directories(ParticleSaturn.OpenGL41.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_compile_definitions(ParticleSaturn.OpenGL41.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.OpenGL41.macOS ParticleSaturnOpenGL41Shaders)

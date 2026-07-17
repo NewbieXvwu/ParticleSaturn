@@ -24,6 +24,7 @@
 #include "services/camera/macos/CameraSelectorWindow.h"
 #include "services/hand_tracking/macos/XnnpackRuntime.h"
 #include "services/resources/macos/BundleResources.h"
+#include "services/settings/macos/NSUserDefaultsStore.h"
 
 namespace {
 
@@ -87,7 +88,10 @@ bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t wid
 
 int main() {
     @autoreleasepool {
-        ParticleSaturn::Platform::MacOS::CocoaHost host{1280, 720, "Particle Saturn"};
+        ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
+        auto initialState = settings.Load({});
+        initialState.render.graphicsApi = ParticleSaturn::App::GraphicsApi::Metal;
+        ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
         ParticleSaturn::Gpu::Metal::MetalDevice device;
         if (!device.Initialize()) {
             return 1;
@@ -102,7 +106,7 @@ int main() {
             !stars.Initialize(device, libraryPath, 0x53544152U) || !targets.Create(device, size.width, size.height)) return 1;
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
-        ParticleSaturn::App::AppController controller;
+        ParticleSaturn::App::AppController controller{initialState};
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         if (captureBaseline) controller.MutableState().scene.paused = true;
@@ -146,6 +150,10 @@ int main() {
             }
 #endif
             const auto drawableSize = host.CurrentDrawableSize();
+            auto& mutableState = controller.MutableState();
+            mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
+            mutableState.window.height = static_cast<std::uint32_t>(drawableSize.height / drawableSize.scale);
+            mutableState.window.dpiScale = drawableSize.scale;
             if (drawableSize.width != size.width || drawableSize.height != size.height) {
                 if (!targets.Create(device, drawableSize.width, drawableSize.height)) return;
                 size = drawableSize;
@@ -181,33 +189,40 @@ int main() {
                                      static_cast<int>(ParticleSaturn::App::RenderSettings::MinParticles),
                                      static_cast<int>(ParticleSaturn::App::RenderSettings::MaxParticles))) {
                     controller.Dispatch(ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)});
+                    settings.Save(controller.State());
                 }
                 bool bloomEnabled = state.render.bloomEnabled;
                 if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
                     controller.Dispatch(ParticleSaturn::App::SetBloomEnabled{bloomEnabled});
+                    settings.Save(controller.State());
                 }
                 bool blurEnabled = state.ui.blurEnabled;
                 if (ImGui::Checkbox("UI blur", &blurEnabled)) {
                     controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{blurEnabled});
+                    settings.Save(controller.State());
                 }
                 bool glassEnabled = state.window.material == ParticleSaturn::App::WindowMaterial::SystemBlur;
                 if (ImGui::Checkbox("Window glass", &glassEnabled)) {
                     const auto material = glassEnabled ? ParticleSaturn::App::WindowMaterial::SystemBlur
                                                        : ParticleSaturn::App::WindowMaterial::Solid;
                     controller.Dispatch(ParticleSaturn::App::SetWindowMaterial{material});
+                    settings.Save(controller.State());
                 }
                 float blurStrength = state.ui.blurStrength;
                 if (ImGui::SliderFloat("Blur strength", &blurStrength, 0.0f, 5.0f)) {
                     controller.Dispatch(ParticleSaturn::App::SetBlurStrength{blurStrength});
+                    settings.Save(controller.State());
                 }
                 const char* pauseLabel = state.scene.paused ? "Resume" : "Pause";
                 if (ImGui::Button(pauseLabel)) {
                     controller.Dispatch(ParticleSaturn::App::TogglePause{});
+                    settings.Save(controller.State());
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Fullscreen")) {
                     const bool fullscreen = !state.window.fullscreen;
                     const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{fullscreen});
+                    settings.Save(controller.State());
                     if (effect.windowChanged) host.ToggleFullscreen();
                 }
                 ImGui::SameLine();
@@ -231,6 +246,7 @@ int main() {
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();
         ImGui::DestroyContext();
+        if (!captureBaseline) settings.Save(controller.State());
     }
     return 0;
 }
