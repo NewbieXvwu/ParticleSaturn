@@ -37,12 +37,17 @@ set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs dir
 if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     set(PARTICLESATURN_KOSMICKRISP_DRIVER "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
     set(PARTICLESATURN_KOSMICKRISP_ICD "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/kosmickrisp_mesa_icd.json")
-    if(NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_DRIVER}" OR NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_ICD}")
-        message(FATAL_ERROR "PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR must contain libvulkan_kosmickrisp.dylib and kosmickrisp_mesa_icd.json")
+    if(NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_DRIVER}")
+        message(FATAL_ERROR "PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR must contain libvulkan_kosmickrisp.dylib")
     endif()
-    file(READ "${PARTICLESATURN_KOSMICKRISP_ICD}" PARTICLESATURN_KOSMICKRISP_ICD_CONTENT)
-    string(REPLACE "./libvulkan_kosmickrisp.dylib" "../../../lib/libvulkan_kosmickrisp.dylib"
-        PARTICLESATURN_KOSMICKRISP_ICD_CONTENT "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
+    if(EXISTS "${PARTICLESATURN_KOSMICKRISP_ICD}")
+        file(READ "${PARTICLESATURN_KOSMICKRISP_ICD}" PARTICLESATURN_KOSMICKRISP_ICD_CONTENT)
+        string(REPLACE "./libvulkan_kosmickrisp.dylib" "../../../lib/libvulkan_kosmickrisp.dylib"
+            PARTICLESATURN_KOSMICKRISP_ICD_CONTENT "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
+    else()
+        set(PARTICLESATURN_KOSMICKRISP_ICD_CONTENT
+            "{\n  \"file_format_version\": \"1.0.0\",\n  \"ICD\": {\n    \"library_path\": \"../../../lib/libvulkan_kosmickrisp.dylib\",\n    \"api_version\": \"1.3.0\"\n  }\n}\n")
+    endif()
     set(PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD "${CMAKE_CURRENT_BINARY_DIR}/KosmicKrisp_icd.json")
     file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
 endif()
