@@ -909,7 +909,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] `MetalDevice`、`MetalSurface`、`MetalFrameScheduler` 基础
 - [x] `MetalResourceManager`、`MetalCommandContext` 基础
 - [ ] 接入 `NSEvent`、显示器刷新节奏、可配置呈现模式和窗口关闭收尾
-- [ ] 将窗口材质状态实际应用到 `CocoaHost`，验证透明、系统模糊、应用内 Acrylic 与全屏切换
+- [x] 将窗口材质状态实际应用到 `CocoaHost`，验证透明、系统模糊、应用内 Acrylic 与全屏切换
 
 ### 阶段 6：Metal 渲染通道完整迁移
 
@@ -981,6 +981,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 进展补充（2026-07-17）：用户强制选择当前 CPU 不支持的 SIMD 档位时，调度器会保留此前有效设置并写出不可用诊断；常规与 AddressSanitizer 测试覆盖该回退契约。
 
 进展补充（2026-07-17）：Metal 单元测试新增连续四帧命令缓冲提交，直接核对三帧调度器的帧令牌递增、在途回收与退出等待；粒子、跨后端与视觉基准回归均通过。
+
+进展补充（2026-07-17）：Metal 实窗已分别以 Solid、Transparent、SystemBlur 与 AppAcrylic 启动并截图验收，四种状态均进入预期的窗口和面板合成路径；测试后恢复 SystemBlur 设置并关闭应用。
 
 - [x] `AVCaptureSession` 实现 `ICameraCapture`
 - [x] 摄像头权限请求
