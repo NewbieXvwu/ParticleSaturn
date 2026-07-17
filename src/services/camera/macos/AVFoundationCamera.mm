@@ -2,6 +2,7 @@
 #import <CoreVideo/CoreVideo.h>
 
 #include "AVFoundationCamera.h"
+#include "services/diagnostics/DiagnosticBus.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,6 +26,8 @@
 @end
 
 namespace ParticleSaturn::Services::Camera::MacOS {
+
+namespace Diagnostics = ParticleSaturn::Services::Diagnostics;
 
 namespace {
 
@@ -110,24 +113,28 @@ bool AVFoundationCamera::Start(const std::string& deviceId, std::uint32_t width,
     if (Permission() != Authorization::Authorized) {
         std::lock_guard lock{mutex_};
         error_ = "camera permission has not been granted";
+        Diagnostics::DiagnosticBus::Instance().Publish("camera", "permission", error_, Diagnostics::Severity::Error);
         return false;
     }
     AVCaptureDevice* device = [AVCaptureDevice deviceWithUniqueID:[NSString stringWithUTF8String:deviceId.c_str()]];
     if (device == nil || ![device isConnected]) {
         std::lock_guard lock{mutex_};
         error_ = "selected camera is unavailable";
+        Diagnostics::DiagnosticBus::Instance().Publish("camera", "device-unavailable", error_, Diagnostics::Severity::Error);
         return false;
     }
     NSError* error = nil;
     if (!ConfigureDevice(device, width, height, &error)) {
         std::lock_guard lock{mutex_};
         error_ = [[error localizedDescription] UTF8String];
+        Diagnostics::DiagnosticBus::Instance().Publish("camera", "format", error_, Diagnostics::Severity::Error);
         return false;
     }
     auto* input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (input == nil) {
         std::lock_guard lock{mutex_};
         error_ = [[error localizedDescription] UTF8String];
+        Diagnostics::DiagnosticBus::Instance().Publish("camera", "input", error_, Diagnostics::Severity::Error);
         return false;
     }
     auto* session = [[AVCaptureSession alloc] init];
@@ -140,7 +147,8 @@ bool AVFoundationCamera::Start(const std::string& deviceId, std::uint32_t width,
     [output setSampleBufferDelegate:delegate queue:queue];
     if (![session canAddInput:input] || ![session canAddOutput:output]) {
         [delegate release]; [output release]; [session release];
-        std::lock_guard lock{mutex_}; error_ = "camera session cannot accept input or output"; return false;
+        std::lock_guard lock{mutex_}; error_ = "camera session cannot accept input or output";
+        Diagnostics::DiagnosticBus::Instance().Publish("camera", "session", error_, Diagnostics::Severity::Error); return false;
     }
     [session addInput:input]; [session addOutput:output];
     AVCaptureConnection* connection = [output connectionWithMediaType:AVMediaTypeVideo];
@@ -177,6 +185,7 @@ void AVFoundationCamera::HandleDeviceDisconnected(const char* deviceId) {
     if (session_ == nullptr || deviceId == nullptr || activeDeviceId_ != deviceId) return;
     [(AVCaptureSession*)session_ stopRunning];
     error_ = "active camera was disconnected";
+    Diagnostics::DiagnosticBus::Instance().Publish("camera", "disconnected", error_, Diagnostics::Severity::Warning);
     hasFrame_ = false;
 }
 
