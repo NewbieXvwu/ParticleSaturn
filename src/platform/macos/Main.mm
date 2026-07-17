@@ -219,7 +219,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 mutableState.window.windowedHeight = mutableState.window.height;
             }
             if (drawableSize.width != size.width || drawableSize.height != size.height) {
-                if (!renderer.WaitForSubmittedWork() || !targets.Create(device, drawableSize.width, drawableSize.height)) return;
+                if (!targets.Create(device, drawableSize.width, drawableSize.height, &renderer.Scheduler())) return;
                 size = drawableSize;
             }
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,

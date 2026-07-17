@@ -49,6 +49,7 @@ public:
 
     std::uint64_t BeginFrame();
     void Submit(void* nativeCommandBuffer);
+    void RetireResources(std::vector<void*> resources);
     bool WaitForSubmittedFrames();
     std::uint64_t LastSubmittedFrame() const noexcept;
 
@@ -130,7 +131,8 @@ class MetalRenderTargets {
 public:
     ~MetalRenderTargets();
 
-    bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height);
+    bool Create(MetalDevice& device, std::uint32_t width, std::uint32_t height,
+                MetalFrameScheduler* scheduler = nullptr);
     void* SceneHdr() const noexcept;
     void* BloomStrong() const noexcept;
     void* BloomPingPong() const noexcept;
@@ -229,6 +231,7 @@ public:
                 const std::function<bool(void*, void*, std::uint32_t, std::uint32_t)>& sceneCapture = {});
 
     bool WaitForSubmittedWork();
+    MetalFrameScheduler& Scheduler() noexcept;
 
 private:
     MetalFrameScheduler scheduler_;

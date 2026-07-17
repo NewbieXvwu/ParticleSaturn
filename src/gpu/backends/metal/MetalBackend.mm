@@ -99,6 +99,26 @@ void MetalFrameScheduler::Submit(void* nativeCommandBuffer) {
     submittedCommandBuffers_.push_back(nativeCommandBuffer);
 }
 
+void MetalFrameScheduler::RetireResources(std::vector<void*> resources) {
+    if (resources.empty()) return;
+    NSMutableArray* retired = [[NSMutableArray alloc] initWithCapacity:resources.size()];
+    for (void* resource : resources) {
+        if (resource != nullptr) [retired addObject:(id)resource];
+    }
+    if ([retired count] == 0) {
+        [retired release];
+        return;
+    }
+    if (submittedCommandBuffers_.empty() ||
+        [(id<MTLCommandBuffer>)submittedCommandBuffers_.back() status] >= MTLCommandBufferStatusCompleted) {
+        [retired release];
+        return;
+    }
+    [(id<MTLCommandBuffer>)submittedCommandBuffers_.back() addCompletedHandler:^(id<MTLCommandBuffer>) {
+        [retired release];
+    }];
+}
+
 void MetalFrameScheduler::CollectCompletedFrames() {
     auto next = submittedCommandBuffers_.begin();
     for (auto current = submittedCommandBuffers_.begin(); current != submittedCommandBuffers_.end(); ++current) {
@@ -361,7 +381,8 @@ bool MetalStarField::Initialize(MetalDevice& device, const char* libraryPath, st
 
 void* MetalStarField::Buffer() const noexcept { return buffer_; }
 
-bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height) {
+bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::uint32_t height,
+                                MetalFrameScheduler* scheduler) {
     if (width == 0 || height == 0) return false;
     auto releaseTextures = [](std::array<void*, 11>& textures) {
         for (void*& texture : textures) {
@@ -400,7 +421,11 @@ bool MetalRenderTargets::Create(MetalDevice& device, std::uint32_t width, std::u
     bloomWeak_ = replacements[3]; uiScene_ = replacements[4]; uiOverlay_ = replacements[5];
     uiBlur_ = replacements[6]; composite_ = replacements[7]; uiBlurWeak_ = replacements[8];
     uiBlurWeakPingPong_ = replacements[9]; uiOverlayWeak_ = replacements[10];
-    releaseTextures(previous);
+    if (scheduler != nullptr) {
+        scheduler->RetireResources({previous.begin(), previous.end()});
+    } else {
+        releaseTextures(previous);
+    }
     return true;
 }
 
@@ -698,6 +723,10 @@ MetalFrameRenderer::~MetalFrameRenderer() {
 
 bool MetalFrameRenderer::WaitForSubmittedWork() {
     return scheduler_.WaitForSubmittedFrames();
+}
+
+MetalFrameScheduler& MetalFrameRenderer::Scheduler() noexcept {
+    return scheduler_;
 }
 
 bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, MetalParticleSystem& particles, MetalStarField& stars,
