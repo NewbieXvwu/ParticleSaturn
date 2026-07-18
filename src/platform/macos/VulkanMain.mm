@@ -152,6 +152,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         }
 
         std::uint32_t renderedFrames = 0;
+        bool runtimeFailed = false;
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
         host.Run([&] {
@@ -199,7 +200,28 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 {}});
             MD3::EndFrame();
             if (!adapter.PresentSceneFrame(syncInterval)) {
+                if (adapter.DeviceLost()) {
+                    Services::Diagnostics::DiagnosticBus::Instance().Publish(
+                        "vulkan", "device-recovery", "Recreating Vulkan device after device loss",
+                        Services::Diagnostics::Severity::Warning);
+                    adapter.Shutdown();
+                    std::string recoveryError;
+                    if (adapter.Initialize(mutableState.render.vulkanDriver, resourcesPath, recoveryError) &&
+                        adapter.CreateSwapChain(host.NativeView(), drawableSize.width, drawableSize.height, recoveryError) &&
+                        adapter.InitializeImGui(host.NativeView(), recoveryError)) {
+                        Services::Diagnostics::DiagnosticBus::Instance().Publish(
+                            "vulkan", "device-recovered", "Vulkan device recreation completed",
+                            Services::Diagnostics::Severity::Info);
+                        return;
+                    }
+                    ReportStartupFailure("device-recovery", recoveryError.empty()
+                        ? "Vulkan device recreation failed" : recoveryError);
+                    runtimeFailed = true;
+                    host.RequestExit();
+                    return;
+                }
                 ReportStartupFailure("present", "Vulkan frame presentation failed");
+                runtimeFailed = true;
                 host.RequestExit();
                 return;
             }
@@ -208,6 +230,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         });
         if (!smokeMode) settings.Save(controller.State());
         adapter.Shutdown();
+        if (runtimeFailed) return 1;
     }
     return 0;
 }

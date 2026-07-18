@@ -32,6 +32,7 @@ public:
     bool InitializeImGui(void* nativeView, std::string& error);
     void BeginImGuiFrame();
     bool ImGuiReady() const noexcept;
+    bool DeviceLost() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     bool BaselineCaptureRequested() const noexcept;
@@ -100,6 +101,8 @@ private:
     bool baselineCaptureRequested_ = false;
     bool baselineCaptured_ = false;
     std::string baselinePath_;
+    bool deviceLost_ = false;
+    std::uint32_t presentedFrameCount_ = 0;
     void* bloomDownsamplePipeline_ = nullptr;
     void* bloomDownsampleBinding_ = nullptr;
     void* bloomDownsampleTextureVariable_ = nullptr;

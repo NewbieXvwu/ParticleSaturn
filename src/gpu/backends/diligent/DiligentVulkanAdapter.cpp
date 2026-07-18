@@ -17,6 +17,7 @@
 
 #include <array>
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <fstream>
 #include <stdexcept>
@@ -24,6 +25,11 @@
 #include <utility>
 
 namespace ParticleSaturn::Gpu::Diligent {
+
+namespace {
+std::atomic_bool gDeviceLostReported{false};
+std::atomic_bool gDeviceLostInjected{false};
+}
 
 std::string_view ClassifyDiligentVulkanMessage(std::string_view message) noexcept {
     const bool deviceLost = message.find("DEVICE_LOST") != std::string_view::npos ||
@@ -64,6 +70,7 @@ void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SE
     if (message == nullptr || severity < ::Diligent::DEBUG_MESSAGE_SEVERITY_ERROR) return;
     const std::string_view text{message};
     const auto code = ClassifyDiligentVulkanMessage(text);
+    if (code == "device-lost") gDeviceLostReported.store(true, std::memory_order_release);
     Services::Diagnostics::DiagnosticBus::Instance().Publish(
         "vulkan", std::string{code}, std::string{text}, Services::Diagnostics::Severity::Error);
 }
@@ -362,6 +369,17 @@ bool DiligentVulkanAdapter::PresentClearFrame(const float color[4], std::uint32_
 bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     if (swapChain_ == nullptr || scenePipeline_ == nullptr || particlePipeline_ == nullptr ||
         particleComputePipeline_ == nullptr || context_ == nullptr) return false;
+    ++presentedFrameCount_;
+    const char* injection = std::getenv("PARTICLESATURN_VULKAN_DEVICE_LOST_SMOKE");
+    if (presentedFrameCount_ == 2 && injection != nullptr && std::string_view{injection} == "1" &&
+        !gDeviceLostInjected.exchange(true, std::memory_order_acq_rel)) {
+        ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SEVERITY_ERROR,
+                                    "test injected VK_ERROR_DEVICE_LOST", nullptr, nullptr, 0);
+    }
+    if (gDeviceLostReported.exchange(false, std::memory_order_acq_rel)) {
+        deviceLost_ = true;
+        return false;
+    }
     auto* swapChain = static_cast<::Diligent::ISwapChain*>(swapChain_);
     auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
     auto* target = swapChain->GetCurrentBackBufferRTV();
@@ -682,6 +700,10 @@ void DiligentVulkanAdapter::BeginImGuiFrame() {
 
 bool DiligentVulkanAdapter::ImGuiReady() const noexcept {
     return imgui_ != nullptr && imgui_->IsInitialized();
+}
+
+bool DiligentVulkanAdapter::DeviceLost() const noexcept {
+    return deviceLost_;
 }
 
 void DiligentVulkanAdapter::SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept {
@@ -1661,6 +1683,8 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     adapterName_.clear();
     capabilities_ = {};
     submissionValue_ = 0;
+    deviceLost_ = false;
+    presentedFrameCount_ = 0;
     baselineCaptureRequested_ = false;
     baselineCaptured_ = false;
     baselinePath_.clear();
