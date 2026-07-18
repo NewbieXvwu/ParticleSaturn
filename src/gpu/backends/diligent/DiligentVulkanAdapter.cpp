@@ -85,30 +85,18 @@ void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SE
 }
 
 constexpr const char* SceneVertexShader = R"(
-layout(location = 0) out vec2 uv;
 const vec2 positions[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
 void main() {
     vec2 position = positions[gl_VertexIndex];
-    uv = position * 0.5 + 0.5;
     gl_Position = vec4(position, 0.0, 1.0);
 }
 )";
 
 constexpr const char* SceneFragmentShader = R"(
-layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 color;
 
-float hash(vec2 value) {
-    return fract(sin(dot(value, vec2(12.9898, 78.233))) * 43758.5453);
-}
-
 void main() {
-    const vec3 space = vec3(0.002, 0.003, 0.008);
-    vec3 result = space;
-    vec2 cell = floor(uv * vec2(170.0, 100.0));
-    float star = step(0.997, hash(cell));
-    result += vec3(star) * (0.18 + 0.7 * hash(cell + 13.0));
-    color = vec4(result, 1.0);
+    color = vec4(0.002, 0.003, 0.008, 1.0);
 }
 )";
 
@@ -208,7 +196,7 @@ layout(set=0, binding=1, std140) uniform RenderConstants {
 layout(location = 0) out vec4 starColor;
 layout(location = 1) out float starTime;
 void main() {
-    const Star star = starBuffer.stars[gl_VertexIndex];
+    const Star star = starBuffer.stars[gl_InstanceIndex];
     const float rotation = uScene.x * 0.005;
     const float c = cos(rotation);
     const float s = sin(rotation);
@@ -1659,7 +1647,7 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
 
 bool DiligentVulkanAdapter::CreateStarPipeline(std::string& error) {
     if (starPipeline_ != nullptr) return true;
-    std::mt19937 generator{0x53544152U};
+    std::mt19937 generator{1337U};
     std::uniform_real_distribution<float> random{0.0f, 1.0f};
     constexpr float colors[4][3] = {
         {0.890f, 0.855f, 0.773f}, {0.788f, 0.627f, 0.439f},

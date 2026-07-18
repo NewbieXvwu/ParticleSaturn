@@ -47,8 +47,10 @@ kosmic_icd="$resources_dir/Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json"
 if [ -f "$kosmic_icd" ]; then
     capture "$metal_app" "$kosmic_image" vulkan kosmic
     "$metrics" "$metal_image" "$opengl_image" 2.0 0.04
-    "$metrics" "$molten_image" "$kosmic_image" 32.0 0.50
+    "$metrics" "$metal_image" "$molten_image" 2.0 0.04
+    "$metrics" "$metal_image" "$kosmic_image" 2.0 0.04
+    "$metrics" "$molten_image" "$kosmic_image" 1.0 0.01
 else
     "$metrics" "$metal_image" "$opengl_image" 2.0 0.04
-    "$metrics" "$metal_image" "$molten_image" 80.0 0.90
+    "$metrics" "$metal_image" "$molten_image" 2.0 0.04
 fi
