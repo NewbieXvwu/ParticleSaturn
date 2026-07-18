@@ -24,6 +24,16 @@
 #include <utility>
 
 namespace ParticleSaturn::Gpu::Diligent {
+
+std::string_view ClassifyDiligentVulkanMessage(std::string_view message) noexcept {
+    const bool deviceLost = message.find("DEVICE_LOST") != std::string_view::npos ||
+                            message.find("device lost") != std::string_view::npos;
+    const bool swapChainIssue = message.find("OUT_OF_DATE") != std::string_view::npos ||
+                                message.find("SUBOPTIMAL") != std::string_view::npos ||
+                                message.find("Present") != std::string_view::npos;
+    return deviceLost ? "device-lost" : swapChainIssue ? "swap-chain" : "diligent-error";
+}
+
 namespace {
 
 bool IsEnabled(::Diligent::DEVICE_FEATURE_STATE state) {
@@ -53,14 +63,9 @@ void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SE
                                                      const ::Diligent::Char*, const ::Diligent::Char*, int) {
     if (message == nullptr || severity < ::Diligent::DEBUG_MESSAGE_SEVERITY_ERROR) return;
     const std::string_view text{message};
-    const bool deviceLost = text.find("DEVICE_LOST") != std::string_view::npos ||
-                            text.find("device lost") != std::string_view::npos;
-    const bool swapChainIssue = text.find("OUT_OF_DATE") != std::string_view::npos ||
-                                text.find("SUBOPTIMAL") != std::string_view::npos ||
-                                text.find("Present") != std::string_view::npos;
-    const char* code = deviceLost ? "device-lost" : swapChainIssue ? "swap-chain" : "diligent-error";
+    const auto code = ClassifyDiligentVulkanMessage(text);
     Services::Diagnostics::DiagnosticBus::Instance().Publish(
-        "vulkan", code, std::string{text}, Services::Diagnostics::Severity::Error);
+        "vulkan", std::string{code}, std::string{text}, Services::Diagnostics::Severity::Error);
 }
 
 constexpr const char* SceneVertexShader = R"(

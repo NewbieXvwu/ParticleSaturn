@@ -32,6 +32,10 @@ int RunChild(const char* executable, const char* resources, const char* driverNa
 
 int main(int argc, char* argv[]) {
     assert(argc == 2 || argc == 3);
+    using ParticleSaturn::Gpu::Diligent::ClassifyDiligentVulkanMessage;
+    assert(ClassifyDiligentVulkanMessage("vkQueueSubmit: VK_ERROR_DEVICE_LOST") == "device-lost");
+    assert(ClassifyDiligentVulkanMessage("Present returned VK_ERROR_OUT_OF_DATE_KHR") == "swap-chain");
+    assert(ClassifyDiligentVulkanMessage("validation error") == "diligent-error");
     if (argc == 2) {
         assert(RunChild(argv[0], argv[1], "molten") == 0);
         const auto kosmicIcd = std::filesystem::path{argv[1]} / "Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json";

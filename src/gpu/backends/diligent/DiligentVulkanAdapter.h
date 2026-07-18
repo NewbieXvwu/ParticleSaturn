@@ -7,11 +7,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ParticleSaturn::UI { class ImGuiDiligent; }
 
 namespace ParticleSaturn::Gpu::Diligent {
+
+std::string_view ClassifyDiligentVulkanMessage(std::string_view message) noexcept;
 
 class DiligentVulkanAdapter final : public GpuDevice, private CommandList {
 public:
