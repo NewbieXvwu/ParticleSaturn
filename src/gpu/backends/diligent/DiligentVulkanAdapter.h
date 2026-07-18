@@ -59,6 +59,7 @@ private:
     };
 
     bool CreateScenePipeline(std::string& error);
+    bool CreateStarPipeline(std::string& error);
     bool CreateParticlePipeline(std::string& error);
     bool CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error);
     bool CreateToneMapPipeline(std::string& error);
@@ -78,6 +79,9 @@ private:
     void* context_ = nullptr;
     void* swapChain_ = nullptr;
     void* scenePipeline_ = nullptr;
+    void* starPipeline_ = nullptr;
+    void* starBinding_ = nullptr;
+    void* starBufferVariable_ = nullptr;
     void* hdrTexture_ = nullptr;
     void* hdrRenderTarget_ = nullptr;
     void* hdrShaderResource_ = nullptr;
@@ -129,6 +133,8 @@ private:
     void* particleInitializationOutputVariable_ = nullptr;
     void* particleInitializationConstantsVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
+    BufferHandle starBuffer_{};
+    BufferHandle starIndirectArguments_{};
     BufferHandle toneMapConstants_{};
     BufferHandle bloomConstants_{};
     BufferHandle acrylicConstants_{};

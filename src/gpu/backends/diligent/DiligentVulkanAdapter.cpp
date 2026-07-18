@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cmath>
 #include <fstream>
+#include <random>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -189,6 +191,48 @@ void main() {
 }
 )";
 
+constexpr const char* StarVertexShader = R"(
+struct Star { vec4 positionAndSize; vec4 colorAndSeed; };
+layout(set=0, binding=0, std430) readonly buffer gStars { Star stars[]; } starBuffer;
+layout(set=0, binding=1, std140) uniform RenderConstants {
+    vec4 uScene;
+    vec4 uViewport;
+};
+layout(location = 0) out vec4 starColor;
+layout(location = 1) out float starTime;
+void main() {
+    const Star star = starBuffer.stars[gl_VertexIndex];
+    const float rotation = uScene.x * 0.005;
+    const float c = cos(rotation);
+    const float s = sin(rotation);
+    const vec3 position = vec3(star.positionAndSize.x * c + star.positionAndSize.z * s,
+                               star.positionAndSize.y,
+                               -star.positionAndSize.x * s + star.positionAndSize.z * c);
+    const float distance = 100.0 - position.z;
+    const float focalLength = 1.0 / tan(1.047 * 0.5);
+    const float aspect = max(uViewport.x, 0.001);
+    gl_Position = vec4(position.x * focalLength / (aspect * distance),
+                       position.y * focalLength / distance, 0.0, 1.0);
+    gl_PointSize = clamp(star.positionAndSize.w * 1000.0 / distance, 1.0, 8.0);
+    starColor = star.colorAndSeed;
+    starTime = uScene.x;
+}
+)";
+
+constexpr const char* StarFragmentShader = R"(
+layout(location = 0) in vec4 starColor;
+layout(location = 1) in float starTime;
+layout(location = 0) out vec4 color;
+void main() {
+    const vec2 centered = gl_PointCoord * 2.0 - 1.0;
+    const float radiusSquared = dot(centered, centered);
+    if (radiusSquared > 1.0) discard;
+    const float noise = fract(sin(dot(gl_FragCoord.xy, vec2(12.9, 78.2))) * 43758.5);
+    const float twinkle = 0.7 + 0.3 * sin(starTime * 2.0 + (noise + starColor.a) * 10.0);
+    color = vec4(starColor.rgb * twinkle * 3.0, pow(1.0 - radiusSquared, 1.5) * 0.9);
+}
+)";
+
 constexpr const char* ParticleComputeShader = R"(
 struct Particle { vec4 position; uint color; float speed; uint isRing; uint padding; };
 layout(set=0, binding=0, std430) readonly buffer gParticlesIn { Particle particlesIn[]; } particleInput;
@@ -236,6 +280,11 @@ struct ParticleRenderConstants {
     float viewport[4];
 };
 
+struct Star {
+    float positionAndSize[4];
+    float colorAndSeed[4];
+};
+
 struct ParticleInitializationConstants {
     std::uint32_t particleCount;
     std::uint32_t seed;
@@ -257,11 +306,13 @@ struct AcrylicConstants {
 static_assert(sizeof(Particle) == 32);
 static_assert(sizeof(ParticleComputeConstants) == 16);
 static_assert(sizeof(ParticleRenderConstants) == 32);
+static_assert(sizeof(Star) == 32);
 static_assert(sizeof(ParticleInitializationConstants) == 16);
 static_assert(sizeof(ToneMapConstants) == 16);
 static_assert(sizeof(AcrylicConstants) == 32);
 
 constexpr std::uint32_t MaxParticleCount = 1'200'000;
+constexpr std::uint32_t StarCount = 50'000;
 
 ::Diligent::RESOURCE_STATE ToDiligentResourceState(ResourceUsage usage) {
     switch (usage) {
@@ -373,6 +424,7 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
         return false;
     }
     if (!CreateParticlePipeline(error)) return false;
+    if (!CreateStarPipeline(error)) return false;
     if (!CreateToneMapPipeline(error)) return false;
     if (!CreateBloomPipelines(error)) return false;
     if (!CreateAcrylicPipeline(error)) return false;
@@ -417,7 +469,8 @@ bool DiligentVulkanAdapter::PresentClearFrame(const float color[4], std::uint32_
 }
 
 bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
-    if (swapChain_ == nullptr || scenePipeline_ == nullptr || particlePipeline_ == nullptr ||
+    if (swapChain_ == nullptr || scenePipeline_ == nullptr || starPipeline_ == nullptr ||
+        particlePipeline_ == nullptr ||
         particleComputePipeline_ == nullptr || context_ == nullptr) return false;
     ++presentedFrameCount_;
     const char* injection = std::getenv("PARTICLESATURN_VULKAN_DEVICE_LOST_SMOKE");
@@ -449,6 +502,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     const auto uiWeak = graph.AddResource({"vulkan-ui-blur-weak", {std::max(1u, description.Width / 12u),
                                                                       std::max(1u, description.Height / 12u), 1}});
     const auto particles = graph.AddResource({"vulkan-particles", {1, 1, 1}});
+    const auto stars = graph.AddResource({"vulkan-stars", {1, 1, 1}});
     const auto simulation = graph.AddPass("vulkan-particle-simulation", [&] {
         return SimulateParticles(commands);
     });
@@ -457,6 +511,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->SetRenderTargets(1, &hdrTarget, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
         commands.DrawIndirect(sceneIndirectArguments_, 0);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(starPipeline_));
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(starBinding_),
+                                       ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        commands.DrawIndirect(starIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
         auto* particleView = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffers_[particleRenderIndex_]))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
         static_cast<::Diligent::IShaderResourceVariable*>(particleRenderVariable_)->Set(particleView);
@@ -691,6 +749,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Read(simulation, particles, ResourceUsage::ShaderRead);
     graph.Write(simulation, particles, ResourceUsage::ShaderWrite);
     graph.Read(scene, particles, ResourceUsage::ShaderRead);
+    graph.Read(scene, stars, ResourceUsage::ShaderRead);
     graph.Write(scene, hdr, ResourceUsage::RenderTarget);
     graph.Read(downsample, hdr, ResourceUsage::ShaderRead);
     graph.Write(downsample, bloom, ResourceUsage::RenderTarget);
@@ -1399,6 +1458,118 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     return true;
 }
 
+bool DiligentVulkanAdapter::CreateStarPipeline(std::string& error) {
+    if (starPipeline_ != nullptr) return true;
+    std::mt19937 generator{0x53544152U};
+    std::uniform_real_distribution<float> random{0.0f, 1.0f};
+    constexpr float colors[4][3] = {
+        {0.890f, 0.855f, 0.773f}, {0.788f, 0.627f, 0.439f},
+        {0.890f, 0.855f, 0.773f}, {0.690f, 0.553f, 0.333f},
+    };
+    std::vector<Star> stars(StarCount);
+    for (std::uint32_t index = 0; index < StarCount; ++index) {
+        const float radius = 400.0f + random(generator) * 3000.0f;
+        const float theta = random(generator) * 6.28318530718f;
+        const float phi = std::acos(2.0f * random(generator) - 1.0f);
+        auto& star = stars[index];
+        star.positionAndSize[0] = radius * std::sin(phi) * std::cos(theta);
+        star.positionAndSize[1] = radius * std::cos(phi);
+        star.positionAndSize[2] = radius * std::sin(phi) * std::sin(theta);
+        star.positionAndSize[3] = 1.0f + random(generator) * 3.0f;
+        std::copy_n(colors[index % 4], 3, star.colorAndSeed);
+        star.colorAndSeed[3] = random(generator);
+    }
+    try {
+        starBuffer_ = CreateBuffer({sizeof(Star) * stars.size(), sizeof(Star), BufferUsage::Storage},
+                                   std::as_bytes(std::span{stars}));
+        const std::array<std::uint32_t, 4> arguments{1, StarCount, 0, 0};
+        starIndirectArguments_ = CreateBuffer(
+            {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
+        auto& commands = BeginCommands();
+        commands.Transition(starIndirectArguments_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
+        static_cast<void>(Submit(commands));
+    } catch (const std::exception& exception) {
+        error = exception.what();
+        return false;
+    }
+
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::ShaderCreateInfo shader{};
+    shader.SourceLanguage = ::Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
+    shader.EntryPoint = "main";
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_VERTEX;
+    shader.Desc.Name = "ParticleSaturn Vulkan Star VS";
+    shader.Source = StarVertexShader;
+    ::Diligent::IShader* vertex = nullptr;
+    device->CreateShader(shader, &vertex);
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+    shader.Desc.Name = "ParticleSaturn Vulkan Star PS";
+    shader.Source = StarFragmentShader;
+    ::Diligent::IShader* fragment = nullptr;
+    device->CreateShader(shader, &fragment);
+    if (vertex == nullptr || fragment == nullptr) {
+        if (vertex != nullptr) vertex->Release();
+        if (fragment != nullptr) fragment->Release();
+        error = "Diligent Vulkan could not compile star shaders";
+        return false;
+    }
+    const ::Diligent::ShaderResourceVariableDesc variables[] = {
+        {::Diligent::SHADER_TYPE_VERTEX, "gStars", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_VERTEX, "RenderConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+    ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Stars";
+    pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
+    pipeline.PSODesc.ResourceLayout.Variables = variables;
+    pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
+    pipeline.GraphicsPipeline.NumRenderTargets = 1;
+    pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
+    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_POINT_LIST;
+    pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
+    pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+    auto& blend = pipeline.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    blend.BlendEnable = ::Diligent::True;
+    blend.SrcBlend = ::Diligent::BLEND_FACTOR_SRC_ALPHA;
+    blend.DestBlend = ::Diligent::BLEND_FACTOR_ONE;
+    blend.BlendOp = ::Diligent::BLEND_OPERATION_ADD;
+    blend.SrcBlendAlpha = ::Diligent::BLEND_FACTOR_ONE;
+    blend.DestBlendAlpha = ::Diligent::BLEND_FACTOR_ONE;
+    blend.BlendOpAlpha = ::Diligent::BLEND_OPERATION_ADD;
+    pipeline.pVS = vertex;
+    pipeline.pPS = fragment;
+    ::Diligent::IPipelineState* state = nullptr;
+    device->CreateGraphicsPipelineState(pipeline, &state);
+    vertex->Release();
+    fragment->Release();
+    if (state == nullptr) {
+        error = "Diligent Vulkan could not create star pipeline";
+        return false;
+    }
+    auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_VERTEX, "RenderConstants");
+    if (constants == nullptr) {
+        state->Release();
+        error = "Diligent Vulkan star render constants unavailable";
+        return false;
+    }
+    constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleRenderConstants_)));
+    ::Diligent::IShaderResourceBinding* binding = nullptr;
+    state->CreateShaderResourceBinding(&binding, true);
+    auto* starsVariable = binding == nullptr ? nullptr :
+        binding->GetVariableByName(::Diligent::SHADER_TYPE_VERTEX, "gStars");
+    if (binding == nullptr || starsVariable == nullptr) {
+        if (binding != nullptr) binding->Release();
+        state->Release();
+        error = "Diligent Vulkan star bindings unavailable";
+        return false;
+    }
+    starsVariable->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(starBuffer_))->GetDefaultView(
+        ::Diligent::BUFFER_VIEW_SHADER_RESOURCE));
+    starPipeline_ = state;
+    starBinding_ = binding;
+    starBufferVariable_ = starsVariable;
+    return true;
+}
+
 bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     if (particlePipeline_ != nullptr) return true;
     const std::array<Particle, 3> particles{{
@@ -1658,6 +1829,15 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(scenePipeline_)->Release();
         scenePipeline_ = nullptr;
     }
+    starBufferVariable_ = nullptr;
+    if (starBinding_ != nullptr) {
+        static_cast<::Diligent::IShaderResourceBinding*>(starBinding_)->Release();
+        starBinding_ = nullptr;
+    }
+    if (starPipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(starPipeline_)->Release();
+        starPipeline_ = nullptr;
+    }
     if (toneMapBinding_ != nullptr) {
         static_cast<::Diligent::IShaderResourceBinding*>(toneMapBinding_)->Release();
         toneMapBinding_ = nullptr;
@@ -1742,6 +1922,8 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     }
     buffers_.clear();
     sceneIndirectArguments_ = {};
+    starBuffer_ = {};
+    starIndirectArguments_ = {};
     toneMapConstants_ = {};
     bloomConstants_ = {};
     acrylicConstants_ = {};
