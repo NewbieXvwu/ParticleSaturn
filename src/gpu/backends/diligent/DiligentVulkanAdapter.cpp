@@ -72,6 +72,9 @@ struct Particle { vec4 position; uint color; float speed; uint isRing; uint padd
 layout(set=0, binding=0, std430) readonly buffer gParticles { Particle particles[]; } particleBuffer;
 layout(location = 0) out vec4 particleColor;
 void main() {
+    const vec2 corners[6] = vec2[6](
+        vec2(-1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0),
+        vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(1.0, -1.0));
     Particle particle = particleBuffer.particles[gl_InstanceIndex];
     const vec3 eye = vec3(0.0, 18.0, 75.0);
     const vec3 forward = normalize(-eye);
@@ -79,8 +82,9 @@ void main() {
     const vec3 up = cross(right, forward);
     const vec3 relative = particle.position.xyz - eye;
     const float depth = max(dot(relative, forward), 0.1);
-    gl_Position = vec4(vec2(dot(relative, right), dot(relative, up)) * (1.8 / depth), 0.0, 1.0);
-    gl_PointSize = clamp(particle.position.w * 3.0, 2.0, 8.0);
+    const vec2 center = vec2(dot(relative, right), dot(relative, up)) * (1.8 / depth);
+    const vec2 extent = corners[gl_VertexIndex] * particle.position.w * (0.012 / depth);
+    gl_Position = vec4(center + extent, 0.0, 1.0);
     particleColor = vec4(float(particle.color & 255u) / 255.0, float((particle.color >> 8u) & 255u) / 255.0, float((particle.color >> 16u) & 255u) / 255.0, 1.0);
 }
 )";
@@ -547,7 +551,7 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
         const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, MaxParticleCount};
         particleComputeConstants_ = CreateBuffer(
             {sizeof(constants), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&constants, 1}));
-        const std::array<std::uint32_t, 4> arguments{1, MaxParticleCount, 0, 0};
+        const std::array<std::uint32_t, 4> arguments{6, MaxParticleCount, 0, 0};
         particleIndirectArguments_ = CreateBuffer(
             {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
         auto& commands = BeginCommands();
@@ -723,7 +727,7 @@ bool DiligentVulkanAdapter::SimulateParticles(CommandList& commands) {
     const auto output = particleBuffers_[particleWriteIndex_];
     if (!input || !output || !particleComputeConstants_) return false;
     if (particleCountDirty_) {
-        UpdateBuffer(particleIndirectArguments_, 0, std::as_bytes(std::span{&particleCount_, 1}));
+        UpdateBuffer(particleIndirectArguments_, sizeof(std::uint32_t), std::as_bytes(std::span{&particleCount_, 1}));
         commands.Transition(particleIndirectArguments_, ResourceUsage::CopyDestination,
                             ResourceUsage::IndirectArgument);
         particleCountDirty_ = false;

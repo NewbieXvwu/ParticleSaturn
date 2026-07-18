@@ -1074,6 +1074,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 主循环现将 `AppState` 的粒子数量和暂停状态传入适配器。数量变化会在共享命令列表中更新间接参数并恢复 `CopyDestination → IndirectArgument`，计算常量使用同一数量；暂停时仍呈现当前缓冲，跳过计算和三缓冲轮转。MoltenVK 表面测试实际切换到 512 粒子并验证暂停帧，主应用冒烟和完整 18 项 CTest 均通过。
 
+进展补充（2026-07-18）：Vulkan 粒子图形管线现使用六顶点实例化矩形，按 `gl_InstanceIndex` 读取粒子并以大小字段生成稳定的屏幕空间范围；间接参数保持 `{6, NumInstances, 0, 0}`，动态数量更新第二个字，避免覆盖顶点数。MoltenVK 表面、主应用冒烟和完整 18 项 CTest 均通过。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
