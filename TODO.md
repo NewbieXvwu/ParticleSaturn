@@ -1108,6 +1108,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 生产入口现复用 `AVFoundationCamera`、原生摄像头选择器、XNNPACK 模型运行时和后台 `HandTrackingWorker`。主循环只提交最新摄像头帧并读取最新不可变手势样本，`FrameCoordinator` 消费绝对旋转与缩放，Diligent 粒子计算常量同步接收手势追踪标志和缩放系数；基准与冒烟模式明确跳过摄像头和模型，避免测试占用硬件。模型、工作线程及双 ICD 表面测试通过，真实镜头下的 Vulkan 手势响应仍待人工验收。
 
+进展补充（2026-07-18）：Vulkan 共享渲染图补齐七段 FPS 通道，顺序固定为 Acrylic 后、ImGui 前、基准捕获前。主循环按平滑帧时间计算实际 FPS，同时更新调试面板与 16 字节 GPU 常量；片元通道复用 Metal/OpenGL 的右上角三位布局、七段掩码和绿橙红阈值。MoltenVK/KosmicKrisp 表面测试分别以 24 和 120 FPS 绘制并通过。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局

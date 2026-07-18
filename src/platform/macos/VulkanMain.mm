@@ -112,6 +112,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         App::AppController controller{state};
         App::FrameCoordinator coordinator;
         auto lastFrame = std::chrono::steady_clock::now();
+        double smoothedFrameSeconds = 1.0 / 60.0;
+        std::uint32_t currentFramesPerSecond = 60;
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
         Services::Camera::MacOS::AVFoundationCamera camera;
         Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
@@ -213,6 +215,11 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             const double elapsedSeconds = lodSmoke ? 0.05 : std::clamp(
                 std::chrono::duration<double>(now - lastFrame).count(), 0.0, 0.25);
             lastFrame = now;
+            if (elapsedSeconds > 0.0) {
+                smoothedFrameSeconds += (elapsedSeconds - smoothedFrameSeconds) * 0.1;
+                currentFramesPerSecond = static_cast<std::uint32_t>(std::clamp(
+                    1.0 / smoothedFrameSeconds + 0.5, 1.0, 999.0));
+            }
             const auto currentSize = host.CurrentDrawableSize();
             if (currentSize.width != drawableSize.width || currentSize.height != drawableSize.height) {
                 if (!adapter.ResizeSwapChain(currentSize.width, currentSize.height)) {
@@ -253,13 +260,14 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
             adapter.SetGestureState(gesture.tracked, gesture.scale);
             adapter.SetSceneSettings(mutableState.scene, mutableState.render);
+            adapter.SetFramesPerSecond(currentFramesPerSecond);
             adapter.SetAcrylicSettings(mutableState.ui.blurEnabled, mutableState.ui.blurStrength, mutableState.ui.darkMode);
             adapter.BeginImGuiFrame();
             MD3::BeginFrame(1.0f / 60.0f);
             MD3::SetDpiScale(1.0f);
             MD3::SetScreenSize(static_cast<float>(mutableState.window.width),
                                static_cast<float>(mutableState.window.height));
-            RenderMd3Panel(controller, adapter.AdapterName().c_str(), 60, false, {
+            RenderMd3Panel(controller, adapter.AdapterName().c_str(), currentFramesPerSecond, false, {
                 [&] { if (!smokeMode) settings.Save(controller.State()); },
                 [&] {
                     const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});

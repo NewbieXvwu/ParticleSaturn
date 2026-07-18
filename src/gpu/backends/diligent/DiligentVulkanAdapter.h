@@ -36,6 +36,7 @@ public:
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     void SetGestureState(bool tracked, float scale) noexcept;
+    void SetFramesPerSecond(std::uint32_t framesPerSecond) noexcept;
     void SetSceneSettings(const App::SceneState& scene, const App::RenderSettings& render) noexcept;
     bool BaselineCaptureRequested() const noexcept;
     void Shutdown() noexcept;
@@ -66,6 +67,7 @@ private:
     bool CreateToneMapPipeline(std::string& error);
     bool CreateBloomPipelines(std::string& error);
     bool CreateAcrylicPipeline(std::string& error);
+    bool CreateSevenSegmentPipeline(std::string& error);
     bool CreateParticleInitializationPipeline(std::string& error);
     bool CreateParticleComputePipeline(std::string& error);
     bool SimulateParticles(CommandList& commands);
@@ -122,6 +124,8 @@ private:
     void* toneMapBinding_ = nullptr;
     void* toneMapTextureVariable_ = nullptr;
     void* toneMapBloomVariable_ = nullptr;
+    void* sevenSegmentPipeline_ = nullptr;
+    void* sevenSegmentBinding_ = nullptr;
     void* particlePipeline_ = nullptr;
     void* particleBinding_ = nullptr;
     void* particleRenderVariable_ = nullptr;
@@ -139,6 +143,7 @@ private:
     BufferHandle toneMapConstants_{};
     BufferHandle bloomConstants_{};
     BufferHandle acrylicConstants_{};
+    BufferHandle sevenSegmentConstants_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
     BufferHandle particleRenderConstants_{};
@@ -160,6 +165,7 @@ private:
     float densityCompensation_ = 0.6f;
     bool bloomEnabled_ = true;
     float bloomBlurStrength_ = 2.0f;
+    std::uint32_t framesPerSecond_ = 60;
     bool uiBlurEnabled_ = true;
     float uiBlurStrength_ = 2.0f;
     bool uiDarkMode_ = true;

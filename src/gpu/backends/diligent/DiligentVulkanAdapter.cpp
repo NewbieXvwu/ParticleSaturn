@@ -233,6 +233,49 @@ void main() {
 }
 )";
 
+constexpr const char* SevenSegmentVertexShader = R"(
+const vec2 positions[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+void main() { gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0); }
+)";
+
+constexpr const char* SevenSegmentFragmentShader = R"(
+layout(set=0, binding=0, std140) uniform FpsConstants { uvec4 values; };
+layout(location = 0) out vec4 color;
+bool isSegmentPixel(uvec2 pixel, uint digit, uint digitIndex) {
+    const uint masks[10] = uint[10](0x3fu, 0x06u, 0x5bu, 0x4fu, 0x66u,
+                                    0x6du, 0x7du, 0x07u, 0x7fu, 0x6fu);
+    const uint originX = values.y - 60u - digitIndex * 30u;
+    const uint originY = 4u;
+    if (pixel.x < originX || pixel.y < originY) return false;
+    const uint x = pixel.x - originX;
+    const uint y = pixel.y - originY;
+    const uint width = 20u;
+    const uint height = 36u;
+    if (x >= width || y >= height) return false;
+    const uint mask = masks[digit];
+    return ((mask & 0x01u) != 0u && y == 0u) ||
+           ((mask & 0x02u) != 0u && x == width - 1u && y <= height / 2u) ||
+           ((mask & 0x04u) != 0u && x == width - 1u && y >= height / 2u) ||
+           ((mask & 0x08u) != 0u && y == height - 1u) ||
+           ((mask & 0x10u) != 0u && x == 0u && y >= height / 2u) ||
+           ((mask & 0x20u) != 0u && x == 0u && y <= height / 2u) ||
+           ((mask & 0x40u) != 0u && y == height / 2u);
+}
+void main() {
+    const uvec2 pixel = uvec2(uint(gl_FragCoord.x), values.z - 1u - uint(gl_FragCoord.y));
+    const uint digitCount = values.x >= 100u ? 3u : (values.x >= 10u ? 2u : 1u);
+    bool lit = false;
+    for (uint index = 0u; index < digitCount; ++index) {
+        const uint divisor = index == 0u ? 1u : (index == 1u ? 10u : 100u);
+        lit = lit || isSegmentPixel(pixel, (values.x / divisor) % 10u, index);
+    }
+    if (!lit) discard;
+    const vec3 digitColor = values.x > 50u ? vec3(0.3, 1.0, 0.3) :
+                            (values.x > 30u ? vec3(1.0, 0.6, 0.0) : vec3(1.0, 0.2, 0.2));
+    color = vec4(digitColor, 1.0);
+}
+)";
+
 constexpr const char* ParticleComputeShader = R"(
 struct Particle { vec4 position; uint color; float speed; uint isRing; uint padding; };
 layout(set=0, binding=0, std430) readonly buffer gParticlesIn { Particle particlesIn[]; } particleInput;
@@ -285,6 +328,10 @@ struct Star {
     float colorAndSeed[4];
 };
 
+struct SevenSegmentConstants {
+    std::uint32_t values[4];
+};
+
 struct ParticleInitializationConstants {
     std::uint32_t particleCount;
     std::uint32_t seed;
@@ -307,6 +354,7 @@ static_assert(sizeof(Particle) == 32);
 static_assert(sizeof(ParticleComputeConstants) == 16);
 static_assert(sizeof(ParticleRenderConstants) == 32);
 static_assert(sizeof(Star) == 32);
+static_assert(sizeof(SevenSegmentConstants) == 16);
 static_assert(sizeof(ParticleInitializationConstants) == 16);
 static_assert(sizeof(ToneMapConstants) == 16);
 static_assert(sizeof(AcrylicConstants) == 32);
@@ -428,6 +476,7 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
     if (!CreateToneMapPipeline(error)) return false;
     if (!CreateBloomPipelines(error)) return false;
     if (!CreateAcrylicPipeline(error)) return false;
+    if (!CreateSevenSegmentPipeline(error)) return false;
     if (!sceneIndirectArguments_) {
         const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
         try {
@@ -731,6 +780,21 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->Draw(draw);
         return true;
     });
+    const auto sevenSegment = graph.AddPass("vulkan-seven-segment", [&] {
+        const SevenSegmentConstants values{{framesPerSecond_, description.Width, description.Height, 0}};
+        UpdateBuffer(sevenSegmentConstants_, 0, std::as_bytes(std::span{&values, 1}));
+        auto* renderTargetView = target;
+        context->SetRenderTargets(1, &renderTargetView, nullptr,
+                                  ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(sevenSegmentPipeline_));
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(sevenSegmentBinding_),
+                                       ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ::Diligent::DrawAttribs draw;
+        draw.NumVertices = 3;
+        draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(draw);
+        return true;
+    });
     const auto imgui = graph.AddPass("vulkan-imgui", [&] {
         if (imgui_ != nullptr) imgui_->Render(context, target);
         return true;
@@ -781,6 +845,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Read(acrylic, bloom, ResourceUsage::ShaderRead);
     graph.Read(acrylic, uiWeak, ResourceUsage::ShaderRead);
     graph.Write(acrylic, drawable, ResourceUsage::RenderTarget);
+    graph.Read(sevenSegment, drawable, ResourceUsage::RenderTarget);
+    graph.Write(sevenSegment, drawable, ResourceUsage::RenderTarget);
     graph.Read(imgui, drawable, ResourceUsage::RenderTarget);
     graph.Write(imgui, drawable, ResourceUsage::RenderTarget);
     graph.Read(capture, drawable, ResourceUsage::ShaderRead);
@@ -846,6 +912,10 @@ void DiligentVulkanAdapter::SetParticleSettings(std::uint32_t particleCount, boo
 void DiligentVulkanAdapter::SetGestureState(bool tracked, float scale) noexcept {
     handTracked_ = tracked;
     handScale_ = std::clamp(scale, 0.1f, 10.0f);
+}
+
+void DiligentVulkanAdapter::SetFramesPerSecond(std::uint32_t framesPerSecond) noexcept {
+    framesPerSecond_ = std::min(framesPerSecond, 999u);
 }
 
 void DiligentVulkanAdapter::SetSceneSettings(const App::SceneState& scene,
@@ -1421,6 +1491,78 @@ bool DiligentVulkanAdapter::CreateAcrylicPipeline(std::string& error) {
     return true;
 }
 
+bool DiligentVulkanAdapter::CreateSevenSegmentPipeline(std::string& error) {
+    if (sevenSegmentPipeline_ != nullptr) return true;
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::ShaderCreateInfo shader{};
+    shader.SourceLanguage = ::Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
+    shader.EntryPoint = "main";
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_VERTEX;
+    shader.Desc.Name = "ParticleSaturn Vulkan Seven Segment VS";
+    shader.Source = SevenSegmentVertexShader;
+    ::Diligent::IShader* vertex = nullptr;
+    device->CreateShader(shader, &vertex);
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+    shader.Desc.Name = "ParticleSaturn Vulkan Seven Segment PS";
+    shader.Source = SevenSegmentFragmentShader;
+    ::Diligent::IShader* fragment = nullptr;
+    device->CreateShader(shader, &fragment);
+    if (vertex == nullptr || fragment == nullptr) {
+        if (vertex != nullptr) vertex->Release();
+        if (fragment != nullptr) fragment->Release();
+        error = "Diligent Vulkan could not compile seven-segment shaders";
+        return false;
+    }
+    const ::Diligent::ShaderResourceVariableDesc variable{
+        ::Diligent::SHADER_TYPE_PIXEL, "FpsConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC};
+    ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Seven Segment";
+    pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
+    pipeline.PSODesc.ResourceLayout.Variables = &variable;
+    pipeline.PSODesc.ResourceLayout.NumVariables = 1;
+    pipeline.GraphicsPipeline.NumRenderTargets = 1;
+    pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
+    pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+    pipeline.pVS = vertex;
+    pipeline.pPS = fragment;
+    ::Diligent::IPipelineState* state = nullptr;
+    device->CreateGraphicsPipelineState(pipeline, &state);
+    vertex->Release();
+    fragment->Release();
+    if (state == nullptr) {
+        error = "Diligent Vulkan could not create seven-segment pipeline";
+        return false;
+    }
+    const SevenSegmentConstants values{{60, 1, 1, 0}};
+    try {
+        sevenSegmentConstants_ = CreateBuffer(
+            {sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
+    } catch (const std::exception& exception) {
+        state->Release();
+        error = exception.what();
+        return false;
+    }
+    auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "FpsConstants");
+    if (constants == nullptr) {
+        state->Release();
+        error = "Diligent Vulkan seven-segment constants unavailable";
+        return false;
+    }
+    constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(sevenSegmentConstants_)));
+    ::Diligent::IShaderResourceBinding* binding = nullptr;
+    state->CreateShaderResourceBinding(&binding, true);
+    if (binding == nullptr) {
+        state->Release();
+        error = "Diligent Vulkan seven-segment binding unavailable";
+        return false;
+    }
+    sevenSegmentPipeline_ = state;
+    sevenSegmentBinding_ = binding;
+    return true;
+}
+
 bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     if (device_ == nullptr || swapChain_ == nullptr) {
         error = "Diligent Vulkan scene pipeline requires a device and swap chain";
@@ -1910,6 +2052,14 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(acrylicPipeline_)->Release();
         acrylicPipeline_ = nullptr;
     }
+    if (sevenSegmentBinding_ != nullptr) {
+        static_cast<::Diligent::IShaderResourceBinding*>(sevenSegmentBinding_)->Release();
+        sevenSegmentBinding_ = nullptr;
+    }
+    if (sevenSegmentPipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(sevenSegmentPipeline_)->Release();
+        sevenSegmentPipeline_ = nullptr;
+    }
     bloomDownsampleTextureVariable_ = nullptr;
     bloomBlurTextureVariable_ = nullptr;
     if (bloomTexture_ != nullptr) static_cast<::Diligent::ITexture*>(bloomTexture_)->Release();
@@ -1941,6 +2091,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     toneMapConstants_ = {};
     bloomConstants_ = {};
     acrylicConstants_ = {};
+    sevenSegmentConstants_ = {};
     particleBuffers_[0] = {};
     particleBuffers_[1] = {};
     particleBuffers_[2] = {};
@@ -1964,6 +2115,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     densityCompensation_ = 0.6f;
     bloomEnabled_ = true;
     bloomBlurStrength_ = 2.0f;
+    framesPerSecond_ = 60;
     uiBlurEnabled_ = true;
     uiBlurStrength_ = 2.0f;
     uiDarkMode_ = true;

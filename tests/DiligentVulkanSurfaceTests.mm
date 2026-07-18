@@ -41,6 +41,7 @@ int main(int argc, char* argv[]) {
         frameState.render.bloomBlurStrength = 2.0f;
         adapter.SetSceneSettings(frameState.scene, frameState.render);
         adapter.SetGestureState(true, 1.4f);
+        adapter.SetFramesPerSecond(24);
         adapter.SetAcrylicSettings(true, 2.0f, true);
         assert(presentUiFrame(argv[2]));
         const auto resizedWidth = drawable.width > 2 ? drawable.width - 1 : drawable.width + 1;
@@ -54,6 +55,7 @@ int main(int argc, char* argv[]) {
         assert(presentUiFrame("acrylic-disabled"));
         adapter.SetParticleSettings(512, true);
         adapter.SetGestureState(false, 1.0f);
+        adapter.SetFramesPerSecond(120);
         frameState.render.bloomEnabled = true;
         frameState.render.bloomBlurStrength = 5.0f;
         adapter.SetSceneSettings(frameState.scene, frameState.render);
