@@ -1078,6 +1078,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：修复 KosmicKrisp 未进入构建包的问题。顶层 macOS 配置现在自动发现 `~/.local/share/kosmickrisp-mc`、Homebrew 候选目录中的驱动，统一把路径传给资源复制和测试注册；没有独立 JSON 时继续生成包内相对路径 `KosmicKrisp_icd.json`。当前包已包含 Loader、MoltenVK、KosmicKrisp 动态库和两个 ICD，CTest 已注册 KosmicKrisp 表面与主应用测试。两个 KosmicKrisp 测试以及完整 20 项 CTest 均通过。实例化矩形管线拓扑同步修正为 `TRIANGLE_LIST`。
 
+进展补充（2026-07-18）：Vulkan 场景与粒子现写入独立 `RGBA16F` HDR 离屏纹理，新增全屏色调映射通道将其采样并输出到交换链；渲染图资源依赖已从场景直接写后缓冲改为 `scene → hdr → tone-map → present`。色调映射使用共享 Diligent GLSL、固定线性采样器和零 Bloom 强度，MoltenVK/KosmicKrisp 的表面与主应用冒烟以及完整 20 项 CTest 均通过。亮部提取、Kawase 模糊、Acrylic 和 ImGui 仍待接入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

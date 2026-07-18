@@ -144,9 +144,16 @@ struct ParticleInitializationConstants {
     float padding;
 };
 
+struct ToneMapConstants {
+    float bloomStrength;
+    float transparent;
+    float padding[2];
+};
+
 static_assert(sizeof(Particle) == 32);
 static_assert(sizeof(ParticleComputeConstants) == 16);
 static_assert(sizeof(ParticleInitializationConstants) == 16);
+static_assert(sizeof(ToneMapConstants) == 16);
 
 constexpr std::uint32_t MaxParticleCount = 1'200'000;
 
@@ -242,12 +249,18 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
         return false;
     }
     swapChain_ = swapChain;
+    if (!CreateHdrTargets(width, height, error)) {
+        static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
+        swapChain_ = nullptr;
+        return false;
+    }
     if (!CreateScenePipeline(error)) {
         static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
         swapChain_ = nullptr;
         return false;
     }
     if (!CreateParticlePipeline(error)) return false;
+    if (!CreateToneMapPipeline(error)) return false;
     if (!sceneIndirectArguments_) {
         const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
         try {
@@ -271,8 +284,10 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
 
 bool DiligentVulkanAdapter::ResizeSwapChain(std::uint32_t width, std::uint32_t height) {
     if (swapChain_ == nullptr || width == 0 || height == 0) return false;
+    static_cast<::Diligent::IDeviceContext*>(context_)->Flush();
     static_cast<::Diligent::ISwapChain*>(swapChain_)->Resize(width, height);
-    return true;
+    std::string error;
+    return CreateHdrTargets(width, height, error);
 }
 
 bool DiligentVulkanAdapter::PresentClearFrame(const float color[4], std::uint32_t syncInterval) {
@@ -297,12 +312,14 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     auto& commands = BeginCommands();
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
+    const auto hdr = graph.AddResource({"vulkan-hdr-scene", {description.Width, description.Height, 1}});
     const auto particles = graph.AddResource({"vulkan-particles", {1, 1, 1}});
     const auto simulation = graph.AddPass("vulkan-particle-simulation", [&] {
         return SimulateParticles(commands);
     });
     const auto scene = graph.AddPass("vulkan-scene", [&] {
-        context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        auto* hdrTarget = static_cast<::Diligent::ITextureView*>(hdrRenderTarget_);
+        context->SetRenderTargets(1, &hdrTarget, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
         commands.DrawIndirect(sceneIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
@@ -310,6 +327,20 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         static_cast<::Diligent::IShaderResourceVariable*>(particleRenderVariable_)->Set(particleView);
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         commands.DrawIndirect(particleIndirectArguments_, 0);
+        return true;
+    });
+    const auto toneMap = graph.AddPass("vulkan-tone-map", [&] {
+        context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(toneMapPipeline_));
+        auto* hdrView = static_cast<::Diligent::ITextureView*>(hdrShaderResource_);
+        static_cast<::Diligent::IShaderResourceVariable*>(toneMapTextureVariable_)->Set(hdrView);
+        static_cast<::Diligent::IShaderResourceVariable*>(toneMapBloomVariable_)->Set(hdrView);
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(toneMapBinding_),
+                                       ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ::Diligent::DrawAttribs draw;
+        draw.NumVertices = 4;
+        draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(draw);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
@@ -320,7 +351,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Read(simulation, particles, ResourceUsage::ShaderRead);
     graph.Write(simulation, particles, ResourceUsage::ShaderWrite);
     graph.Read(scene, particles, ResourceUsage::ShaderRead);
-    graph.Write(scene, drawable, ResourceUsage::RenderTarget);
+    graph.Write(scene, hdr, ResourceUsage::RenderTarget);
+    graph.Read(toneMap, hdr, ResourceUsage::ShaderRead);
+    graph.Write(toneMap, drawable, ResourceUsage::RenderTarget);
     graph.Read(present, drawable, ResourceUsage::Present);
     return graph.Execute();
 }
@@ -486,6 +519,121 @@ void DiligentVulkanAdapter::ReleaseRetiredBuffers() noexcept {
     }
 }
 
+bool DiligentVulkanAdapter::CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error) {
+    if (device_ == nullptr || width == 0 || height == 0) return false;
+    if (hdrTexture_ != nullptr) {
+        static_cast<::Diligent::ITexture*>(hdrTexture_)->Release();
+        hdrTexture_ = nullptr;
+        hdrRenderTarget_ = nullptr;
+        hdrShaderResource_ = nullptr;
+    }
+    ::Diligent::TextureDesc description;
+    description.Name = "ParticleSaturn Vulkan HDR scene";
+    description.Type = ::Diligent::RESOURCE_DIM_TEX_2D;
+    description.Width = width;
+    description.Height = height;
+    description.Format = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
+    description.BindFlags = ::Diligent::BIND_RENDER_TARGET | ::Diligent::BIND_SHADER_RESOURCE;
+    ::Diligent::ITexture* texture = nullptr;
+    static_cast<::Diligent::IRenderDevice*>(device_)->CreateTexture(description, nullptr, &texture);
+    if (texture == nullptr) {
+        error = "Diligent Vulkan could not create the HDR scene target";
+        return false;
+    }
+    hdrTexture_ = texture;
+    hdrRenderTarget_ = texture->GetDefaultView(::Diligent::TEXTURE_VIEW_RENDER_TARGET);
+    hdrShaderResource_ = texture->GetDefaultView(::Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+    if (hdrRenderTarget_ == nullptr || hdrShaderResource_ == nullptr) {
+        texture->Release();
+        hdrTexture_ = nullptr;
+        hdrRenderTarget_ = nullptr;
+        hdrShaderResource_ = nullptr;
+        error = "Diligent Vulkan could not create HDR scene views";
+        return false;
+    }
+    return true;
+}
+
+bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
+    if (toneMapPipeline_ != nullptr) return true;
+    const auto sources = Render::GetFullscreenQuadShaderSources(Render::Backend::Vulkan);
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::ShaderCreateInfo shader{};
+    shader.SourceLanguage = sources.Language;
+    shader.EntryPoint = "main";
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_VERTEX;
+    shader.Desc.Name = "ParticleSaturn Vulkan Tone Map VS";
+    shader.Source = sources.Vertex;
+    ::Diligent::IShader* vertex = nullptr;
+    device->CreateShader(shader, &vertex);
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+    shader.Desc.Name = "ParticleSaturn Vulkan Tone Map PS";
+    shader.Source = sources.Fragment;
+    ::Diligent::IShader* fragment = nullptr;
+    device->CreateShader(shader, &fragment);
+    if (vertex == nullptr || fragment == nullptr) {
+        if (vertex != nullptr) vertex->Release();
+        if (fragment != nullptr) fragment->Release();
+        error = "Diligent Vulkan could not compile tone map shaders";
+        return false;
+    }
+    const ::Diligent::ShaderResourceVariableDesc variables[] = {
+        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "BloomCB", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+    ::Diligent::SamplerDesc sampler;
+    sampler.MinFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.MagFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.MipFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.AddressU = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    const ::Diligent::ImmutableSamplerDesc immutableSamplers[] = {
+        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", sampler},
+        {::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture", sampler},
+    };
+    ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Tone Map";
+    pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
+    pipeline.PSODesc.ResourceLayout.Variables = variables;
+    pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
+    pipeline.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
+    pipeline.PSODesc.ResourceLayout.NumImmutableSamplers = static_cast<::Diligent::Uint32>(std::size(immutableSamplers));
+    pipeline.GraphicsPipeline.NumRenderTargets = 1;
+    pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
+    pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+    pipeline.pVS = vertex;
+    pipeline.pPS = fragment;
+    ::Diligent::IPipelineState* state = nullptr;
+    device->CreateGraphicsPipelineState(pipeline, &state);
+    vertex->Release();
+    fragment->Release();
+    if (state == nullptr) { error = "Diligent Vulkan could not create tone map pipeline"; return false; }
+    auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BloomCB");
+    if (constants == nullptr) { state->Release(); error = "Diligent Vulkan tone map constants unavailable"; return false; }
+    const ToneMapConstants values{0.0f, 0.0f, {0.0f, 0.0f}};
+    toneMapConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
+    constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(toneMapConstants_)));
+    ::Diligent::IShaderResourceBinding* binding = nullptr;
+    state->CreateShaderResourceBinding(&binding, true);
+    auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_Texture");
+    auto* bloom = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture");
+    if (binding == nullptr || texture == nullptr || bloom == nullptr) {
+        if (binding != nullptr) binding->Release();
+        state->Release();
+        error = "Diligent Vulkan tone map bindings unavailable";
+        return false;
+    }
+    toneMapPipeline_ = state;
+    toneMapBinding_ = binding;
+    toneMapTextureVariable_ = texture;
+    toneMapBloomVariable_ = bloom;
+    return true;
+}
+
 bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     if (device_ == nullptr || swapChain_ == nullptr) {
         error = "Diligent Vulkan scene pipeline requires a device and swap chain";
@@ -515,7 +663,7 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     pipeline.PSODesc.Name = "ParticleSaturn Vulkan Scene";
     pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
     pipeline.GraphicsPipeline.NumRenderTargets = 1;
-    pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+    pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
     pipeline.GraphicsPipeline.DSVFormat = ::Diligent::TEX_FORMAT_UNKNOWN;
     pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
@@ -606,7 +754,7 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     pipeline.PSODesc.ResourceLayout.Variables = variables;
     pipeline.PSODesc.ResourceLayout.NumVariables = 1;
     pipeline.GraphicsPipeline.NumRenderTargets = 1;
-    pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+    pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
     pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
     pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
@@ -705,16 +853,17 @@ bool DiligentVulkanAdapter::CreateParticleInitializationPipeline(std::string& er
     static_cast<::Diligent::IRenderDevice*>(device_)->CreateComputePipelineState(pipeline, &state);
     compute->Release();
     if (state == nullptr) { error = "Diligent Vulkan could not create particle initialization pipeline"; return false; }
-    ::Diligent::IShaderResourceBinding* binding = nullptr;
-    state->CreateShaderResourceBinding(&binding, true);
-    auto* output = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "g_ParticlesOut");
     auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "InitConstants");
-    if (binding == nullptr || output == nullptr || constants == nullptr) {
-        if (binding != nullptr) binding->Release(); state->Release(); error = "Diligent Vulkan particle initialization bindings unavailable"; return false;
-    }
+    if (constants == nullptr) { state->Release(); error = "Diligent Vulkan initialization constants unavailable"; return false; }
     const ParticleInitializationConstants values{MaxParticleCount, 0x53415455u, 18.0f, 0.0f};
     particleInitializationConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
     constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleInitializationConstants_)));
+    ::Diligent::IShaderResourceBinding* binding = nullptr;
+    state->CreateShaderResourceBinding(&binding, true);
+    auto* output = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "g_ParticlesOut");
+    if (binding == nullptr || output == nullptr) {
+        if (binding != nullptr) binding->Release(); state->Release(); error = "Diligent Vulkan particle initialization bindings unavailable"; return false;
+    }
     particleInitializationPipeline_ = state;
     particleInitializationBinding_ = binding;
     particleInitializationOutputVariable_ = output;
@@ -770,6 +919,22 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(scenePipeline_)->Release();
         scenePipeline_ = nullptr;
     }
+    if (toneMapBinding_ != nullptr) {
+        static_cast<::Diligent::IShaderResourceBinding*>(toneMapBinding_)->Release();
+        toneMapBinding_ = nullptr;
+    }
+    if (toneMapPipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(toneMapPipeline_)->Release();
+        toneMapPipeline_ = nullptr;
+    }
+    toneMapTextureVariable_ = nullptr;
+    toneMapBloomVariable_ = nullptr;
+    if (hdrTexture_ != nullptr) {
+        static_cast<::Diligent::ITexture*>(hdrTexture_)->Release();
+        hdrTexture_ = nullptr;
+        hdrRenderTarget_ = nullptr;
+        hdrShaderResource_ = nullptr;
+    }
     particleRenderVariable_ = nullptr;
     if (particleBinding_ != nullptr) { static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_)->Release(); particleBinding_ = nullptr; }
     if (particlePipeline_ != nullptr) { static_cast<::Diligent::IPipelineState*>(particlePipeline_)->Release(); particlePipeline_ = nullptr; }
@@ -786,6 +951,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     }
     buffers_.clear();
     sceneIndirectArguments_ = {};
+    toneMapConstants_ = {};
     particleBuffers_[0] = {};
     particleBuffers_[1] = {};
     particleBuffers_[2] = {};

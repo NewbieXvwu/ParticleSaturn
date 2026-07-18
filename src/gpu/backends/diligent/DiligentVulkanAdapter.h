@@ -47,6 +47,8 @@ private:
 
     bool CreateScenePipeline(std::string& error);
     bool CreateParticlePipeline(std::string& error);
+    bool CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error);
+    bool CreateToneMapPipeline(std::string& error);
     bool CreateParticleInitializationPipeline(std::string& error);
     bool CreateParticleComputePipeline(std::string& error);
     bool SimulateParticles(CommandList& commands);
@@ -61,6 +63,13 @@ private:
     void* context_ = nullptr;
     void* swapChain_ = nullptr;
     void* scenePipeline_ = nullptr;
+    void* hdrTexture_ = nullptr;
+    void* hdrRenderTarget_ = nullptr;
+    void* hdrShaderResource_ = nullptr;
+    void* toneMapPipeline_ = nullptr;
+    void* toneMapBinding_ = nullptr;
+    void* toneMapTextureVariable_ = nullptr;
+    void* toneMapBloomVariable_ = nullptr;
     void* particlePipeline_ = nullptr;
     void* particleBinding_ = nullptr;
     void* particleRenderVariable_ = nullptr;
@@ -73,6 +82,7 @@ private:
     void* particleInitializationOutputVariable_ = nullptr;
     void* particleInitializationConstantsVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
+    BufferHandle toneMapConstants_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
     BufferHandle particleInitializationConstants_{};
