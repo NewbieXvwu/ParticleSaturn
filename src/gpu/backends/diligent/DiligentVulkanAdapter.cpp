@@ -14,6 +14,7 @@
 #include <MacOSNativeWindow.h>
 
 #include <array>
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -322,6 +323,13 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
 
 std::string_view DiligentVulkanAdapter::Name() const noexcept {
     return adapterName_;
+}
+
+void DiligentVulkanAdapter::SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept {
+    const auto clampedCount = std::clamp(particleCount, 1u, MaxParticleCount);
+    particleCountDirty_ = particleCountDirty_ || particleCount_ != clampedCount;
+    particleCount_ = clampedCount;
+    particlePaused_ = paused;
 }
 
 BufferHandle DiligentVulkanAdapter::CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) {
@@ -714,7 +722,14 @@ bool DiligentVulkanAdapter::SimulateParticles(CommandList& commands) {
     const auto input = particleBuffers_[particleReadIndex_];
     const auto output = particleBuffers_[particleWriteIndex_];
     if (!input || !output || !particleComputeConstants_) return false;
-    const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, MaxParticleCount};
+    if (particleCountDirty_) {
+        UpdateBuffer(particleIndirectArguments_, 0, std::as_bytes(std::span{&particleCount_, 1}));
+        commands.Transition(particleIndirectArguments_, ResourceUsage::CopyDestination,
+                            ResourceUsage::IndirectArgument);
+        particleCountDirty_ = false;
+    }
+    if (particlePaused_) return true;
+    const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, particleCount_};
     UpdateBuffer(particleComputeConstants_, 0, std::as_bytes(std::span{&constants, 1}));
     const auto outputUsage = buffers_[output.index].usage;
     commands.Transition(output, outputUsage, ResourceUsage::ShaderWrite);
@@ -776,6 +791,9 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     particleRenderIndex_ = 0;
     particleReadIndex_ = 1;
     particleWriteIndex_ = 2;
+    particleCount_ = MaxParticleCount;
+    particlePaused_ = false;
+    particleCountDirty_ = false;
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;

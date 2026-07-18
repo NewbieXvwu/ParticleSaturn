@@ -123,6 +123,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 appliedVsync = mutableState.render.vsyncMode;
             }
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
+            adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
             if (!adapter.PresentSceneFrame(syncInterval)) {
                 ReportStartupFailure("present", "Vulkan frame presentation failed");
                 host.RequestExit();
