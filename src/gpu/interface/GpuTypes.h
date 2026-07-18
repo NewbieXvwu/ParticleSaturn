@@ -46,6 +46,7 @@ enum class ResourceUsage : std::uint8_t {
     CopyDestination,
     ShaderRead,
     ShaderWrite,
+    IndirectArgument,
     RenderTarget,
     Present,
 };

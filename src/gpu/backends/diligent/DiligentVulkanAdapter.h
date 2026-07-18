@@ -54,6 +54,7 @@ private:
     void* context_ = nullptr;
     void* swapChain_ = nullptr;
     void* scenePipeline_ = nullptr;
+    BufferHandle sceneIndirectArguments_{};
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;

@@ -12,6 +12,7 @@
 #include <SwapChain.h>
 #include <MacOSNativeWindow.h>
 
+#include <array>
 #include <stdexcept>
 
 namespace ParticleSaturn::Gpu::Diligent {
@@ -70,6 +71,7 @@ void main() {
         case ResourceUsage::CopyDestination: return ::Diligent::RESOURCE_STATE_COPY_DEST;
         case ResourceUsage::ShaderRead: return ::Diligent::RESOURCE_STATE_SHADER_RESOURCE;
         case ResourceUsage::ShaderWrite: return ::Diligent::RESOURCE_STATE_UNORDERED_ACCESS;
+        case ResourceUsage::IndirectArgument: return ::Diligent::RESOURCE_STATE_INDIRECT_ARGUMENT;
         case ResourceUsage::RenderTarget:
         case ResourceUsage::Present:
             throw std::invalid_argument{"a buffer cannot use a texture-only resource state"};
@@ -159,6 +161,23 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
         swapChain_ = nullptr;
         return false;
     }
+    if (!sceneIndirectArguments_) {
+        const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
+        try {
+            sceneIndirectArguments_ = CreateBuffer(
+                {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
+            auto& commands = BeginCommands();
+            commands.Transition(sceneIndirectArguments_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
+            static_cast<void>(Submit(commands));
+        } catch (const std::exception& exception) {
+            error = exception.what();
+            static_cast<::Diligent::IPipelineState*>(scenePipeline_)->Release();
+            scenePipeline_ = nullptr;
+            static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
+            swapChain_ = nullptr;
+            return false;
+        }
+    }
     error.clear();
     return true;
 }
@@ -184,21 +203,20 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     if (swapChain_ == nullptr || scenePipeline_ == nullptr || context_ == nullptr) return false;
     auto* swapChain = static_cast<::Diligent::ISwapChain*>(swapChain_);
     auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
+    auto* target = swapChain->GetCurrentBackBufferRTV();
+    if (target == nullptr || !sceneIndirectArguments_) return false;
     const auto& description = swapChain->GetDesc();
+    auto& commands = BeginCommands();
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
     const auto scene = graph.AddPass("vulkan-scene", [&] {
-        auto* target = swapChain->GetCurrentBackBufferRTV();
-        if (target == nullptr) return false;
         context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
-        ::Diligent::DrawAttribs draw{};
-        draw.NumVertices = 3;
-        draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
-        context->Draw(draw);
+        commands.DrawIndirect(sceneIndirectArguments_, 0);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
+        static_cast<void>(Submit(commands));
         swapChain->Present(syncInterval);
         return true;
     });
@@ -304,8 +322,19 @@ void DiligentVulkanAdapter::Transition(TextureHandle, ResourceUsage, ResourceUsa
     throw std::logic_error{"Diligent Vulkan texture transitions are not available yet"};
 }
 
-void DiligentVulkanAdapter::DrawIndirect(BufferHandle, std::size_t) {
-    throw std::logic_error{"Diligent Vulkan indirect drawing is not available through the shared device yet"};
+void DiligentVulkanAdapter::DrawIndirect(BufferHandle arguments, std::size_t offset) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before recording an indirect draw"};
+    if (offset % sizeof(std::uint32_t) != 0) throw std::invalid_argument{"indirect draw offset must be aligned to 4 bytes"};
+    auto* nativeBuffer = static_cast<::Diligent::IBuffer*>(ResolveBuffer(arguments));
+    if (buffers_[arguments.index].usage != ResourceUsage::IndirectArgument) {
+        throw std::logic_error{"indirect draw arguments must be transitioned to the indirect-argument state"};
+    }
+    ::Diligent::DrawIndirectAttribs draw;
+    draw.pAttribsBuffer = nativeBuffer;
+    draw.DrawArgsOffset = static_cast<::Diligent::Uint64>(offset);
+    draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+    draw.AttribsBufferStateTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_NONE;
+    static_cast<::Diligent::IDeviceContext*>(context_)->DrawIndirect(draw);
 }
 
 void DiligentVulkanAdapter::Dispatch(std::uint32_t, std::uint32_t, std::uint32_t) {
@@ -402,6 +431,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         if (entry.buffer != nullptr) static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
     }
     buffers_.clear();
+    sceneIndirectArguments_ = {};
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;
