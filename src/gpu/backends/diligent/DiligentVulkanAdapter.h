@@ -49,6 +49,7 @@ private:
     bool CreateParticlePipeline(std::string& error);
     bool CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error);
     bool CreateToneMapPipeline(std::string& error);
+    bool CreateBloomPipelines(std::string& error);
     bool CreateParticleInitializationPipeline(std::string& error);
     bool CreateParticleComputePipeline(std::string& error);
     bool SimulateParticles(CommandList& commands);
@@ -66,6 +67,18 @@ private:
     void* hdrTexture_ = nullptr;
     void* hdrRenderTarget_ = nullptr;
     void* hdrShaderResource_ = nullptr;
+    void* bloomTexture_ = nullptr;
+    void* bloomRenderTarget_ = nullptr;
+    void* bloomShaderResource_ = nullptr;
+    void* bloomPingTexture_ = nullptr;
+    void* bloomPingRenderTarget_ = nullptr;
+    void* bloomPingShaderResource_ = nullptr;
+    void* bloomDownsamplePipeline_ = nullptr;
+    void* bloomDownsampleBinding_ = nullptr;
+    void* bloomDownsampleTextureVariable_ = nullptr;
+    void* bloomBlurPipeline_ = nullptr;
+    void* bloomBlurBinding_ = nullptr;
+    void* bloomBlurTextureVariable_ = nullptr;
     void* toneMapPipeline_ = nullptr;
     void* toneMapBinding_ = nullptr;
     void* toneMapTextureVariable_ = nullptr;
@@ -83,6 +96,7 @@ private:
     void* particleInitializationConstantsVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
     BufferHandle toneMapConstants_{};
+    BufferHandle bloomConstants_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
     BufferHandle particleInitializationConstants_{};

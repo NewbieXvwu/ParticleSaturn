@@ -1080,6 +1080,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 场景与粒子现写入独立 `RGBA16F` HDR 离屏纹理，新增全屏色调映射通道将其采样并输出到交换链；渲染图资源依赖已从场景直接写后缓冲改为 `scene → hdr → tone-map → present`。色调映射使用共享 Diligent GLSL、固定线性采样器和零 Bloom 强度，MoltenVK/KosmicKrisp 的表面与主应用冒烟以及完整 20 项 CTest 均通过。亮部提取、Kawase 模糊、Acrylic 和 ImGui 仍待接入。
 
+进展补充（2026-07-18）：Vulkan 现接入共享 Diligent 亮部提取和 Kawase 模糊源码，创建 1/6 分辨率 `RGBA16F` 强光纹理与乒乓纹理，渲染图按 `scene → hdr → bloom-downsample → 7 轮 bloom-blur → tone-map → present` 执行，色调映射以 `0.5` 强度叠加最终 Bloom。两个 Vulkan ICD 的表面/主应用测试均通过，手势工作线程测试曾出现一次瞬态断言，单独重跑通过。Acrylic、ImGui 仍待接入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

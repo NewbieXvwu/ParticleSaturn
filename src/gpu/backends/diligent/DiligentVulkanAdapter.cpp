@@ -261,6 +261,7 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
     }
     if (!CreateParticlePipeline(error)) return false;
     if (!CreateToneMapPipeline(error)) return false;
+    if (!CreateBloomPipelines(error)) return false;
     if (!sceneIndirectArguments_) {
         const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
         try {
@@ -313,6 +314,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
     const auto hdr = graph.AddResource({"vulkan-hdr-scene", {description.Width, description.Height, 1}});
+    const auto bloom = graph.AddResource({"vulkan-bloom", {std::max(1u, description.Width / 6u), std::max(1u, description.Height / 6u), 1}});
     const auto particles = graph.AddResource({"vulkan-particles", {1, 1, 1}});
     const auto simulation = graph.AddPass("vulkan-particle-simulation", [&] {
         return SimulateParticles(commands);
@@ -329,12 +331,61 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         commands.DrawIndirect(particleIndirectArguments_, 0);
         return true;
     });
+    void* bloomOutputView = bloomShaderResource_;
+    const auto downsample = graph.AddPass("vulkan-bloom-downsample", [&] {
+        const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
+            1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
+            1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 1.0f};
+        UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
+        auto* renderTargetView = static_cast<::Diligent::ITextureView*>(bloomRenderTarget_);
+        context->SetRenderTargets(1, &renderTargetView, nullptr,
+                                  ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(bloomDownsamplePipeline_));
+        static_cast<::Diligent::IShaderResourceVariable*>(bloomDownsampleTextureVariable_)->Set(
+            static_cast<::Diligent::ITextureView*>(hdrShaderResource_));
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(bloomDownsampleBinding_),
+                                       ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ::Diligent::DrawAttribs draw;
+        draw.NumVertices = 4;
+        draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(draw);
+        bloomOutputView = bloomShaderResource_;
+        return true;
+    });
+    constexpr std::array<float, 7> bloomOffsets{0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    std::vector<std::uint32_t> blurPasses;
+    blurPasses.reserve(bloomOffsets.size());
+    for (std::uint32_t index = 0; index < bloomOffsets.size(); ++index) {
+        blurPasses.push_back(graph.AddPass("vulkan-bloom-blur-" + std::to_string(index), [&, index] {
+            const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
+                1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
+                1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, bloomOffsets[index], 0.0f};
+            UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
+            void* renderTarget = index % 2 == 0 ? bloomPingRenderTarget_ : bloomRenderTarget_;
+            void* shaderResource = index % 2 == 0 ? bloomPingShaderResource_ : bloomShaderResource_;
+            auto* renderTargetView = static_cast<::Diligent::ITextureView*>(renderTarget);
+            context->SetRenderTargets(1, &renderTargetView, nullptr,
+                                      ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(bloomBlurPipeline_));
+            static_cast<::Diligent::IShaderResourceVariable*>(bloomBlurTextureVariable_)->Set(
+                static_cast<::Diligent::ITextureView*>(bloomOutputView));
+            context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(bloomBlurBinding_),
+                                           ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            ::Diligent::DrawAttribs draw;
+            draw.NumVertices = 4;
+            draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+            context->Draw(draw);
+            bloomOutputView = shaderResource;
+            return true;
+        }));
+    }
     const auto toneMap = graph.AddPass("vulkan-tone-map", [&] {
         context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(toneMapPipeline_));
         auto* hdrView = static_cast<::Diligent::ITextureView*>(hdrShaderResource_);
         static_cast<::Diligent::IShaderResourceVariable*>(toneMapTextureVariable_)->Set(hdrView);
-        static_cast<::Diligent::IShaderResourceVariable*>(toneMapBloomVariable_)->Set(hdrView);
+        static_cast<::Diligent::IShaderResourceVariable*>(toneMapBloomVariable_)->Set(
+            static_cast<::Diligent::ITextureView*>(bloomOutputView));
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(toneMapBinding_),
                                        ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         ::Diligent::DrawAttribs draw;
@@ -352,7 +403,14 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Write(simulation, particles, ResourceUsage::ShaderWrite);
     graph.Read(scene, particles, ResourceUsage::ShaderRead);
     graph.Write(scene, hdr, ResourceUsage::RenderTarget);
+    graph.Read(downsample, hdr, ResourceUsage::ShaderRead);
+    graph.Write(downsample, bloom, ResourceUsage::RenderTarget);
+    for (const auto pass : blurPasses) {
+        graph.Read(pass, bloom, ResourceUsage::ShaderRead);
+        graph.Write(pass, bloom, ResourceUsage::RenderTarget);
+    }
     graph.Read(toneMap, hdr, ResourceUsage::ShaderRead);
+    graph.Read(toneMap, bloom, ResourceUsage::ShaderRead);
     graph.Write(toneMap, drawable, ResourceUsage::RenderTarget);
     graph.Read(present, drawable, ResourceUsage::Present);
     return graph.Execute();
@@ -527,6 +585,14 @@ bool DiligentVulkanAdapter::CreateHdrTargets(std::uint32_t width, std::uint32_t 
         hdrRenderTarget_ = nullptr;
         hdrShaderResource_ = nullptr;
     }
+    if (bloomTexture_ != nullptr) static_cast<::Diligent::ITexture*>(bloomTexture_)->Release();
+    if (bloomPingTexture_ != nullptr) static_cast<::Diligent::ITexture*>(bloomPingTexture_)->Release();
+    bloomTexture_ = nullptr;
+    bloomPingTexture_ = nullptr;
+    bloomRenderTarget_ = nullptr;
+    bloomShaderResource_ = nullptr;
+    bloomPingRenderTarget_ = nullptr;
+    bloomPingShaderResource_ = nullptr;
     ::Diligent::TextureDesc description;
     description.Name = "ParticleSaturn Vulkan HDR scene";
     description.Type = ::Diligent::RESOURCE_DIM_TEX_2D;
@@ -549,6 +615,30 @@ bool DiligentVulkanAdapter::CreateHdrTargets(std::uint32_t width, std::uint32_t 
         hdrRenderTarget_ = nullptr;
         hdrShaderResource_ = nullptr;
         error = "Diligent Vulkan could not create HDR scene views";
+        return false;
+    }
+    const auto bloomWidth = std::max(1u, width / 6u);
+    const auto bloomHeight = std::max(1u, height / 6u);
+    auto createBloomTexture = [&](const char* name, void*& textureSlot, void*& renderTargetSlot,
+                                  void*& shaderResourceSlot) {
+        ::Diligent::TextureDesc bloomDescription;
+        bloomDescription.Name = name;
+        bloomDescription.Type = ::Diligent::RESOURCE_DIM_TEX_2D;
+        bloomDescription.Width = bloomWidth;
+        bloomDescription.Height = bloomHeight;
+        bloomDescription.Format = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
+        bloomDescription.BindFlags = ::Diligent::BIND_RENDER_TARGET | ::Diligent::BIND_SHADER_RESOURCE;
+        ::Diligent::ITexture* bloomTexture = nullptr;
+        static_cast<::Diligent::IRenderDevice*>(device_)->CreateTexture(bloomDescription, nullptr, &bloomTexture);
+        if (bloomTexture == nullptr) return false;
+        textureSlot = bloomTexture;
+        renderTargetSlot = bloomTexture->GetDefaultView(::Diligent::TEXTURE_VIEW_RENDER_TARGET);
+        shaderResourceSlot = bloomTexture->GetDefaultView(::Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+        return renderTargetSlot != nullptr && shaderResourceSlot != nullptr;
+    };
+    if (!createBloomTexture("ParticleSaturn Vulkan Bloom", bloomTexture_, bloomRenderTarget_, bloomShaderResource_) ||
+        !createBloomTexture("ParticleSaturn Vulkan Bloom Ping Pong", bloomPingTexture_, bloomPingRenderTarget_, bloomPingShaderResource_)) {
+        error = "Diligent Vulkan could not create Bloom targets";
         return false;
     }
     return true;
@@ -614,7 +704,7 @@ bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
     if (state == nullptr) { error = "Diligent Vulkan could not create tone map pipeline"; return false; }
     auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BloomCB");
     if (constants == nullptr) { state->Release(); error = "Diligent Vulkan tone map constants unavailable"; return false; }
-    const ToneMapConstants values{0.0f, 0.0f, {0.0f, 0.0f}};
+    const ToneMapConstants values{0.5f, 0.0f, {0.0f, 0.0f}};
     toneMapConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
     constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(toneMapConstants_)));
     ::Diligent::IShaderResourceBinding* binding = nullptr;
@@ -631,6 +721,93 @@ bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
     toneMapBinding_ = binding;
     toneMapTextureVariable_ = texture;
     toneMapBloomVariable_ = bloom;
+    return true;
+}
+
+bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
+    if (bloomDownsamplePipeline_ != nullptr && bloomBlurPipeline_ != nullptr) return true;
+    const auto& bloomDescription = static_cast<::Diligent::ITexture*>(bloomTexture_)->GetDesc();
+    const struct BloomConstants {
+        float texelSize[2];
+        float offset;
+        float threshold;
+    } values{{1.0f / bloomDescription.Width, 1.0f / bloomDescription.Height}, 0.0f, 1.0f};
+    bloomConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::SamplerDesc sampler;
+    sampler.MinFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.MagFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.MipFilter = ::Diligent::FILTER_TYPE_LINEAR;
+    sampler.AddressU = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = ::Diligent::TEXTURE_ADDRESS_CLAMP;
+    const ::Diligent::ImmutableSamplerDesc immutableSampler{::Diligent::SHADER_TYPE_PIXEL, "g_Texture", sampler};
+    const ::Diligent::ShaderResourceVariableDesc variables[] = {
+        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "BlurCB", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
+    auto createPipeline = [&](const Render::ShaderSources& sources, const char* name, void*& pipelineSlot,
+                              void*& bindingSlot, void*& textureVariableSlot) {
+        ::Diligent::ShaderCreateInfo shader{};
+        shader.SourceLanguage = sources.Language;
+        shader.EntryPoint = "main";
+        shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_VERTEX;
+        shader.Desc.Name = name;
+        shader.Source = sources.Vertex;
+        ::Diligent::IShader* vertex = nullptr;
+        device->CreateShader(shader, &vertex);
+        shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+        shader.Source = sources.Fragment;
+        ::Diligent::IShader* fragment = nullptr;
+        device->CreateShader(shader, &fragment);
+        if (vertex == nullptr || fragment == nullptr) {
+            if (vertex != nullptr) vertex->Release();
+            if (fragment != nullptr) fragment->Release();
+            return false;
+        }
+        ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
+        pipeline.PSODesc.Name = name;
+        pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
+        pipeline.PSODesc.ResourceLayout.Variables = variables;
+        pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
+        pipeline.PSODesc.ResourceLayout.ImmutableSamplers = &immutableSampler;
+        pipeline.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+        pipeline.GraphicsPipeline.NumRenderTargets = 1;
+        pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
+        pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
+        pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+        pipeline.pVS = vertex;
+        pipeline.pPS = fragment;
+        ::Diligent::IPipelineState* state = nullptr;
+        device->CreateGraphicsPipelineState(pipeline, &state);
+        vertex->Release();
+        fragment->Release();
+        if (state == nullptr) return false;
+        auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BlurCB");
+        if (constants == nullptr) { state->Release(); return false; }
+        constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(bloomConstants_)));
+        ::Diligent::IShaderResourceBinding* binding = nullptr;
+        state->CreateShaderResourceBinding(&binding, true);
+        auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_Texture");
+        if (binding == nullptr || texture == nullptr) {
+            if (binding != nullptr) binding->Release();
+            state->Release();
+            return false;
+        }
+        pipelineSlot = state;
+        bindingSlot = binding;
+        textureVariableSlot = texture;
+        return true;
+    };
+    if (!createPipeline(Render::GetBloomDownsampleShaderSources(Render::Backend::Vulkan),
+                        "ParticleSaturn Vulkan Bloom Downsample", bloomDownsamplePipeline_, bloomDownsampleBinding_,
+                        bloomDownsampleTextureVariable_) ||
+        !createPipeline(Render::GetBloomBlurShaderSources(Render::Backend::Vulkan),
+                        "ParticleSaturn Vulkan Bloom Blur", bloomBlurPipeline_, bloomBlurBinding_, bloomBlurTextureVariable_)) {
+        error = "Diligent Vulkan could not create Bloom pipelines";
+        return false;
+    }
     return true;
 }
 
@@ -935,6 +1112,32 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         hdrRenderTarget_ = nullptr;
         hdrShaderResource_ = nullptr;
     }
+    if (bloomDownsampleBinding_ != nullptr) {
+        static_cast<::Diligent::IShaderResourceBinding*>(bloomDownsampleBinding_)->Release();
+        bloomDownsampleBinding_ = nullptr;
+    }
+    if (bloomBlurBinding_ != nullptr) {
+        static_cast<::Diligent::IShaderResourceBinding*>(bloomBlurBinding_)->Release();
+        bloomBlurBinding_ = nullptr;
+    }
+    if (bloomDownsamplePipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(bloomDownsamplePipeline_)->Release();
+        bloomDownsamplePipeline_ = nullptr;
+    }
+    if (bloomBlurPipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(bloomBlurPipeline_)->Release();
+        bloomBlurPipeline_ = nullptr;
+    }
+    bloomDownsampleTextureVariable_ = nullptr;
+    bloomBlurTextureVariable_ = nullptr;
+    if (bloomTexture_ != nullptr) static_cast<::Diligent::ITexture*>(bloomTexture_)->Release();
+    if (bloomPingTexture_ != nullptr) static_cast<::Diligent::ITexture*>(bloomPingTexture_)->Release();
+    bloomTexture_ = nullptr;
+    bloomPingTexture_ = nullptr;
+    bloomRenderTarget_ = nullptr;
+    bloomShaderResource_ = nullptr;
+    bloomPingRenderTarget_ = nullptr;
+    bloomPingShaderResource_ = nullptr;
     particleRenderVariable_ = nullptr;
     if (particleBinding_ != nullptr) { static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_)->Release(); particleBinding_ = nullptr; }
     if (particlePipeline_ != nullptr) { static_cast<::Diligent::IPipelineState*>(particlePipeline_)->Release(); particlePipeline_ = nullptr; }
@@ -952,6 +1155,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     buffers_.clear();
     sceneIndirectArguments_ = {};
     toneMapConstants_ = {};
+    bloomConstants_ = {};
     particleBuffers_[0] = {};
     particleBuffers_[1] = {};
     particleBuffers_[2] = {};
