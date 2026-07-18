@@ -61,6 +61,7 @@ private:
     void* particleBinding_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
     BufferHandle particleBuffer_{};
+    BufferHandle particleIndirectArguments_{};
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;

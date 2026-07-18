@@ -231,7 +231,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     const auto scene = graph.AddPass("vulkan-scene", [&] {
         context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
-        commands.DrawIndirect(sceneIndirectArguments_, 0);
+        commands.DrawIndirect(particleIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         commands.DrawIndirect(sceneIndirectArguments_, 0);
@@ -462,8 +462,12 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     }};
     try {
         particleBuffer_ = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
+        const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
+        particleIndirectArguments_ = CreateBuffer(
+            {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
         auto& commands = BeginCommands();
         commands.Transition(particleBuffer_, ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        commands.Transition(particleIndirectArguments_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
         static_cast<void>(Submit(commands));
     } catch (const std::exception& exception) { error = exception.what(); return false; }
     auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
@@ -525,6 +529,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     buffers_.clear();
     sceneIndirectArguments_ = {};
     particleBuffer_ = {};
+    particleIndirectArguments_ = {};
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;
