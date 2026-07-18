@@ -843,6 +843,11 @@ void DiligentVulkanAdapter::SetParticleSettings(std::uint32_t particleCount, boo
     particlePaused_ = paused;
 }
 
+void DiligentVulkanAdapter::SetGestureState(bool tracked, float scale) noexcept {
+    handTracked_ = tracked;
+    handScale_ = std::clamp(scale, 0.1f, 10.0f);
+}
+
 void DiligentVulkanAdapter::SetSceneSettings(const App::SceneState& scene,
                                              const App::RenderSettings& render) noexcept {
     sceneTime_ = static_cast<float>(scene.simulationTimeSeconds);
@@ -1799,7 +1804,8 @@ bool DiligentVulkanAdapter::SimulateParticles(CommandList& commands) {
         particleCountDirty_ = false;
     }
     if (particlePaused_) return true;
-    const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, particleCount_};
+    const ParticleComputeConstants constants{1.0f / 120.0f, handScale_, handTracked_ ? 1.0f : 0.0f,
+                                               particleCount_};
     UpdateBuffer(particleComputeConstants_, 0, std::as_bytes(std::span{&constants, 1}));
     const auto outputUsage = buffers_[output.index].usage;
     commands.Transition(output, outputUsage, ResourceUsage::ShaderWrite);
@@ -1948,6 +1954,8 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     particleCount_ = MaxParticleCount;
     particlePaused_ = false;
     particleCountDirty_ = false;
+    handTracked_ = false;
+    handScale_ = 1.0f;
     sceneTime_ = 0.0f;
     sceneScale_ = 1.0f;
     sceneRotationX_ = 0.4f;

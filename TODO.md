@@ -1106,6 +1106,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 基准捕获与 Metal/OpenGL 一致延迟到第三个稳定帧，消除了首帧管线和交换链状态造成的双 ICD 结果抖动。收紧后的基准连续三轮通过，MoltenVK/KosmicKrisp 驱动间平均通道差异为 5.0 至 11.4，差异像素比例为 8.1% 至 18.2%。
 
+进展补充（2026-07-18）：Vulkan 生产入口现复用 `AVFoundationCamera`、原生摄像头选择器、XNNPACK 模型运行时和后台 `HandTrackingWorker`。主循环只提交最新摄像头帧并读取最新不可变手势样本，`FrameCoordinator` 消费绝对旋转与缩放，Diligent 粒子计算常量同步接收手势追踪标志和缩放系数；基准与冒烟模式明确跳过摄像头和模型，避免测试占用硬件。模型、工作线程及双 ICD 表面测试通过，真实镜头下的 Vulkan 手势响应仍待人工验收。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局

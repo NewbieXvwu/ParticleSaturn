@@ -9,6 +9,11 @@
 #include "MacOSMd3Panel.h"
 #include "MD3.h"
 #include "services/diagnostics/DiagnosticBus.h"
+#include "services/camera/macos/AVFoundationCamera.h"
+#include "services/camera/macos/CameraSelectorWindow.h"
+#include "services/hand_tracking/macos/HandTrackingWorker.h"
+#include "services/hand_tracking/macos/XnnpackRuntime.h"
+#include "services/resources/macos/BundleResources.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
 
 #include <algorithm>
@@ -16,8 +21,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -105,6 +112,30 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         App::AppController controller{state};
         App::FrameCoordinator coordinator;
         auto lastFrame = std::chrono::steady_clock::now();
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+        Services::Camera::MacOS::AVFoundationCamera camera;
+        Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
+        Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
+        std::unique_ptr<Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
+        if (!captureBaseline && !smokeMode) {
+            cameraSelector.StartSaved();
+            std::string handTrackingError;
+            const auto palmModel = Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
+            const auto landmarkModel = Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
+            if (!handTrackingRuntime.Load(palmModel, landmarkModel, handTrackingError)) {
+                std::clog << "[HandTracking] " << handTrackingError << '\n';
+            } else {
+                handTracking = std::make_unique<Services::HandTracking::MacOS::HandTrackingWorker>(
+                    [&handTrackingRuntime](const Services::Camera::Frame& frame,
+                                           Services::HandTracking::MacOS::HandPose& pose,
+                                           std::string& invocationError) {
+                        return handTrackingRuntime.Invoke(frame, invocationError) &&
+                               handTrackingRuntime.DecodeLandmarks(pose);
+                    });
+                handTracking->Start();
+            }
+        }
+#endif
         host.SetActionCallback([&](HostAction action) {
             switch (action) {
             case HostAction::ToggleDebugWindow:
@@ -122,6 +153,14 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 break;
             }
             case HostAction::ShowCameraSelector:
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+                if (!smokeMode) {
+                    if (camera.Permission() == Services::Camera::Authorization::NotDetermined) {
+                        camera.RequestPermission();
+                    }
+                    cameraSelector.Show();
+                }
+#endif
                 break;
             case HostAction::KeyF3Down:
             case HostAction::KeyF3Up:
@@ -198,9 +237,21 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.SetPresentationMode(mutableState.render.vsyncMode);
                 appliedVsync = mutableState.render.vsyncMode;
             }
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            App::GestureInput gesture;
+            Services::Camera::Frame cameraFrame;
+            if (handTracking && camera.LatestFrame(cameraFrame)) {
+                handTracking->Submit(std::move(cameraFrame), controller.State().gesture.handLostDelay);
+            }
+            if (handTracking) gesture = handTracking->LatestGesture();
+            coordinator.Advance(controller, elapsedSeconds, gesture);
+#else
+            App::GestureInput gesture;
             coordinator.Advance(controller, elapsedSeconds);
+#endif
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
+            adapter.SetGestureState(gesture.tracked, gesture.scale);
             adapter.SetSceneSettings(mutableState.scene, mutableState.render);
             adapter.SetAcrylicSettings(mutableState.ui.blurEnabled, mutableState.ui.blurStrength, mutableState.ui.darkMode);
             adapter.BeginImGuiFrame();

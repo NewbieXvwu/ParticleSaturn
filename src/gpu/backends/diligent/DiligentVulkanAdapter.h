@@ -35,6 +35,7 @@ public:
     bool DeviceLost() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
+    void SetGestureState(bool tracked, float scale) noexcept;
     void SetSceneSettings(const App::SceneState& scene, const App::RenderSettings& render) noexcept;
     bool BaselineCaptureRequested() const noexcept;
     void Shutdown() noexcept;
@@ -149,6 +150,8 @@ private:
     std::uint32_t particleCount_ = 1'200'000;
     bool particlePaused_ = false;
     bool particleCountDirty_ = false;
+    bool handTracked_ = false;
+    float handScale_ = 1.0f;
     float sceneTime_ = 0.0f;
     float sceneScale_ = 1.0f;
     float sceneRotationX_ = 0.4f;
