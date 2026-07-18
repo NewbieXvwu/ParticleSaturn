@@ -1076,6 +1076,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 粒子图形管线现使用六顶点实例化矩形，按 `gl_InstanceIndex` 读取粒子并以大小字段生成稳定的屏幕空间范围；间接参数保持 `{6, NumInstances, 0, 0}`，动态数量更新第二个字，避免覆盖顶点数。MoltenVK 表面、主应用冒烟和完整 18 项 CTest 均通过。
 
+进展补充（2026-07-18）：修复 KosmicKrisp 未进入构建包的问题。顶层 macOS 配置现在自动发现 `~/.local/share/kosmickrisp-mc`、Homebrew 候选目录中的驱动，统一把路径传给资源复制和测试注册；没有独立 JSON 时继续生成包内相对路径 `KosmicKrisp_icd.json`。当前包已包含 Loader、MoltenVK、KosmicKrisp 动态库和两个 ICD，CTest 已注册 KosmicKrisp 表面与主应用测试。两个 KosmicKrisp 测试以及完整 20 项 CTest 均通过。实例化矩形管线拓扑同步修正为 `TRIANGLE_LIST`。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

@@ -607,7 +607,7 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     pipeline.PSODesc.ResourceLayout.NumVariables = 1;
     pipeline.GraphicsPipeline.NumRenderTargets = 1;
     pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
-    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_POINT_LIST;
+    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
     pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
     pipeline.pVS = vertex; pipeline.pPS = fragment;

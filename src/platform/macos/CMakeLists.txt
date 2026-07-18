@@ -44,6 +44,22 @@ add_custom_target(ParticleSaturnMacOSMetalResource ALL
     VERBATIM)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMacOSMetalResource)
 set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs directory containing the driver and ICD")
+if(NOT PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+    foreach(_kosmic_candidate
+        "$ENV{HOME}/.local/share/kosmickrisp-mc"
+        "/opt/homebrew/opt/kosmickrisp"
+        "/opt/homebrew/share/kosmickrisp")
+        if(EXISTS "${_kosmic_candidate}/lib/libvulkan_kosmickrisp.dylib")
+            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}/lib")
+            message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+            break()
+        elseif(EXISTS "${_kosmic_candidate}/libvulkan_kosmickrisp.dylib")
+            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}")
+            message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+            break()
+        endif()
+    endforeach()
+endif()
 if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     set(PARTICLESATURN_KOSMICKRISP_DRIVER "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
     set(PARTICLESATURN_KOSMICKRISP_ICD "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/kosmickrisp_mesa_icd.json")

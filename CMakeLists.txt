@@ -178,6 +178,25 @@ endif()
 if(APPLE)
     enable_language(OBJCXX)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "" FORCE)
+    set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs directory containing the driver and ICD")
+    if(NOT PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+        foreach(_kosmic_candidate
+            "$ENV{HOME}/.local/share/kosmickrisp-mc"
+            "/opt/homebrew/opt/kosmickrisp"
+            "/opt/homebrew/share/kosmickrisp")
+            if(EXISTS "${_kosmic_candidate}/lib/libvulkan_kosmickrisp.dylib")
+                set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}/lib" CACHE PATH
+                    "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
+                message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+                break()
+            elseif(EXISTS "${_kosmic_candidate}/libvulkan_kosmickrisp.dylib")
+                set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}" CACHE PATH
+                    "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
+                message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+                break()
+            endif()
+        endforeach()
+    endif()
     add_subdirectory(src/shaders/msl)
     add_subdirectory(src/shaders/glsl410)
     add_subdirectory(src/gpu/backends/metal)
