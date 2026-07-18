@@ -3,18 +3,30 @@
 
 #include "ImGuiDiligent.h"
 
+#if defined(__APPLE__)
+#import <Cocoa/Cocoa.h>
+#include "backends/imgui_impl_osx.h"
+#include <unistd.h>
+#else
 #include <windows.h>
+#include "backends/imgui_impl_win32.h"
+#endif
 
 #include <cstring>
 
 #include "DeviceContext.h"
 #include "RenderDevice.h"
 #include "SwapChain.h"
-#include "backends/imgui_impl_win32.h"
 #include "imgui.h"
 
+#ifndef _countof
+#define _countof(array) (sizeof(array) / sizeof((array)[0]))
+#endif
+
+#if !defined(__APPLE__)
 // imgui_impl_win32.h 将该声明放在 #if 0 中（避免强制包含 <windows.h> 的依赖），这里显式前置声明。
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 
 using namespace Diligent;
 
@@ -177,34 +189,53 @@ bool ImGuiDiligent::Init(HWND hwnd, Render::Backend backend, IRenderDevice* devi
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr; // 禁用 ini 文件
 
-    // 初始化 Win32 平台后端
+#if defined(__APPLE__)
+    if (!ImGui_ImplOSX_Init(static_cast<NSView*>(hwnd))) {
+#else
     if (!ImGui_ImplWin32_Init(hwnd)) {
+#endif
         ImGui::DestroyContext();
         return false;
     }
 
     // 创建 Diligent 渲染资源
     if (!CreatePipelineStates(device, rtvFormat)) {
+#if defined(__APPLE__)
+        ImGui_ImplOSX_Shutdown();
+#else
         ImGui_ImplWin32_Shutdown();
+#endif
         ImGui::DestroyContext();
         return false;
     }
 
     if (!CreateFontTexture(device)) {
+#if defined(__APPLE__)
+        ImGui_ImplOSX_Shutdown();
+#else
         ImGui_ImplWin32_Shutdown();
+#endif
         ImGui::DestroyContext();
         return false;
     }
 
     if (!CreateDepthStencilBuffer(device, width, height)) {
+#if defined(__APPLE__)
+        ImGui_ImplOSX_Shutdown();
+#else
         ImGui_ImplWin32_Shutdown();
+#endif
         ImGui::DestroyContext();
         return false;
     }
 
     // 初始化顶点/索引缓冲
     if (!CreateBuffers(device, 5000, 10000)) {
+#if defined(__APPLE__)
+        ImGui_ImplOSX_Shutdown();
+#else
         ImGui_ImplWin32_Shutdown();
+#endif
         ImGui::DestroyContext();
         return false;
     }
@@ -248,7 +279,11 @@ void ImGuiDiligent::Shutdown() {
     dsv_.Release();
     device_.Release();
 
+#if defined(__APPLE__)
+    ImGui_ImplOSX_Shutdown();
+#else
     ImGui_ImplWin32_Shutdown();
+#endif
     ImGui::DestroyContext();
 
     initialized_ = false;
@@ -258,13 +293,21 @@ void ImGuiDiligent::NewFrame() {
     if (!initialized_) {
         return;
     }
+#if defined(__APPLE__)
+    ImGui_ImplOSX_NewFrame(static_cast<NSView*>(hwnd_));
+#else
     ImGui_ImplWin32_NewFrame();
+#endif
     ImGui::NewFrame();
 }
 
 bool ImGuiDiligent::HandleWin32Message(HWND hwnd, unsigned int msg, unsigned long long wParam, long long lParam) {
+#if defined(__APPLE__)
+    return false;
+#else
     // 注意：ImGui Win32 后端的处理函数在全局命名空间，避免在 ParticleSaturn::UI 命名空间下产生未定义符号
     return ::ImGui_ImplWin32_WndProcHandler(hwnd, msg, static_cast<WPARAM>(wParam), static_cast<LPARAM>(lParam)) != 0;
+#endif
 }
 
 void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
@@ -471,7 +514,7 @@ void ImGuiDiligent::Render(IDeviceContext* context, ITextureView* rtv) {
                 }
 
                 // 设置裁剪矩形
-                Rect scissor{};
+                Diligent::Rect scissor{};
                 scissor.left   = static_cast<Int32>(clipMin.x);
                 scissor.top    = static_cast<Int32>(clipMin.y);
                 scissor.right  = static_cast<Int32>(clipMax.x);
@@ -559,7 +602,9 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
         psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
+                                                        ? TEX_FORMAT_UNKNOWN
+                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
@@ -609,7 +654,9 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
         psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
+                                                        ? TEX_FORMAT_UNKNOWN
+                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
@@ -665,7 +712,9 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
 
         psoCI.GraphicsPipeline.NumRenderTargets  = 1;
         psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
+                                                        ? TEX_FORMAT_UNKNOWN
+                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
@@ -725,6 +774,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
 
     // 获取 DPI 缩放（从窗口句柄获取）
     float dpiScale = 1.0f;
+#if !defined(__APPLE__)
     if (hwnd_) {
         HDC hdc = GetDC(hwnd_);
         if (hdc) {
@@ -733,6 +783,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
             ReleaseDC(hwnd_, hdc);
         }
     }
+#endif
 
     // 加载自定义字体
     float fontSize = 16.0f * dpiScale;
@@ -741,13 +792,21 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
     fontConfig.OversampleH = 2;
     fontConfig.OversampleV = 2;
 
+#if defined(__APPLE__)
+    const char* englishFonts[] = {"/System/Library/Fonts/SFNS.ttf", "/System/Library/Fonts/Helvetica.ttc"};
+#else
     // 英文字体优先级：Cascadia Code → Cascadia Mono → Consolas → Arial
     const char* englishFonts[] = {"C:\\Windows\\Fonts\\CascadiaCode.ttf", "C:\\Windows\\Fonts\\CascadiaMono.ttf",
                                   "C:\\Windows\\Fonts\\consola.ttf", "C:\\Windows\\Fonts\\arial.ttf"};
+#endif
 
     ImFont* mainFont = nullptr;
     for (const char* fontPath : englishFonts) {
+#if defined(__APPLE__)
+        if (access(fontPath, F_OK) == 0) {
+#else
         if (GetFileAttributesA(fontPath) != INVALID_FILE_ATTRIBUTES) {
+#endif
             mainFont = io.Fonts->AddFontFromFileTTF(fontPath, fontSize, &fontConfig);
             if (mainFont) {
                 break;
@@ -760,6 +819,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
         mainFont = io.Fonts->AddFontDefault();
     }
 
+#if !defined(__APPLE__)
     // 中文字体（MergeMode）：Deng.ttf → msyhl.ttc → msyh.ttc → simhei.ttf
     // 使用简体常用字形集合以缩小字体贴图（减少启动时间/显存占用）。如需全量汉字可改回 ChineseFull。
     const char* chineseFonts[] = {"C:\\Windows\\Fonts\\Deng.ttf", "C:\\Windows\\Fonts\\msyhl.ttc",
@@ -776,6 +836,7 @@ bool ImGuiDiligent::CreateFontTexture(IRenderDevice* device) {
             break;
         }
     }
+#endif
 
     unsigned char* pixels = nullptr;
     int            width  = 0;
@@ -867,6 +928,14 @@ bool ImGuiDiligent::CreateBuffers(IRenderDevice* device, int vertexCount, int in
 bool ImGuiDiligent::CreateDepthStencilBuffer(IRenderDevice* device, uint32_t width, uint32_t height) {
     cachedWidth_  = width;
     cachedHeight_ = height;
+
+    // The Vulkan ImGui pipeline does not use depth, so keep the optional DSV
+    // attachment disabled while stencil support is not part of this path.
+    if (backend_ == Render::Backend::Vulkan) {
+        depthStencilTexture_.Release();
+        dsv_.Release();
+        return true;
+    }
 
     TextureDesc dsDesc{};
     dsDesc.Name      = "ImGui DepthStencil";

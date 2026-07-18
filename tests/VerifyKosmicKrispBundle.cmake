@@ -1,0 +1,18 @@
+if(NOT DEFINED RESOURCES)
+    message(FATAL_ERROR "RESOURCES must point to the application bundle Resources directory")
+endif()
+
+set(_driver "${RESOURCES}/Vulkan/lib/libvulkan_kosmickrisp.dylib")
+set(_icd "${RESOURCES}/Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json")
+if(NOT EXISTS "${_driver}")
+    message(FATAL_ERROR "KosmicKrisp driver is missing from the application bundle: ${_driver}")
+endif()
+if(NOT EXISTS "${_icd}")
+    message(FATAL_ERROR "KosmicKrisp ICD is missing from the application bundle: ${_icd}")
+endif()
+
+file(READ "${_icd}" _icd_content)
+string(FIND "${_icd_content}" "../../../lib/libvulkan_kosmickrisp.dylib" _library_path)
+if(_library_path EQUAL -1)
+    message(FATAL_ERROR "KosmicKrisp ICD does not reference the bundled driver: ${_icd}")
+endif()

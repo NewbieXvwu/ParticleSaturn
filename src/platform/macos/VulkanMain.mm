@@ -4,6 +4,9 @@
 #include "MacOSApplication.h"
 #include "app/AppController.h"
 #include "gpu/backends/diligent/DiligentVulkanAdapter.h"
+#include "imgui.h"
+#include "MacOSMd3Panel.h"
+#include "MD3.h"
 #include "services/diagnostics/DiagnosticBus.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
 
@@ -65,6 +68,11 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         if (!adapter.CreateSwapChain(host.NativeView(), drawableSize.width, drawableSize.height, error)) {
             return ReportStartupFailure("swap-chain", error);
         }
+        if (!adapter.InitializeImGui(host.NativeView(), error)) {
+            return ReportStartupFailure("imgui", error);
+        }
+        MD3::Init();
+        MD3::SetDarkMode(state.ui.darkMode);
 
         const auto smokeFrames = SmokeFrameLimit();
         const bool smokeMode = smokeFrames != 0;
@@ -124,6 +132,22 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             }
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
+            adapter.BeginImGuiFrame();
+            MD3::BeginFrame(1.0f / 60.0f);
+            MD3::SetDpiScale(1.0f);
+            MD3::SetScreenSize(static_cast<float>(mutableState.window.width),
+                               static_cast<float>(mutableState.window.height));
+            RenderMd3Panel(controller, adapter.AdapterName().c_str(), 60, false, {
+                [&] { if (!smokeMode) settings.Save(controller.State()); },
+                [&] {
+                    const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});
+                    if (effect.windowChanged) host.ToggleFullscreen();
+                },
+                {},
+                [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
+                [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
+                {}});
+            MD3::EndFrame();
             if (!adapter.PresentSceneFrame(syncInterval)) {
                 ReportStartupFailure("present", "Vulkan frame presentation failed");
                 host.RequestExit();

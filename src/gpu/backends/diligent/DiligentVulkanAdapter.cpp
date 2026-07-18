@@ -2,6 +2,7 @@
 
 #include "render/RenderGraph.h"
 #include "Diligent/DiligentShaderSources.h"
+#include "Diligent/ImGuiDiligent.h"
 #include "services/vulkan/VulkanDriverRuntime.h"
 
 #include <EngineFactoryVk.h>
@@ -183,6 +184,8 @@ constexpr std::uint32_t MaxParticleCount = 1'200'000;
 }
 
 } // namespace
+
+DiligentVulkanAdapter::DiligentVulkanAdapter() = default;
 
 DiligentVulkanAdapter::~DiligentVulkanAdapter() {
     Shutdown();
@@ -392,6 +395,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         draw.NumVertices = 4;
         draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
         context->Draw(draw);
+        if (imgui_ != nullptr) imgui_->Render(context, target);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
@@ -414,6 +418,30 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Write(toneMap, drawable, ResourceUsage::RenderTarget);
     graph.Read(present, drawable, ResourceUsage::Present);
     return graph.Execute();
+}
+
+bool DiligentVulkanAdapter::InitializeImGui(void* nativeView, std::string& error) {
+    if (device_ == nullptr || swapChain_ == nullptr || nativeView == nullptr) {
+        error = "Diligent Vulkan ImGui requires an initialized surface";
+        return false;
+    }
+    imgui_ = std::make_unique<ParticleSaturn::UI::ImGuiDiligent>();
+    if (!imgui_->Init(nativeView, Render::Backend::Vulkan,
+                      static_cast<::Diligent::IRenderDevice*>(device_),
+                      static_cast<::Diligent::ISwapChain*>(swapChain_))) {
+        imgui_.reset();
+        error = "Diligent Vulkan could not initialize macOS ImGui";
+        return false;
+    }
+    return true;
+}
+
+void DiligentVulkanAdapter::BeginImGuiFrame() {
+    if (imgui_ != nullptr) imgui_->NewFrame();
+}
+
+bool DiligentVulkanAdapter::ImGuiReady() const noexcept {
+    return imgui_ != nullptr && imgui_->IsInitialized();
 }
 
 std::string_view DiligentVulkanAdapter::Name() const noexcept {
@@ -1088,6 +1116,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Flush();
     }
+    imgui_.reset();
     if (swapChain_ != nullptr) {
         static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
         swapChain_ = nullptr;

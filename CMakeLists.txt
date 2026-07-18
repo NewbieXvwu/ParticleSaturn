@@ -179,20 +179,32 @@ if(APPLE)
     enable_language(OBJCXX)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "" FORCE)
     set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs directory containing the driver and ICD")
+    # A stale cache entry must not silently disable KosmicKrisp packaging.
+    if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR AND
+       NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
+        if(EXISTS "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/lib/libvulkan_kosmickrisp.dylib")
+            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/lib" CACHE PATH
+                "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
+        else()
+            message(STATUS "Configured KosmicKrisp directory is unavailable: ${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}")
+            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH
+                "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
+        endif()
+    endif()
     if(NOT PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
         foreach(_kosmic_candidate
             "$ENV{HOME}/.local/share/kosmickrisp-mc"
             "/opt/homebrew/opt/kosmickrisp"
             "/opt/homebrew/share/kosmickrisp")
-            if(EXISTS "${_kosmic_candidate}/lib/libvulkan_kosmickrisp.dylib")
-                set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}/lib" CACHE PATH
-                    "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
-                message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
-                break()
-            elseif(EXISTS "${_kosmic_candidate}/libvulkan_kosmickrisp.dylib")
-                set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}" CACHE PATH
-                    "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
-                message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+            foreach(_kosmic_output "${_kosmic_candidate}/lib" "${_kosmic_candidate}")
+                if(EXISTS "${_kosmic_output}/libvulkan_kosmickrisp.dylib")
+                    set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_output}" CACHE PATH
+                        "KosmicKrisp outputs directory containing the driver and ICD" FORCE)
+                    message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_output}")
+                    break()
+                endif()
+            endforeach()
+            if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
                 break()
             endif()
         endforeach()

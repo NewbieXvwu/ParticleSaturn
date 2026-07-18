@@ -4,6 +4,32 @@ add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")
 target_link_libraries(ParticleSaturnPlatformMacOS PUBLIC ParticleSaturnAppCore "-framework Cocoa" "-framework QuartzCore" "-framework Metal")
 
+add_library(ParticleSaturnMacOSImGui STATIC
+    "${CMAKE_SOURCE_DIR}/src/Diligent/ImGuiDiligent.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_metal.mm"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp")
+set_source_files_properties("${CMAKE_SOURCE_DIR}/src/Diligent/ImGuiDiligent.cpp"
+    PROPERTIES LANGUAGE OBJCXX)
+target_include_directories(ParticleSaturnMacOSImGui PUBLIC
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Common/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Graphics/GraphicsEngine/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Primitives/interface"
+    "${CMAKE_SOURCE_DIR}/libs/imgui"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends"
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
+target_compile_definitions(ParticleSaturnMacOSImGui PUBLIC PLATFORM_MACOS=1)
+target_link_libraries(ParticleSaturnMacOSImGui PUBLIC
+    "-framework Cocoa"
+    "-framework GameController"
+    "-framework Metal"
+    "-framework QuartzCore")
+
 add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     LauncherMain.mm
     Main.mm
@@ -12,27 +38,26 @@ add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     MacOSMd3Panel.cpp
     "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Theme.cpp"
     "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Context.cpp"
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Widgets.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_osx.mm"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_metal.mm"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp")
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Widgets.cpp")
 set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnOpenGL41Backend ParticleSaturnMacOSSettings)
-target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnVulkanRuntime)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera ParticleSaturnMacOSHandTrackingWorker)
 if(TARGET ParticleSaturnMacOSHandTracking)
     target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSHandTracking)
     target_compile_definitions(ParticleSaturn.macOS PRIVATE PARTICLESATURN_HAS_XNNPACK_RUNTIME=1)
 endif()
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSResources)
-target_include_directories(ParticleSaturn.macOS PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" "${CMAKE_SOURCE_DIR}/libs/imgui/backends" "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
+target_include_directories(ParticleSaturn.macOS PRIVATE
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Common/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Graphics/GraphicsEngine/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface"
+    "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Primitives/interface"
+    "${CMAKE_SOURCE_DIR}/libs/imgui"
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends"
+    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController" "-framework QuartzCore")
 target_compile_definitions(ParticleSaturn.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders)
@@ -43,32 +68,25 @@ add_custom_target(ParticleSaturnMacOSMetalResource ALL
     DEPENDS ParticleSaturnMetalShaders
     VERBATIM)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMacOSMetalResource)
-set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "" CACHE PATH "KosmicKrisp outputs directory containing the driver and ICD")
-if(NOT PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
-    foreach(_kosmic_candidate
-        "$ENV{HOME}/.local/share/kosmickrisp-mc"
-        "/opt/homebrew/opt/kosmickrisp"
-        "/opt/homebrew/share/kosmickrisp")
-        if(EXISTS "${_kosmic_candidate}/lib/libvulkan_kosmickrisp.dylib")
-            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}/lib")
-            message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
-            break()
-        elseif(EXISTS "${_kosmic_candidate}/libvulkan_kosmickrisp.dylib")
-            set(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR "${_kosmic_candidate}")
-            message(STATUS "Auto-detected KosmicKrisp: ${_kosmic_candidate}")
+if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
+    set(PARTICLESATURN_KOSMICKRISP_DRIVER "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
+    set(PARTICLESATURN_KOSMICKRISP_ICD "")
+    foreach(_kosmic_icd_candidate
+        "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/kosmickrisp_mesa_icd.json"
+        "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/KosmicKrisp_icd.json"
+        "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/../share/vulkan/icd.d/KosmicKrisp_icd.json")
+        if(EXISTS "${_kosmic_icd_candidate}")
+            set(PARTICLESATURN_KOSMICKRISP_ICD "${_kosmic_icd_candidate}")
             break()
         endif()
     endforeach()
-endif()
-if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
-    set(PARTICLESATURN_KOSMICKRISP_DRIVER "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/libvulkan_kosmickrisp.dylib")
-    set(PARTICLESATURN_KOSMICKRISP_ICD "${PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR}/kosmickrisp_mesa_icd.json")
     if(NOT EXISTS "${PARTICLESATURN_KOSMICKRISP_DRIVER}")
         message(FATAL_ERROR "PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR must contain libvulkan_kosmickrisp.dylib")
     endif()
     if(EXISTS "${PARTICLESATURN_KOSMICKRISP_ICD}")
         file(READ "${PARTICLESATURN_KOSMICKRISP_ICD}" PARTICLESATURN_KOSMICKRISP_ICD_CONTENT)
-        string(REPLACE "./libvulkan_kosmickrisp.dylib" "../../../lib/libvulkan_kosmickrisp.dylib"
+        string(REGEX REPLACE "\"library_path\"[ \t]*:[ \t]*\"[^\"]*\""
+            "\"library_path\": \"../../../lib/libvulkan_kosmickrisp.dylib\""
             PARTICLESATURN_KOSMICKRISP_ICD_CONTENT "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
     else()
         set(PARTICLESATURN_KOSMICKRISP_ICD_CONTENT
@@ -121,5 +139,8 @@ if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
             "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/lib/libvulkan_kosmickrisp.dylib"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}"
             "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/Vulkan/etc/vulkan/icd.d/KosmicKrisp_icd.json"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DRESOURCES=$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
+            -P "${CMAKE_SOURCE_DIR}/tests/VerifyKosmicKrispBundle.cmake"
         VERBATIM)
 endif()

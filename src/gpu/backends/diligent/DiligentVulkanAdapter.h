@@ -5,14 +5,17 @@
 #include "app/state/AppStates.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+namespace ParticleSaturn::UI { class ImGuiDiligent; }
 
 namespace ParticleSaturn::Gpu::Diligent {
 
 class DiligentVulkanAdapter final : public GpuDevice, private CommandList {
 public:
-    DiligentVulkanAdapter() = default;
+    DiligentVulkanAdapter();
     ~DiligentVulkanAdapter();
 
     DiligentVulkanAdapter(const DiligentVulkanAdapter&) = delete;
@@ -23,6 +26,9 @@ public:
     bool ResizeSwapChain(std::uint32_t width, std::uint32_t height);
     bool PresentClearFrame(const float color[4], std::uint32_t syncInterval);
     bool PresentSceneFrame(std::uint32_t syncInterval);
+    bool InitializeImGui(void* nativeView, std::string& error);
+    void BeginImGuiFrame();
+    bool ImGuiReady() const noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     void Shutdown() noexcept;
 
@@ -112,6 +118,7 @@ private:
     std::vector<BufferEntry> buffers_;
     std::uint64_t submissionValue_ = 0;
     bool commandsOpen_ = false;
+    std::unique_ptr<ParticleSaturn::UI::ImGuiDiligent> imgui_;
 };
 
 } // namespace ParticleSaturn::Gpu::Diligent

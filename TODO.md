@@ -1082,6 +1082,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 现接入共享 Diligent 亮部提取和 Kawase 模糊源码，创建 1/6 分辨率 `RGBA16F` 强光纹理与乒乓纹理，渲染图按 `scene → hdr → bloom-downsample → 7 轮 bloom-blur → tone-map → present` 执行，色调映射以 `0.5` 强度叠加最终 Bloom。两个 Vulkan ICD 的表面/主应用测试均通过，手势工作线程测试曾出现一次瞬态断言，单独重跑通过。Acrylic、ImGui 仍待接入。
 
+进展补充（2026-07-18）：修复构建缓存失效时 KosmicKrisp 资源复制被跳过的问题。macOS 配置会校验并重新发现失效的驱动目录，统一生成或改写包内相对路径 ICD，构建结束时强制校验驱动与 `KosmicKrisp_icd.json` 均已进入应用包，并新增 CTest 包布局检查。Vulkan ImGui 资源改为独立 macOS 静态目标，KosmicKrisp 下跳过不稳定的 D24/S8 深度附件；KosmicKrisp 适配器、表面、主应用冒烟和完整 21 项 CTest 全部通过，测试结束后无残留应用进程。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

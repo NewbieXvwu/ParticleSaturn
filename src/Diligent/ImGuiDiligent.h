@@ -10,8 +10,12 @@
 #include "RenderBackend.h"
 #include "Texture.h"
 
+#if defined(__APPLE__)
+using HWND = void*;
+#else
 struct HWND__;
 using HWND = HWND__*;
+#endif
 
 namespace Diligent {
 class IRenderDevice;
