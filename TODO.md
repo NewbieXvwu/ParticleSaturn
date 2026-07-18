@@ -1064,6 +1064,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：粒子图形管线的存储缓冲绑定已改为动态变量，帧内可将计算输出缓冲安全切换为渲染输入。当前 MoltenVK 表面和主应用冒烟均覆盖该动态绑定路径，计算双缓冲调度仍待接入。
 
+进展补充（2026-07-18）：Vulkan 粒子现已接入真实 Diligent 计算管线。两块受控的 32 字节结构化缓冲以动态计算绑定分别作为读取和写入端，计算常量经受控统一缓冲更新；每帧将写入端显式从 `Undefined` 或 `ShaderRead` 过渡到 `ShaderWrite`，调度后再过渡至 `ShaderRead` 并轮转为粒子图形管线的动态输入。该计算、过渡、轮转和间接绘制与场景、呈现处于同一渲染图，MoltenVK 原生表面和主应用冒烟已实际覆盖首次写入与回写。当前仍是三条演示粒子，完整三缓冲模拟与动态粒子数量待继续迁入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

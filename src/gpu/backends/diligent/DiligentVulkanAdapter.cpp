@@ -14,6 +14,7 @@
 
 #include <array>
 #include <stdexcept>
+#include <utility>
 
 namespace ParticleSaturn::Gpu::Diligent {
 namespace {
@@ -81,6 +82,51 @@ layout(location = 0) in vec4 particleColor;
 layout(location = 0) out vec4 color;
 void main() { color = particleColor; }
 )";
+
+constexpr const char* ParticleComputeShader = R"(
+struct Particle { vec4 position; uint color; float speed; uint isRing; uint padding; };
+layout(set=0, binding=0, std430) readonly buffer gParticlesIn { Particle particlesIn[]; } particleInput;
+layout(set=0, binding=1, std430) writeonly buffer gParticlesOut { Particle particlesOut[]; } particleOutput;
+layout(set=0, binding=2, std140) uniform ComputeConstants {
+    float uDt;
+    float uHandScale;
+    float uHandHas;
+    uint uParticleCount;
+};
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+void main() {
+    const uint id = gl_GlobalInvocationID.x;
+    if (id >= uParticleCount) return;
+    const Particle particle = particleInput.particlesIn[id];
+    const float timeFactor = mix(1.0, uHandScale, uHandHas);
+    const float angle = particle.isRing == 0u ? 0.03 * uDt * timeFactor
+                                               : particle.speed * 0.2 * uDt * timeFactor;
+    const float c = cos(angle);
+    const float s = sin(angle);
+    Particle updated = particle;
+    updated.position.x = particle.position.x * c - particle.position.z * s;
+    updated.position.z = particle.position.x * s + particle.position.z * c;
+    particleOutput.particlesOut[id] = updated;
+}
+)";
+
+struct Particle {
+    float position[4];
+    std::uint32_t color;
+    float speed;
+    std::uint32_t isRing;
+    std::uint32_t padding;
+};
+
+struct ParticleComputeConstants {
+    float deltaTime;
+    float handScale;
+    float handHas;
+    std::uint32_t particleCount;
+};
+
+static_assert(sizeof(Particle) == 32);
+static_assert(sizeof(ParticleComputeConstants) == 16);
 
 ::Diligent::RESOURCE_STATE ToDiligentResourceState(ResourceUsage usage) {
     switch (usage) {
@@ -219,24 +265,29 @@ bool DiligentVulkanAdapter::PresentClearFrame(const float color[4], std::uint32_
 }
 
 bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
-    if (swapChain_ == nullptr || scenePipeline_ == nullptr || context_ == nullptr) return false;
+    if (swapChain_ == nullptr || scenePipeline_ == nullptr || particlePipeline_ == nullptr ||
+        particleComputePipeline_ == nullptr || context_ == nullptr) return false;
     auto* swapChain = static_cast<::Diligent::ISwapChain*>(swapChain_);
     auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
     auto* target = swapChain->GetCurrentBackBufferRTV();
-    if (target == nullptr || !sceneIndirectArguments_) return false;
+    if (target == nullptr || !sceneIndirectArguments_ || !particleIndirectArguments_) return false;
     const auto& description = swapChain->GetDesc();
     auto& commands = BeginCommands();
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
+    const auto particles = graph.AddResource({"vulkan-particles", {1, 1, 1}});
+    const auto simulation = graph.AddPass("vulkan-particle-simulation", [&] {
+        return SimulateParticles(commands);
+    });
     const auto scene = graph.AddPass("vulkan-scene", [&] {
         context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
-        commands.DrawIndirect(particleIndirectArguments_, 0);
+        commands.DrawIndirect(sceneIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
-        auto* particleView = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffer_))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
+        auto* particleView = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffers_[particleReadIndex_]))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
         static_cast<::Diligent::IShaderResourceVariable*>(particleRenderVariable_)->Set(particleView);
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        commands.DrawIndirect(sceneIndirectArguments_, 0);
+        commands.DrawIndirect(particleIndirectArguments_, 0);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
@@ -244,6 +295,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         swapChain->Present(syncInterval);
         return true;
     });
+    graph.Read(simulation, particles, ResourceUsage::ShaderRead);
+    graph.Write(simulation, particles, ResourceUsage::ShaderWrite);
+    graph.Read(scene, particles, ResourceUsage::ShaderRead);
     graph.Write(scene, drawable, ResourceUsage::RenderTarget);
     graph.Read(present, drawable, ResourceUsage::Present);
     return graph.Execute();
@@ -454,8 +508,6 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
 }
 
 bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
-    struct Particle { float position[4]; std::uint32_t color; float speed; std::uint32_t isRing; std::uint32_t padding; };
-    static_assert(sizeof(Particle) == 32);
     if (particlePipeline_ != nullptr) return true;
     const std::array<Particle, 3> particles{{
         {{-0.55f, 0.35f, 0.0f, 1.0f}, 0xFFB866FFu, 0.0f, 0, 0},
@@ -463,12 +515,16 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
         {{ 0.58f,-0.28f, 0.0f, 1.0f}, 0xFFFFD080u, 0.0f, 1, 0},
     }};
     try {
-        particleBuffer_ = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
+        particleBuffers_[0] = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
+        particleBuffers_[1] = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, {});
+        const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, static_cast<std::uint32_t>(particles.size())};
+        particleComputeConstants_ = CreateBuffer(
+            {sizeof(constants), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&constants, 1}));
         const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
         particleIndirectArguments_ = CreateBuffer(
             {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
         auto& commands = BeginCommands();
-        commands.Transition(particleBuffer_, ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        commands.Transition(particleBuffers_[0], ResourceUsage::Undefined, ResourceUsage::ShaderRead);
         commands.Transition(particleIndirectArguments_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
         static_cast<void>(Submit(commands));
     } catch (const std::exception& exception) { error = exception.what(); return false; }
@@ -505,7 +561,91 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     if (binding == nullptr) { state->Release(); error = "Diligent Vulkan could not create particle bindings"; return false; }
     auto* variable = binding->GetVariableByName(::Diligent::SHADER_TYPE_VERTEX, "gParticles");
     if (variable == nullptr) { binding->Release(); state->Release(); error = "Diligent Vulkan could not access particle bindings"; return false; }
-    particlePipeline_ = state; particleBinding_ = binding; particleRenderVariable_ = variable; return true;
+    particlePipeline_ = state;
+    particleBinding_ = binding;
+    particleRenderVariable_ = variable;
+    return CreateParticleComputePipeline(error);
+}
+
+bool DiligentVulkanAdapter::CreateParticleComputePipeline(std::string& error) {
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::ShaderCreateInfo shader{};
+    shader.SourceLanguage = ::Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
+    shader.EntryPoint = "main";
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_COMPUTE;
+    shader.Desc.Name = "ParticleSaturn Vulkan Particle CS";
+    shader.Source = ParticleComputeShader;
+    ::Diligent::IShader* compute = nullptr;
+    device->CreateShader(shader, &compute);
+    if (compute == nullptr) {
+        error = "Diligent Vulkan could not compile the particle compute shader";
+        return false;
+    }
+    const ::Diligent::ShaderResourceVariableDesc variables[] = {
+        {::Diligent::SHADER_TYPE_COMPUTE, "gParticlesIn", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_COMPUTE, "gParticlesOut", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_COMPUTE, "ComputeConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+    };
+    ::Diligent::ComputePipelineStateCreateInfo pipeline{};
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Particle Simulation";
+    pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_COMPUTE;
+    pipeline.PSODesc.ResourceLayout.Variables = variables;
+    pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
+    pipeline.pCS = compute;
+    ::Diligent::IPipelineState* state = nullptr;
+    device->CreateComputePipelineState(pipeline, &state);
+    compute->Release();
+    if (state == nullptr) {
+        error = "Diligent Vulkan could not create the particle compute pipeline";
+        return false;
+    }
+    ::Diligent::IShaderResourceBinding* binding = nullptr;
+    state->CreateShaderResourceBinding(&binding, true);
+    if (binding == nullptr) {
+        state->Release();
+        error = "Diligent Vulkan could not create particle compute bindings";
+        return false;
+    }
+    auto* input = binding->GetVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "gParticlesIn");
+    auto* output = binding->GetVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "gParticlesOut");
+    auto* constants = binding->GetVariableByName(::Diligent::SHADER_TYPE_COMPUTE, "ComputeConstants");
+    if (input == nullptr || output == nullptr || constants == nullptr) {
+        binding->Release();
+        state->Release();
+        error = "Diligent Vulkan could not access particle compute bindings";
+        return false;
+    }
+    constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleComputeConstants_)));
+    particleComputePipeline_ = state;
+    particleComputeBinding_ = binding;
+    particleComputeInputVariable_ = input;
+    particleComputeOutputVariable_ = output;
+    return true;
+}
+
+bool DiligentVulkanAdapter::SimulateParticles(CommandList& commands) {
+    const auto input = particleBuffers_[particleReadIndex_];
+    const auto output = particleBuffers_[particleWriteIndex_];
+    if (!input || !output || !particleComputeConstants_) return false;
+    const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, 3};
+    UpdateBuffer(particleComputeConstants_, 0, std::as_bytes(std::span{&constants, 1}));
+    const auto outputUsage = buffers_[output.index].usage;
+    commands.Transition(output, outputUsage, ResourceUsage::ShaderWrite);
+    auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
+    static_cast<::Diligent::IShaderResourceVariable*>(particleComputeInputVariable_)->Set(
+        static_cast<::Diligent::IBuffer*>(ResolveBuffer(input))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE));
+    static_cast<::Diligent::IShaderResourceVariable*>(particleComputeOutputVariable_)->Set(
+        static_cast<::Diligent::IBuffer*>(ResolveBuffer(output))->GetDefaultView(::Diligent::BUFFER_VIEW_UNORDERED_ACCESS));
+    context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particleComputePipeline_));
+    context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleComputeBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    ::Diligent::DispatchComputeAttribs dispatch{};
+    dispatch.ThreadGroupCountX = 1;
+    dispatch.ThreadGroupCountY = 1;
+    dispatch.ThreadGroupCountZ = 1;
+    context->DispatchCompute(dispatch);
+    commands.Transition(output, ResourceUsage::ShaderWrite, ResourceUsage::ShaderRead);
+    std::swap(particleReadIndex_, particleWriteIndex_);
+    return true;
 }
 
 void DiligentVulkanAdapter::Shutdown() noexcept {
@@ -524,13 +664,21 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     particleRenderVariable_ = nullptr;
     if (particleBinding_ != nullptr) { static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_)->Release(); particleBinding_ = nullptr; }
     if (particlePipeline_ != nullptr) { static_cast<::Diligent::IPipelineState*>(particlePipeline_)->Release(); particlePipeline_ = nullptr; }
+    particleComputeInputVariable_ = nullptr;
+    particleComputeOutputVariable_ = nullptr;
+    if (particleComputeBinding_ != nullptr) { static_cast<::Diligent::IShaderResourceBinding*>(particleComputeBinding_)->Release(); particleComputeBinding_ = nullptr; }
+    if (particleComputePipeline_ != nullptr) { static_cast<::Diligent::IPipelineState*>(particleComputePipeline_)->Release(); particleComputePipeline_ = nullptr; }
     for (auto& entry : buffers_) {
         if (entry.buffer != nullptr) static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
     }
     buffers_.clear();
     sceneIndirectArguments_ = {};
-    particleBuffer_ = {};
+    particleBuffers_[0] = {};
+    particleBuffers_[1] = {};
+    particleComputeConstants_ = {};
     particleIndirectArguments_ = {};
+    particleReadIndex_ = 0;
+    particleWriteIndex_ = 1;
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;
