@@ -31,6 +31,7 @@ public:
     bool ImGuiReady() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
+    bool BaselineCaptureRequested() const noexcept;
     void Shutdown() noexcept;
 
     std::string_view Name() const noexcept override;
@@ -90,6 +91,12 @@ private:
     void* uiWeakPingTexture_ = nullptr;
     void* uiWeakPingRenderTarget_ = nullptr;
     void* uiWeakPingShaderResource_ = nullptr;
+    void* baselineStagingTexture_ = nullptr;
+    std::uint32_t baselineStagingWidth_ = 0;
+    std::uint32_t baselineStagingHeight_ = 0;
+    bool baselineCaptureRequested_ = false;
+    bool baselineCaptured_ = false;
+    std::string baselinePath_;
     void* bloomDownsamplePipeline_ = nullptr;
     void* bloomDownsampleBinding_ = nullptr;
     void* bloomDownsampleTextureVariable_ = nullptr;

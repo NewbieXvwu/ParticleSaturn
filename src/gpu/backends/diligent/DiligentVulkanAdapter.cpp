@@ -17,6 +17,8 @@
 
 #include <array>
 #include <algorithm>
+#include <cstdlib>
+#include <fstream>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -26,6 +28,24 @@ namespace {
 
 bool IsEnabled(::Diligent::DEVICE_FEATURE_STATE state) {
     return state != ::Diligent::DEVICE_FEATURE_STATE_DISABLED;
+}
+
+bool WriteMappedBaseline(const ::Diligent::MappedTextureSubresource& mapped,
+                         std::uint32_t width, std::uint32_t height, const char* path) {
+    if (mapped.pData == nullptr || mapped.Stride < static_cast<std::uint64_t>(width) * 4U ||
+        path == nullptr || path[0] == '\0' || width == 0 || height == 0) return false;
+    std::ofstream output{path, std::ios::binary};
+    if (!output) return false;
+    output << "P6\n" << width << ' ' << height << "\n255\n";
+    const auto* bytes = static_cast<const std::uint8_t*>(mapped.pData);
+    for (std::uint32_t row = 0; row < height; ++row) {
+        const auto* source = bytes + static_cast<std::size_t>(row) * mapped.Stride;
+        for (std::uint32_t column = 0; column < width; ++column) {
+            const auto* pixel = source + static_cast<std::size_t>(column) * 4U;
+            output.write(reinterpret_cast<const char*>(pixel), 3);
+        }
+    }
+    return output.good();
 }
 
 void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SEVERITY severity,
@@ -216,6 +236,10 @@ DiligentVulkanAdapter::~DiligentVulkanAdapter() {
 
 bool DiligentVulkanAdapter::Initialize(App::VulkanDriver driver, const std::string& bundleResources, std::string& error) {
     Shutdown();
+    const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+    baselineCaptureRequested_ = baselinePath != nullptr && baselinePath[0] != '\0';
+    baselineCaptured_ = false;
+    baselinePath_ = baselineCaptureRequested_ ? baselinePath : std::string{};
     if (!Services::Vulkan::ConfigureDriver(driver, bundleResources, error)) return false;
 
     ::Diligent::IEngineFactoryVk* factory = ::Diligent::GetEngineFactoryVk();
@@ -571,6 +595,16 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         if (imgui_ != nullptr) imgui_->Render(context, target);
         return true;
     });
+    const auto capture = graph.AddPass("vulkan-baseline-capture", [&] {
+        if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr) return true;
+        ::Diligent::CopyTextureAttribs copy;
+        copy.pSrcTexture = target->GetTexture();
+        copy.SrcTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        copy.pDstTexture = static_cast<::Diligent::ITexture*>(baselineStagingTexture_);
+        copy.DstTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        context->CopyTexture(copy);
+        return true;
+    });
     const auto present = graph.AddPass("vulkan-present", [&] {
         static_cast<void>(Submit(commands));
         swapChain->Present(syncInterval);
@@ -607,8 +641,18 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Write(acrylic, drawable, ResourceUsage::RenderTarget);
     graph.Read(imgui, drawable, ResourceUsage::RenderTarget);
     graph.Write(imgui, drawable, ResourceUsage::RenderTarget);
+    graph.Read(capture, drawable, ResourceUsage::ShaderRead);
+    graph.Write(capture, drawable, ResourceUsage::CopySource);
     graph.Read(present, drawable, ResourceUsage::Present);
-    return graph.Execute();
+    const bool executed = graph.Execute();
+    if (!executed || !baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr) return executed;
+    context->Flush();
+    ::Diligent::MappedTextureSubresource mapped;
+    context->MapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0,
+                                   ::Diligent::MAP_READ, ::Diligent::MAP_FLAG_NONE, nullptr, mapped);
+    baselineCaptured_ = WriteMappedBaseline(mapped, baselineStagingWidth_, baselineStagingHeight_, baselinePath_.c_str());
+    context->UnmapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0);
+    return baselineCaptured_;
 }
 
 bool DiligentVulkanAdapter::InitializeImGui(void* nativeView, std::string& error) {
@@ -650,6 +694,10 @@ void DiligentVulkanAdapter::SetParticleSettings(std::uint32_t particleCount, boo
     particleCountDirty_ = particleCountDirty_ || particleCount_ != clampedCount;
     particleCount_ = clampedCount;
     particlePaused_ = paused;
+}
+
+bool DiligentVulkanAdapter::BaselineCaptureRequested() const noexcept {
+    return baselineCaptureRequested_ && baselineCaptured_;
 }
 
 BufferHandle DiligentVulkanAdapter::CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) {
@@ -804,6 +852,12 @@ void DiligentVulkanAdapter::ReleaseRetiredBuffers() noexcept {
 
 bool DiligentVulkanAdapter::CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error) {
     if (device_ == nullptr || width == 0 || height == 0) return false;
+    if (baselineStagingTexture_ != nullptr) {
+        static_cast<::Diligent::ITexture*>(baselineStagingTexture_)->Release();
+        baselineStagingTexture_ = nullptr;
+        baselineStagingWidth_ = 0;
+        baselineStagingHeight_ = 0;
+    }
     if (hdrTexture_ != nullptr) {
         static_cast<::Diligent::ITexture*>(hdrTexture_)->Release();
         hdrTexture_ = nullptr;
@@ -873,6 +927,25 @@ bool DiligentVulkanAdapter::CreateHdrTargets(std::uint32_t width, std::uint32_t 
         uiSceneShaderResource_ = nullptr;
         error = "Diligent Vulkan could not create UI scene views";
         return false;
+    }
+    if (baselineCaptureRequested_) {
+        ::Diligent::TextureDesc stagingDescription;
+        stagingDescription.Name = "ParticleSaturn Vulkan baseline staging";
+        stagingDescription.Type = ::Diligent::RESOURCE_DIM_TEX_2D;
+        stagingDescription.Width = width;
+        stagingDescription.Height = height;
+        stagingDescription.Format = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+        stagingDescription.Usage = ::Diligent::USAGE_STAGING;
+        stagingDescription.CPUAccessFlags = ::Diligent::CPU_ACCESS_READ;
+        ::Diligent::ITexture* staging = nullptr;
+        static_cast<::Diligent::IRenderDevice*>(device_)->CreateTexture(stagingDescription, nullptr, &staging);
+        if (staging == nullptr) {
+            error = "Diligent Vulkan could not create baseline staging texture";
+            return false;
+        }
+        baselineStagingTexture_ = staging;
+        baselineStagingWidth_ = width;
+        baselineStagingHeight_ = height;
     }
     const auto bloomWidth = std::max(1u, width / 6u);
     const auto bloomHeight = std::max(1u, height / 6u);
@@ -1486,6 +1559,12 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         hdrRenderTarget_ = nullptr;
         hdrShaderResource_ = nullptr;
     }
+    if (baselineStagingTexture_ != nullptr) {
+        static_cast<::Diligent::ITexture*>(baselineStagingTexture_)->Release();
+        baselineStagingTexture_ = nullptr;
+    }
+    baselineStagingWidth_ = 0;
+    baselineStagingHeight_ = 0;
     if (uiSceneTexture_ != nullptr) static_cast<::Diligent::ITexture*>(uiSceneTexture_)->Release();
     if (uiWeakTexture_ != nullptr) static_cast<::Diligent::ITexture*>(uiWeakTexture_)->Release();
     if (uiWeakPingTexture_ != nullptr) static_cast<::Diligent::ITexture*>(uiWeakPingTexture_)->Release();
@@ -1577,6 +1656,9 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     adapterName_.clear();
     capabilities_ = {};
     submissionValue_ = 0;
+    baselineCaptureRequested_ = false;
+    baselineCaptured_ = false;
+    baselinePath_.clear();
 }
 
 const std::string& DiligentVulkanAdapter::AdapterName() const noexcept {

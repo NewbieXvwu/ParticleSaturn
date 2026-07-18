@@ -1086,6 +1086,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 现将色调映射先写入独立 UI 场景，再按 `tone-map → ui-scene → 1/6 强模糊 → 1/12 弱模糊 → Acrylic → ImGui → present` 执行共享渲染图。Acrylic 复用 Diligent GLSL 和既有深浅主题参数，模糊关闭时跳过低分辨率通道并直通 UI 场景；窗口缩放会重建 UI 场景及四张模糊纹理。MoltenVK、KosmicKrisp 表面测试均实际绘制 ImGui，并覆盖 Acrylic 开启、关闭、缩放后的重新呈现，完整 21 项 CTest 通过。
 
+进展补充（2026-07-18）：Vulkan 基准捕获现通过 Diligent `USAGE_STAGING` 纹理、`CopyTexture` 和 `MapTextureSubresource` 读回最终交换链图像，MoltenVK 与 KosmicKrisp 均可在固定暂停帧写出 PPM，捕获后应用自动退出。四模式基准脚本现分别启动 Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp，Metal/OpenGL 继续使用严格阈值，两个 Vulkan ICD 先做驱动间一致性检查；Vulkan 与 Metal 的逐帧画面一致性仍待完整粒子和着色器对齐后验收。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
@@ -1111,6 +1113,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 进展补充（2026-07-17）：`ParticleSaturnVisualBaselineTests` 已在本机构建并执行通过，实际启动 Metal 与 OpenGL 4.1 应用完成基准捕获和阈值比对。
 
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
+- [x] MoltenVK 与 KosmicKrisp 最终交换链画面读回及驱动间基准测试
 - [x] 粒子读回数据比较
 - [ ] 窗口行为对齐
 - [ ] 性能锁定测试

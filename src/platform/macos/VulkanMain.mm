@@ -46,11 +46,19 @@ int ReportStartupFailure(const char* code, const std::string& message) {
 int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
     @autoreleasepool {
         Services::Settings::MacOS::NSUserDefaultsStore settings;
+        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
+        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         App::AppState defaults;
         defaults.render.graphicsApi = App::GraphicsApi::Vulkan;
-        auto state = settings.Load(defaults);
+        auto state = captureBaseline ? defaults : settings.Load(defaults);
         state.render.graphicsApi = App::GraphicsApi::Vulkan;
         state.render.vulkanDriver = SelectedDriver(state.render.vulkanDriver);
+        if (captureBaseline) {
+            state.window.width = 1512;
+            state.window.height = 827;
+            state.scene.paused = true;
+            state.lod.locked = true;
+        }
 
         CocoaHost host{state.window.width, state.window.height, "Particle Saturn - Vulkan"};
         host.SetWindowPosition(state.window.x, state.window.y);
@@ -154,6 +162,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.RequestExit();
                 return;
             }
+            if (captureBaseline && adapter.BaselineCaptureRequested()) host.RequestExit();
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) host.RequestExit();
         });
         if (!smokeMode) settings.Save(controller.State());

@@ -48,29 +48,31 @@ bool ReadPpm(const char* path, Image& image) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    assert(argc == 5);
-    Image metal;
-    Image openGl;
-    assert(ReadPpm(argv[1], metal));
-    assert(ReadPpm(argv[2], openGl));
-    assert(metal.width == openGl.width && metal.height == openGl.height);
-    const float meanLimit = std::stof(argv[3]);
-    const float mismatchLimit = std::stof(argv[4]);
-    std::uint64_t totalDifference = 0;
-    std::uint64_t mismatchedPixels = 0;
-    for (std::size_t pixel = 0; pixel < metal.pixels.size(); pixel += 3U) {
-        const auto red = std::abs(static_cast<int>(metal.pixels[pixel]) - static_cast<int>(openGl.pixels[pixel]));
-        const auto green = std::abs(static_cast<int>(metal.pixels[pixel + 1U]) - static_cast<int>(openGl.pixels[pixel + 1U]));
-        const auto blue = std::abs(static_cast<int>(metal.pixels[pixel + 2U]) - static_cast<int>(openGl.pixels[pixel + 2U]));
-        totalDifference += static_cast<std::uint64_t>(red + green + blue);
-        mismatchedPixels += std::max({red, green, blue}) > 8;
+    assert(argc >= 5);
+    const float meanLimit = std::stof(argv[argc - 2]);
+    const float mismatchLimit = std::stof(argv[argc - 1]);
+    Image reference;
+    assert(ReadPpm(argv[1], reference));
+    for (int imageIndex = 2; imageIndex < argc - 2; ++imageIndex) {
+        Image candidate;
+        assert(ReadPpm(argv[imageIndex], candidate));
+        assert(reference.width == candidate.width && reference.height == candidate.height);
+        std::uint64_t totalDifference = 0;
+        std::uint64_t mismatchedPixels = 0;
+        for (std::size_t pixel = 0; pixel < reference.pixels.size(); pixel += 3U) {
+            const auto red = std::abs(static_cast<int>(reference.pixels[pixel]) - static_cast<int>(candidate.pixels[pixel]));
+            const auto green = std::abs(static_cast<int>(reference.pixels[pixel + 1U]) - static_cast<int>(candidate.pixels[pixel + 1U]));
+            const auto blue = std::abs(static_cast<int>(reference.pixels[pixel + 2U]) - static_cast<int>(candidate.pixels[pixel + 2U]));
+            totalDifference += static_cast<std::uint64_t>(red + green + blue);
+            mismatchedPixels += std::max({red, green, blue}) > 8;
+        }
+        const float meanDifference = static_cast<float>(totalDifference) / static_cast<float>(reference.pixels.size());
+        const float mismatchFraction = static_cast<float>(mismatchedPixels) /
+                                       static_cast<float>(reference.width) / static_cast<float>(reference.height);
+        std::cout << argv[imageIndex] << ": mean_channel_difference=" << meanDifference
+                  << " mismatch_fraction=" << mismatchFraction << '\n';
+        assert(meanDifference <= meanLimit);
+        assert(mismatchFraction <= mismatchLimit);
     }
-    const float meanDifference = static_cast<float>(totalDifference) / static_cast<float>(metal.pixels.size());
-    const float mismatchFraction = static_cast<float>(mismatchedPixels) /
-                                   static_cast<float>(metal.width) / static_cast<float>(metal.height);
-    std::cout << "mean_channel_difference=" << meanDifference << '\n';
-    std::cout << "mismatch_fraction=" << mismatchFraction << '\n';
-    assert(meanDifference <= meanLimit);
-    assert(mismatchFraction <= mismatchLimit);
     return 0;
 }
