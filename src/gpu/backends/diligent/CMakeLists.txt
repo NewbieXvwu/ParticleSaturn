@@ -1,4 +1,6 @@
-add_library(ParticleSaturnDiligentVulkanAdapter STATIC DiligentVulkanAdapter.cpp)
+add_library(ParticleSaturnDiligentVulkanAdapter STATIC
+    DiligentVulkanAdapter.cpp
+    "${CMAKE_SOURCE_DIR}/src/Diligent/DiligentShaderSources.cpp")
 add_library(ParticleSaturn.Backend.DiligentVulkan ALIAS ParticleSaturnDiligentVulkanAdapter)
 target_include_directories(ParticleSaturnDiligentVulkanAdapter PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../..")
 target_include_directories(ParticleSaturnDiligentVulkanAdapter PRIVATE

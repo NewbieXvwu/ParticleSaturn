@@ -1070,6 +1070,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 粒子顶点阶段已改为从共享 ABI 的世界坐标执行固定相机透视投影，粒子尺寸由记录内的大小字段决定，完整土星初始化缓冲可直接接入当前图形通道而无需再转换为裁剪坐标。MoltenVK 原生表面与主应用冒烟测试均实际重新编译并呈现此路径；完整粒子 GPU 初始化、实例化矩形和动态数量仍待继续迁入。
 
+进展补充（2026-07-18）：Vulkan 现复用 `GetSaturnInitComputeShaderSource(Vulkan)` 创建真实 Diligent 初始化计算管线，以固定种子 `0x53415455` 并行填充三块独立的 120 万粒子、32 字节结构化缓冲；间接参数改为一个点顶点和 120 万实例，图形顶点按 `gl_InstanceIndex` 读取初始化结果。初始化输出逐块显式从 `ShaderWrite` 过渡到 `ShaderRead`，随后进入三缓冲模拟轮转。MoltenVK 表面与主应用冒烟、完整 18 项 CTest 均通过。动态粒子数量、实例化矩形和完整界面通道仍待继续迁入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

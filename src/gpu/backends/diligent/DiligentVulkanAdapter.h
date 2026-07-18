@@ -46,6 +46,7 @@ private:
 
     bool CreateScenePipeline(std::string& error);
     bool CreateParticlePipeline(std::string& error);
+    bool CreateParticleInitializationPipeline(std::string& error);
     bool CreateParticleComputePipeline(std::string& error);
     bool SimulateParticles(CommandList& commands);
     void ReleaseRetiredBuffers() noexcept;
@@ -66,9 +67,14 @@ private:
     void* particleComputeBinding_ = nullptr;
     void* particleComputeInputVariable_ = nullptr;
     void* particleComputeOutputVariable_ = nullptr;
+    void* particleInitializationPipeline_ = nullptr;
+    void* particleInitializationBinding_ = nullptr;
+    void* particleInitializationOutputVariable_ = nullptr;
+    void* particleInitializationConstantsVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
+    BufferHandle particleInitializationConstants_{};
     BufferHandle particleIndirectArguments_{};
     std::uint32_t particleRenderIndex_ = 0;
     std::uint32_t particleReadIndex_ = 1;

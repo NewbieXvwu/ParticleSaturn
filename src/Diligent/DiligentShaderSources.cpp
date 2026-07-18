@@ -941,9 +941,9 @@ layout(set=0, binding=1, std140) uniform InitConstants
 };
 
 // PCG 伪随机数生成器
-uint pcgHash(uint input)
+uint pcgHash(uint value)
 {
-    uint state = input * 747796405u + 2891336453u;
+    uint state = value * 747796405u + 2891336453u;
     uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
