@@ -15,6 +15,7 @@
 #include "services/hand_tracking/macos/XnnpackRuntime.h"
 #include "services/resources/macos/BundleResources.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
+#include "services/vulkan/VulkanDriverRuntime.h"
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +26,9 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
+
+#include <sys/wait.h>
 
 namespace {
 
@@ -51,6 +55,16 @@ bool InteractionSmokeRequested() {
 
 bool LodSmokeRequested() {
     const char* value = std::getenv("PARTICLESATURN_VULKAN_LOD_SMOKE");
+    return value != nullptr && std::string_view{value} == "1";
+}
+
+bool RestartSmokeRequested() {
+    const char* value = std::getenv("PARTICLESATURN_VULKAN_RESTART_SMOKE");
+    return value != nullptr && std::string_view{value} == "1";
+}
+
+bool RestartSmokeChild() {
+    const char* value = std::getenv("PARTICLESATURN_VULKAN_RESTART_CHILD");
     return value != nullptr && std::string_view{value} == "1";
 }
 
@@ -105,6 +119,37 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         }
         if (!adapter.InitializeImGui(host.NativeView(), error)) {
             return ReportStartupFailure("imgui", error);
+        }
+        if (RestartSmokeRequested() && !RestartSmokeChild()) {
+            const NSArray<NSString*>* processArguments = [[NSProcessInfo processInfo] arguments];
+            if ([processArguments count] == 0) {
+                adapter.Shutdown();
+                return ReportStartupFailure("restart-smoke", "Vulkan restart executable is unavailable");
+            }
+            const std::string executable{[[processArguments objectAtIndex:0] fileSystemRepresentation]};
+            std::vector<std::string> arguments;
+            for (NSUInteger index = 1; index < [processArguments count]; ++index) {
+                arguments.emplace_back([[processArguments objectAtIndex:index] UTF8String]);
+            }
+            adapter.Shutdown();
+            if (setenv("PARTICLESATURN_VULKAN_RESTART_CHILD", "1", 1) != 0 ||
+                setenv("PARTICLESATURN_VULKAN_SMOKE_FRAMES", "3", 1) != 0 ||
+                setenv("PARTICLESATURN_VULKAN_INTERACTION_SMOKE", "1", 1) != 0 ||
+                setenv("PARTICLESATURN_VULKAN_LOD_SMOKE", "1", 1) != 0) {
+                return ReportStartupFailure("restart-smoke-env", "Vulkan restart smoke environment setup failed");
+            }
+            int childProcess = 0;
+            std::string restartError;
+            if (!Services::Vulkan::RestartWithDriver(state.render.vulkanDriver, resourcesPath, executable,
+                                                     arguments, childProcess, restartError)) {
+                return ReportStartupFailure("restart-smoke-spawn", restartError);
+            }
+            int childStatus = 0;
+            if (waitpid(childProcess, &childStatus, 0) != childProcess || !WIFEXITED(childStatus) ||
+                WEXITSTATUS(childStatus) != 0) {
+                return ReportStartupFailure("restart-smoke-child", "Restarted Vulkan application failed");
+            }
+            return 0;
         }
         MD3::Init();
         MD3::SetDarkMode(state.ui.darkMode);

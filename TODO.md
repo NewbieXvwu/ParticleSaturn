@@ -1110,6 +1110,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 共享渲染图补齐七段 FPS 通道，顺序固定为 Acrylic 后、ImGui 前、基准捕获前。主循环按平滑帧时间计算实际 FPS，同时更新调试面板与 16 字节 GPU 常量；片元通道复用 Metal/OpenGL 的右上角三位布局、七段掩码和绿橙红阈值。MoltenVK/KosmicKrisp 表面测试分别以 24 和 120 FPS 绘制并通过。
 
+进展补充（2026-07-18）：MoltenVK 与 KosmicKrisp 新增主应用独立进程重启测试。父进程先实际创建所选 ICD 的设备、交换链和 ImGui，释放 GPU 后通过 `RestartWithDriver` 启动同一应用；子进程保持同一 ICD，完成快捷键、动态 LOD 和三帧呈现，父进程等待其正常退出。两种驱动测试均通过且无残留应用进程，设置界面触发的人工重启仍待窗口验收。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
