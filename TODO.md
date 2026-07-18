@@ -1054,7 +1054,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 的真实场景绘制与交换链呈现已迁入共享渲染图。每帧声明当前可绘制后缓冲资源，按 `vulkan-scene` 通道写入、`vulkan-present` 通道呈现的依赖执行，适配器不再直接串行调度这两个步骤。MoltenVK 表面与主应用冒烟测试均覆盖该图路径，完整共享粒子、Bloom、Acrylic 和 ImGui 通道仍待接入。
 
-进展补充（2026-07-18）：Vulkan 适配器现实现共享图形设备中的缓冲契约：受控的代际缓冲句柄只由适配器解析，存储缓冲显式携带元素步长并映射为 Diligent 结构化缓冲；命令对象可将共享资源用法转换为 Diligent 资源屏障，提交会刷新命令、结束当前帧并返回递增令牌，销毁操作会按令牌延后释放。MoltenVK 实测覆盖真实缓冲创建、`Undefined → CopyDestination → ShaderRead` 过渡、提交、句柄失效和槽位复用。
+进展补充（2026-07-18）：Vulkan 适配器现实现共享图形设备中的缓冲契约：受控的代际缓冲句柄只由适配器解析，存储缓冲显式携带元素步长并映射为 Diligent 结构化缓冲；命令对象可将共享资源用法转换为 Diligent 资源屏障，提交会刷新命令、结束当前帧并返回递增令牌，销毁操作会按令牌延后释放。MoltenVK 实测覆盖真实缓冲创建、`Undefined → CopyDestination → ShaderRead` 过渡、提交、句柄失效，以及令牌到达前后对应的槽位禁止与允许复用。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置

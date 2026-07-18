@@ -73,5 +73,18 @@ int main(int argc, char* argv[]) {
     assert(replacement.index == buffer.index);
     assert(replacement.generation != buffer.generation);
     adapter.DestroyBuffer(replacement, submitted);
+
+    const auto deferred = adapter.CreateBuffer(bufferDesc, payload);
+    adapter.DestroyBuffer(deferred, {submitted.value + 1});
+    const auto occupiedSlot = adapter.CreateBuffer(bufferDesc, payload);
+    assert(occupiedSlot.index != deferred.index);
+    auto& completionCommands = adapter.BeginCommands();
+    const auto completion = adapter.Submit(completionCommands);
+    assert(completion.value == submitted.value + 1);
+    adapter.DestroyBuffer(occupiedSlot, completion);
+    const auto reclaimed = adapter.CreateBuffer(bufferDesc, payload);
+    assert(reclaimed.index == deferred.index);
+    assert(reclaimed.generation != deferred.generation);
+    adapter.DestroyBuffer(reclaimed, completion);
     return 0;
 }
