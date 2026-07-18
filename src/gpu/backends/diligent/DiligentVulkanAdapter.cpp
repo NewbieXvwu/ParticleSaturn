@@ -1,5 +1,6 @@
 #include "DiligentVulkanAdapter.h"
 
+#include "render/RenderGraph.h"
 #include "services/vulkan/VulkanDriverRuntime.h"
 
 #include <EngineFactoryVk.h>
@@ -156,16 +157,27 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     if (swapChain_ == nullptr || scenePipeline_ == nullptr || context_ == nullptr) return false;
     auto* swapChain = static_cast<::Diligent::ISwapChain*>(swapChain_);
     auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
-    auto* target = swapChain->GetCurrentBackBufferRTV();
-    if (target == nullptr) return false;
-    context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
-    ::Diligent::DrawAttribs draw{};
-    draw.NumVertices = 3;
-    draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
-    context->Draw(draw);
-    swapChain->Present(syncInterval);
-    return true;
+    const auto& description = swapChain->GetDesc();
+    Render::RenderGraph graph;
+    const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
+    const auto scene = graph.AddPass("vulkan-scene", [&] {
+        auto* target = swapChain->GetCurrentBackBufferRTV();
+        if (target == nullptr) return false;
+        context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
+        ::Diligent::DrawAttribs draw{};
+        draw.NumVertices = 3;
+        draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(draw);
+        return true;
+    });
+    const auto present = graph.AddPass("vulkan-present", [&] {
+        swapChain->Present(syncInterval);
+        return true;
+    });
+    graph.Write(scene, drawable, ResourceUsage::RenderTarget);
+    graph.Read(present, drawable, ResourceUsage::Present);
+    return graph.Execute();
 }
 
 bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {

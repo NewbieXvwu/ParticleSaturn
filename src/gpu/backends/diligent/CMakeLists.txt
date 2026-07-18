@@ -4,7 +4,7 @@ target_include_directories(ParticleSaturnDiligentVulkanAdapter PUBLIC "${CMAKE_C
 target_include_directories(ParticleSaturnDiligentVulkanAdapter PRIVATE
     "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface")
 target_link_libraries(ParticleSaturnDiligentVulkanAdapter
-    PUBLIC ParticleSaturnVulkanRuntime Diligent-GraphicsEngineVk-static)
+    PUBLIC ParticleSaturnRender ParticleSaturnVulkanRuntime Diligent-GraphicsEngineVk-static)
 
 if(TARGET ParticleSaturn.macOS)
     target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnDiligentVulkanAdapter)

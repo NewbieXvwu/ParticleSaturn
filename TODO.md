@@ -1052,6 +1052,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 交换链现创建运行时 GLSL 图形管线并实际绘制全屏场景通道，包含程序化星空、土星本体和环带，不再只清除后缓冲。表面测试在首次创建和缩放后均执行该绘制，MoltenVK 主应用冒烟测试同样走场景路径；完整共享粒子、Bloom、Acrylic 和 ImGui 迁入仍待完成，双 ICD 的可见画面人工验收仍保留。
 
+进展补充（2026-07-18）：Vulkan 的真实场景绘制与交换链呈现已迁入共享渲染图。每帧声明当前可绘制后缓冲资源，按 `vulkan-scene` 通道写入、`vulkan-present` 通道呈现的依赖执行，适配器不再直接串行调度这两个步骤。MoltenVK 表面与主应用冒烟测试均覆盖该图路径，完整共享粒子、Bloom、Acrylic 和 ImGui 通道仍待接入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
