@@ -34,6 +34,7 @@ public:
     bool ImGuiReady() const noexcept;
     bool DeviceLost() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
+    void SetAcrylicPanelRect(float x, float y, float width, float height, float dpiScale) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     void SetGestureState(bool tracked, float scale) noexcept;
     void SetFramesPerSecond(std::uint32_t framesPerSecond) noexcept;
@@ -117,6 +118,7 @@ private:
     void* bloomBlurPipeline_ = nullptr;
     void* bloomBlurBinding_ = nullptr;
     void* bloomBlurTextureVariable_ = nullptr;
+    void* acrylicCopyPipeline_ = nullptr;
     void* acrylicPipeline_ = nullptr;
     void* acrylicBinding_ = nullptr;
     void* acrylicTextureVariable_ = nullptr;
@@ -169,6 +171,11 @@ private:
     bool uiBlurEnabled_ = true;
     float uiBlurStrength_ = 2.0f;
     bool uiDarkMode_ = true;
+    bool uiPanelVisible_ = false;
+    std::int32_t uiPanelLeft_ = 0;
+    std::int32_t uiPanelTop_ = 0;
+    std::int32_t uiPanelRight_ = 0;
+    std::int32_t uiPanelBottom_ = 0;
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;

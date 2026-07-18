@@ -32,6 +32,7 @@ int main(int argc, char* argv[]) {
             ImGui::Begin("Vulkan surface test");
             ImGui::TextUnformatted(label);
             ImGui::End();
+            adapter.SetAcrylicPanelRect(4.0f, 4.0f, 100.0f, 60.0f, 1.0f);
             return adapter.PresentSceneFrame(1);
         };
         ParticleSaturn::App::AppState frameState;

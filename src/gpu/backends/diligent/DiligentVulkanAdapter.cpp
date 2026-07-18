@@ -748,35 +748,47 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         }));
     }
     const auto acrylic = graph.AddPass("vulkan-acrylic", [&] {
-        const bool enabled = uiBlurEnabled_;
-        AcrylicConstants values{};
-        if (enabled) {
-            const float opacity = uiDarkMode_ ? 180.0f / 255.0f : 150.0f / 255.0f;
-            const float tint = uiDarkMode_ ? 20.0f / 255.0f : 245.0f / 255.0f;
-            values.tint[0] = tint;
-            values.tint[1] = tint;
-            values.tint[2] = uiDarkMode_ ? 25.0f / 255.0f : 1.0f;
-            values.tint[3] = opacity;
-            values.params[0] = uiDarkMode_ ? 1.35f : 1.35f;
-            values.params[1] = uiDarkMode_ ? 0.35f : 0.35f;
-            values.params[2] = uiDarkMode_ ? 1.0f : 0.0f;
-            values.params[3] = 1.0f;
-        } else {
-            values.params[0] = 1.0f;
-        }
-        UpdateBuffer(acrylicConstants_, 0, std::as_bytes(std::span{&values, 1}));
         auto* renderTargetView = target;
         context->SetRenderTargets(1, &renderTargetView, nullptr,
                                   ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(acrylicPipeline_));
-        void* acrylicInput = uiBlurStrength_ < 2.5f ? uiWeakOutputView : uiStrongOutputView;
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(acrylicCopyPipeline_));
+        const AcrylicConstants identity{{0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}};
+        UpdateBuffer(acrylicConstants_, 0, std::as_bytes(std::span{&identity, 1}));
         static_cast<::Diligent::IShaderResourceVariable*>(acrylicTextureVariable_)->Set(
-            static_cast<::Diligent::ITextureView*>(enabled ? acrylicInput : uiSceneShaderResource_));
+            static_cast<::Diligent::ITextureView*>(uiSceneShaderResource_));
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(acrylicBinding_),
                                        ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         ::Diligent::DrawAttribs draw;
         draw.NumVertices = 4;
         draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(draw);
+        if (!uiBlurEnabled_ || !uiPanelVisible_) return true;
+
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(acrylicPipeline_));
+        const ::Diligent::Rect panelRect{
+            std::clamp(uiPanelLeft_, 0, static_cast<std::int32_t>(description.Width)),
+            std::clamp(uiPanelTop_, 0, static_cast<std::int32_t>(description.Height)),
+            std::clamp(uiPanelRight_, 0, static_cast<std::int32_t>(description.Width)),
+            std::clamp(uiPanelBottom_, 0, static_cast<std::int32_t>(description.Height))};
+        if (panelRect.right <= panelRect.left || panelRect.bottom <= panelRect.top) return true;
+        AcrylicConstants values{};
+        const float opacity = uiDarkMode_ ? 180.0f / 255.0f : 150.0f / 255.0f;
+        const float tint = uiDarkMode_ ? 20.0f / 255.0f : 245.0f / 255.0f;
+        values.tint[0] = tint;
+        values.tint[1] = tint;
+        values.tint[2] = uiDarkMode_ ? 25.0f / 255.0f : 1.0f;
+        values.tint[3] = opacity;
+        values.params[0] = 1.35f;
+        values.params[1] = 0.35f;
+        values.params[2] = uiDarkMode_ ? 1.0f : 0.0f;
+        values.params[3] = 1.0f;
+        UpdateBuffer(acrylicConstants_, 0, std::as_bytes(std::span{&values, 1}));
+        context->SetScissorRects(1, &panelRect, description.Width, description.Height);
+        void* acrylicInput = uiBlurStrength_ < 2.5f ? uiWeakOutputView : uiStrongOutputView;
+        static_cast<::Diligent::IShaderResourceVariable*>(acrylicTextureVariable_)->Set(
+            static_cast<::Diligent::ITextureView*>(acrylicInput));
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(acrylicBinding_),
+                                       ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->Draw(draw);
         return true;
     });
@@ -849,13 +861,13 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Write(sevenSegment, drawable, ResourceUsage::RenderTarget);
     graph.Read(imgui, drawable, ResourceUsage::RenderTarget);
     graph.Write(imgui, drawable, ResourceUsage::RenderTarget);
-    graph.Read(capture, drawable, ResourceUsage::ShaderRead);
-    graph.Write(capture, drawable, ResourceUsage::CopySource);
+    graph.Read(capture, drawable, ResourceUsage::CopySource);
     graph.Read(present, drawable, ResourceUsage::Present);
     const bool executed = graph.Execute();
     if (!executed || !baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
         presentedFrameCount_ < 3) return executed;
     context->Flush();
+    context->WaitForIdle();
     ::Diligent::MappedTextureSubresource mapped;
     context->MapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0,
                                    ::Diligent::MAP_READ, ::Diligent::MAP_FLAG_NONE, nullptr, mapped);
@@ -881,6 +893,7 @@ bool DiligentVulkanAdapter::InitializeImGui(void* nativeView, std::string& error
 }
 
 void DiligentVulkanAdapter::BeginImGuiFrame() {
+    uiPanelVisible_ = false;
     if (imgui_ != nullptr) imgui_->NewFrame();
 }
 
@@ -896,6 +909,16 @@ void DiligentVulkanAdapter::SetAcrylicSettings(bool enabled, float strength, boo
     uiBlurEnabled_ = enabled;
     uiBlurStrength_ = std::clamp(strength, 0.0f, 5.0f);
     uiDarkMode_ = darkMode;
+}
+
+void DiligentVulkanAdapter::SetAcrylicPanelRect(float x, float y, float width, float height,
+                                                float dpiScale) noexcept {
+    const float scale = std::max(dpiScale, 0.1f);
+    uiPanelLeft_ = static_cast<std::int32_t>(std::floor(x * scale));
+    uiPanelTop_ = static_cast<std::int32_t>(std::floor(y * scale));
+    uiPanelRight_ = static_cast<std::int32_t>(std::ceil((x + width) * scale));
+    uiPanelBottom_ = static_cast<std::int32_t>(std::ceil((y + height) * scale));
+    uiPanelVisible_ = width > 0.0f && height > 0.0f;
 }
 
 std::string_view DiligentVulkanAdapter::Name() const noexcept {
@@ -1401,7 +1424,7 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
 }
 
 bool DiligentVulkanAdapter::CreateAcrylicPipeline(std::string& error) {
-    if (acrylicPipeline_ != nullptr) return true;
+    if (acrylicPipeline_ != nullptr && acrylicCopyPipeline_ != nullptr) return true;
     const auto sources = Render::GetAcrylicCompositeShaderSources(Render::Backend::Vulkan);
     auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
     ::Diligent::ShaderCreateInfo shader{};
@@ -1437,7 +1460,7 @@ bool DiligentVulkanAdapter::CreateAcrylicPipeline(std::string& error) {
     sampler.AddressW = ::Diligent::TEXTURE_ADDRESS_CLAMP;
     const ::Diligent::ImmutableSamplerDesc immutableSampler{::Diligent::SHADER_TYPE_PIXEL, "g_Texture", sampler};
     ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
-    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Acrylic";
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Acrylic Copy";
     pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
     pipeline.PSODesc.ResourceLayout.Variables = variables;
     pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
@@ -1452,11 +1475,17 @@ bool DiligentVulkanAdapter::CreateAcrylicPipeline(std::string& error) {
     blend.BlendEnable = ::Diligent::False;
     pipeline.pVS = vertex;
     pipeline.pPS = fragment;
+    ::Diligent::IPipelineState* copyState = nullptr;
+    device->CreateGraphicsPipelineState(pipeline, &copyState);
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Acrylic";
+    pipeline.GraphicsPipeline.RasterizerDesc.ScissorEnable = ::Diligent::True;
     ::Diligent::IPipelineState* state = nullptr;
     device->CreateGraphicsPipelineState(pipeline, &state);
     vertex->Release();
     fragment->Release();
-    if (state == nullptr) {
+    if (copyState == nullptr || state == nullptr) {
+        if (copyState != nullptr) copyState->Release();
+        if (state != nullptr) state->Release();
         error = "Diligent Vulkan could not create Acrylic pipeline";
         return false;
     }
@@ -1465,26 +1494,32 @@ bool DiligentVulkanAdapter::CreateAcrylicPipeline(std::string& error) {
         acrylicConstants_ = CreateBuffer({sizeof(constants), 0, BufferUsage::Uniform},
                                           std::as_bytes(std::span{&constants, 1}));
     } catch (const std::exception& exception) {
+        copyState->Release();
         state->Release();
         error = exception.what();
         return false;
     }
+    auto* copyStaticConstants = copyState->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "AcrylicCB");
     auto* staticConstants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "AcrylicCB");
-    if (staticConstants == nullptr) {
+    if (copyStaticConstants == nullptr || staticConstants == nullptr) {
+        copyState->Release();
         state->Release();
         error = "Diligent Vulkan Acrylic constants unavailable";
         return false;
     }
+    copyStaticConstants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(acrylicConstants_)));
     staticConstants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(acrylicConstants_)));
     ::Diligent::IShaderResourceBinding* binding = nullptr;
     state->CreateShaderResourceBinding(&binding, true);
     auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_Texture");
     if (binding == nullptr || texture == nullptr) {
         if (binding != nullptr) binding->Release();
+        copyState->Release();
         state->Release();
         error = "Diligent Vulkan Acrylic bindings unavailable";
         return false;
     }
+    acrylicCopyPipeline_ = copyState;
     acrylicPipeline_ = state;
     acrylicBinding_ = binding;
     acrylicTextureVariable_ = texture;
@@ -2052,6 +2087,10 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(acrylicPipeline_)->Release();
         acrylicPipeline_ = nullptr;
     }
+    if (acrylicCopyPipeline_ != nullptr) {
+        static_cast<::Diligent::IPipelineState*>(acrylicCopyPipeline_)->Release();
+        acrylicCopyPipeline_ = nullptr;
+    }
     if (sevenSegmentBinding_ != nullptr) {
         static_cast<::Diligent::IShaderResourceBinding*>(sevenSegmentBinding_)->Release();
         sevenSegmentBinding_ = nullptr;
@@ -2119,6 +2158,11 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     uiBlurEnabled_ = true;
     uiBlurStrength_ = 2.0f;
     uiDarkMode_ = true;
+    uiPanelVisible_ = false;
+    uiPanelLeft_ = 0;
+    uiPanelTop_ = 0;
+    uiPanelRight_ = 0;
+    uiPanelBottom_ = 0;
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;

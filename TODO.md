@@ -1114,6 +1114,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
+进展补充（2026-07-18）：修复 Vulkan 最终合成和粒子 ABI 的实际画面问题。Acrylic 现消费 ImGui 面板的像素矩形，只在可见面板范围启用裁剪；全屏 UI 场景复制使用独立的无裁剪管线，避免 MoltenVK 与 KosmicKrisp 对交换链复制和动态裁剪状态产生不同结果。粒子初始化、计算、渲染和网格着色器中的 `isRing`、`padding` 已统一为 ABI 规定的 `uint`，基准读回在映射暂存纹理前等待队列空闲，消除了 MoltenVK 异步读回黑带。最终双 ICD 平均通道差异为 `0.0075`，差异像素比例为 `0.0046%`；MoltenVK/KosmicKrisp 对 Metal 的平均通道差异分别为 `16.1240`、`16.1254`。全量构建和 25 项 CTest 通过，测试结束后无残留应用进程。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

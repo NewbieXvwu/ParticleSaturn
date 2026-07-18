@@ -583,8 +583,8 @@ struct ParticleData
     float4 pos;
     uint   color;
     float  speed;
-    float  isRing;
-    float  pad;
+    uint   isRing;
+    uint   pad;
 };
 
 StructuredBuffer<ParticleData>   g_ParticlesIn;
@@ -624,7 +624,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
     ParticleData p = g_ParticlesIn[id];
 
     float c, s;
-    if (p.isRing < 0.5)
+    if (p.isRing == 0u)
     {
         c = s_bodyAngleCos;
         s = s_bodyAngleSin;
@@ -655,8 +655,8 @@ struct ParticleData
     vec4  pos;
     uint  color;
     float speed;
-    float isRing;
-    float pad;
+    uint  isRing;
+    uint  pad;
 };
 
 layout(set=0, binding=0, std430) readonly buffer g_ParticlesIn
@@ -702,7 +702,7 @@ void main()
     ParticleData p = particlesIn[id];
 
     float c, s;
-    if (p.isRing < 0.5)
+    if (p.isRing == 0u)
     {
         c = s_bodyAngleCos;
         s = s_bodyAngleSin;
@@ -746,8 +746,8 @@ struct ParticleData
     float4 pos;
     uint   color;
     float  speed;
-    float  isRing;
-    float  pad;
+    uint   isRing;
+    uint   pad;
 };
 
 RWStructuredBuffer<ParticleData> g_ParticlesOut;
@@ -810,7 +810,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float3 colRGB = float3(1, 1, 1);
     float alpha = 1.0;
     float speed = 0.0;
-    float isRing = 0.0;
+    uint isRing = 0u;
 
     float R = uRadius;
 
@@ -839,7 +839,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
         pos.w = 1.0 + Random01(rngState) * 0.8;
         alpha = 0.8;
         speed = 0.0;
-        isRing = 0.0;
+        isRing = 0u;
     }
     else
     {
@@ -902,7 +902,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
         pos.w = s;
         alpha = o;
         speed = 8.0 / sqrt(rad);
-        isRing = 1.0;
+        isRing = 1u;
     }
 
     ParticleData p;
@@ -910,7 +910,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     p.color = PackRGBA8(colRGB.x, colRGB.y, colRGB.z, alpha);
     p.speed = speed;
     p.isRing = isRing;
-    p.pad = 0.0;
+    p.pad = 0u;
     g_ParticlesOut[id] = p;
 }
 )";
@@ -923,8 +923,8 @@ struct ParticleData
     vec4  pos;
     uint  color;
     float speed;
-    float isRing;
-    float pad;
+    uint  isRing;
+    uint  pad;
 };
 
 layout(set=0, binding=0, std430) writeonly buffer g_ParticlesOut
@@ -984,7 +984,7 @@ void main()
     vec3 colRGB = vec3(1.0);
     float alpha = 1.0;
     float speed = 0.0;
-    float isRing = 0.0;
+    uint isRing = 0u;
 
     float R = uRadius;
 
@@ -1013,7 +1013,7 @@ void main()
         pos.w = 1.0 + random01(rngState) * 0.8;
         alpha = 0.8;
         speed = 0.0;
-        isRing = 0.0;
+        isRing = 0u;
     }
     else
     {
@@ -1076,7 +1076,7 @@ void main()
         pos.w = s;
         alpha = o;
         speed = 8.0 / sqrt(rad);
-        isRing = 1.0;
+        isRing = 1u;
     }
 
     ParticleData p;
@@ -1084,7 +1084,7 @@ void main()
     p.color = packRGBA8(colRGB.x, colRGB.y, colRGB.z, alpha);
     p.speed = speed;
     p.isRing = isRing;
-    p.pad = 0.0;
+    p.pad = 0u;
     particlesOut[id] = p;
 }
 )";
@@ -1390,8 +1390,8 @@ struct ParticleData
     float4 pos;
     uint   color;
     float  speed;
-    float  isRing;
-    float  pad;
+    uint   isRing;
+    uint   pad;
 };
 
 StructuredBuffer<ParticleData> g_Particles;
@@ -1542,7 +1542,7 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
 
     // ringFactor：仅对本体粒子在近距离略缩小
     float nearMask = (dist <= 50.0) ? 1.0 : 0.0;
-    float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, p.isRing);
+    float ringFactor = lerp(lerp(1.0, 0.8, nearMask), 1.0, float(p.isRing));
     pointSize *= ringFactor * pow(max(uPixelRatio, 0.0001), 0.8);
 
     float px = clamp(pointSize, 0.0, 300.0 * screenScale);
@@ -1558,7 +1558,7 @@ VSOut main(uint VertId : SV_VertexID, uint InstId : SV_InstanceID)
     o.vDist        = dist;
     o.vOpacity     = col.a;
     o.vScaleFactor = uScale;
-    o.vIsRing      = p.isRing;
+    o.vIsRing      = float(p.isRing);
     return o;
 }
 )";
@@ -1638,8 +1638,8 @@ struct ParticleData
     vec4  pos;
     uint  color;
     float speed;
-    float isRing;
-    float pad;
+    uint  isRing;
+    uint  pad;
 };
 
 // Vulkan 下建议显式指定 set/binding，避免不同驱动/编译器对默认绑定行为不一致。
@@ -1774,7 +1774,7 @@ void main()
     float screenScale = uScreenHeight / 1080.0;
     float pointSize = basePointSize * screenScale;
     float nearMask = (dist <= 50.0) ? 1.0 : 0.0;
-    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, p.isRing);
+    float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, float(p.isRing));
     pointSize *= ringFactor * pow(max(uPixelRatio, 0.0001), 0.8);
     float px = clamp(pointSize, 0.0, 300.0 * screenScale);
 
@@ -1789,7 +1789,7 @@ void main()
     vDist  = dist;
     vOpacity = col.a;
     vScaleFactor = uScale;
-    vIsRing = p.isRing;
+    vIsRing = float(p.isRing);
 }
 )";
 
@@ -1884,8 +1884,8 @@ struct ParticleData
     float4 pos;
     uint   color;
     float  speed;
-    float  isRing;
-    float  pad;
+    uint   isRing;
+    uint   pad;
 };
 
 StructuredBuffer<ParticleData> g_Particles;
@@ -2005,7 +2005,7 @@ void main(
         float baseSize = p.pos.w * 350.0;
         float distFactor = 1.0 / dist;
         float screenScale = uScreenHeight / 1080.0;
-        float ringFactor = (p.isRing > 0.5) ? 0.85 : 1.0;
+        float ringFactor = (p.isRing != 0u) ? 0.85 : 1.0;
         float pixelFactor = pow(abs(uPixelRatio), 0.8);
 
         float pointSize = baseSize * distFactor * 0.55 * screenScale * ringFactor * pixelFactor;
@@ -2040,7 +2040,7 @@ void main(
         v.vDist = dist;
         v.vOpacity = valid ? vOpacity : 0.0;
         v.vScaleFactor = vScaleFactor;
-        v.vIsRing = p.isRing;
+        v.vIsRing = float(p.isRing);
 
         if (valid)
         {

@@ -321,7 +321,10 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 {},
                 [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
                 [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
-                {}});
+                [&](ImDrawList*, const ImVec2& position, const ImVec2& size) {
+                    adapter.SetAcrylicPanelRect(position.x, position.y, size.x, size.y,
+                                                mutableState.window.dpiScale);
+                }});
             MD3::EndFrame();
             if (!adapter.PresentSceneFrame(syncInterval)) {
                 if (adapter.DeviceLost()) {
