@@ -155,6 +155,8 @@ private:
     float sceneRotationY_ = 0.0f;
     float pixelRatio_ = 1.0f;
     float densityCompensation_ = 0.6f;
+    bool bloomEnabled_ = true;
+    float bloomBlurStrength_ = 2.0f;
     bool uiBlurEnabled_ = true;
     float uiBlurStrength_ = 2.0f;
     bool uiDarkMode_ = true;

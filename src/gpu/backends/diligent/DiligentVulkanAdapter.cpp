@@ -494,6 +494,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         {description.Height == 0 ? 1.0f : static_cast<float>(description.Width) / static_cast<float>(description.Height),
          static_cast<float>(description.Height), pixelRatio_, densityCompensation_}};
     UpdateBuffer(particleRenderConstants_, 0, std::as_bytes(std::span{&renderConstants, 1}));
+    const ToneMapConstants toneMapConstants{bloomEnabled_ ? 0.5f : 0.0f, 0.0f, {0.0f, 0.0f}};
+    UpdateBuffer(toneMapConstants_, 0, std::as_bytes(std::span{&toneMapConstants, 1}));
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
     const auto hdr = graph.AddResource({"vulkan-hdr-scene", {description.Width, description.Height, 1}});
@@ -543,14 +545,16 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         bloomOutputView = bloomShaderResource_;
         return true;
     });
-    constexpr std::array<float, 7> bloomOffsets{0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    constexpr std::array<float, 7> bloomOffsets{1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const float bloomBlurScale = std::clamp(bloomBlurStrength_, 0.0f, 5.0f) / 5.0f;
     std::vector<std::uint32_t> blurPasses;
     blurPasses.reserve(bloomOffsets.size());
     for (std::uint32_t index = 0; index < bloomOffsets.size(); ++index) {
         blurPasses.push_back(graph.AddPass("vulkan-bloom-blur-" + std::to_string(index), [&, index] {
             const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
                 1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
-                1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, bloomOffsets[index], 0.0f};
+            1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+                bloomBlurScale * (bloomOffsets[index] + 0.5f) - 0.5f, 0.0f};
             UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
             void* renderTarget = index % 2 == 0 ? bloomPingRenderTarget_ : bloomRenderTarget_;
             void* shaderResource = index % 2 == 0 ? bloomPingShaderResource_ : bloomShaderResource_;
@@ -732,7 +736,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         return true;
     });
     const auto capture = graph.AddPass("vulkan-baseline-capture", [&] {
-        if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr) return true;
+        if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
+            presentedFrameCount_ < 3) return true;
         ::Diligent::CopyTextureAttribs copy;
         copy.pSrcTexture = target->GetTexture();
         copy.SrcTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
@@ -782,7 +787,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     graph.Write(capture, drawable, ResourceUsage::CopySource);
     graph.Read(present, drawable, ResourceUsage::Present);
     const bool executed = graph.Execute();
-    if (!executed || !baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr) return executed;
+    if (!executed || !baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
+        presentedFrameCount_ < 3) return executed;
     context->Flush();
     ::Diligent::MappedTextureSubresource mapped;
     context->MapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0,
@@ -845,6 +851,8 @@ void DiligentVulkanAdapter::SetSceneSettings(const App::SceneState& scene,
     sceneRotationY_ = scene.rotationY;
     pixelRatio_ = std::clamp(render.pixelRatio, 0.25f, 1.0f);
     densityCompensation_ = std::clamp(render.densityCompensation, 0.0f, 2.0f);
+    bloomEnabled_ = render.bloomEnabled;
+    bloomBlurStrength_ = std::clamp(render.bloomBlurStrength, 0.0f, 5.0f);
 }
 
 bool DiligentVulkanAdapter::BaselineCaptureRequested() const noexcept {
@@ -1946,6 +1954,8 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     sceneRotationY_ = 0.0f;
     pixelRatio_ = 1.0f;
     densityCompensation_ = 0.6f;
+    bloomEnabled_ = true;
+    bloomBlurStrength_ = 2.0f;
     uiBlurEnabled_ = true;
     uiBlurStrength_ = 2.0f;
     uiDarkMode_ = true;
