@@ -122,9 +122,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.SetPresentationMode(mutableState.render.vsyncMode);
                 appliedVsync = mutableState.render.vsyncMode;
             }
-            constexpr float clearColor[] = {0.002f, 0.003f, 0.008f, 1.0f};
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
-            if (!adapter.PresentClearFrame(clearColor, syncInterval)) {
+            if (!adapter.PresentSceneFrame(syncInterval)) {
                 ReportStartupFailure("present", "Vulkan frame presentation failed");
                 host.RequestExit();
                 return;

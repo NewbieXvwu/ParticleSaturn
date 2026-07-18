@@ -21,15 +21,19 @@ public:
     bool CreateSwapChain(void* nativeView, std::uint32_t width, std::uint32_t height, std::string& error);
     bool ResizeSwapChain(std::uint32_t width, std::uint32_t height);
     bool PresentClearFrame(const float color[4], std::uint32_t syncInterval);
+    bool PresentSceneFrame(std::uint32_t syncInterval);
     void Shutdown() noexcept;
 
     const std::string& AdapterName() const noexcept;
     const GpuCapabilities& Capabilities() const noexcept;
 
 private:
+    bool CreateScenePipeline(std::string& error);
+
     void* device_ = nullptr;
     void* context_ = nullptr;
     void* swapChain_ = nullptr;
+    void* scenePipeline_ = nullptr;
     std::string adapterName_;
     GpuCapabilities capabilities_{};
 };

@@ -24,10 +24,12 @@ int main(int argc, char* argv[]) {
         assert(adapter.CreateSwapChain(host.NativeView(), drawable.width, drawable.height, error));
         const float color[] = {0.0f, 0.0f, 0.0f, 1.0f};
         assert(adapter.PresentClearFrame(color, 1));
+        assert(adapter.PresentSceneFrame(1));
         const auto resizedWidth = drawable.width > 2 ? drawable.width - 1 : drawable.width + 1;
         const auto resizedHeight = drawable.height > 2 ? drawable.height - 1 : drawable.height + 1;
         assert(adapter.ResizeSwapChain(resizedWidth, resizedHeight));
         assert(adapter.PresentClearFrame(color, 1));
+        assert(adapter.PresentSceneFrame(1));
         adapter.Shutdown();
     }
     return 0;

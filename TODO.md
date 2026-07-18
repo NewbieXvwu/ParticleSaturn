@@ -1050,6 +1050,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-17）：统一启动器选择 Vulkan 后现进入 `RunVulkanApplication`，读取持久化或测试覆盖的驱动设置，在任何 Vulkan 调用前配置唯一 ICD，创建 `CocoaHost` 和 Diligent 交换链，并在主循环处理物理像素缩放、窗口几何、垂直同步、全屏、Esc 退出和清除呈现。MoltenVK 主应用冒烟测试连续呈现三帧后正常退出，KosmicKrisp 构建配置存在时注册同等测试；全部 CTest 共 18 项通过。共享渲染通道和 ImGui 尚未迁入 Vulkan，因此可见内容仍是清除帧。
 
+进展补充（2026-07-18）：Vulkan 交换链现创建运行时 GLSL 图形管线并实际绘制全屏场景通道，包含程序化星空、土星本体和环带，不再只清除后缓冲。表面测试在首次创建和缩放后均执行该绘制，MoltenVK 主应用冒烟测试同样走场景路径；完整共享粒子、Bloom、Acrylic 和 ImGui 迁入仍待完成，双 ICD 的可见画面人工验收仍保留。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
