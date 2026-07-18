@@ -87,18 +87,39 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         App::AppController controller{state};
         host.SetActionCallback([&](HostAction action) {
             switch (action) {
+            case HostAction::ToggleDebugWindow:
+                controller.Dispatch(App::ToggleDebugWindow{});
+                break;
+            case HostAction::ToggleBlur:
+                controller.Dispatch(App::SetBlurEnabled{!controller.State().ui.blurEnabled});
+                break;
+            case HostAction::TogglePause:
+                controller.Dispatch(App::TogglePause{});
+                break;
             case HostAction::ToggleFullscreen: {
                 const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});
                 if (effect.windowChanged) host.ToggleFullscreen();
                 break;
             }
+            case HostAction::ShowCameraSelector:
+                break;
+            case HostAction::KeyF3Down:
+            case HostAction::KeyF3Up:
             case HostAction::KeyF11Down:
             case HostAction::KeyF11Up:
+            case HostAction::KeyBDown:
+            case HostAction::KeyBUp:
             case HostAction::KeyEscapeDown:
             case HostAction::KeyEscapeUp: {
-                const bool pressed = action == HostAction::KeyF11Down || action == HostAction::KeyEscapeDown;
-                const auto key = action == HostAction::KeyF11Down || action == HostAction::KeyF11Up
-                    ? App::InputKey::F11 : App::InputKey::Escape;
+                const bool pressed = action == HostAction::KeyF3Down || action == HostAction::KeyF11Down ||
+                    action == HostAction::KeyBDown || action == HostAction::KeyEscapeDown;
+                const auto key = (action == HostAction::KeyF3Down || action == HostAction::KeyF3Up)
+                    ? App::InputKey::F3
+                    : (action == HostAction::KeyF11Down || action == HostAction::KeyF11Up)
+                    ? App::InputKey::F11
+                    : (action == HostAction::KeyBDown || action == HostAction::KeyBUp)
+                    ? App::InputKey::B
+                    : App::InputKey::Escape;
                 const auto effect = controller.Dispatch(App::SetInputKeyPressed{key, pressed});
                 if (effect.windowChanged) host.ToggleFullscreen();
                 if (effect.exitRequested) host.RequestExit();

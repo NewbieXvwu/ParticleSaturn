@@ -1088,6 +1088,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 基准捕获现通过 Diligent `USAGE_STAGING` 纹理、`CopyTexture` 和 `MapTextureSubresource` 读回最终交换链图像，MoltenVK 与 KosmicKrisp 均可在固定暂停帧写出 PPM，捕获后应用自动退出。四模式基准脚本现分别启动 Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp，Metal/OpenGL 继续使用严格阈值，两个 Vulkan ICD 先做驱动间一致性检查；Vulkan 与 Metal 的逐帧画面一致性仍待完整粒子和着色器对齐后验收。
 
+进展补充（2026-07-18）：Vulkan Cocoa 主循环现完整分发 F3、F11、B、Esc，以及调试面板、模糊和暂停动作，统一经过 `AppController`，与 Metal/OpenGL 的快捷键语义一致；已有应用核心快捷键测试和两种 ICD 的真实窗口呈现测试通过。真实键盘操作、摄像头交互和设备丢失恢复仍待端到端验收。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局
