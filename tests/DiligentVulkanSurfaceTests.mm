@@ -2,6 +2,7 @@
 
 #include "gpu/backends/diligent/DiligentVulkanAdapter.h"
 #include "platform/macos/CocoaHost.h"
+#include "imgui.h"
 
 #include <cassert>
 #include <cstring>
@@ -22,17 +23,28 @@ int main(int argc, char* argv[]) {
             : ParticleSaturn::App::VulkanDriver::MoltenVK;
         assert(adapter.Initialize(driver, argv[1], error));
         assert(adapter.CreateSwapChain(host.NativeView(), drawable.width, drawable.height, error));
+        assert(adapter.InitializeImGui(host.NativeView(), error));
         const float color[] = {0.0f, 0.0f, 0.0f, 1.0f};
         assert(adapter.PresentClearFrame(color, 1));
         adapter.SetParticleSettings(512, false);
-        assert(adapter.PresentSceneFrame(1));
+        const auto presentUiFrame = [&](const char* label) {
+            adapter.BeginImGuiFrame();
+            ImGui::Begin("Vulkan surface test");
+            ImGui::TextUnformatted(label);
+            ImGui::End();
+            return adapter.PresentSceneFrame(1);
+        };
+        adapter.SetAcrylicSettings(true, 2.0f, true);
+        assert(presentUiFrame(argv[2]));
         const auto resizedWidth = drawable.width > 2 ? drawable.width - 1 : drawable.width + 1;
         const auto resizedHeight = drawable.height > 2 ? drawable.height - 1 : drawable.height + 1;
         assert(adapter.ResizeSwapChain(resizedWidth, resizedHeight));
         assert(adapter.PresentClearFrame(color, 1));
-        assert(adapter.PresentSceneFrame(1));
+        adapter.SetAcrylicSettings(false, 0.0f, false);
+        assert(presentUiFrame("acrylic-disabled"));
         adapter.SetParticleSettings(512, true);
-        assert(adapter.PresentSceneFrame(1));
+        adapter.SetAcrylicSettings(true, 4.0f, false);
+        assert(presentUiFrame("acrylic-enabled"));
         adapter.Shutdown();
     }
     return 0;

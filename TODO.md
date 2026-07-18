@@ -1084,6 +1084,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：修复构建缓存失效时 KosmicKrisp 资源复制被跳过的问题。macOS 配置会校验并重新发现失效的驱动目录，统一生成或改写包内相对路径 ICD，构建结束时强制校验驱动与 `KosmicKrisp_icd.json` 均已进入应用包，并新增 CTest 包布局检查。Vulkan ImGui 资源改为独立 macOS 静态目标，KosmicKrisp 下跳过不稳定的 D24/S8 深度附件；KosmicKrisp 适配器、表面、主应用冒烟和完整 21 项 CTest 全部通过，测试结束后无残留应用进程。
 
+进展补充（2026-07-18）：Vulkan 现将色调映射先写入独立 UI 场景，再按 `tone-map → ui-scene → 1/6 强模糊 → 1/12 弱模糊 → Acrylic → ImGui → present` 执行共享渲染图。Acrylic 复用 Diligent GLSL 和既有深浅主题参数，模糊关闭时跳过低分辨率通道并直通 UI 场景；窗口缩放会重建 UI 场景及四张模糊纹理。MoltenVK、KosmicKrisp 表面测试均实际绘制 ImGui，并覆盖 Acrylic 开启、关闭、缩放后的重新呈现，完整 21 项 CTest 通过。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
@@ -1092,7 +1094,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] `DiligentVulkanAdapter` 兼容修复（双 ICD 独立进程设备创建测试）
 - [x] 驱动切换 + 重启
 - [x] 日志记录 ICD 信息
-- [ ] 创建 macOS Vulkan 表面和交换链，接入呈现、窗口缩放、全部渲染通道与 ImGui
+- [x] 创建 macOS Vulkan 表面和交换链，接入呈现、窗口缩放、全部渲染通道与 ImGui
 - [x] 主应用按保存的图形接口和驱动启动 Vulkan/MoltenVK 或 Vulkan/KosmicKrisp 路径
 - [ ] MoltenVK、KosmicKrisp 分别完成可见画面、交互、设备丢失和重启后的运行验证
 

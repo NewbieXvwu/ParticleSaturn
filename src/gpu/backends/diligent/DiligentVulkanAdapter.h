@@ -29,6 +29,7 @@ public:
     bool InitializeImGui(void* nativeView, std::string& error);
     void BeginImGuiFrame();
     bool ImGuiReady() const noexcept;
+    void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     void Shutdown() noexcept;
 
@@ -56,6 +57,7 @@ private:
     bool CreateHdrTargets(std::uint32_t width, std::uint32_t height, std::string& error);
     bool CreateToneMapPipeline(std::string& error);
     bool CreateBloomPipelines(std::string& error);
+    bool CreateAcrylicPipeline(std::string& error);
     bool CreateParticleInitializationPipeline(std::string& error);
     bool CreateParticleComputePipeline(std::string& error);
     bool SimulateParticles(CommandList& commands);
@@ -73,18 +75,30 @@ private:
     void* hdrTexture_ = nullptr;
     void* hdrRenderTarget_ = nullptr;
     void* hdrShaderResource_ = nullptr;
+    void* uiSceneTexture_ = nullptr;
+    void* uiSceneRenderTarget_ = nullptr;
+    void* uiSceneShaderResource_ = nullptr;
     void* bloomTexture_ = nullptr;
     void* bloomRenderTarget_ = nullptr;
     void* bloomShaderResource_ = nullptr;
     void* bloomPingTexture_ = nullptr;
     void* bloomPingRenderTarget_ = nullptr;
     void* bloomPingShaderResource_ = nullptr;
+    void* uiWeakTexture_ = nullptr;
+    void* uiWeakRenderTarget_ = nullptr;
+    void* uiWeakShaderResource_ = nullptr;
+    void* uiWeakPingTexture_ = nullptr;
+    void* uiWeakPingRenderTarget_ = nullptr;
+    void* uiWeakPingShaderResource_ = nullptr;
     void* bloomDownsamplePipeline_ = nullptr;
     void* bloomDownsampleBinding_ = nullptr;
     void* bloomDownsampleTextureVariable_ = nullptr;
     void* bloomBlurPipeline_ = nullptr;
     void* bloomBlurBinding_ = nullptr;
     void* bloomBlurTextureVariable_ = nullptr;
+    void* acrylicPipeline_ = nullptr;
+    void* acrylicBinding_ = nullptr;
+    void* acrylicTextureVariable_ = nullptr;
     void* toneMapPipeline_ = nullptr;
     void* toneMapBinding_ = nullptr;
     void* toneMapTextureVariable_ = nullptr;
@@ -103,6 +117,7 @@ private:
     BufferHandle sceneIndirectArguments_{};
     BufferHandle toneMapConstants_{};
     BufferHandle bloomConstants_{};
+    BufferHandle acrylicConstants_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
     BufferHandle particleInitializationConstants_{};
@@ -113,6 +128,9 @@ private:
     std::uint32_t particleCount_ = 1'200'000;
     bool particlePaused_ = false;
     bool particleCountDirty_ = false;
+    bool uiBlurEnabled_ = true;
+    float uiBlurStrength_ = 2.0f;
+    bool uiDarkMode_ = true;
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;
