@@ -49,9 +49,15 @@ bool IsEnabled(::Diligent::DEVICE_FEATURE_STATE state) {
 }
 
 bool WriteMappedBaseline(const ::Diligent::MappedTextureSubresource& mapped,
-                         std::uint32_t width, std::uint32_t height, const char* path) {
+                         std::uint32_t width, std::uint32_t height, ::Diligent::TEXTURE_FORMAT format,
+                         const char* path) {
     if (mapped.pData == nullptr || mapped.Stride < static_cast<std::uint64_t>(width) * 4U ||
         path == nullptr || path[0] == '\0' || width == 0 || height == 0) return false;
+    const bool bgra = format == ::Diligent::TEX_FORMAT_BGRA8_UNORM ||
+                      format == ::Diligent::TEX_FORMAT_BGRA8_UNORM_SRGB;
+    const bool rgba = format == ::Diligent::TEX_FORMAT_RGBA8_UNORM ||
+                      format == ::Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+    if (!bgra && !rgba) return false;
     std::ofstream output{path, std::ios::binary};
     if (!output) return false;
     output << "P6\n" << width << ' ' << height << "\n255\n";
@@ -60,7 +66,8 @@ bool WriteMappedBaseline(const ::Diligent::MappedTextureSubresource& mapped,
         const auto* source = bytes + static_cast<std::size_t>(row) * mapped.Stride;
         for (std::uint32_t column = 0; column < width; ++column) {
             const auto* pixel = source + static_cast<std::size_t>(column) * 4U;
-            output.write(reinterpret_cast<const char*>(pixel), 3);
+            const std::uint8_t rgb[] = {pixel[bgra ? 2 : 0], pixel[1], pixel[bgra ? 0 : 2]};
+            output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
         }
     }
     return output.good();
@@ -450,7 +457,7 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
     }
     if (swapChain_ != nullptr) static_cast<::Diligent::ISwapChain*>(swapChain_)->Release();
     swapChain_ = nullptr;
-    ::Diligent::SwapChainDesc description{width, height, ::Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB,
+    ::Diligent::SwapChainDesc description{width, height, ::Diligent::TEX_FORMAT_RGBA8_UNORM,
                                            ::Diligent::TEX_FORMAT_D32_FLOAT};
     ::Diligent::ISwapChain* swapChain = nullptr;
     ::Diligent::GetEngineFactoryVk()->CreateSwapChainVk(
@@ -871,7 +878,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     ::Diligent::MappedTextureSubresource mapped;
     context->MapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0,
                                    ::Diligent::MAP_READ, ::Diligent::MAP_FLAG_NONE, nullptr, mapped);
-    baselineCaptured_ = WriteMappedBaseline(mapped, baselineStagingWidth_, baselineStagingHeight_, baselinePath_.c_str());
+    const auto stagingFormat = static_cast<::Diligent::ITexture*>(baselineStagingTexture_)->GetDesc().Format;
+    baselineCaptured_ = WriteMappedBaseline(mapped, baselineStagingWidth_, baselineStagingHeight_, stagingFormat,
+                                             baselinePath_.c_str());
     context->UnmapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0);
     return baselineCaptured_;
 }

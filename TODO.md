@@ -1116,6 +1116,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：修复 Vulkan 最终合成和粒子 ABI 的实际画面问题。Acrylic 现消费 ImGui 面板的像素矩形，只在可见面板范围启用裁剪；全屏 UI 场景复制使用独立的无裁剪管线，避免 MoltenVK 与 KosmicKrisp 对交换链复制和动态裁剪状态产生不同结果。粒子初始化、计算、渲染和网格着色器中的 `isRing`、`padding` 已统一为 ABI 规定的 `uint`，基准读回在映射暂存纹理前等待队列空闲，消除了 MoltenVK 异步读回黑带。最终双 ICD 平均通道差异为 `0.0075`，差异像素比例为 `0.0046%`；MoltenVK/KosmicKrisp 对 Metal 的平均通道差异分别为 `16.1240`、`16.1254`。全量构建和 25 项 CTest 通过，测试结束后无残留应用进程。
 
+进展补充（2026-07-18）：Vulkan 基准读回现按暂存纹理的实际 `RGBA8`/`BGRA8` 格式写出 RGB，修复 macOS 交换链 BGRA 字节被误当作 RGB 造成的红蓝互换；交换链与 UI 场景改用普通 UNORM，和 Metal `BGRA8Unorm` 的线性色调映射写出保持一致，避免 Vulkan sRGB 目标重复编码。MoltenVK/KosmicKrisp 对 Metal 的平均通道差异降至 `2.0836`/`2.0851`，差异像素比例为 `1.1902%`/`1.1934%`；双 ICD 平均通道差异为 `0.0091`。全量 25 项 CTest 通过且无残留应用进程，剩余差异主要来自星空密度和细小粒子覆盖。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
