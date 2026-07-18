@@ -1,15 +1,16 @@
 #pragma once
 
-#include "gpu/interface/GpuCapabilities.h"
+#include "gpu/interface/GpuDevice.h"
 
 #include "app/state/AppStates.h"
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ParticleSaturn::Gpu::Diligent {
 
-class DiligentVulkanAdapter {
+class DiligentVulkanAdapter final : public GpuDevice, private CommandList {
 public:
     DiligentVulkanAdapter() = default;
     ~DiligentVulkanAdapter();
@@ -24,11 +25,30 @@ public:
     bool PresentSceneFrame(std::uint32_t syncInterval);
     void Shutdown() noexcept;
 
+    std::string_view Name() const noexcept override;
     const std::string& AdapterName() const noexcept;
-    const GpuCapabilities& Capabilities() const noexcept;
+    const GpuCapabilities& Capabilities() const noexcept override;
+    BufferHandle CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) override;
+    void DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) override;
+    CommandList& BeginCommands() override;
+    FrameToken Submit(CommandList& commands) override;
 
 private:
+    struct BufferEntry {
+        void* buffer = nullptr;
+        std::uint32_t generation = 1;
+        ResourceUsage usage = ResourceUsage::Undefined;
+        std::uint64_t retireAfter = 0;
+        bool pendingRelease = false;
+    };
+
     bool CreateScenePipeline(std::string& error);
+    void ReleaseRetiredBuffers() noexcept;
+    void* ResolveBuffer(BufferHandle buffer) const;
+    void Transition(BufferHandle buffer, ResourceUsage before, ResourceUsage after) override;
+    void Transition(TextureHandle texture, ResourceUsage before, ResourceUsage after) override;
+    void DrawIndirect(BufferHandle arguments, std::size_t offset) override;
+    void Dispatch(std::uint32_t groupsX, std::uint32_t groupsY, std::uint32_t groupsZ) override;
 
     void* device_ = nullptr;
     void* context_ = nullptr;
@@ -36,6 +56,9 @@ private:
     void* scenePipeline_ = nullptr;
     std::string adapterName_;
     GpuCapabilities capabilities_{};
+    std::vector<BufferEntry> buffers_;
+    std::uint64_t submissionValue_ = 0;
+    bool commandsOpen_ = false;
 };
 
 } // namespace ParticleSaturn::Gpu::Diligent

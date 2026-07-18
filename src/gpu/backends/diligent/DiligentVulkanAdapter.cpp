@@ -4,12 +4,15 @@
 #include "services/vulkan/VulkanDriverRuntime.h"
 
 #include <EngineFactoryVk.h>
+#include <Buffer.h>
 #include <RenderDevice.h>
 #include <DeviceContext.h>
 #include <PipelineState.h>
 #include <Shader.h>
 #include <SwapChain.h>
 #include <MacOSNativeWindow.h>
+
+#include <stdexcept>
 
 namespace ParticleSaturn::Gpu::Diligent {
 namespace {
@@ -59,6 +62,30 @@ void main() {
     color = vec4(result, 1.0);
 }
 )";
+
+::Diligent::RESOURCE_STATE ToDiligentResourceState(ResourceUsage usage) {
+    switch (usage) {
+        case ResourceUsage::Undefined: return ::Diligent::RESOURCE_STATE_UNKNOWN;
+        case ResourceUsage::CopySource: return ::Diligent::RESOURCE_STATE_COPY_SOURCE;
+        case ResourceUsage::CopyDestination: return ::Diligent::RESOURCE_STATE_COPY_DEST;
+        case ResourceUsage::ShaderRead: return ::Diligent::RESOURCE_STATE_SHADER_RESOURCE;
+        case ResourceUsage::ShaderWrite: return ::Diligent::RESOURCE_STATE_UNORDERED_ACCESS;
+        case ResourceUsage::RenderTarget:
+        case ResourceUsage::Present:
+            throw std::invalid_argument{"a buffer cannot use a texture-only resource state"};
+    }
+    throw std::invalid_argument{"unknown resource usage"};
+}
+
+::Diligent::BIND_FLAGS ToDiligentBindFlags(BufferUsage usage) {
+    auto flags = ::Diligent::BIND_NONE;
+    if (HasUsage(usage, BufferUsage::Vertex)) flags |= ::Diligent::BIND_VERTEX_BUFFER;
+    if (HasUsage(usage, BufferUsage::Index)) flags |= ::Diligent::BIND_INDEX_BUFFER;
+    if (HasUsage(usage, BufferUsage::Uniform)) flags |= ::Diligent::BIND_UNIFORM_BUFFER;
+    if (HasUsage(usage, BufferUsage::Storage)) flags |= ::Diligent::BIND_SHADER_RESOURCE | ::Diligent::BIND_UNORDERED_ACCESS;
+    if (HasUsage(usage, BufferUsage::Indirect)) flags |= ::Diligent::BIND_INDIRECT_DRAW_ARGS;
+    return flags;
+}
 
 } // namespace
 
@@ -180,6 +207,134 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     return graph.Execute();
 }
 
+std::string_view DiligentVulkanAdapter::Name() const noexcept {
+    return adapterName_;
+}
+
+BufferHandle DiligentVulkanAdapter::CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) {
+    if (device_ == nullptr) throw std::logic_error{"Diligent Vulkan device is not initialized"};
+    if (desc.size == 0) throw std::invalid_argument{"buffer size must be non-zero"};
+    if (initialData.size() > desc.size) throw std::invalid_argument{"initial buffer data exceeds buffer size"};
+    if (HasUsage(desc.usage, BufferUsage::Storage) &&
+        (desc.elementStride == 0 || desc.size % desc.elementStride != 0)) {
+        throw std::invalid_argument{"a storage buffer requires a non-zero element stride that divides its size"};
+    }
+
+    ::Diligent::BufferDesc nativeDesc;
+    nativeDesc.Name = "ParticleSaturn Vulkan buffer";
+    nativeDesc.Size = static_cast<::Diligent::Uint64>(desc.size);
+    nativeDesc.Usage = ::Diligent::USAGE_DEFAULT;
+    nativeDesc.BindFlags = ToDiligentBindFlags(desc.usage);
+    if (HasUsage(desc.usage, BufferUsage::Storage)) {
+        nativeDesc.Mode = ::Diligent::BUFFER_MODE_STRUCTURED;
+        nativeDesc.ElementByteStride = static_cast<::Diligent::Uint32>(desc.elementStride);
+    }
+    ::Diligent::BufferData nativeData;
+    nativeData.pData = initialData.empty() ? nullptr : initialData.data();
+    nativeData.DataSize = static_cast<::Diligent::Uint64>(initialData.size());
+    ::Diligent::IBuffer* nativeBuffer = nullptr;
+    static_cast<::Diligent::IRenderDevice*>(device_)->CreateBuffer(
+        nativeDesc, initialData.empty() ? nullptr : &nativeData, &nativeBuffer);
+    if (nativeBuffer == nullptr) throw std::runtime_error{"Diligent Vulkan could not create a buffer"};
+
+    for (std::uint32_t index = 0; index < buffers_.size(); ++index) {
+        auto& entry = buffers_[index];
+        if (entry.buffer == nullptr && !entry.pendingRelease) {
+            entry.buffer = nativeBuffer;
+            entry.usage = ResourceUsage::Undefined;
+            entry.retireAfter = 0;
+            return {index, entry.generation};
+        }
+    }
+    buffers_.push_back({nativeBuffer, 1, ResourceUsage::Undefined, 0, false});
+    return {static_cast<std::uint32_t>(buffers_.size() - 1), 1};
+}
+
+void DiligentVulkanAdapter::DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) {
+    if (!buffer || buffer.index >= buffers_.size()) {
+        throw std::out_of_range{"buffer handle does not belong to the Diligent Vulkan adapter"};
+    }
+    auto& entry = buffers_[buffer.index];
+    if (entry.buffer == nullptr || entry.pendingRelease || entry.generation != buffer.generation) {
+        throw std::logic_error{"buffer handle is stale or already scheduled for release"};
+    }
+    entry.pendingRelease = true;
+    entry.retireAfter = afterFrame.value;
+    ++entry.generation;
+    if (entry.generation == 0) entry.generation = 1;
+    ReleaseRetiredBuffers();
+}
+
+CommandList& DiligentVulkanAdapter::BeginCommands() {
+    if (device_ == nullptr || context_ == nullptr) throw std::logic_error{"Diligent Vulkan device is not initialized"};
+    if (commandsOpen_) throw std::logic_error{"a Diligent Vulkan command list is already open"};
+    commandsOpen_ = true;
+    return *this;
+}
+
+FrameToken DiligentVulkanAdapter::Submit(CommandList& commands) {
+    if (&commands != static_cast<CommandList*>(this) || !commandsOpen_) {
+        throw std::invalid_argument{"command list does not belong to the Diligent Vulkan adapter"};
+    }
+    auto* context = static_cast<::Diligent::IDeviceContext*>(context_);
+    context->Flush();
+    context->FinishFrame();
+    commandsOpen_ = false;
+    ++submissionValue_;
+    ReleaseRetiredBuffers();
+    return {submissionValue_};
+}
+
+void DiligentVulkanAdapter::Transition(BufferHandle buffer, ResourceUsage before, ResourceUsage after) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before recording a resource transition"};
+    auto* nativeBuffer = static_cast<::Diligent::IBuffer*>(ResolveBuffer(buffer));
+    auto& entry = buffers_[buffer.index];
+    if (entry.usage != before) throw std::logic_error{"buffer transition does not match the tracked resource state"};
+    ::Diligent::StateTransitionDesc barrier;
+    barrier.pResource = nativeBuffer;
+    barrier.OldState = ToDiligentResourceState(before);
+    barrier.NewState = ToDiligentResourceState(after);
+    barrier.TransitionType = ::Diligent::STATE_TRANSITION_TYPE_IMMEDIATE;
+    barrier.Flags = ::Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE;
+    static_cast<::Diligent::IDeviceContext*>(context_)->TransitionResourceStates(1, &barrier);
+    entry.usage = after;
+}
+
+void DiligentVulkanAdapter::Transition(TextureHandle, ResourceUsage, ResourceUsage) {
+    throw std::logic_error{"Diligent Vulkan texture transitions are not available yet"};
+}
+
+void DiligentVulkanAdapter::DrawIndirect(BufferHandle, std::size_t) {
+    throw std::logic_error{"Diligent Vulkan indirect drawing is not available through the shared device yet"};
+}
+
+void DiligentVulkanAdapter::Dispatch(std::uint32_t, std::uint32_t, std::uint32_t) {
+    throw std::logic_error{"Diligent Vulkan dispatch is not available through the shared device yet"};
+}
+
+void* DiligentVulkanAdapter::ResolveBuffer(BufferHandle buffer) const {
+    if (!buffer || buffer.index >= buffers_.size()) {
+        throw std::out_of_range{"buffer handle does not belong to the Diligent Vulkan adapter"};
+    }
+    const auto& entry = buffers_[buffer.index];
+    if (entry.buffer == nullptr || entry.pendingRelease || entry.generation != buffer.generation) {
+        throw std::logic_error{"buffer handle is stale or already scheduled for release"};
+    }
+    return entry.buffer;
+}
+
+void DiligentVulkanAdapter::ReleaseRetiredBuffers() noexcept {
+    for (auto& entry : buffers_) {
+        if (entry.pendingRelease && entry.retireAfter <= submissionValue_) {
+            static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
+            entry.buffer = nullptr;
+            entry.usage = ResourceUsage::Undefined;
+            entry.retireAfter = 0;
+            entry.pendingRelease = false;
+        }
+    }
+}
+
 bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     if (device_ == nullptr || swapChain_ == nullptr) {
         error = "Diligent Vulkan scene pipeline requires a device and swap chain";
@@ -231,6 +386,7 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
 }
 
 void DiligentVulkanAdapter::Shutdown() noexcept {
+    commandsOpen_ = false;
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Flush();
     }
@@ -242,6 +398,10 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(scenePipeline_)->Release();
         scenePipeline_ = nullptr;
     }
+    for (auto& entry : buffers_) {
+        if (entry.buffer != nullptr) static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
+    }
+    buffers_.clear();
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;
@@ -252,6 +412,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     }
     adapterName_.clear();
     capabilities_ = {};
+    submissionValue_ = 0;
 }
 
 const std::string& DiligentVulkanAdapter::AdapterName() const noexcept {

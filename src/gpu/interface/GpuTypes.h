@@ -71,6 +71,7 @@ constexpr bool HasUsage(BufferUsage usage, BufferUsage value) noexcept {
 
 struct BufferDesc {
     std::size_t size = 0;
+    std::size_t elementStride = 0;
     BufferUsage usage = BufferUsage::None;
 };
 
