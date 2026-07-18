@@ -35,6 +35,7 @@ public:
     bool DeviceLost() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
+    void SetSceneSettings(const App::SceneState& scene, const App::RenderSettings& render) noexcept;
     bool BaselineCaptureRequested() const noexcept;
     void Shutdown() noexcept;
 
@@ -133,6 +134,7 @@ private:
     BufferHandle acrylicConstants_{};
     BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
+    BufferHandle particleRenderConstants_{};
     BufferHandle particleInitializationConstants_{};
     BufferHandle particleIndirectArguments_{};
     std::uint32_t particleRenderIndex_ = 0;
@@ -141,6 +143,12 @@ private:
     std::uint32_t particleCount_ = 1'200'000;
     bool particlePaused_ = false;
     bool particleCountDirty_ = false;
+    float sceneTime_ = 0.0f;
+    float sceneScale_ = 1.0f;
+    float sceneRotationX_ = 0.4f;
+    float sceneRotationY_ = 0.0f;
+    float pixelRatio_ = 1.0f;
+    float densityCompensation_ = 0.6f;
     bool uiBlurEnabled_ = true;
     float uiBlurStrength_ = 2.0f;
     bool uiDarkMode_ = true;

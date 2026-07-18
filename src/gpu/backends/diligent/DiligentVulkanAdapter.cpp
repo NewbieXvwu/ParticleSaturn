@@ -94,25 +94,11 @@ float hash(vec2 value) {
 }
 
 void main() {
-    vec2 position = uv * 2.0 - 1.0;
-    position.x *= 1.45;
     const vec3 space = vec3(0.002, 0.003, 0.008);
     vec3 result = space;
     vec2 cell = floor(uv * vec2(170.0, 100.0));
     float star = step(0.997, hash(cell));
     result += vec3(star) * (0.18 + 0.7 * hash(cell + 13.0));
-    float planet = length(position);
-    if (planet < 0.33) {
-        vec3 light = normalize(vec3(-0.45, 0.35, 0.8));
-        float depth = sqrt(max(0.0, 0.33 * 0.33 - dot(position, position)));
-        vec3 normal = normalize(vec3(position, depth));
-        float diffuse = max(0.08, dot(normal, light));
-        result = vec3(0.93, 0.75, 0.48) * diffuse;
-    }
-    float ringRadius = length(vec2(position.x, position.y * 2.7));
-    float ring = smoothstep(0.62, 0.59, ringRadius) * smoothstep(0.38, 0.42, ringRadius);
-    ring *= step(0.0, abs(position.y) + 0.12);
-    result = mix(result, vec3(0.72, 0.60, 0.42), ring * 0.75);
     color = vec4(result, 1.0);
 }
 )";
@@ -120,29 +106,87 @@ void main() {
 constexpr const char* ParticleVertexShader = R"(
 struct Particle { vec4 position; uint color; float speed; uint isRing; uint padding; };
 layout(set=0, binding=0, std430) readonly buffer gParticles { Particle particles[]; } particleBuffer;
+layout(set=0, binding=1, std140) uniform RenderConstants {
+    vec4 uScene;
+    vec4 uViewport;
+};
 layout(location = 0) out vec4 particleColor;
+layout(location = 1) out vec2 particleUv;
+layout(location = 2) out float particleDistance;
+layout(location = 3) out float particleScale;
+layout(location = 4) out float particleIsRing;
+layout(location = 5) out float particleDensity;
+
+vec3 rotateSaturn(vec3 position) {
+    const float cz = cos(0.466);
+    const float sz = sin(0.466);
+    const float cy = cos(uScene.w);
+    const float sy = sin(uScene.w);
+    const float cx = cos(uScene.z);
+    const float sx = sin(uScene.z);
+    const vec3 zRotated = vec3(position.x * cz - position.y * sz,
+                               position.x * sz + position.y * cz, position.z);
+    const vec3 yRotated = vec3(zRotated.x * cy + zRotated.z * sy, zRotated.y,
+                              -zRotated.x * sy + zRotated.z * cy);
+    return vec3(yRotated.x, yRotated.y * cx - yRotated.z * sx,
+                yRotated.y * sx + yRotated.z * cx);
+}
+
 void main() {
     const vec2 corners[6] = vec2[6](
         vec2(-1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0),
         vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(1.0, -1.0));
     Particle particle = particleBuffer.particles[gl_InstanceIndex];
-    const vec3 eye = vec3(0.0, 18.0, 75.0);
-    const vec3 forward = normalize(-eye);
-    const vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
-    const vec3 up = cross(right, forward);
-    const vec3 relative = particle.position.xyz - eye;
-    const float depth = max(dot(relative, forward), 0.1);
-    const vec2 center = vec2(dot(relative, right), dot(relative, up)) * (1.8 / depth);
-    const vec2 extent = corners[gl_VertexIndex] * particle.position.w * (0.012 / depth);
+    const vec2 corner = corners[gl_VertexIndex];
+    const vec3 position = rotateSaturn(particle.position.xyz * uScene.y);
+    const float distance = 100.0 - position.z;
+    const float projectedDistance = max(distance, 0.001);
+    const float focalLength = 1.0 / tan(1.047 * 0.5);
+    const float aspect = max(uViewport.x, 0.001);
+    const vec2 center = vec2(position.x * focalLength / (aspect * projectedDistance),
+                             position.y * focalLength / projectedDistance);
+    const float nearMask = distance <= 50.0 ? 1.0 : 0.0;
+    const float ringFactor = mix(mix(1.0, 0.8, nearMask), 1.0, float(particle.isRing));
+    const float pointSize = particle.position.w * 350.0 * 0.55 / max(distance, 0.1) *
+                            (uViewport.y / 1080.0) * ringFactor * pow(max(uViewport.z, 0.0001), 0.8);
+    const float pixelSize = clamp(pointSize, 0.0, 300.0 * (uViewport.y / 1080.0));
+    const vec2 extent = corner * (pixelSize * 0.5) * vec2(2.0 / (aspect * uViewport.y), 2.0 / uViewport.y);
     gl_Position = vec4(center + extent, 0.0, 1.0);
-    particleColor = vec4(float(particle.color & 255u) / 255.0, float((particle.color >> 8u) & 255u) / 255.0, float((particle.color >> 16u) & 255u) / 255.0, 1.0);
+    particleColor = vec4(float(particle.color & 255u), float((particle.color >> 8u) & 255u),
+                         float((particle.color >> 16u) & 255u), float((particle.color >> 24u) & 255u)) / 255.0;
+    particleUv = corner * 0.5 + 0.5;
+    particleDistance = distance;
+    particleScale = uScene.y;
+    particleIsRing = float(particle.isRing);
+    particleDensity = uViewport.w;
 }
 )";
 
 constexpr const char* ParticleFragmentShader = R"(
 layout(location = 0) in vec4 particleColor;
+layout(location = 1) in vec2 particleUv;
+layout(location = 2) in float particleDistance;
+layout(location = 3) in float particleScale;
+layout(location = 4) in float particleIsRing;
+layout(location = 5) in float particleDensity;
 layout(location = 0) out vec4 color;
-void main() { color = particleColor; }
+void main() {
+    const vec2 centered = particleUv * 2.0 - 1.0;
+    const float radiusSquared = dot(centered, centered);
+    if (radiusSquared > 1.0) discard;
+    const float glow = smoothstep(1.0, 0.4, radiusSquared);
+    const float t = clamp((particleScale - 0.15) * 0.4255, 0.0, 1.0);
+    const float smoothedT = smoothstep(0.1, 0.9, t);
+    vec3 finalColor = mix(vec3(0.35, 0.22, 0.05), particleColor.rgb, smoothedT) * (0.2 + t);
+    const float closeMix = smoothstep(40.0, 0.0, particleDistance);
+    const vec3 ringColor = finalColor + vec3(0.15, 0.12, 0.1) * closeMix;
+    const vec3 bodyColor = mix(finalColor, pow(particleColor.rgb, vec3(1.4)) * 1.5, closeMix * 0.8);
+    finalColor = mix(bodyColor, ringColor, particleIsRing);
+    const float depthAlpha = smoothstep(0.0, 10.0, particleDistance);
+    const float alpha = glow * particleColor.a * (0.25 + 0.45 * smoothstep(0.0, 0.5, t)) *
+                        depthAlpha * particleDensity;
+    color = vec4(finalColor, alpha);
+}
 )";
 
 constexpr const char* ParticleComputeShader = R"(
@@ -187,6 +231,11 @@ struct ParticleComputeConstants {
     std::uint32_t particleCount;
 };
 
+struct ParticleRenderConstants {
+    float scene[4];
+    float viewport[4];
+};
+
 struct ParticleInitializationConstants {
     std::uint32_t particleCount;
     std::uint32_t seed;
@@ -207,6 +256,7 @@ struct AcrylicConstants {
 
 static_assert(sizeof(Particle) == 32);
 static_assert(sizeof(ParticleComputeConstants) == 16);
+static_assert(sizeof(ParticleRenderConstants) == 32);
 static_assert(sizeof(ParticleInitializationConstants) == 16);
 static_assert(sizeof(ToneMapConstants) == 16);
 static_assert(sizeof(AcrylicConstants) == 32);
@@ -386,6 +436,11 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     if (target == nullptr || !sceneIndirectArguments_ || !particleIndirectArguments_) return false;
     const auto& description = swapChain->GetDesc();
     auto& commands = BeginCommands();
+    const ParticleRenderConstants renderConstants{
+        {sceneTime_, sceneScale_, sceneRotationX_, sceneRotationY_},
+        {description.Height == 0 ? 1.0f : static_cast<float>(description.Width) / static_cast<float>(description.Height),
+         static_cast<float>(description.Height), pixelRatio_, densityCompensation_}};
+    UpdateBuffer(particleRenderConstants_, 0, std::as_bytes(std::span{&renderConstants, 1}));
     Render::RenderGraph graph;
     const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
     const auto hdr = graph.AddResource({"vulkan-hdr-scene", {description.Width, description.Height, 1}});
@@ -721,6 +776,16 @@ void DiligentVulkanAdapter::SetParticleSettings(std::uint32_t particleCount, boo
     particleCountDirty_ = particleCountDirty_ || particleCount_ != clampedCount;
     particleCount_ = clampedCount;
     particlePaused_ = paused;
+}
+
+void DiligentVulkanAdapter::SetSceneSettings(const App::SceneState& scene,
+                                             const App::RenderSettings& render) noexcept {
+    sceneTime_ = static_cast<float>(scene.simulationTimeSeconds);
+    sceneScale_ = std::clamp(scene.zoom, 0.1f, 10.0f);
+    sceneRotationX_ = scene.rotationX;
+    sceneRotationY_ = scene.rotationY;
+    pixelRatio_ = std::clamp(render.pixelRatio, 0.25f, 1.0f);
+    densityCompensation_ = std::clamp(render.densityCompensation, 0.0f, 2.0f);
 }
 
 bool DiligentVulkanAdapter::BaselineCaptureRequested() const noexcept {
@@ -1349,6 +1414,11 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
         const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, MaxParticleCount};
         particleComputeConstants_ = CreateBuffer(
             {sizeof(constants), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&constants, 1}));
+        const ParticleRenderConstants renderConstants{{0.0f, 1.0f, 0.4f, 0.0f},
+                                                       {1.0f, 1080.0f, 1.0f, 0.6f}};
+        particleRenderConstants_ = CreateBuffer(
+            {sizeof(renderConstants), 0, BufferUsage::Uniform},
+            std::as_bytes(std::span{&renderConstants, 1}));
         const std::array<std::uint32_t, 4> arguments{6, MaxParticleCount, 0, 0};
         particleIndirectArguments_ = CreateBuffer(
             {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
@@ -1397,20 +1467,38 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
     ::Diligent::IShader* fragment = nullptr;
     device->CreateShader(shader, &fragment);
     if (vertex == nullptr || fragment == nullptr) { if (vertex) vertex->Release(); if (fragment) fragment->Release(); error = "Diligent Vulkan could not compile particle shaders"; return false; }
-    ::Diligent::ShaderResourceVariableDesc variables[] = {{::Diligent::SHADER_TYPE_VERTEX, "gParticles", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}};
+    const ::Diligent::ShaderResourceVariableDesc variables[] = {
+        {::Diligent::SHADER_TYPE_VERTEX, "gParticles", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_VERTEX, "RenderConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+    };
     ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
     pipeline.PSODesc.Name = "ParticleSaturn Vulkan Particles";
     pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
     pipeline.PSODesc.ResourceLayout.Variables = variables;
-    pipeline.PSODesc.ResourceLayout.NumVariables = 1;
+    pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
     pipeline.GraphicsPipeline.NumRenderTargets = 1;
     pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
     pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
     pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+    auto& blend = pipeline.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    blend.BlendEnable = ::Diligent::True;
+    blend.SrcBlend = ::Diligent::BLEND_FACTOR_SRC_ALPHA;
+    blend.DestBlend = ::Diligent::BLEND_FACTOR_ONE;
+    blend.BlendOp = ::Diligent::BLEND_OPERATION_ADD;
+    blend.SrcBlendAlpha = ::Diligent::BLEND_FACTOR_ONE;
+    blend.DestBlendAlpha = ::Diligent::BLEND_FACTOR_ONE;
+    blend.BlendOpAlpha = ::Diligent::BLEND_OPERATION_ADD;
     pipeline.pVS = vertex; pipeline.pPS = fragment;
     ::Diligent::IPipelineState* state = nullptr; device->CreateGraphicsPipelineState(pipeline, &state); vertex->Release(); fragment->Release();
     if (state == nullptr) { error = "Diligent Vulkan could not create the particle pipeline"; return false; }
+    auto* renderConstantsVariable = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_VERTEX, "RenderConstants");
+    if (renderConstantsVariable == nullptr) {
+        state->Release();
+        error = "Diligent Vulkan could not access particle render constants";
+        return false;
+    }
+    renderConstantsVariable->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleRenderConstants_)));
     ::Diligent::IShaderResourceBinding* binding = nullptr; state->CreateShaderResourceBinding(&binding, true);
     if (binding == nullptr) { state->Release(); error = "Diligent Vulkan could not create particle bindings"; return false; }
     auto* variable = binding->GetVariableByName(::Diligent::SHADER_TYPE_VERTEX, "gParticles");
@@ -1661,6 +1749,7 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     particleBuffers_[1] = {};
     particleBuffers_[2] = {};
     particleComputeConstants_ = {};
+    particleRenderConstants_ = {};
     particleInitializationConstants_ = {};
     particleIndirectArguments_ = {};
     particleRenderIndex_ = 0;
@@ -1669,6 +1758,12 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     particleCount_ = MaxParticleCount;
     particlePaused_ = false;
     particleCountDirty_ = false;
+    sceneTime_ = 0.0f;
+    sceneScale_ = 1.0f;
+    sceneRotationX_ = 0.4f;
+    sceneRotationY_ = 0.0f;
+    pixelRatio_ = 1.0f;
+    densityCompensation_ = 0.6f;
     uiBlurEnabled_ = true;
     uiBlurStrength_ = 2.0f;
     uiDarkMode_ = true;

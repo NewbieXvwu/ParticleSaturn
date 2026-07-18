@@ -201,6 +201,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             coordinator.Advance(controller, elapsedSeconds);
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
+            adapter.SetSceneSettings(mutableState.scene, mutableState.render);
             adapter.SetAcrylicSettings(mutableState.ui.blurEnabled, mutableState.ui.blurStrength, mutableState.ui.darkMode);
             adapter.BeginImGuiFrame();
             MD3::BeginFrame(1.0f / 60.0f);
