@@ -284,7 +284,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
         commands.DrawIndirect(sceneIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
-        auto* particleView = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffers_[particleReadIndex_]))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
+        auto* particleView = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffers_[particleRenderIndex_]))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
         static_cast<::Diligent::IShaderResourceVariable*>(particleRenderVariable_)->Set(particleView);
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         commands.DrawIndirect(particleIndirectArguments_, 0);
@@ -515,8 +515,10 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
         {{ 0.58f,-0.28f, 0.0f, 1.0f}, 0xFFFFD080u, 0.0f, 1, 0},
     }};
     try {
-        particleBuffers_[0] = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
-        particleBuffers_[1] = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, {});
+        for (auto& particleBuffer : particleBuffers_) {
+            particleBuffer = CreateBuffer(
+                {sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
+        }
         const ParticleComputeConstants constants{1.0f / 120.0f, 1.0f, 0.0f, static_cast<std::uint32_t>(particles.size())};
         particleComputeConstants_ = CreateBuffer(
             {sizeof(constants), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&constants, 1}));
@@ -524,7 +526,9 @@ bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
         particleIndirectArguments_ = CreateBuffer(
             {sizeof(arguments), 0, BufferUsage::Indirect}, std::as_bytes(std::span{arguments}));
         auto& commands = BeginCommands();
-        commands.Transition(particleBuffers_[0], ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        for (const auto particleBuffer : particleBuffers_) {
+            commands.Transition(particleBuffer, ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        }
         commands.Transition(particleIndirectArguments_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
         static_cast<void>(Submit(commands));
     } catch (const std::exception& exception) { error = exception.what(); return false; }
@@ -644,7 +648,10 @@ bool DiligentVulkanAdapter::SimulateParticles(CommandList& commands) {
     dispatch.ThreadGroupCountZ = 1;
     context->DispatchCompute(dispatch);
     commands.Transition(output, ResourceUsage::ShaderWrite, ResourceUsage::ShaderRead);
-    std::swap(particleReadIndex_, particleWriteIndex_);
+    const auto previousRender = particleRenderIndex_;
+    particleRenderIndex_ = particleReadIndex_;
+    particleReadIndex_ = particleWriteIndex_;
+    particleWriteIndex_ = previousRender;
     return true;
 }
 
@@ -675,10 +682,12 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
     sceneIndirectArguments_ = {};
     particleBuffers_[0] = {};
     particleBuffers_[1] = {};
+    particleBuffers_[2] = {};
     particleComputeConstants_ = {};
     particleIndirectArguments_ = {};
-    particleReadIndex_ = 0;
-    particleWriteIndex_ = 1;
+    particleRenderIndex_ = 0;
+    particleReadIndex_ = 1;
+    particleWriteIndex_ = 2;
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;

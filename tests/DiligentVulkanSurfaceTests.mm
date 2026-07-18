@@ -30,6 +30,7 @@ int main(int argc, char* argv[]) {
         assert(adapter.ResizeSwapChain(resizedWidth, resizedHeight));
         assert(adapter.PresentClearFrame(color, 1));
         assert(adapter.PresentSceneFrame(1));
+        assert(adapter.PresentSceneFrame(1));
         adapter.Shutdown();
     }
     return 0;

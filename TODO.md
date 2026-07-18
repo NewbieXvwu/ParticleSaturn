@@ -1066,6 +1066,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 粒子现已接入真实 Diligent 计算管线。两块受控的 32 字节结构化缓冲以动态计算绑定分别作为读取和写入端，计算常量经受控统一缓冲更新；每帧将写入端显式从 `Undefined` 或 `ShaderRead` 过渡到 `ShaderWrite`，调度后再过渡至 `ShaderRead` 并轮转为粒子图形管线的动态输入。该计算、过渡、轮转和间接绘制与场景、呈现处于同一渲染图，MoltenVK 原生表面和主应用冒烟已实际覆盖首次写入与回写。当前仍是三条演示粒子，完整三缓冲模拟与动态粒子数量待继续迁入。
 
+进展补充（2026-07-18）：Vulkan 计算粒子现按既有 Metal 和 Diligent 路径完成三缓冲轮转：本帧渲染上一读取缓冲，计算从读取缓冲写入第三缓冲，提交前将输出转为着色器读取，随后以 `render ← read ← write ← old render` 轮转。三个缓冲均为独立受控的 32 字节结构化 Diligent 缓冲；MoltenVK 原生表面测试已在缩放后连续呈现三帧，覆盖三个缓冲依次作为计算输出和图形输入。当前仍是三条演示粒子，完整粒子规模和动态数量待继续迁入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

@@ -67,11 +67,12 @@ private:
     void* particleComputeInputVariable_ = nullptr;
     void* particleComputeOutputVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
-    BufferHandle particleBuffers_[2]{};
+    BufferHandle particleBuffers_[3]{};
     BufferHandle particleComputeConstants_{};
     BufferHandle particleIndirectArguments_{};
-    std::uint32_t particleReadIndex_ = 0;
-    std::uint32_t particleWriteIndex_ = 1;
+    std::uint32_t particleRenderIndex_ = 0;
+    std::uint32_t particleReadIndex_ = 1;
+    std::uint32_t particleWriteIndex_ = 2;
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;
