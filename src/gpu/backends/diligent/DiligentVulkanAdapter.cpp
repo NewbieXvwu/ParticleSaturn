@@ -71,8 +71,14 @@ layout(set=0, binding=0, std430) readonly buffer gParticles { Particle particles
 layout(location = 0) out vec4 particleColor;
 void main() {
     Particle particle = particleBuffer.particles[gl_VertexIndex];
-    gl_Position = particle.position;
-    gl_PointSize = 12.0;
+    const vec3 eye = vec3(0.0, 18.0, 75.0);
+    const vec3 forward = normalize(-eye);
+    const vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
+    const vec3 up = cross(right, forward);
+    const vec3 relative = particle.position.xyz - eye;
+    const float depth = max(dot(relative, forward), 0.1);
+    gl_Position = vec4(vec2(dot(relative, right), dot(relative, up)) * (1.8 / depth), 0.0, 1.0);
+    gl_PointSize = clamp(particle.position.w * 3.0, 2.0, 8.0);
     particleColor = vec4(float(particle.color & 255u) / 255.0, float((particle.color >> 8u) & 255u) / 255.0, float((particle.color >> 16u) & 255u) / 255.0, 1.0);
 }
 )";

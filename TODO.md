@@ -1068,6 +1068,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 计算粒子现按既有 Metal 和 Diligent 路径完成三缓冲轮转：本帧渲染上一读取缓冲，计算从读取缓冲写入第三缓冲，提交前将输出转为着色器读取，随后以 `render ← read ← write ← old render` 轮转。三个缓冲均为独立受控的 32 字节结构化 Diligent 缓冲；MoltenVK 原生表面测试已在缩放后连续呈现三帧，覆盖三个缓冲依次作为计算输出和图形输入。当前仍是三条演示粒子，完整粒子规模和动态数量待继续迁入。
 
+进展补充（2026-07-18）：Vulkan 粒子顶点阶段已改为从共享 ABI 的世界坐标执行固定相机透视投影，粒子尺寸由记录内的大小字段决定，完整土星初始化缓冲可直接接入当前图形通道而无需再转换为裁剪坐标。MoltenVK 原生表面与主应用冒烟测试均实际重新编译并呈现此路径；完整粒子 GPU 初始化、实例化矩形和动态数量仍待继续迁入。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`
