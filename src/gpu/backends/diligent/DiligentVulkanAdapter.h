@@ -45,6 +45,7 @@ private:
     };
 
     bool CreateScenePipeline(std::string& error);
+    bool CreateParticlePipeline(std::string& error);
     void ReleaseRetiredBuffers() noexcept;
     void* ResolveBuffer(BufferHandle buffer) const;
     void Transition(BufferHandle buffer, ResourceUsage before, ResourceUsage after) override;
@@ -56,7 +57,10 @@ private:
     void* context_ = nullptr;
     void* swapChain_ = nullptr;
     void* scenePipeline_ = nullptr;
+    void* particlePipeline_ = nullptr;
+    void* particleBinding_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
+    BufferHandle particleBuffer_{};
     std::string adapterName_;
     GpuCapabilities capabilities_{};
     std::vector<BufferEntry> buffers_;

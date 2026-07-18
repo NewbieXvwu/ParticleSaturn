@@ -64,6 +64,24 @@ void main() {
 }
 )";
 
+constexpr const char* ParticleVertexShader = R"(
+struct Particle { vec4 position; uint color; float speed; uint isRing; uint padding; };
+layout(set=0, binding=0, std430) readonly buffer gParticles { Particle particles[]; } particleBuffer;
+layout(location = 0) out vec4 particleColor;
+void main() {
+    Particle particle = particleBuffer.particles[gl_VertexIndex];
+    gl_Position = particle.position;
+    gl_PointSize = 12.0;
+    particleColor = vec4(float(particle.color & 255u) / 255.0, float((particle.color >> 8u) & 255u) / 255.0, float((particle.color >> 16u) & 255u) / 255.0, 1.0);
+}
+)";
+
+constexpr const char* ParticleFragmentShader = R"(
+layout(location = 0) in vec4 particleColor;
+layout(location = 0) out vec4 color;
+void main() { color = particleColor; }
+)";
+
 ::Diligent::RESOURCE_STATE ToDiligentResourceState(ResourceUsage usage) {
     switch (usage) {
         case ResourceUsage::Undefined: return ::Diligent::RESOURCE_STATE_UNKNOWN;
@@ -161,6 +179,7 @@ bool DiligentVulkanAdapter::CreateSwapChain(void* nativeView, std::uint32_t widt
         swapChain_ = nullptr;
         return false;
     }
+    if (!CreateParticlePipeline(error)) return false;
     if (!sceneIndirectArguments_) {
         const std::array<std::uint32_t, 4> arguments{3, 1, 0, 0};
         try {
@@ -213,6 +232,12 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->SetRenderTargets(1, &target, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
         commands.DrawIndirect(sceneIndirectArguments_, 0);
+        context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
+        context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        ::Diligent::DrawAttribs particles{};
+        particles.NumVertices = 3;
+        particles.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
+        context->Draw(particles);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
@@ -429,6 +454,59 @@ bool DiligentVulkanAdapter::CreateScenePipeline(std::string& error) {
     return true;
 }
 
+bool DiligentVulkanAdapter::CreateParticlePipeline(std::string& error) {
+    struct Particle { float position[4]; std::uint32_t color; float speed; std::uint32_t isRing; std::uint32_t padding; };
+    static_assert(sizeof(Particle) == 32);
+    if (particlePipeline_ != nullptr) return true;
+    const std::array<Particle, 3> particles{{
+        {{-0.55f, 0.35f, 0.0f, 1.0f}, 0xFFB866FFu, 0.0f, 0, 0},
+        {{ 0.10f, 0.62f, 0.0f, 1.0f}, 0xFF70D4FFu, 0.0f, 0, 0},
+        {{ 0.58f,-0.28f, 0.0f, 1.0f}, 0xFFFFD080u, 0.0f, 1, 0},
+    }};
+    try {
+        particleBuffer_ = CreateBuffer({sizeof(particles), sizeof(Particle), BufferUsage::Storage}, std::as_bytes(std::span{particles}));
+        auto& commands = BeginCommands();
+        commands.Transition(particleBuffer_, ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        static_cast<void>(Submit(commands));
+    } catch (const std::exception& exception) { error = exception.what(); return false; }
+    auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
+    ::Diligent::ShaderCreateInfo shader{};
+    shader.SourceLanguage = ::Diligent::SHADER_SOURCE_LANGUAGE_GLSL;
+    shader.EntryPoint = "main";
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_VERTEX;
+    shader.Desc.Name = "ParticleSaturn Vulkan Particle VS";
+    shader.Source = ParticleVertexShader;
+    ::Diligent::IShader* vertex = nullptr;
+    device->CreateShader(shader, &vertex);
+    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+    shader.Desc.Name = "ParticleSaturn Vulkan Particle PS";
+    shader.Source = ParticleFragmentShader;
+    ::Diligent::IShader* fragment = nullptr;
+    device->CreateShader(shader, &fragment);
+    if (vertex == nullptr || fragment == nullptr) { if (vertex) vertex->Release(); if (fragment) fragment->Release(); error = "Diligent Vulkan could not compile particle shaders"; return false; }
+    ::Diligent::ShaderResourceVariableDesc variables[] = {{::Diligent::SHADER_TYPE_VERTEX, "gParticles", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC}};
+    ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
+    pipeline.PSODesc.Name = "ParticleSaturn Vulkan Particles";
+    pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
+    pipeline.PSODesc.ResourceLayout.Variables = variables;
+    pipeline.PSODesc.ResourceLayout.NumVariables = 1;
+    pipeline.GraphicsPipeline.NumRenderTargets = 1;
+    pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
+    pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_POINT_LIST;
+    pipeline.GraphicsPipeline.RasterizerDesc.CullMode = ::Diligent::CULL_MODE_NONE;
+    pipeline.GraphicsPipeline.DepthStencilDesc.DepthEnable = ::Diligent::False;
+    pipeline.pVS = vertex; pipeline.pPS = fragment;
+    ::Diligent::IPipelineState* state = nullptr; device->CreateGraphicsPipelineState(pipeline, &state); vertex->Release(); fragment->Release();
+    if (state == nullptr) { error = "Diligent Vulkan could not create the particle pipeline"; return false; }
+    auto* view = static_cast<::Diligent::IBuffer*>(ResolveBuffer(particleBuffer_))->GetDefaultView(::Diligent::BUFFER_VIEW_SHADER_RESOURCE);
+    auto* variable = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_VERTEX, "gParticles");
+    if (view == nullptr || variable == nullptr) { state->Release(); error = "Diligent Vulkan could not bind the particle buffer"; return false; }
+    variable->Set(view);
+    ::Diligent::IShaderResourceBinding* binding = nullptr; state->CreateShaderResourceBinding(&binding, true);
+    if (binding == nullptr) { state->Release(); error = "Diligent Vulkan could not create particle bindings"; return false; }
+    particlePipeline_ = state; particleBinding_ = binding; return true;
+}
+
 void DiligentVulkanAdapter::Shutdown() noexcept {
     commandsOpen_ = false;
     if (context_ != nullptr) {
@@ -442,11 +520,14 @@ void DiligentVulkanAdapter::Shutdown() noexcept {
         static_cast<::Diligent::IPipelineState*>(scenePipeline_)->Release();
         scenePipeline_ = nullptr;
     }
+    if (particleBinding_ != nullptr) { static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_)->Release(); particleBinding_ = nullptr; }
+    if (particlePipeline_ != nullptr) { static_cast<::Diligent::IPipelineState*>(particlePipeline_)->Release(); particlePipeline_ = nullptr; }
     for (auto& entry : buffers_) {
         if (entry.buffer != nullptr) static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
     }
     buffers_.clear();
     sceneIndirectArguments_ = {};
+    particleBuffer_ = {};
     if (context_ != nullptr) {
         static_cast<::Diligent::IDeviceContext*>(context_)->Release();
         context_ = nullptr;
