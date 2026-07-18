@@ -1096,6 +1096,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Diligent 调试回调报告 `DEVICE_LOST` 后，适配器会停止当前帧并向 Vulkan 主循环暴露设备丢失状态；主循环随后在同一 ICD 上销毁并重建设备、交换链与 ImGui，再继续呈现。MoltenVK 与 KosmicKrisp 各有独立应用测试，在第二帧一次性注入设备丢失，确认重新选择同一 ICD、恢复后再成功呈现三帧并退出。真实硬件设备丢失仍待注入验证。
 
+进展补充（2026-07-18）：Vulkan 生产帧现由 `FrameCoordinator` 推进固定时间步长和动态 LOD，应用冒烟模式改用隔离的默认状态，避免本机持久化设置污染测试。MoltenVK 与 KosmicKrisp 冒烟测试均注入固定 50ms 慢帧，直接要求三帧内粒子数从 120 万下降后才允许成功退出；无手势时的自动场景状态已随帧推进，场景着色器消费旋转和缩放仍待接入。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局

@@ -3,6 +3,7 @@
 #include "CocoaHost.h"
 #include "MacOSApplication.h"
 #include "app/AppController.h"
+#include "app/FrameCoordinator.h"
 #include "gpu/backends/diligent/DiligentVulkanAdapter.h"
 #include "imgui.h"
 #include "MacOSMd3Panel.h"
@@ -11,6 +12,7 @@
 #include "services/settings/macos/NSUserDefaultsStore.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -40,6 +42,11 @@ bool InteractionSmokeRequested() {
     return value != nullptr && std::string_view{value} == "1";
 }
 
+bool LodSmokeRequested() {
+    const char* value = std::getenv("PARTICLESATURN_VULKAN_LOD_SMOKE");
+    return value != nullptr && std::string_view{value} == "1";
+}
+
 int ReportStartupFailure(const char* code, const std::string& message) {
     ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Publish(
         "vulkan", code, message, ParticleSaturn::Services::Diagnostics::Severity::Error);
@@ -54,9 +61,12 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        const auto smokeFrames = SmokeFrameLimit();
+        const bool smokeMode = smokeFrames != 0;
+        const bool lodSmoke = LodSmokeRequested();
         App::AppState defaults;
         defaults.render.graphicsApi = App::GraphicsApi::Vulkan;
-        auto state = captureBaseline ? defaults : settings.Load(defaults);
+        auto state = captureBaseline || smokeMode ? defaults : settings.Load(defaults);
         state.render.graphicsApi = App::GraphicsApi::Vulkan;
         state.render.vulkanDriver = SelectedDriver(state.render.vulkanDriver);
         if (captureBaseline) {
@@ -64,6 +74,10 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             state.window.height = 827;
             state.scene.paused = true;
             state.lod.locked = true;
+        }
+        if (lodSmoke) {
+            state.render.particleCount = App::RenderSettings::MaxParticles;
+            state.lod.locked = false;
         }
 
         CocoaHost host{state.window.width, state.window.height, "Particle Saturn - Vulkan"};
@@ -88,9 +102,9 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         MD3::Init();
         MD3::SetDarkMode(state.ui.darkMode);
 
-        const auto smokeFrames = SmokeFrameLimit();
-        const bool smokeMode = smokeFrames != 0;
         App::AppController controller{state};
+        App::FrameCoordinator coordinator;
+        auto lastFrame = std::chrono::steady_clock::now();
         host.SetActionCallback([&](HostAction action) {
             switch (action) {
             case HostAction::ToggleDebugWindow:
@@ -156,6 +170,10 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
         host.Run([&] {
+            const auto now = std::chrono::steady_clock::now();
+            const double elapsedSeconds = lodSmoke ? 0.05 : std::clamp(
+                std::chrono::duration<double>(now - lastFrame).count(), 0.0, 0.25);
+            lastFrame = now;
             const auto currentSize = host.CurrentDrawableSize();
             if (currentSize.width != drawableSize.width || currentSize.height != drawableSize.height) {
                 if (!adapter.ResizeSwapChain(currentSize.width, currentSize.height)) {
@@ -180,6 +198,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.SetPresentationMode(mutableState.render.vsyncMode);
                 appliedVsync = mutableState.render.vsyncMode;
             }
+            coordinator.Advance(controller, elapsedSeconds);
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
             adapter.SetAcrylicSettings(mutableState.ui.blurEnabled, mutableState.ui.blurStrength, mutableState.ui.darkMode);
@@ -226,7 +245,13 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 return;
             }
             if (captureBaseline && adapter.BaselineCaptureRequested()) host.RequestExit();
-            if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) host.RequestExit();
+            if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
+                if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
+                    ReportStartupFailure("lod-smoke", "Vulkan dynamic LOD smoke test did not reduce particle count");
+                    runtimeFailed = true;
+                }
+                host.RequestExit();
+            }
         });
         if (!smokeMode) settings.Save(controller.State());
         adapter.Shutdown();

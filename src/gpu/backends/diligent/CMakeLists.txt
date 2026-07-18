@@ -51,6 +51,7 @@ if(BUILD_TESTING)
                 PARTICLESATURN_VULKAN_DRIVER=molten
                 PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
                 PARTICLESATURN_VULKAN_INTERACTION_SMOKE=1
+                PARTICLESATURN_VULKAN_LOD_SMOKE=1
                 "$<TARGET_FILE:ParticleSaturn.macOS>")
         set_tests_properties(ParticleSaturnVulkanApplicationMoltenSmoke PROPERTIES TIMEOUT 30)
         add_test(NAME ParticleSaturnVulkanApplicationMoltenRecovery
@@ -68,6 +69,7 @@ if(BUILD_TESTING)
                     PARTICLESATURN_VULKAN_DRIVER=kosmic
                     PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
                     PARTICLESATURN_VULKAN_INTERACTION_SMOKE=1
+                    PARTICLESATURN_VULKAN_LOD_SMOKE=1
                     "$<TARGET_FILE:ParticleSaturn.macOS>")
             set_tests_properties(ParticleSaturnVulkanApplicationKosmicSmoke PROPERTIES TIMEOUT 30)
             add_test(NAME ParticleSaturnVulkanApplicationKosmicRecovery
