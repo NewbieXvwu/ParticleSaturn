@@ -1086,6 +1086,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Vulkan 现将色调映射先写入独立 UI 场景，再按 `tone-map → ui-scene → 1/6 强模糊 → 1/12 弱模糊 → Acrylic → ImGui → present` 执行共享渲染图。Acrylic 复用 Diligent GLSL 和既有深浅主题参数，模糊关闭时跳过低分辨率通道并直通 UI 场景；窗口缩放会重建 UI 场景及四张模糊纹理。MoltenVK、KosmicKrisp 表面测试均实际绘制 ImGui，并覆盖 Acrylic 开启、关闭、缩放后的重新呈现，完整 21 项 CTest 通过。
 
+进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

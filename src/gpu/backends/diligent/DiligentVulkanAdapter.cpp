@@ -3,6 +3,7 @@
 #include "render/RenderGraph.h"
 #include "Diligent/DiligentShaderSources.h"
 #include "Diligent/ImGuiDiligent.h"
+#include "services/diagnostics/DiagnosticBus.h"
 #include "services/vulkan/VulkanDriverRuntime.h"
 
 #include <EngineFactoryVk.h>
@@ -17,6 +18,7 @@
 #include <array>
 #include <algorithm>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace ParticleSaturn::Gpu::Diligent {
@@ -24,6 +26,21 @@ namespace {
 
 bool IsEnabled(::Diligent::DEVICE_FEATURE_STATE state) {
     return state != ::Diligent::DEVICE_FEATURE_STATE_DISABLED;
+}
+
+void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SEVERITY severity,
+                                                     const ::Diligent::Char* message,
+                                                     const ::Diligent::Char*, const ::Diligent::Char*, int) {
+    if (message == nullptr || severity < ::Diligent::DEBUG_MESSAGE_SEVERITY_ERROR) return;
+    const std::string_view text{message};
+    const bool deviceLost = text.find("DEVICE_LOST") != std::string_view::npos ||
+                            text.find("device lost") != std::string_view::npos;
+    const bool swapChainIssue = text.find("OUT_OF_DATE") != std::string_view::npos ||
+                                text.find("SUBOPTIMAL") != std::string_view::npos ||
+                                text.find("Present") != std::string_view::npos;
+    const char* code = deviceLost ? "device-lost" : swapChainIssue ? "swap-chain" : "diligent-error";
+    Services::Diagnostics::DiagnosticBus::Instance().Publish(
+        "vulkan", code, std::string{text}, Services::Diagnostics::Severity::Error);
 }
 
 constexpr const char* SceneVertexShader = R"(
@@ -206,6 +223,7 @@ bool DiligentVulkanAdapter::Initialize(App::VulkanDriver driver, const std::stri
         error = "Diligent Vulkan factory is unavailable";
         return false;
     }
+    factory->SetMessageCallback(&ReportDiligentVulkanMessage);
     ::Diligent::EngineVkCreateInfo createInfo;
     createInfo.EnableValidation = false;
     ::Diligent::IRenderDevice* device = nullptr;
