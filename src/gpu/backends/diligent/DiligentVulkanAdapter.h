@@ -29,6 +29,7 @@ public:
     const std::string& AdapterName() const noexcept;
     const GpuCapabilities& Capabilities() const noexcept override;
     BufferHandle CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) override;
+    void UpdateBuffer(BufferHandle buffer, std::size_t offset, std::span<const std::byte> data) override;
     void DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) override;
     CommandList& BeginCommands() override;
     FrameToken Submit(CommandList& commands) override;
@@ -36,6 +37,7 @@ public:
 private:
     struct BufferEntry {
         void* buffer = nullptr;
+        std::size_t size = 0;
         std::uint32_t generation = 1;
         ResourceUsage usage = ResourceUsage::Undefined;
         std::uint64_t retireAfter = 0;

@@ -64,6 +64,7 @@ int main(int argc, char* argv[]) {
     auto& commands = adapter.BeginCommands();
     commands.Transition(buffer, ParticleSaturn::Gpu::ResourceUsage::Undefined,
                         ParticleSaturn::Gpu::ResourceUsage::CopyDestination);
+    adapter.UpdateBuffer(buffer, 0, payload);
     commands.Transition(buffer, ParticleSaturn::Gpu::ResourceUsage::CopyDestination,
                         ParticleSaturn::Gpu::ResourceUsage::ShaderRead);
     const auto submitted = adapter.Submit(commands);

@@ -1058,6 +1058,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：共享资源用法现增加间接参数状态，Vulkan 适配器会把受控参数缓冲显式过渡为 Diligent 间接参数资源，并在共享渲染图的 `vulkan-scene` 通道执行真实间接绘制；`vulkan-present` 通道提交命令并呈现。MoltenVK 原生窗口表面、主应用冒烟和完整 CTest 均覆盖该路径。
 
+进展补充（2026-07-18）：共享图形设备的缓冲契约现支持范围受控的更新命令。Vulkan 后端以 Diligent `UpdateBuffer` 执行真实上传并跟踪为拷贝目标状态，调用方随后可显式过渡到着色器读取或间接参数状态；MoltenVK 测试覆盖更新后的状态恢复和提交。
+
 - [x] 应用包内 Vulkan Loader + ICD 布局
 - [x] `VK_DRIVER_FILES` 运行时设置
 - [x] MoltenVK 接入 + `VK_KHR_portability_enumeration`

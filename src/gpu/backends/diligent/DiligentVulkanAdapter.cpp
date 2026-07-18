@@ -259,13 +259,27 @@ BufferHandle DiligentVulkanAdapter::CreateBuffer(const BufferDesc& desc, std::sp
         auto& entry = buffers_[index];
         if (entry.buffer == nullptr && !entry.pendingRelease) {
             entry.buffer = nativeBuffer;
+            entry.size = desc.size;
             entry.usage = ResourceUsage::Undefined;
             entry.retireAfter = 0;
             return {index, entry.generation};
         }
     }
-    buffers_.push_back({nativeBuffer, 1, ResourceUsage::Undefined, 0, false});
+    buffers_.push_back({nativeBuffer, desc.size, 1, ResourceUsage::Undefined, 0, false});
     return {static_cast<std::uint32_t>(buffers_.size() - 1), 1};
+}
+
+void DiligentVulkanAdapter::UpdateBuffer(BufferHandle buffer, std::size_t offset, std::span<const std::byte> data) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before updating a buffer"};
+    auto* nativeBuffer = static_cast<::Diligent::IBuffer*>(ResolveBuffer(buffer));
+    auto& entry = buffers_[buffer.index];
+    if (data.empty() || offset > entry.size || data.size() > entry.size - offset) {
+        throw std::out_of_range{"buffer update range is invalid"};
+    }
+    static_cast<::Diligent::IDeviceContext*>(context_)->UpdateBuffer(
+        nativeBuffer, static_cast<::Diligent::Uint64>(offset), static_cast<::Diligent::Uint64>(data.size()), data.data(),
+        ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    entry.usage = ResourceUsage::CopyDestination;
 }
 
 void DiligentVulkanAdapter::DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) {
@@ -357,6 +371,7 @@ void DiligentVulkanAdapter::ReleaseRetiredBuffers() noexcept {
         if (entry.pendingRelease && entry.retireAfter <= submissionValue_) {
             static_cast<::Diligent::IBuffer*>(entry.buffer)->Release();
             entry.buffer = nullptr;
+            entry.size = 0;
             entry.usage = ResourceUsage::Undefined;
             entry.retireAfter = 0;
             entry.pendingRelease = false;

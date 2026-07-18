@@ -23,6 +23,7 @@ public:
     virtual std::string_view Name() const noexcept = 0;
     virtual const GpuCapabilities& Capabilities() const noexcept = 0;
     virtual BufferHandle CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) = 0;
+    virtual void UpdateBuffer(BufferHandle buffer, std::size_t offset, std::span<const std::byte> data) = 0;
     virtual void DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) = 0;
     virtual CommandList& BeginCommands() = 0;
     virtual FrameToken Submit(CommandList& commands) = 0;
