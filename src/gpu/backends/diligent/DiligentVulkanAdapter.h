@@ -59,6 +59,7 @@ private:
     void* scenePipeline_ = nullptr;
     void* particlePipeline_ = nullptr;
     void* particleBinding_ = nullptr;
+    void* particleRenderVariable_ = nullptr;
     BufferHandle sceneIndirectArguments_{};
     BufferHandle particleBuffer_{};
     BufferHandle particleIndirectArguments_{};
