@@ -234,10 +234,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         commands.DrawIndirect(sceneIndirectArguments_, 0);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(particlePipeline_));
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        ::Diligent::DrawAttribs particles{};
-        particles.NumVertices = 3;
-        particles.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
-        context->Draw(particles);
+        commands.DrawIndirect(sceneIndirectArguments_, 0);
         return true;
     });
     const auto present = graph.AddPass("vulkan-present", [&] {
