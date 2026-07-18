@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -32,6 +33,11 @@ std::uint32_t SmokeFrameLimit() {
     if (value == nullptr || value[0] == '\0') return 0;
     const auto parsed = std::strtoul(value, nullptr, 10);
     return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 10000UL));
+}
+
+bool InteractionSmokeRequested() {
+    const char* value = std::getenv("PARTICLESATURN_VULKAN_INTERACTION_SMOKE");
+    return value != nullptr && std::string_view{value} == "1";
 }
 
 int ReportStartupFailure(const char* code, const std::string& message) {
@@ -130,6 +136,20 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             }
             if (!smokeMode) settings.Save(controller.State());
         });
+        if (InteractionSmokeRequested()) {
+            const bool debugBefore = controller.State().ui.showDebugWindow;
+            const bool blurBefore = controller.State().ui.blurEnabled;
+            host.InvokeAction(HostAction::KeyF3Down);
+            host.InvokeAction(HostAction::KeyF3Up);
+            host.InvokeAction(HostAction::KeyBDown);
+            host.InvokeAction(HostAction::KeyBUp);
+            if (controller.State().ui.showDebugWindow == debugBefore ||
+                controller.State().ui.blurEnabled == blurBefore ||
+                controller.State().input.keyF3Pressed || controller.State().input.keyBPressed) {
+                adapter.Shutdown();
+                return ReportStartupFailure("interaction-smoke", "Vulkan shortcut dispatch smoke test failed");
+            }
+        }
 
         std::uint32_t renderedFrames = 0;
         auto appliedVsync = state.render.vsyncMode;

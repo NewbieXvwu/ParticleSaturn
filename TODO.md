@@ -1092,6 +1092,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：Diligent Vulkan 错误文本分类已抽为可测试接口，单测覆盖 `DEVICE_LOST`、交换链过期和普通错误三类代码，并在 MoltenVK/KosmicKrisp 适配器测试中实际执行。真实硬件设备丢失注入、恢复和用户界面错误展示仍待验证。
 
+进展补充（2026-07-18）：MoltenVK 与 KosmicKrisp 主应用冒烟测试现通过 `CocoaHost::InvokeAction` 实际发送 F3、B 的按下与释放事件，核对调试面板、界面模糊状态完成切换且按键状态归零，再继续呈现三帧并自动退出。F11 的原生全屏动画、Esc 关闭与人工键盘操作仍保留到窗口行为验收。
+
 进展补充（2026-07-18）：Diligent Vulkan 适配器注册官方调试消息回调，将包含 `DEVICE_LOST`、交换链过期或呈现失败文本的错误映射到结构化 `DiagnosticBus` 记录；设备丢失的硬件注入和恢复流程仍待独立验证。双 ICD 运行、全量 21 项 CTest 继续通过。
 
 - [x] 应用包内 Vulkan Loader + ICD 布局

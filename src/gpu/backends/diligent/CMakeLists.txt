@@ -50,6 +50,7 @@ if(BUILD_TESTING)
                 PARTICLESATURN_GRAPHICS_API=vulkan
                 PARTICLESATURN_VULKAN_DRIVER=molten
                 PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
+                PARTICLESATURN_VULKAN_INTERACTION_SMOKE=1
                 "$<TARGET_FILE:ParticleSaturn.macOS>")
         set_tests_properties(ParticleSaturnVulkanApplicationMoltenSmoke PROPERTIES TIMEOUT 30)
         if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
@@ -58,6 +59,7 @@ if(BUILD_TESTING)
                     PARTICLESATURN_GRAPHICS_API=vulkan
                     PARTICLESATURN_VULKAN_DRIVER=kosmic
                     PARTICLESATURN_VULKAN_SMOKE_FRAMES=3
+                    PARTICLESATURN_VULKAN_INTERACTION_SMOKE=1
                     "$<TARGET_FILE:ParticleSaturn.macOS>")
             set_tests_properties(ParticleSaturnVulkanApplicationKosmicSmoke PROPERTIES TIMEOUT 30)
         endif()
