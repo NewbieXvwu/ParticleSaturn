@@ -20,6 +20,23 @@ int main() {
     const auto driver = controller.Dispatch(SetVulkanDriver{VulkanDriver::KosmicKrisp});
     assert(driver.restartRequired);
 
+    const auto vsyncHigh = controller.Dispatch(SetVSyncMode{5});
+    assert(vsyncHigh.renderSettingsChanged && controller.State().render.vsyncMode == 1);
+    const auto vsyncLow = controller.Dispatch(SetVSyncMode{-9});
+    assert(vsyncLow.renderSettingsChanged && controller.State().render.vsyncMode == -1);
+    assert(!controller.Dispatch(SetVSyncMode{-1}).renderSettingsChanged);
+
+    const auto materialChange = controller.Dispatch(SetWindowMaterial{WindowMaterial::AppAcrylic});
+    assert(materialChange.windowChanged && controller.State().window.material == WindowMaterial::AppAcrylic);
+    assert(!controller.Dispatch(SetWindowMaterial{WindowMaterial::AppAcrylic}).windowChanged);
+
+    const auto bloomToggle = controller.Dispatch(SetBloomEnabled{false});
+    assert(bloomToggle.renderSettingsChanged && !controller.State().render.bloomEnabled);
+    const auto analyticToggle = controller.Dispatch(SetAnalyticParticles{true});
+    assert(analyticToggle.renderSettingsChanged && controller.State().render.analyticParticles);
+    const auto blurToggle = controller.Dispatch(SetBlurEnabled{false});
+    assert(blurToggle.renderSettingsChanged && !controller.State().ui.blurEnabled);
+
     controller.Dispatch(SetBlurStrength{99.0f});
     assert(controller.State().ui.blurStrength == 5.0f);
     assert(controller.State().render.bloomBlurStrength == 2.0f);
