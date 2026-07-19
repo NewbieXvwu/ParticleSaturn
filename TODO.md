@@ -1144,6 +1144,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-19）：新增统一的 `PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3` 四后端短进程测试。Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp 均从隔离默认状态启动，固定 120 万粒子、像素比例 1、Bloom 开启且半径 2、界面模糊开启且强度 2、动态 LOD 锁定，连续呈现三帧并逐帧断言质量参数未被运行期逻辑改变；测试过程跳过摄像头和设置持久化，达到帧数自动退出。四项性能锁定测试和全量 29 项 CTest 均通过，测试后无残留应用进程。
 
+进展补充（2026-07-19）：统一诊断与崩溃日志链路完成收口。`ParticleSaturnMacOSCrashHandlerTests` 以独立子进程触发 `SIGSEGV`，核对退出码、原始日志中的信号与地址、`atos` 符号化结果、`DiagnosticBus` 的 `previous-fatal-signal` 错误记录及日志单次消费清空；专门测试通过且运行后无残留应用进程。
+
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
 - [x] MoltenVK 与 KosmicKrisp 最终交换链读回、Metal 严格对比及驱动间基准测试
 - [x] 粒子读回数据比较
@@ -1155,7 +1157,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] 睡眠唤醒
 - [ ] 四种 macOS 模式分别完成构建、启动、呈现和交互验证
 - [ ] 设置持久化、主题、窗口材质、垂直同步、快捷键和动态 LOD 行为对齐
-- [ ] 统一诊断、错误展示和崩溃日志验证
+- [x] 统一诊断、错误展示和崩溃日志验证
 - [x] 应用包启动验证（2026-07-16：`ParticleSaturn.macOS.app` 已实际启动并完成场景截图）
 
 ---
