@@ -1152,6 +1152,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-19）：收口设置持久化与行为对齐的共享逻辑验证。四种后端派发的同一套 `AppController` 命令语义现已被 `ParticleSaturnAppCoreTests` 完整覆盖：`SetVSyncMode` 钳制到 `[-1, 1]` 并正确报告 `renderSettingsChanged`、`SetWindowMaterial` 变更时置 `windowChanged` 且重复设置为幂等空操作、Bloom/解析粒子/界面模糊三个开关的切换效果。结合既有的 `NSUserDefaultsStore` 往返与枚举越界回退测试、`FrameCoordinator` 动态 LOD 锁定与升降档测试、F3/F11/B/Esc 快捷键命令测试，以及四后端性能锁定短进程测试，设置持久化、主题（暗色模式）、窗口材质、垂直同步、快捷键和动态 LOD 已锚定在 Metal、OpenGL 4.1、MoltenVK、KosmicKrisp 共同消费的同一套受测逻辑上。各后端内部实时切换窗口材质、主题、垂直同步并核对可见结果仍需交互式硬件验收，故该项保持未勾选。全量 33 项 CTest 通过，测试后无残留应用进程。
 
+进展补充（2026-07-19）：新增 `ParticleSaturnAVFoundationCameraErrorTests`，以不依赖硬件的方式核对摄像头异常状态的结构化错误契约。测试构造 `AVFoundationCamera` 并验证：新建相机无可用帧且未在运行；对不存在的设备 id 调用 `Start()` 返回失败、设置非空 `LastError`、`IsRunning` 保持为假，并向 `DiagnosticBus` 恰好发布一条 `camera` 领域的 `Error` 记录，其 `code` 在未授权机器上为 `permission`、在已授权机器上为 `device-unavailable`——覆盖无需硬件即可到达的错误分支；`HandleDeviceDisconnected` 在无活动会话时是安全空操作、不产生多余诊断；`Stop()` 幂等。采集中途拔线恢复、权限授予/拒绝的界面流程，以及格式/输入/会话协商失败均需真实摄像头设备与授权状态，仍归入交互式硬件验收，故该项保持未勾选。全量 34 项 CTest 通过，测试后无残留应用进程。
+
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
 - [x] MoltenVK 与 KosmicKrisp 最终交换链读回、Metal 严格对比及驱动间基准测试
 - [x] 粒子读回数据比较

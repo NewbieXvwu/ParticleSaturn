@@ -4,3 +4,9 @@ target_link_libraries(ParticleSaturnMacOSCamera PUBLIC
     "-framework AVFoundation"
     "-framework CoreMedia"
     "-framework CoreVideo")
+
+if(BUILD_TESTING)
+    add_executable(ParticleSaturnAVFoundationCameraErrorTests "${CMAKE_SOURCE_DIR}/tests/AVFoundationCameraErrorTests.mm")
+    target_link_libraries(ParticleSaturnAVFoundationCameraErrorTests PRIVATE ParticleSaturnMacOSCamera "-framework Foundation")
+    add_test(NAME ParticleSaturnAVFoundationCameraErrorTests COMMAND ParticleSaturnAVFoundationCameraErrorTests)
+endif()
