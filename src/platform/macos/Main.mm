@@ -44,6 +44,13 @@ std::uint32_t PerformanceLockSmokeFrames() {
     return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
 }
 
+std::uint32_t FullscreenRestoreSmokeFrames() {
+    const char* value = std::getenv("PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE");
+    if (value == nullptr || value[0] == '\0') return 0;
+    const auto parsed = std::strtoul(value, nullptr, 10);
+    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
+}
+
 class FpsMeter {
 public:
     void AddSample(float deltaTime) {
@@ -130,7 +137,10 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
         const bool performanceSmoke = performanceSmokeFrames != 0;
-        auto initialState = captureBaseline || performanceSmoke ? ParticleSaturn::App::AppState{} : settings.Load({});
+        const auto fullscreenSmokeFrames = FullscreenRestoreSmokeFrames();
+        const bool fullscreenSmoke = fullscreenSmokeFrames != 0;
+        auto initialState = captureBaseline || performanceSmoke || fullscreenSmoke
+            ? ParticleSaturn::App::AppState{} : settings.Load({});
         if (captureBaseline) {
             initialState.window.width = 1512;
             initialState.window.height = 827;
@@ -146,6 +156,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             initialState.ui.blurStrength = 2.0f;
             initialState.lod.locked = true;
         }
+        if (fullscreenSmoke) initialState.window.fullscreen = true;
+        const bool restoreFullscreen = initialState.window.fullscreen;
         ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
         if (!captureBaseline) host.SetWindowPosition(initialState.window.x, initialState.window.y);
         ParticleSaturn::Gpu::Metal::MetalDevice device;
@@ -180,7 +192,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::App::AppController controller{initialState};
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
-        if (!captureBaseline && !performanceSmoke) cameraSelector.StartSaved();
+        if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) cameraSelector.StartSaved();
         host.SetActionCallback([&](ParticleSaturn::Platform::MacOS::HostAction action) {
             switch (action) {
             case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
@@ -230,12 +242,15 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 break;
             }
             }
-            if (!captureBaseline && !performanceSmoke) settings.Save(controller.State());
+            if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
         });
         bool baselineCaptured = false;
         std::uint32_t baselineFrameCount = 0;
         std::uint32_t performanceFrameCount = 0;
         bool performanceFailed = false;
+        std::uint32_t fullscreenFrameCount = 0;
+        bool fullscreenFailed = false;
+        const auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         auto appliedWindowMaterial = controller.State().window.material;
         auto appliedVsyncMode = controller.State().render.vsyncMode;
         host.SetWindowMaterial(appliedWindowMaterial);
@@ -272,6 +287,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         MD3::SetScreenSize(static_cast<float>(size.width / size.scale), static_cast<float>(size.height / size.scale));
         if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
         host.Show();
+        if (restoreFullscreen) host.ToggleFullscreen();
         host.Run([&] {
             const auto now = std::chrono::steady_clock::now();
             const float deltaTime = std::clamp(std::chrono::duration<float>(now - lastFrameTime).count(), 0.0f, 0.25f);
@@ -320,7 +336,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 MD3::SetScreenSize(static_cast<float>(drawableSize.width / drawableSize.scale),
                                    static_cast<float>(drawableSize.height / drawableSize.scale));
                 ParticleSaturn::Platform::MacOS::RenderMd3Panel(controller, "Metal", fpsMeter.Value(), false, {
-                    [&] { if (!captureBaseline && !performanceSmoke) settings.Save(controller.State()); },
+                    [&] { if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State()); },
                     [&] {
                         const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{!controller.State().window.fullscreen});
                         if (effect.windowChanged) host.ToggleFullscreen();
@@ -363,13 +379,22 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                     [NSApp terminate:nil];
                 }
             }
+            if (fullscreenSmoke) {
+                const auto style = [[(NSView*)host.NativeView() window] styleMask];
+                if ((style & NSWindowStyleMaskFullScreen) != 0) {
+                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                    fullscreenFailed = true;
+                    [NSApp terminate:nil];
+                }
+            }
         });
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();
         MD3::Shutdown();
         ImGui::DestroyContext();
-        if (!captureBaseline && !performanceSmoke) settings.Save(controller.State());
-        if (performanceFailed) return 1;
+        if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
+        if (performanceFailed || fullscreenFailed) return 1;
     }
     return 0;
 }

@@ -55,6 +55,13 @@ std::uint32_t PerformanceLockSmokeFrames() {
     return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
 }
 
+std::uint32_t FullscreenRestoreSmokeFrames() {
+    const char* value = std::getenv("PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE");
+    if (value == nullptr || value[0] == '\0') return 0;
+    const auto parsed = std::strtoul(value, nullptr, 10);
+    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
+}
+
 bool InteractionSmokeRequested() {
     const char* value = std::getenv("PARTICLESATURN_VULKAN_INTERACTION_SMOKE");
     return value != nullptr && std::string_view{value} == "1";
@@ -93,10 +100,13 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         const bool smokeMode = smokeFrames != 0;
         const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
         const bool performanceSmoke = performanceSmokeFrames != 0;
+        const auto fullscreenSmokeFrames = FullscreenRestoreSmokeFrames();
+        const bool fullscreenSmoke = fullscreenSmokeFrames != 0;
         const bool lodSmoke = LodSmokeRequested();
         App::AppState defaults;
         defaults.render.graphicsApi = App::GraphicsApi::Vulkan;
-        auto state = captureBaseline || smokeMode || performanceSmoke ? defaults : settings.Load(defaults);
+        auto state = captureBaseline || smokeMode || performanceSmoke || fullscreenSmoke
+            ? defaults : settings.Load(defaults);
         state.render.graphicsApi = App::GraphicsApi::Vulkan;
         state.render.vulkanDriver = SelectedDriver(state.render.vulkanDriver);
         if (captureBaseline) {
@@ -118,6 +128,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             state.ui.blurStrength = 2.0f;
             state.lod.locked = true;
         }
+        if (fullscreenSmoke) state.window.fullscreen = true;
+        const bool restoreFullscreen = state.window.fullscreen;
 
         CocoaHost host{state.window.width, state.window.height, "Particle Saturn - Vulkan"};
         host.SetWindowPosition(state.window.x, state.window.y);
@@ -182,7 +194,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
         Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
         std::unique_ptr<Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
-        if (!captureBaseline && !smokeMode && !performanceSmoke) {
+        if (!captureBaseline && !smokeMode && !performanceSmoke && !fullscreenSmoke) {
             cameraSelector.StartSaved();
             std::string handTrackingError;
             const auto palmModel = Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
@@ -252,7 +264,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             default:
                 break;
             }
-            if (!smokeMode && !performanceSmoke) settings.Save(controller.State());
+            if (!smokeMode && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
         });
         if (InteractionSmokeRequested()) {
             const bool debugBefore = controller.State().ui.showDebugWindow;
@@ -272,9 +284,13 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         std::uint32_t renderedFrames = 0;
         std::uint32_t performanceFrameCount = 0;
         bool performanceFailed = false;
+        std::uint32_t fullscreenFrameCount = 0;
+        bool fullscreenFailed = false;
+        const auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         bool runtimeFailed = false;
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
+        if (restoreFullscreen) host.ToggleFullscreen();
         host.Run([&] {
             const auto now = std::chrono::steady_clock::now();
             const double elapsedSeconds = lodSmoke ? 0.05 : std::clamp(
@@ -333,7 +349,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             MD3::SetScreenSize(static_cast<float>(mutableState.window.width),
                                static_cast<float>(mutableState.window.height));
             RenderMd3Panel(controller, adapter.AdapterName().c_str(), currentFramesPerSecond, false, {
-                [&] { if (!smokeMode && !performanceSmoke) settings.Save(controller.State()); },
+                [&] { if (!smokeMode && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State()); },
                 [&] {
                     const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});
                     if (effect.windowChanged) host.ToggleFullscreen();
@@ -386,6 +402,16 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                     host.RequestExit();
                 }
             }
+            if (fullscreenSmoke) {
+                const auto style = [[(NSView*)host.NativeView() window] styleMask];
+                if ((style & NSWindowStyleMaskFullScreen) != 0) {
+                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
+                } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                    ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window did not enter native fullscreen");
+                    fullscreenFailed = true;
+                    host.RequestExit();
+                }
+            }
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
                 if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
                     ReportStartupFailure("lod-smoke", "Vulkan dynamic LOD smoke test did not reduce particle count");
@@ -394,9 +420,9 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.RequestExit();
             }
         });
-        if (!smokeMode && !performanceSmoke) settings.Save(controller.State());
+        if (!smokeMode && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
         adapter.Shutdown();
-        if (runtimeFailed || performanceFailed) return 1;
+        if (runtimeFailed || performanceFailed || fullscreenFailed) return 1;
     }
     return 0;
 }

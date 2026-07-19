@@ -124,6 +124,18 @@ if(BUILD_TESTING)
             "$<TARGET_FILE:ParticleSaturn.macOS>")
     set_tests_properties(ParticleSaturnMacOSPerformanceLockMetal ParticleSaturnMacOSPerformanceLockOpenGL
         PROPERTIES TIMEOUT 30)
+    add_test(NAME ParticleSaturnMacOSFullscreenRestoreMetal
+        COMMAND "${CMAKE_COMMAND}" -E env
+            PARTICLESATURN_GRAPHICS_API=metal
+            PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE=3
+            "$<TARGET_FILE:ParticleSaturn.macOS>")
+    add_test(NAME ParticleSaturnMacOSFullscreenRestoreOpenGL
+        COMMAND "${CMAKE_COMMAND}" -E env
+            PARTICLESATURN_GRAPHICS_API=opengl41
+            PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE=3
+            "$<TARGET_FILE:ParticleSaturn.macOS>")
+    set_tests_properties(ParticleSaturnMacOSFullscreenRestoreMetal ParticleSaturnMacOSFullscreenRestoreOpenGL
+        PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endif()
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"

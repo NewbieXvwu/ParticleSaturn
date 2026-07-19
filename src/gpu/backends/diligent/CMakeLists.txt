@@ -76,6 +76,14 @@ if(BUILD_TESTING)
                 PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3
                 "$<TARGET_FILE:ParticleSaturn.macOS>")
         set_tests_properties(ParticleSaturnVulkanApplicationMoltenPerformanceLock PROPERTIES TIMEOUT 30)
+        add_test(NAME ParticleSaturnVulkanApplicationMoltenFullscreenRestore
+            COMMAND "${CMAKE_COMMAND}" -E env
+                PARTICLESATURN_GRAPHICS_API=vulkan
+                PARTICLESATURN_VULKAN_DRIVER=molten
+                PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE=3
+                "$<TARGET_FILE:ParticleSaturn.macOS>")
+        set_tests_properties(ParticleSaturnVulkanApplicationMoltenFullscreenRestore
+            PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
         if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
             add_test(NAME ParticleSaturnVulkanApplicationKosmicSmoke
                 COMMAND "${CMAKE_COMMAND}" -E env
@@ -108,6 +116,14 @@ if(BUILD_TESTING)
                     PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3
                     "$<TARGET_FILE:ParticleSaturn.macOS>")
             set_tests_properties(ParticleSaturnVulkanApplicationKosmicPerformanceLock PROPERTIES TIMEOUT 30)
+            add_test(NAME ParticleSaturnVulkanApplicationKosmicFullscreenRestore
+                COMMAND "${CMAKE_COMMAND}" -E env
+                    PARTICLESATURN_GRAPHICS_API=vulkan
+                    PARTICLESATURN_VULKAN_DRIVER=kosmic
+                    PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE=3
+                    "$<TARGET_FILE:ParticleSaturn.macOS>")
+            set_tests_properties(ParticleSaturnVulkanApplicationKosmicFullscreenRestore
+                PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
         endif()
     endif()
 endif()

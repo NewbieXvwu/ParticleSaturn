@@ -1146,10 +1146,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-19）：统一诊断与崩溃日志链路完成收口。`ParticleSaturnMacOSCrashHandlerTests` 以独立子进程触发 `SIGSEGV`，核对退出码、原始日志中的信号与地址、`atos` 符号化结果、`DiagnosticBus` 的 `previous-fatal-signal` 错误记录及日志单次消费清空；专门测试通过且运行后无残留应用进程。
 
+进展补充（2026-07-19）：Metal、OpenGL 4.1 和 Vulkan 入口现会在窗口显示后恢复持久化的原生全屏状态。新增四模式全屏恢复测试，从隔离状态强制以全屏启动，等待 AppKit 确认 `NSWindowStyleMaskFullScreen` 后分别用 Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp 呈现三帧并自动退出；四项测试通过且无残留应用进程。窗口退出全屏、几何恢复及跨显示器行为仍归入窗口行为总项继续验收。
+
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
 - [x] MoltenVK 与 KosmicKrisp 最终交换链读回、Metal 严格对比及驱动间基准测试
 - [x] 粒子读回数据比较
 - [ ] 窗口行为对齐
+- [x] 四种 macOS 模式恢复保存的原生全屏启动状态并在全屏交换链呈现
 - [x] 性能锁定测试
 - [ ] 手势输入端到端验证（模型输出、关键点、丢手、旋转、缩放）
 - [ ] 摄像头异常状态验证
