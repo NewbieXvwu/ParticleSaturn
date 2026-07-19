@@ -27,6 +27,8 @@ enum class HostAction : std::uint8_t {
     KeyBUp,
     KeyEscapeDown,
     KeyEscapeUp,
+    NativeFullscreenEntered,
+    NativeFullscreenExited,
 };
 
 class CocoaHost {

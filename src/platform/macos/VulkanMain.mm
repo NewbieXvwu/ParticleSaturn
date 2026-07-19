@@ -128,11 +128,25 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             state.ui.blurStrength = 2.0f;
             state.lod.locked = true;
         }
-        if (fullscreenSmoke) state.window.fullscreen = true;
+        if (fullscreenSmoke) {
+            state.window.x = 24;
+            state.window.y = 36;
+            state.window.width = 1111;
+            state.window.height = 777;
+            state.window.windowedX = 100;
+            state.window.windowedY = 100;
+            state.window.windowedWidth = 640;
+            state.window.windowedHeight = 360;
+            state.window.fullscreen = true;
+        }
         const bool restoreFullscreen = state.window.fullscreen;
+        const auto startupWidth = restoreFullscreen ? state.window.windowedWidth : state.window.width;
+        const auto startupHeight = restoreFullscreen ? state.window.windowedHeight : state.window.height;
+        const auto startupX = restoreFullscreen ? state.window.windowedX : state.window.x;
+        const auto startupY = restoreFullscreen ? state.window.windowedY : state.window.y;
 
-        CocoaHost host{state.window.width, state.window.height, "Particle Saturn - Vulkan"};
-        host.SetWindowPosition(state.window.x, state.window.y);
+        CocoaHost host{startupWidth, startupHeight, "Particle Saturn - Vulkan"};
+        host.SetWindowPosition(startupX, startupY);
         host.SetPresentationMode(state.render.vsyncMode);
         host.SetWindowMaterial(state.window.material);
 
@@ -229,6 +243,12 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 if (effect.windowChanged) host.ToggleFullscreen();
                 break;
             }
+            case HostAction::NativeFullscreenEntered:
+                controller.Dispatch(App::SetFullscreen{true});
+                break;
+            case HostAction::NativeFullscreenExited:
+                controller.Dispatch(App::SetFullscreen{false});
+                break;
             case HostAction::ShowCameraSelector:
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
                 if (!smokeMode) {
@@ -286,7 +306,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         bool performanceFailed = false;
         std::uint32_t fullscreenFrameCount = 0;
         bool fullscreenFailed = false;
-        const auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        bool fullscreenExitRequested = false;
+        auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         bool runtimeFailed = false;
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
@@ -314,7 +335,9 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
             mutableState.window.height = static_cast<std::uint32_t>(drawableSize.height / drawableSize.scale);
             mutableState.window.dpiScale = drawableSize.scale;
-            if (!mutableState.window.fullscreen) {
+            const bool nativeFullscreen = ([[(NSView*)host.NativeView() window] styleMask] &
+                                           NSWindowStyleMaskFullScreen) != 0;
+            if (!nativeFullscreen) {
                 host.GetWindowPosition(mutableState.window.x, mutableState.window.y);
                 mutableState.window.windowedX = mutableState.window.x;
                 mutableState.window.windowedY = mutableState.window.y;
@@ -403,11 +426,28 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 }
             }
             if (fullscreenSmoke) {
-                const auto style = [[(NSView*)host.NativeView() window] styleMask];
-                if ((style & NSWindowStyleMaskFullScreen) != 0) {
-                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
+                if (nativeFullscreen && !fullscreenExitRequested) {
+                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) {
+                        [[(NSView*)host.NativeView() window] toggleFullScreen:nil];
+                        fullscreenExitRequested = true;
+                        fullscreenFrameCount = 0;
+                        fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+                    }
+                } else if (!nativeFullscreen && fullscreenExitRequested) {
+                    std::int32_t x = 0;
+                    std::int32_t y = 0;
+                    host.GetWindowPosition(x, y);
+                    const bool geometryRestored = mutableState.window.width == startupWidth &&
+                        mutableState.window.height == startupHeight && x == startupX && y == startupY;
+                    if (geometryRestored && !mutableState.window.fullscreen) {
+                        if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
+                    } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                        ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window geometry was not restored after fullscreen");
+                        fullscreenFailed = true;
+                        host.RequestExit();
+                    }
                 } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
-                    ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window did not enter native fullscreen");
+                    ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window did not complete fullscreen transition");
                     fullscreenFailed = true;
                     host.RequestExit();
                 }

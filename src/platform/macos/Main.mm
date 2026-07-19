@@ -156,10 +156,24 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             initialState.ui.blurStrength = 2.0f;
             initialState.lod.locked = true;
         }
-        if (fullscreenSmoke) initialState.window.fullscreen = true;
+        if (fullscreenSmoke) {
+            initialState.window.x = 24;
+            initialState.window.y = 36;
+            initialState.window.width = 1111;
+            initialState.window.height = 777;
+            initialState.window.windowedX = 100;
+            initialState.window.windowedY = 100;
+            initialState.window.windowedWidth = 640;
+            initialState.window.windowedHeight = 360;
+            initialState.window.fullscreen = true;
+        }
         const bool restoreFullscreen = initialState.window.fullscreen;
-        ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
-        if (!captureBaseline) host.SetWindowPosition(initialState.window.x, initialState.window.y);
+        const auto startupWidth = restoreFullscreen ? initialState.window.windowedWidth : initialState.window.width;
+        const auto startupHeight = restoreFullscreen ? initialState.window.windowedHeight : initialState.window.height;
+        const auto startupX = restoreFullscreen ? initialState.window.windowedX : initialState.window.x;
+        const auto startupY = restoreFullscreen ? initialState.window.windowedY : initialState.window.y;
+        ParticleSaturn::Platform::MacOS::CocoaHost host{startupWidth, startupHeight, "Particle Saturn"};
+        if (!captureBaseline) host.SetWindowPosition(startupX, startupY);
         ParticleSaturn::Gpu::Metal::MetalDevice device;
         if (!device.Initialize()) {
             return 1;
@@ -210,6 +224,12 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             case ParticleSaturn::Platform::MacOS::HostAction::TogglePause:
                 controller.Dispatch(ParticleSaturn::App::TogglePause{});
                 break;
+            case ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenEntered:
+                controller.Dispatch(ParticleSaturn::App::SetFullscreen{true});
+                break;
+            case ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenExited:
+                controller.Dispatch(ParticleSaturn::App::SetFullscreen{false});
+                break;
             case ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector:
                 if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
                 cameraSelector.Show();
@@ -250,7 +270,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         bool performanceFailed = false;
         std::uint32_t fullscreenFrameCount = 0;
         bool fullscreenFailed = false;
-        const auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        bool fullscreenExitRequested = false;
+        auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         auto appliedWindowMaterial = controller.State().window.material;
         auto appliedVsyncMode = controller.State().render.vsyncMode;
         host.SetWindowMaterial(appliedWindowMaterial);
@@ -319,7 +340,9 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
             mutableState.window.height = static_cast<std::uint32_t>(drawableSize.height / drawableSize.scale);
             mutableState.window.dpiScale = drawableSize.scale;
-            if (!mutableState.window.fullscreen) {
+            const bool nativeFullscreen = ([[(NSView*)host.NativeView() window] styleMask] &
+                                           NSWindowStyleMaskFullScreen) != 0;
+            if (!nativeFullscreen) {
                 host.GetWindowPosition(mutableState.window.x, mutableState.window.y);
                 mutableState.window.windowedX = mutableState.window.x;
                 mutableState.window.windowedY = mutableState.window.y;
@@ -380,9 +403,25 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 }
             }
             if (fullscreenSmoke) {
-                const auto style = [[(NSView*)host.NativeView() window] styleMask];
-                if ((style & NSWindowStyleMaskFullScreen) != 0) {
-                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                if (nativeFullscreen && !fullscreenExitRequested) {
+                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) {
+                        [[(NSView*)host.NativeView() window] toggleFullScreen:nil];
+                        fullscreenExitRequested = true;
+                        fullscreenFrameCount = 0;
+                        fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+                    }
+                } else if (!nativeFullscreen && fullscreenExitRequested) {
+                    std::int32_t x = 0;
+                    std::int32_t y = 0;
+                    host.GetWindowPosition(x, y);
+                    const bool geometryRestored = mutableState.window.width == startupWidth &&
+                        mutableState.window.height == startupHeight && x == startupX && y == startupY;
+                    if (geometryRestored && !mutableState.window.fullscreen) {
+                        if (++fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                    } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                        fullscreenFailed = true;
+                        [NSApp terminate:nil];
+                    }
                 } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
                     fullscreenFailed = true;
                     [NSApp terminate:nil];

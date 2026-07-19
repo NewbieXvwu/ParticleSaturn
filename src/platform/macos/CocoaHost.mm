@@ -24,11 +24,17 @@
 }
 - (void)windowDidEnterFullScreen:(NSNotification*)notification {
     (void)notification;
-    if (owner != nullptr) owner->SetFullscreenActive(true);
+    if (owner != nullptr) {
+        owner->SetFullscreenActive(true);
+        owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenEntered);
+    }
 }
 - (void)windowDidExitFullScreen:(NSNotification*)notification {
     (void)notification;
-    if (owner != nullptr) owner->SetFullscreenActive(false);
+    if (owner != nullptr) {
+        owner->SetFullscreenActive(false);
+        owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenExited);
+    }
 }
 - (void)toggleDebugWindow:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow); }
 - (void)toggleFullscreen:(id)sender { (void)sender; if (owner != nullptr) owner->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen); }

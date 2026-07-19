@@ -1148,6 +1148,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-19）：Metal、OpenGL 4.1 和 Vulkan 入口现会在窗口显示后恢复持久化的原生全屏状态。新增四模式全屏恢复测试，从隔离状态强制以全屏启动，等待 AppKit 确认 `NSWindowStyleMaskFullScreen` 后分别用 Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp 呈现三帧并自动退出；四项测试通过且无残留应用进程。窗口退出全屏、几何恢复及跨显示器行为仍归入窗口行为总项继续验收。
 
+进展补充（2026-07-19）：完成原生全屏状态同步与退出后窗口几何恢复。四种 macOS 后端（Metal、OpenGL 4.1、MoltenVK、KosmicKrisp）现通过新增的 `NativeFullscreenEntered`/`NativeFullscreenExited` 宿主动作，把绿色交通灯按钮与 Mission Control 触发的原生全屏进出统一派发为 `SetFullscreen` 命令，使 AppController 的全屏状态与 AppKit 真实状态保持一致。窗口化几何（位置与尺寸）的记录改由实际的 `NSWindowStyleMaskFullScreen` 样式掩码判定，而非应用状态标志，避免全屏期间把全屏几何误记为窗口化几何；退出全屏后按记录还原窗口尺寸与位置。四项全屏恢复测试已扩展为进入全屏呈现后再主动 `toggleFullScreen:` 退出，并断言窗口尺寸、位置恢复到启动窗口化几何且全屏状态清零。全量 33 项 CTest 通过，测试后无残留应用进程。窗口跨显示器与睡眠唤醒行为仍归入相应总项继续验收。
+
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
 - [x] MoltenVK 与 KosmicKrisp 最终交换链读回、Metal 严格对比及驱动间基准测试
 - [x] 粒子读回数据比较

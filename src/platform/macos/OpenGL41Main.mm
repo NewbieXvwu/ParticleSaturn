@@ -274,15 +274,29 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             initialState.ui.blurStrength = 2.0f;
             initialState.lod.locked = true;
         }
-        if (fullscreenSmoke) initialState.window.fullscreen = true;
+        if (fullscreenSmoke) {
+            initialState.window.x = 24;
+            initialState.window.y = 36;
+            initialState.window.width = 1111;
+            initialState.window.height = 777;
+            initialState.window.windowedX = 100;
+            initialState.window.windowedY = 100;
+            initialState.window.windowedWidth = 640;
+            initialState.window.windowedHeight = 360;
+            initialState.window.fullscreen = true;
+        }
         const bool restoreFullscreen = initialState.window.fullscreen;
+        const auto startupWidth = restoreFullscreen ? initialState.window.windowedWidth : initialState.window.width;
+        const auto startupHeight = restoreFullscreen ? initialState.window.windowedHeight : initialState.window.height;
+        const auto startupX = restoreFullscreen ? initialState.window.windowedX : initialState.window.x;
+        const auto startupY = restoreFullscreen ? initialState.window.windowedY : initialState.window.y;
         const NSRect visibleFrame = [[NSScreen mainScreen] visibleFrame];
         const NSSize maximumContentSize = [NSWindow contentRectForFrameRect:visibleFrame
                                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                                                               NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable].size;
-        const NSRect frame = NSMakeRect(captureBaseline ? 0 : initialState.window.x, captureBaseline ? 0 : initialState.window.y,
-                                        std::min<CGFloat>(initialState.window.width, maximumContentSize.width),
-                                        std::min<CGFloat>(initialState.window.height, maximumContentSize.height));
+        const NSRect frame = NSMakeRect(captureBaseline ? 0 : startupX, captureBaseline ? 0 : startupY,
+                                        std::min<CGFloat>(startupWidth, maximumContentSize.width),
+                                        std::min<CGFloat>(startupHeight, maximumContentSize.height));
         const auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
         auto* window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
@@ -399,7 +413,9 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto performanceFailed = std::make_shared<bool>(false);
         auto fullscreenFrameCount = std::make_shared<std::uint32_t>(0);
         auto fullscreenFailed = std::make_shared<bool>(false);
-        const auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        auto fullscreenExitRequested = std::make_shared<bool>(false);
+        auto fullscreenDeadline = std::make_shared<std::chrono::steady_clock::time_point>(
+            std::chrono::steady_clock::now() + std::chrono::seconds{5});
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
@@ -485,7 +501,8 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             controller->MutableState().window.width = static_cast<std::uint32_t>(logicalSize.width);
             controller->MutableState().window.height = static_cast<std::uint32_t>(logicalSize.height);
             controller->MutableState().window.dpiScale = backingScale;
-            if (!controller->State().window.fullscreen) {
+            const bool nativeFullscreen = ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
+            if (!nativeFullscreen) {
                 const NSPoint origin = [window frame].origin;
                 auto& windowState = controller->MutableState().window;
                 windowState.x = static_cast<std::int32_t>(origin.x);
@@ -561,9 +578,26 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 }
             }
             if (fullscreenSmoke) {
-                if (([window styleMask] & NSWindowStyleMaskFullScreen) != 0) {
-                    if (++*fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
-                } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                if (nativeFullscreen && !*fullscreenExitRequested) {
+                    if (++*fullscreenFrameCount >= fullscreenSmokeFrames) {
+                        [window toggleFullScreen:nil];
+                        *fullscreenExitRequested = true;
+                        *fullscreenFrameCount = 0;
+                        *fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+                    }
+                } else if (!nativeFullscreen && *fullscreenExitRequested) {
+                    const NSPoint origin = [window frame].origin;
+                    const bool geometryRestored = static_cast<std::uint32_t>(logicalSize.width) == startupWidth &&
+                        static_cast<std::uint32_t>(logicalSize.height) == startupHeight &&
+                        static_cast<std::int32_t>(origin.x) == startupX &&
+                        static_cast<std::int32_t>(origin.y) == startupY;
+                    if (geometryRestored && !controller->State().window.fullscreen) {
+                        if (++*fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                    } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
+                        *fullscreenFailed = true;
+                        [NSApp terminate:nil];
+                    }
+                } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
                     *fullscreenFailed = true;
                     [NSApp terminate:nil];
                 }
