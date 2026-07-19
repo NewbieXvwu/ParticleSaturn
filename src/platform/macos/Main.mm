@@ -37,6 +37,13 @@
 
 namespace {
 
+std::uint32_t PerformanceLockSmokeFrames() {
+    const char* value = std::getenv("PARTICLESATURN_PERFORMANCE_LOCK_SMOKE");
+    if (value == nullptr || value[0] == '\0') return 0;
+    const auto parsed = std::strtoul(value, nullptr, 10);
+    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
+}
+
 class FpsMeter {
 public:
     void AddSample(float deltaTime) {
@@ -121,11 +128,22 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
-        auto initialState = captureBaseline ? ParticleSaturn::App::AppState{} : settings.Load({});
+        const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
+        const bool performanceSmoke = performanceSmokeFrames != 0;
+        auto initialState = captureBaseline || performanceSmoke ? ParticleSaturn::App::AppState{} : settings.Load({});
         if (captureBaseline) {
             initialState.window.width = 1512;
             initialState.window.height = 827;
             initialState.scene.paused = true;
+            initialState.lod.locked = true;
+        }
+        if (performanceSmoke) {
+            initialState.render.particleCount = ParticleSaturn::App::RenderSettings::MaxParticles;
+            initialState.render.pixelRatio = 1.0f;
+            initialState.render.bloomEnabled = true;
+            initialState.render.bloomBlurStrength = 2.0f;
+            initialState.ui.blurEnabled = true;
+            initialState.ui.blurStrength = 2.0f;
             initialState.lod.locked = true;
         }
         ParticleSaturn::Platform::MacOS::CocoaHost host{initialState.window.width, initialState.window.height, "Particle Saturn"};
@@ -162,7 +180,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::App::AppController controller{initialState};
         ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
         ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
-        if (!captureBaseline) cameraSelector.StartSaved();
+        if (!captureBaseline && !performanceSmoke) cameraSelector.StartSaved();
         host.SetActionCallback([&](ParticleSaturn::Platform::MacOS::HostAction action) {
             switch (action) {
             case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
@@ -212,10 +230,12 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 break;
             }
             }
-            if (!captureBaseline) settings.Save(controller.State());
+            if (!captureBaseline && !performanceSmoke) settings.Save(controller.State());
         });
         bool baselineCaptured = false;
         std::uint32_t baselineFrameCount = 0;
+        std::uint32_t performanceFrameCount = 0;
+        bool performanceFailed = false;
         auto appliedWindowMaterial = controller.State().window.material;
         auto appliedVsyncMode = controller.State().render.vsyncMode;
         host.SetWindowMaterial(appliedWindowMaterial);
@@ -300,7 +320,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 MD3::SetScreenSize(static_cast<float>(drawableSize.width / drawableSize.scale),
                                    static_cast<float>(drawableSize.height / drawableSize.scale));
                 ParticleSaturn::Platform::MacOS::RenderMd3Panel(controller, "Metal", fpsMeter.Value(), false, {
-                    [&] { if (!captureBaseline) settings.Save(controller.State()); },
+                    [&] { if (!captureBaseline && !performanceSmoke) settings.Save(controller.State()); },
                     [&] {
                         const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{!controller.State().window.fullscreen});
                         if (effect.windowChanged) host.ToggleFullscreen();
@@ -331,12 +351,25 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 if (baselineCaptured) [NSApp terminate:nil];
                 return baselineCaptured;
             });
+            if (performanceSmoke) {
+                const auto& performanceState = controller.State();
+                if (performanceState.render.particleCount != ParticleSaturn::App::RenderSettings::MaxParticles ||
+                    performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
+                    performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
+                    performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
+                    performanceFailed = true;
+                    [NSApp terminate:nil];
+                } else if (++performanceFrameCount >= performanceSmokeFrames) {
+                    [NSApp terminate:nil];
+                }
+            }
         });
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();
         MD3::Shutdown();
         ImGui::DestroyContext();
-        if (!captureBaseline) settings.Save(controller.State());
+        if (!captureBaseline && !performanceSmoke) settings.Save(controller.State());
+        if (performanceFailed) return 1;
     }
     return 0;
 }

@@ -48,6 +48,13 @@ std::uint32_t SmokeFrameLimit() {
     return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 10000UL));
 }
 
+std::uint32_t PerformanceLockSmokeFrames() {
+    const char* value = std::getenv("PARTICLESATURN_PERFORMANCE_LOCK_SMOKE");
+    if (value == nullptr || value[0] == '\0') return 0;
+    const auto parsed = std::strtoul(value, nullptr, 10);
+    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
+}
+
 bool InteractionSmokeRequested() {
     const char* value = std::getenv("PARTICLESATURN_VULKAN_INTERACTION_SMOKE");
     return value != nullptr && std::string_view{value} == "1";
@@ -84,10 +91,12 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
         const auto smokeFrames = SmokeFrameLimit();
         const bool smokeMode = smokeFrames != 0;
+        const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
+        const bool performanceSmoke = performanceSmokeFrames != 0;
         const bool lodSmoke = LodSmokeRequested();
         App::AppState defaults;
         defaults.render.graphicsApi = App::GraphicsApi::Vulkan;
-        auto state = captureBaseline || smokeMode ? defaults : settings.Load(defaults);
+        auto state = captureBaseline || smokeMode || performanceSmoke ? defaults : settings.Load(defaults);
         state.render.graphicsApi = App::GraphicsApi::Vulkan;
         state.render.vulkanDriver = SelectedDriver(state.render.vulkanDriver);
         if (captureBaseline) {
@@ -99,6 +108,15 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         if (lodSmoke) {
             state.render.particleCount = App::RenderSettings::MaxParticles;
             state.lod.locked = false;
+        }
+        if (performanceSmoke) {
+            state.render.particleCount = App::RenderSettings::MaxParticles;
+            state.render.pixelRatio = 1.0f;
+            state.render.bloomEnabled = true;
+            state.render.bloomBlurStrength = 2.0f;
+            state.ui.blurEnabled = true;
+            state.ui.blurStrength = 2.0f;
+            state.lod.locked = true;
         }
 
         CocoaHost host{state.window.width, state.window.height, "Particle Saturn - Vulkan"};
@@ -164,7 +182,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
         Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
         std::unique_ptr<Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
-        if (!captureBaseline && !smokeMode) {
+        if (!captureBaseline && !smokeMode && !performanceSmoke) {
             cameraSelector.StartSaved();
             std::string handTrackingError;
             const auto palmModel = Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
@@ -234,7 +252,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             default:
                 break;
             }
-            if (!smokeMode) settings.Save(controller.State());
+            if (!smokeMode && !performanceSmoke) settings.Save(controller.State());
         });
         if (InteractionSmokeRequested()) {
             const bool debugBefore = controller.State().ui.showDebugWindow;
@@ -252,6 +270,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         }
 
         std::uint32_t renderedFrames = 0;
+        std::uint32_t performanceFrameCount = 0;
+        bool performanceFailed = false;
         bool runtimeFailed = false;
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
@@ -313,7 +333,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             MD3::SetScreenSize(static_cast<float>(mutableState.window.width),
                                static_cast<float>(mutableState.window.height));
             RenderMd3Panel(controller, adapter.AdapterName().c_str(), currentFramesPerSecond, false, {
-                [&] { if (!smokeMode) settings.Save(controller.State()); },
+                [&] { if (!smokeMode && !performanceSmoke) settings.Save(controller.State()); },
                 [&] {
                     const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});
                     if (effect.windowChanged) host.ToggleFullscreen();
@@ -353,6 +373,19 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 return;
             }
             if (captureBaseline && adapter.BaselineCaptureRequested()) host.RequestExit();
+            if (performanceSmoke) {
+                const auto& performanceState = controller.State();
+                if (performanceState.render.particleCount != App::RenderSettings::MaxParticles ||
+                    performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
+                    performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
+                    performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
+                    ReportStartupFailure("performance-lock-smoke", "Vulkan quality lock state changed during performance smoke test");
+                    performanceFailed = true;
+                    host.RequestExit();
+                } else if (++performanceFrameCount >= performanceSmokeFrames) {
+                    host.RequestExit();
+                }
+            }
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
                 if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
                     ReportStartupFailure("lod-smoke", "Vulkan dynamic LOD smoke test did not reduce particle count");
@@ -361,9 +394,9 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.RequestExit();
             }
         });
-        if (!smokeMode) settings.Save(controller.State());
+        if (!smokeMode && !performanceSmoke) settings.Save(controller.State());
         adapter.Shutdown();
-        if (runtimeFailed) return 1;
+        if (runtimeFailed || performanceFailed) return 1;
     }
     return 0;
 }

@@ -1142,11 +1142,13 @@ ParticleSaturn.macOS             # macOS .app 包目标
 
 进展补充（2026-07-18）：修复 Vulkan 星空通道把 50,000 实例全部按 `gl_VertexIndex` 读取第 0 颗星的问题，改为 `gl_InstanceIndex` 并将随机种子对齐 Metal 的 `1337`；背景通道移除重复的程序星点，只保留深空底色。MoltenVK/KosmicKrisp 对 Metal 的平均通道差异进一步降至 `1.1757`/`1.1754`，差异像素比例为 `0.3590%`/`0.3604%`。四模式基准现要求 Metal 对 OpenGL、MoltenVK 和 KosmicKrisp 均满足平均差异 `2.0`、差异像素 `4%`，双 ICD 阈值收紧为 `1.0`、`1%`；严格基准连续三轮及全量 25 项 CTest 通过，运行后无残留应用进程。
 
+进展补充（2026-07-19）：新增统一的 `PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3` 四后端短进程测试。Metal、OpenGL 4.1、MoltenVK 和 KosmicKrisp 均从隔离默认状态启动，固定 120 万粒子、像素比例 1、Bloom 开启且半径 2、界面模糊开启且强度 2、动态 LOD 锁定，连续呈现三帧并逐帧断言质量参数未被运行期逻辑改变；测试过程跳过摄像头和设置持久化，达到帧数自动退出。四项性能锁定测试和全量 29 项 CTest 均通过，测试后无残留应用进程。
+
 - [x] Metal 与 OpenGL 4.1 画面基准截图差异测试
 - [x] MoltenVK 与 KosmicKrisp 最终交换链读回、Metal 严格对比及驱动间基准测试
 - [x] 粒子读回数据比较
 - [ ] 窗口行为对齐
-- [ ] 性能锁定测试
+- [x] 性能锁定测试
 - [ ] 手势输入端到端验证（模型输出、关键点、丢手、旋转、缩放）
 - [ ] 摄像头异常状态验证
 - [ ] Retina 与外接显示器

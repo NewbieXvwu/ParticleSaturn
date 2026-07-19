@@ -112,6 +112,18 @@ if(BUILD_TESTING)
             "$<TARGET_FILE:ParticleSaturnVisualBaselineMetricsTests>"
             "${CMAKE_CURRENT_BINARY_DIR}/visual-baseline")
     set_tests_properties(ParticleSaturnVisualBaselineTests PROPERTIES TIMEOUT 30)
+    add_test(NAME ParticleSaturnMacOSPerformanceLockMetal
+        COMMAND "${CMAKE_COMMAND}" -E env
+            PARTICLESATURN_GRAPHICS_API=metal
+            PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3
+            "$<TARGET_FILE:ParticleSaturn.macOS>")
+    add_test(NAME ParticleSaturnMacOSPerformanceLockOpenGL
+        COMMAND "${CMAKE_COMMAND}" -E env
+            PARTICLESATURN_GRAPHICS_API=opengl41
+            PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3
+            "$<TARGET_FILE:ParticleSaturn.macOS>")
+    set_tests_properties(ParticleSaturnMacOSPerformanceLockMetal ParticleSaturnMacOSPerformanceLockOpenGL
+        PROPERTIES TIMEOUT 30)
 endif()
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
