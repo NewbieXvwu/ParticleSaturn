@@ -113,6 +113,7 @@ private:
     bool baselineCaptureRequested_ = false;
     bool baselineCaptured_ = false;
     std::string baselinePath_;
+    std::string bundleResources_;
     bool deviceLost_ = false;
     std::uint32_t presentedFrameCount_ = 0;
     void* bloomDownsamplePipeline_ = nullptr;

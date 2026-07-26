@@ -396,6 +396,7 @@ bool DiligentVulkanAdapter::Initialize(App::VulkanDriver driver, const std::stri
     baselineCaptured_ = false;
     baselinePath_ = baselineCaptureRequested_ ? baselinePath : std::string{};
     if (!Services::Vulkan::ConfigureDriver(driver, bundleResources, error)) return false;
+    bundleResources_ = bundleResources;
 
     ::Diligent::IEngineFactoryVk* factory = ::Diligent::GetEngineFactoryVk();
     if (factory == nullptr) {
@@ -1235,11 +1236,30 @@ bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
     shader.Source = sources.Vertex;
     ::Diligent::IShader* vertex = nullptr;
     device->CreateShader(shader, &vertex);
-    shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
-    shader.Desc.Name = "ParticleSaturn Vulkan Tone Map PS";
-    shader.Source = sources.Fragment;
+    // 单源翻译产物（D-004 试点）：直接消费 DXC 产出的 SPIR-V 字节码，
+    // 取代内联源——场景改逐像素 Load，与 Metal/GL41 语义对齐。
+    std::vector<char> pixelBytecode;
+    {
+        std::ifstream input{bundleResources_ + "/single/ToneMap.spv", std::ios::binary | std::ios::ate};
+        if (input) {
+            pixelBytecode.resize(static_cast<std::size_t>(input.tellg()));
+            input.seekg(0);
+            input.read(pixelBytecode.data(), static_cast<std::streamsize>(pixelBytecode.size()));
+        }
+    }
+    if (pixelBytecode.empty()) {
+        vertex->Release();
+        error = "Diligent Vulkan single-source tone map bytecode is unavailable";
+        return false;
+    }
+    ::Diligent::ShaderCreateInfo pixelShader{};
+    pixelShader.EntryPoint = "main";
+    pixelShader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+    pixelShader.Desc.Name = "ParticleSaturn Vulkan Tone Map PS";
+    pixelShader.ByteCode = pixelBytecode.data();
+    pixelShader.ByteCodeSize = pixelBytecode.size();
     ::Diligent::IShader* fragment = nullptr;
-    device->CreateShader(shader, &fragment);
+    device->CreateShader(pixelShader, &fragment);
     if (vertex == nullptr || fragment == nullptr) {
         if (vertex != nullptr) vertex->Release();
         if (fragment != nullptr) fragment->Release();
@@ -1247,28 +1267,15 @@ bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
         return false;
     }
     const ::Diligent::ShaderResourceVariableDesc variables[] = {
-        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {::Diligent::SHADER_TYPE_PIXEL, "BloomCB", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
-    };
-    ::Diligent::SamplerDesc sampler;
-    sampler.MinFilter = ::Diligent::FILTER_TYPE_LINEAR;
-    sampler.MagFilter = ::Diligent::FILTER_TYPE_LINEAR;
-    sampler.MipFilter = ::Diligent::FILTER_TYPE_LINEAR;
-    sampler.AddressU = ::Diligent::TEXTURE_ADDRESS_CLAMP;
-    sampler.AddressV = ::Diligent::TEXTURE_ADDRESS_CLAMP;
-    sampler.AddressW = ::Diligent::TEXTURE_ADDRESS_CLAMP;
-    const ::Diligent::ImmutableSamplerDesc immutableSamplers[] = {
-        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", sampler},
-        {::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture", sampler},
+        {::Diligent::SHADER_TYPE_PIXEL, "SceneTexture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "BloomTexture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "ToneMapConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
     ::Diligent::GraphicsPipelineStateCreateInfo pipeline{};
     pipeline.PSODesc.Name = "ParticleSaturn Vulkan Tone Map";
     pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
     pipeline.PSODesc.ResourceLayout.Variables = variables;
     pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
-    pipeline.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
-    pipeline.PSODesc.ResourceLayout.NumImmutableSamplers = static_cast<::Diligent::Uint32>(std::size(immutableSamplers));
     pipeline.GraphicsPipeline.NumRenderTargets = 1;
     pipeline.GraphicsPipeline.RTVFormats[0] = static_cast<::Diligent::ISwapChain*>(swapChain_)->GetDesc().ColorBufferFormat;
     pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
@@ -1281,15 +1288,15 @@ bool DiligentVulkanAdapter::CreateToneMapPipeline(std::string& error) {
     vertex->Release();
     fragment->Release();
     if (state == nullptr) { error = "Diligent Vulkan could not create tone map pipeline"; return false; }
-    auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BloomCB");
+    auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "ToneMapConstants");
     if (constants == nullptr) { state->Release(); error = "Diligent Vulkan tone map constants unavailable"; return false; }
     const ToneMapConstants values{0.5f, 0.0f, {0.0f, 0.0f}};
     toneMapConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
     constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(toneMapConstants_)));
     ::Diligent::IShaderResourceBinding* binding = nullptr;
     state->CreateShaderResourceBinding(&binding, true);
-    auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_Texture");
-    auto* bloom = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_BloomTexture");
+    auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "SceneTexture");
+    auto* bloom = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BloomTexture");
     if (binding == nullptr || texture == nullptr || bloom == nullptr) {
         if (binding != nullptr) binding->Release();
         state->Release();
