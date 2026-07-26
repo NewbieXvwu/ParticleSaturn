@@ -1,5 +1,4 @@
 add_library(ParticleSaturnRender STATIC
-    RenderGraph.cpp
     ResourceRegistry.cpp
 )
 

@@ -2,7 +2,6 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include "MetalBackend.h"
-#include "render/RenderGraph.h"
 
 #include <algorithm>
 #include <array>
@@ -1258,7 +1257,6 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     }
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
     id<MTLTexture> drawableTexture = [(id<CAMetalDrawable>)surface.NativeDrawable() texture];
-    Render::RenderGraph graph;
     const auto sceneHandle = targets.SceneHdrHandle();
     const auto bloomStrongHandle = targets.BloomStrongHandle();
     const auto bloomPingPongHandle = targets.BloomPingPongHandle();
@@ -1282,21 +1280,10 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     if (sceneTexture == nullptr || bloomStrongTexture == nullptr || bloomPingPongTexture == nullptr || uiSceneTexture == nullptr ||
         uiBlurTexture == nullptr || compositeTexture == nullptr || uiBlurWeakTexture == nullptr ||
         uiBlurWeakPingPongTexture == nullptr || uiOverlayTexture == nullptr || uiOverlayWeakTexture == nullptr) return false;
-    const auto scene = graph.AddResource({"scene", {width, height, 1}, sceneHandle});
-    const auto bloomStrong = graph.AddResource({"bloom-strong", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, bloomStrongHandle});
-    const auto bloomPingPong = graph.AddResource({"bloom-ping-pong", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, bloomPingPongHandle});
-    const auto drawable = graph.AddResource({"drawable", {width, height, 1}});
-    const auto uiScene = graph.AddResource({"ui-scene", {width, height, 1}, uiSceneHandle});
-    const auto uiBlur = graph.AddResource({"ui-blur", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, uiBlurHandle});
-    const auto composite = graph.AddResource({"ui-composite", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, compositeHandle});
-    const auto uiBlurWeak = graph.AddResource({"ui-blur-weak", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiBlurWeakHandle});
-    const auto uiBlurWeakPingPong = graph.AddResource({"ui-blur-weak-ping-pong", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiBlurWeakPingPongHandle});
-    const auto uiOverlay = graph.AddResource({"ui-overlay", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, uiOverlayHandle});
-    const auto uiOverlayWeak = graph.AddResource({"ui-overlay-weak", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiOverlayWeakHandle});
-    const auto simulation = graph.AddPass("particle-simulation", [&] {
+    const auto simulationPass = [&] {
         return state.scene.paused || particles.EncodeSimulation(commandList, deltaTime, state.scene.zoom, handTracked, state.render.particleCount);
-    });
-    const auto scenePass = graph.AddPass("scene-hdr", [&] {
+    };
+    const auto scenePass = [&] {
         if (!particleRenderer.PrepareIndirectArguments(device, commandList, state.render.particleCount)) return false;
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = (id<MTLTexture>)sceneTexture;
@@ -1307,27 +1294,27 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
         particleRenderer.Draw(device, commandList, encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
         [encoder endEncoding];
         return true;
-    });
-    const auto bloomPass = graph.AddPass("bloom", [&] {
+    };
+    const auto bloomPass = [&] {
         return bloom_.Encode(device, commands, libraryPath, sceneTexture, bloomStrongTexture, bloomPingPongTexture,
                              width, height, state.render.bloomBlurStrength);
-    });
-    const auto toneMapPass = graph.AddPass("tone-map", [&] {
+    };
+    const auto toneMapPass = [&] {
         return toneMapper_.Encode(device, commands, libraryPath, sceneTexture, bloomPingPongTexture, drawableTexture,
                                   width, height, bloomStrength, state.window.material == App::WindowMaterial::SystemBlur);
-    });
-    const auto acrylicPass = graph.AddPass("ui-acrylic", [&] {
+    };
+    const auto acrylicPass = [&] {
         if (!state.ui.blurEnabled) return true;
         if (!toneMapper_.Encode(device, commands, libraryPath, sceneTexture, bloomPingPongTexture, uiSceneTexture,
                                 width, height, bloomStrength)) return false;
         return acrylic_.Encode(device, commands, libraryPath, uiSceneTexture, uiBlurTexture, compositeTexture,
                                uiBlurWeakTexture, uiBlurWeakPingPongTexture, uiOverlayTexture, uiOverlayWeakTexture,
                                width, height, state.ui.blurStrength);
-    });
-    const auto fpsPass = graph.AddPass("seven-segment", [&] {
+    };
+    const auto fpsPass = [&] {
         return fps_.Encode(device, commands, libraryPath, drawableTexture, width, height, framesPerSecond);
-    });
-    const auto uiPass = graph.AddPass("imgui", [&] {
+    };
+    const auto uiPass = [&] {
         if (!uiRenderer) return true;
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = drawableTexture;
@@ -1337,32 +1324,13 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
         uiRenderer(commands, encoder, pass, uiOverlayTexture);
         [encoder endEncoding];
         return true;
-    });
-    const auto presentPass = graph.AddPass("present", [&] { return surface.Present(commands); });
-    graph.Write(simulation, scene, ResourceUsage::ShaderWrite);
-    graph.Write(scenePass, scene, ResourceUsage::RenderTarget);
-    graph.Read(bloomPass, scene, ResourceUsage::ShaderRead);
-    graph.Write(bloomPass, bloomStrong, ResourceUsage::ShaderWrite);
-    graph.Write(bloomPass, bloomPingPong, ResourceUsage::ShaderWrite);
-    graph.Read(toneMapPass, scene, ResourceUsage::ShaderRead);
-    graph.Read(toneMapPass, bloomPingPong, ResourceUsage::ShaderRead);
-    graph.Write(toneMapPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(acrylicPass, scene, ResourceUsage::ShaderRead);
-    graph.Read(acrylicPass, bloomPingPong, ResourceUsage::ShaderRead);
-    graph.Write(acrylicPass, uiScene, ResourceUsage::RenderTarget);
-    graph.Write(acrylicPass, uiBlur, ResourceUsage::ShaderWrite);
-    graph.Write(acrylicPass, composite, ResourceUsage::ShaderWrite);
-    graph.Write(acrylicPass, uiBlurWeak, ResourceUsage::ShaderWrite);
-    graph.Write(acrylicPass, uiBlurWeakPingPong, ResourceUsage::ShaderWrite);
-    graph.Write(acrylicPass, uiOverlay, ResourceUsage::ShaderWrite);
-    graph.Write(acrylicPass, uiOverlayWeak, ResourceUsage::ShaderWrite);
-    graph.Read(fpsPass, drawable, ResourceUsage::RenderTarget);
-    graph.Write(fpsPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(uiPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(uiPass, uiOverlay, ResourceUsage::ShaderRead);
-    graph.Write(uiPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(presentPass, drawable, ResourceUsage::Present);
-    if (!graph.Execute()) {
+    };
+    const auto presentPass = [&] { return surface.Present(commands); };
+    // 通道按书写顺序静态直排（D-003）：原图 Compile 输出恒等于插入顺序，
+    // 每帧 30-45 次堆分配的图构建（字符串/std::function/vector）被删除。
+    const bool passesExecuted = simulationPass() && scenePass() && bloomPass() && toneMapPass() &&
+        acrylicPass() && fpsPass() && uiPass() && presentPass();
+    if (!passesExecuted) {
         device.Submit(commandList);
         return false;
     }

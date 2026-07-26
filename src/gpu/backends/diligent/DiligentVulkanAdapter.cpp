@@ -1,6 +1,5 @@
 #include "DiligentVulkanAdapter.h"
 
-#include "render/RenderGraph.h"
 #include "Diligent/DiligentShaderSources.h"
 #include "Diligent/ImGuiDiligent.h"
 #include "services/diagnostics/DiagnosticBus.h"
@@ -540,19 +539,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     UpdateBuffer(particleRenderConstants_, 0, std::as_bytes(std::span{&renderConstants, 1}));
     const ToneMapConstants toneMapConstants{bloomEnabled_ ? 0.5f : 0.0f, 0.0f, {0.0f, 0.0f}};
     UpdateBuffer(toneMapConstants_, 0, std::as_bytes(std::span{&toneMapConstants, 1}));
-    Render::RenderGraph graph;
-    const auto drawable = graph.AddResource({"vulkan-drawable", {description.Width, description.Height, 1}});
-    const auto hdr = graph.AddResource({"vulkan-hdr-scene", {description.Width, description.Height, 1}});
-    const auto bloom = graph.AddResource({"vulkan-bloom", {std::max(1u, description.Width / 6u), std::max(1u, description.Height / 6u), 1}});
-    const auto uiScene = graph.AddResource({"vulkan-ui-scene", {description.Width, description.Height, 1}});
-    const auto uiWeak = graph.AddResource({"vulkan-ui-blur-weak", {std::max(1u, description.Width / 12u),
-                                                                      std::max(1u, description.Height / 12u), 1}});
-    const auto particles = graph.AddResource({"vulkan-particles", {1, 1, 1}});
-    const auto stars = graph.AddResource({"vulkan-stars", {1, 1, 1}});
-    const auto simulation = graph.AddPass("vulkan-particle-simulation", [&] {
+    const auto simulationPass = [&] {
         return SimulateParticles(commands);
-    });
-    const auto scene = graph.AddPass("vulkan-scene", [&] {
+    };
+    const auto scenePass = [&] {
         auto* hdrTarget = static_cast<::Diligent::ITextureView*>(hdrRenderTarget_);
         context->SetRenderTargets(1, &hdrTarget, nullptr, ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->SetPipelineState(static_cast<::Diligent::IPipelineState*>(scenePipeline_));
@@ -567,9 +557,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->CommitShaderResources(static_cast<::Diligent::IShaderResourceBinding*>(particleBinding_), ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         commands.DrawIndirect(particleIndirectArguments_, 0);
         return true;
-    });
+    };
     void* bloomOutputView = bloomShaderResource_;
-    const auto downsample = graph.AddPass("vulkan-bloom-downsample", [&] {
+    const auto downsamplePass = [&] {
         const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
             1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
             1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 1.0f};
@@ -588,13 +578,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->Draw(draw);
         bloomOutputView = bloomShaderResource_;
         return true;
-    });
+    };
     constexpr std::array<float, 7> bloomOffsets{1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     const float bloomBlurScale = std::clamp(bloomBlurStrength_, 0.0f, 5.0f) / 5.0f;
-    std::vector<std::uint32_t> blurPasses;
-    blurPasses.reserve(bloomOffsets.size());
-    for (std::uint32_t index = 0; index < bloomOffsets.size(); ++index) {
-        blurPasses.push_back(graph.AddPass("vulkan-bloom-blur-" + std::to_string(index), [&, index] {
+    const auto bloomBlurPass = [&](std::uint32_t index) {
             const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
                 1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
             1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
@@ -616,9 +603,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
             context->Draw(draw);
             bloomOutputView = shaderResource;
             return true;
-        }));
-    }
-    const auto toneMap = graph.AddPass("vulkan-tone-map", [&] {
+    };
+    const auto toneMapPass = [&] {
         auto* uiSceneTarget = static_cast<::Diligent::ITextureView*>(uiSceneRenderTarget_);
         context->SetRenderTargets(1, &uiSceneTarget, nullptr,
                                   ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -634,9 +620,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
         context->Draw(draw);
         return true;
-    });
+    };
     void* uiStrongOutputView = bloomShaderResource_;
-    const auto uiDownsampleStrong = graph.AddPass("vulkan-ui-downsample-strong", [&] {
+    const auto uiDownsampleStrongPass = [&] {
         if (!uiBlurEnabled_) return true;
         const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
             1.0f / static_cast<float>(description.Width),
@@ -656,16 +642,13 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         context->Draw(draw);
         uiStrongOutputView = bloomShaderResource_;
         return true;
-    });
+    };
     constexpr std::array<float, 7> uiStrongOffsets{0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-    std::vector<std::uint32_t> uiStrongBlurPasses;
-    uiStrongBlurPasses.reserve(uiStrongOffsets.size());
     const float uiBlurScale = std::clamp(uiBlurStrength_, 0.0f, 5.0f) / 5.0f;
     const auto scaleUiOffset = [uiBlurScale](float base) {
         return uiBlurScale * (base + 0.5f) - 0.5f;
     };
-    for (std::uint32_t index = 0; index < uiStrongOffsets.size(); ++index) {
-        uiStrongBlurPasses.push_back(graph.AddPass("vulkan-ui-blur-strong-" + std::to_string(index), [&, index] {
+    const auto uiStrongBlurPass = [&](std::uint32_t index) {
             if (!uiBlurEnabled_) return true;
             const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
                 1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
@@ -689,9 +672,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
             context->Draw(draw);
             uiStrongOutputView = writeToPing ? bloomPingShaderResource_ : bloomShaderResource_;
             return true;
-        }));
-    }
-    const auto uiDownsampleWeak = graph.AddPass("vulkan-ui-downsample-weak", [&] {
+    };
+    const auto uiDownsampleWeakPass = [&] {
         if (!uiBlurEnabled_) return true;
         const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
             6.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
@@ -710,13 +692,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
         context->Draw(draw);
         return true;
-    });
+    };
     void* uiWeakOutputView = uiWeakShaderResource_;
     constexpr std::array<float, 2> uiWeakOffsets{0.5f, 1.0f};
-    std::vector<std::uint32_t> uiWeakBlurPasses;
-    uiWeakBlurPasses.reserve(uiWeakOffsets.size());
-    for (std::uint32_t index = 0; index < uiWeakOffsets.size(); ++index) {
-        uiWeakBlurPasses.push_back(graph.AddPass("vulkan-ui-blur-weak-" + std::to_string(index), [&, index] {
+    const auto uiWeakBlurPass = [&](std::uint32_t index) {
             if (!uiBlurEnabled_) return true;
             const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
                 1.0f / static_cast<float>(std::max(1u, description.Width / 12u)),
@@ -740,9 +719,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
             context->Draw(draw);
             uiWeakOutputView = writeToPing ? uiWeakPingShaderResource_ : uiWeakShaderResource_;
             return true;
-        }));
-    }
-    const auto acrylic = graph.AddPass("vulkan-acrylic", [&] {
+    };
+    const auto acrylicPass = [&] {
         auto* renderTargetView = target;
         context->SetRenderTargets(1, &renderTargetView, nullptr,
                                   ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -786,8 +764,8 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
                                        ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context->Draw(draw);
         return true;
-    });
-    const auto sevenSegment = graph.AddPass("vulkan-seven-segment", [&] {
+    };
+    const auto sevenSegmentPass = [&] {
         const SevenSegmentConstants values{{framesPerSecond_, description.Width, description.Height, 0}};
         UpdateBuffer(sevenSegmentConstants_, 0, std::as_bytes(std::span{&values, 1}));
         auto* renderTargetView = target;
@@ -801,12 +779,12 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         draw.Flags = ::Diligent::DRAW_FLAG_VERIFY_ALL;
         context->Draw(draw);
         return true;
-    });
-    const auto imgui = graph.AddPass("vulkan-imgui", [&] {
+    };
+    const auto imguiPass = [&] {
         if (imgui_ != nullptr) imgui_->Render(context, target);
         return true;
-    });
-    const auto capture = graph.AddPass("vulkan-baseline-capture", [&] {
+    };
+    const auto capturePass = [&] {
         if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
             presentedFrameCount_ < 3) return true;
         ::Diligent::CopyTextureAttribs copy;
@@ -816,49 +794,36 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         copy.DstTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
         context->CopyTexture(copy);
         return true;
-    });
-    const auto present = graph.AddPass("vulkan-present", [&] {
+    };
+    const auto presentPass = [&] {
         static_cast<void>(Submit(commands));
         swapChain->Present(syncInterval);
         return true;
-    });
-    graph.Read(simulation, particles, ResourceUsage::ShaderRead);
-    graph.Write(simulation, particles, ResourceUsage::ShaderWrite);
-    graph.Read(scene, particles, ResourceUsage::ShaderRead);
-    graph.Read(scene, stars, ResourceUsage::ShaderRead);
-    graph.Write(scene, hdr, ResourceUsage::RenderTarget);
-    graph.Read(downsample, hdr, ResourceUsage::ShaderRead);
-    graph.Write(downsample, bloom, ResourceUsage::RenderTarget);
-    for (const auto pass : blurPasses) {
-        graph.Read(pass, bloom, ResourceUsage::ShaderRead);
-        graph.Write(pass, bloom, ResourceUsage::RenderTarget);
-    }
-    graph.Read(toneMap, hdr, ResourceUsage::ShaderRead);
-    graph.Read(toneMap, bloom, ResourceUsage::ShaderRead);
-    graph.Write(toneMap, uiScene, ResourceUsage::RenderTarget);
-    graph.Read(uiDownsampleStrong, uiScene, ResourceUsage::ShaderRead);
-    graph.Write(uiDownsampleStrong, bloom, ResourceUsage::RenderTarget);
-    for (const auto pass : uiStrongBlurPasses) {
-        graph.Read(pass, bloom, ResourceUsage::ShaderRead);
-        graph.Write(pass, bloom, ResourceUsage::RenderTarget);
-    }
-    graph.Read(uiDownsampleWeak, bloom, ResourceUsage::ShaderRead);
-    graph.Write(uiDownsampleWeak, uiWeak, ResourceUsage::RenderTarget);
-    for (const auto pass : uiWeakBlurPasses) {
-        graph.Read(pass, uiWeak, ResourceUsage::ShaderRead);
-        graph.Write(pass, uiWeak, ResourceUsage::RenderTarget);
-    }
-    graph.Read(acrylic, uiScene, ResourceUsage::ShaderRead);
-    graph.Read(acrylic, bloom, ResourceUsage::ShaderRead);
-    graph.Read(acrylic, uiWeak, ResourceUsage::ShaderRead);
-    graph.Write(acrylic, drawable, ResourceUsage::RenderTarget);
-    graph.Read(sevenSegment, drawable, ResourceUsage::RenderTarget);
-    graph.Write(sevenSegment, drawable, ResourceUsage::RenderTarget);
-    graph.Read(imgui, drawable, ResourceUsage::RenderTarget);
-    graph.Write(imgui, drawable, ResourceUsage::RenderTarget);
-    graph.Read(capture, drawable, ResourceUsage::CopySource);
-    graph.Read(present, drawable, ResourceUsage::Present);
-    const bool executed = graph.Execute();
+    };
+    // 通道按书写顺序静态直排（D-003）：原图 Compile 输出恒等于插入顺序，
+    // 每帧图构建（pass 名字符串拼接/std::function/vector）全部删除。
+    const bool executed = [&] {
+        if (!simulationPass()) return false;
+        if (!scenePass()) return false;
+        if (!downsamplePass()) return false;
+        for (std::uint32_t index = 0; index < bloomOffsets.size(); ++index) {
+            if (!bloomBlurPass(index)) return false;
+        }
+        if (!toneMapPass()) return false;
+        if (!uiDownsampleStrongPass()) return false;
+        for (std::uint32_t index = 0; index < uiStrongOffsets.size(); ++index) {
+            if (!uiStrongBlurPass(index)) return false;
+        }
+        if (!uiDownsampleWeakPass()) return false;
+        for (std::uint32_t index = 0; index < uiWeakOffsets.size(); ++index) {
+            if (!uiWeakBlurPass(index)) return false;
+        }
+        if (!acrylicPass()) return false;
+        if (!sevenSegmentPass()) return false;
+        if (!imguiPass()) return false;
+        if (!capturePass()) return false;
+        return presentPass();
+    }();
     if (!executed || !baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
         presentedFrameCount_ < 3) return executed;
     context->Flush();

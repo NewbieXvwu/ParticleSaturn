@@ -8,7 +8,6 @@
 #include "OpenGLSevenSegmentFps.h"
 #include "OpenGLStarField.h"
 #include "OpenGLToneMapper.h"
-#include "render/RenderGraph.h"
 
 #include <algorithm>
 
@@ -23,8 +22,6 @@ bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarFiel
     if (width == 0 || height == 0) return false;
     if ((targets.Width() != width || targets.Height() != height) && !targets.Create(width, height)) return false;
 
-    Render::RenderGraph graph;
-    const auto particleState = graph.AddResource({"particle-state", {1, 1, 1}});
     const auto sceneHandle = targets.SceneHandle();
     const auto bloomStrongHandle = targets.BloomStrongHandle();
     const auto bloomPingPongHandle = targets.BloomPingPongHandle();
@@ -33,19 +30,12 @@ bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarFiel
     const auto toneMappedHandle = targets.ToneMappedHandle();
     if (!sceneHandle || !bloomStrongHandle || !bloomPingPongHandle || !bloomWeakHandle ||
         !bloomWeakPingPongHandle || !toneMappedHandle) return false;
-    const auto scene = graph.AddResource({"scene-hdr", {width, height, 1}, sceneHandle});
     const auto strongWidth = std::max(1U, width / 6U);
     const auto strongHeight = std::max(1U, height / 6U);
     const auto weakWidth = std::max(1U, width / 12U);
     const auto weakHeight = std::max(1U, height / 12U);
-    const auto bloomStrong = graph.AddResource({"bloom-strong", {strongWidth, strongHeight, 1}, bloomStrongHandle});
-    const auto bloomPingPong = graph.AddResource({"bloom-ping-pong", {strongWidth, strongHeight, 1}, bloomPingPongHandle});
-    const auto bloomWeak = graph.AddResource({"bloom-weak", {weakWidth, weakHeight, 1}, bloomWeakHandle});
-    const auto bloomWeakPingPong = graph.AddResource({"bloom-weak-ping-pong", {weakWidth, weakHeight, 1}, bloomWeakPingPongHandle});
-    const auto toneMapped = graph.AddResource({"tone-mapped", {width, height, 1}, toneMappedHandle});
-    const auto drawable = graph.AddResource({"drawable", {width, height, 1}});
 
-    const auto starPass = graph.AddPass("starfield", [&] {
+    const auto starPass = [&] {
         glBindFramebuffer(GL_FRAMEBUFFER, targets.SceneFramebuffer());
         glViewport(0, 0, width, height);
         glClearColor(0.002f, 0.003f, 0.008f, 1.0f);
@@ -56,12 +46,12 @@ bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarFiel
         stars.Draw(static_cast<float>(state.scene.simulationTimeSeconds), width, height);
         glDisable(GL_BLEND);
         return glGetError() == GL_NO_ERROR;
-    });
-    const auto simulationPass = graph.AddPass("particle-simulation", [&] {
+    };
+    const auto simulationPass = [&] {
         if (!state.scene.paused) particles.Simulate(deltaTime, state.scene.zoom, handTracked);
         return glGetError() == GL_NO_ERROR;
-    });
-    const auto particlePass = graph.AddPass("particle-render", [&] {
+    };
+    const auto particlePass = [&] {
         glBindFramebuffer(GL_FRAMEBUFFER, targets.SceneFramebuffer());
         glViewport(0, 0, width, height);
         glEnable(GL_BLEND);
@@ -73,63 +63,37 @@ bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarFiel
                                state.render.particleCount);
         glDisable(GL_BLEND);
         return glGetError() == GL_NO_ERROR;
-    });
-    const auto bloomPass = graph.AddPass("bloom", [&] {
+    };
+    const auto bloomPass = [&] {
         return bloom.Apply(targets, state.render.bloomBlurStrength);
-    });
-    const auto toneMapPass = graph.AddPass("tone-map", [&] {
+    };
+    const auto toneMapPass = [&] {
         return toneMapper.Apply(targets, state.render.bloomEnabled ? 0.5f : 0.0f, transparent);
-    });
-    const auto capturePass = graph.AddPass("capture", [&] {
+    };
+    const auto capturePass = [&] {
         return !callbacks.capture || callbacks.capture(targets.NativeFramebuffer(toneMappedHandle), width, height);
-    });
-    const auto acrylicPass = graph.AddPass("ui-acrylic", [&] {
+    };
+    const auto acrylicPass = [&] {
         return !state.ui.blurEnabled || bloom.ApplyUiBlur(targets, state.ui.blurStrength);
-    });
-    const auto presentPass = graph.AddPass("final-composite", [&] {
+    };
+    const auto presentPass = [&] {
         return toneMapper.Present(targets, transparent);
-    });
-    const auto fpsPass = graph.AddPass("seven-segment", [&] {
+    };
+    const auto fpsPass = [&] {
         return sevenSegment.Render(0, width, height, framesPerSecond);
-    });
-    const auto uiPass = graph.AddPass("imgui", [&] {
+    };
+    const auto uiPass = [&] {
         return !callbacks.renderUi || callbacks.renderUi(targets.NativeTexture(bloomStrongHandle),
                                                          targets.NativeTexture(bloomWeakHandle));
-    });
-    const auto swapPass = graph.AddPass("present", [&] {
+    };
+    const auto swapPass = [&] {
         if (callbacks.present) callbacks.present();
         return true;
-    });
+    };
 
-    graph.Write(starPass, scene, ResourceUsage::RenderTarget);
-    graph.Write(simulationPass, particleState, ResourceUsage::ShaderWrite);
-    graph.Read(particlePass, particleState, ResourceUsage::ShaderRead);
-    graph.Read(particlePass, scene, ResourceUsage::RenderTarget);
-    graph.Write(particlePass, scene, ResourceUsage::RenderTarget);
-    graph.Read(bloomPass, scene, ResourceUsage::ShaderRead);
-    graph.Write(bloomPass, bloomStrong, ResourceUsage::RenderTarget);
-    graph.Write(bloomPass, bloomPingPong, ResourceUsage::RenderTarget);
-    graph.Write(bloomPass, bloomWeak, ResourceUsage::RenderTarget);
-    graph.Write(bloomPass, bloomWeakPingPong, ResourceUsage::RenderTarget);
-    graph.Read(toneMapPass, scene, ResourceUsage::ShaderRead);
-    graph.Read(toneMapPass, bloomPingPong, ResourceUsage::ShaderRead);
-    graph.Write(toneMapPass, toneMapped, ResourceUsage::RenderTarget);
-    graph.Read(capturePass, toneMapped, ResourceUsage::CopySource);
-    graph.Read(acrylicPass, toneMapped, ResourceUsage::ShaderRead);
-    graph.Write(acrylicPass, bloomStrong, ResourceUsage::RenderTarget);
-    graph.Write(acrylicPass, bloomPingPong, ResourceUsage::RenderTarget);
-    graph.Write(acrylicPass, bloomWeak, ResourceUsage::RenderTarget);
-    graph.Write(acrylicPass, bloomWeakPingPong, ResourceUsage::RenderTarget);
-    graph.Read(presentPass, toneMapped, ResourceUsage::ShaderRead);
-    graph.Write(presentPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(fpsPass, drawable, ResourceUsage::RenderTarget);
-    graph.Write(fpsPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(uiPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(uiPass, bloomStrong, ResourceUsage::ShaderRead);
-    graph.Read(uiPass, bloomWeak, ResourceUsage::ShaderRead);
-    graph.Write(uiPass, drawable, ResourceUsage::RenderTarget);
-    graph.Read(swapPass, drawable, ResourceUsage::Present);
-    return graph.Execute();
+    // 通道按书写顺序静态直排（D-003）：原图 Compile 输出恒等于插入顺序。
+    return starPass() && simulationPass() && particlePass() && bloomPass() && toneMapPass() &&
+           capturePass() && acrylicPass() && presentPass() && fpsPass() && uiPass() && swapPass();
 }
 
 } // namespace ParticleSaturn::Gpu::OpenGL41
