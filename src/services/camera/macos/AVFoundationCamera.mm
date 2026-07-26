@@ -176,7 +176,9 @@ void AVFoundationCamera::Stop() {
 }
 
 bool AVFoundationCamera::IsRunning() const { std::lock_guard lock{mutex_}; return session_ != nullptr && [(AVCaptureSession*)session_ isRunning]; }
-bool AVFoundationCamera::LatestFrame(Frame& frame) { std::lock_guard lock{mutex_}; if (!hasFrame_) return false; frame = latestFrame_; hasFrame_ = false; return true; }
+// 消费语义读取：hasFrame_ 置假后 latestFrame_ 不会再被读，移动而非在锁内
+// 深拷贝 ~1MB 像素（AUDIT P2-8）。
+bool AVFoundationCamera::LatestFrame(Frame& frame) { std::lock_guard lock{mutex_}; if (!hasFrame_) return false; frame = std::move(latestFrame_); hasFrame_ = false; return true; }
 std::string AVFoundationCamera::LastError() const { std::lock_guard lock{mutex_}; return error_; }
 void* AVFoundationCamera::NativeSession() const { std::lock_guard lock{mutex_}; return session_; }
 
