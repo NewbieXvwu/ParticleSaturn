@@ -3,6 +3,8 @@
 > **现行工作清单。** 历史与已完成：`docs/MIGRATION_LOG.md`（旧计划原文冻结归档，章节引用 §n）；架构决策：`docs/DECISIONS.md`（D-xxx）；代码库地图：`docs/CODEMAP.md`；技术债明细：`docs/AUDIT_2026-07.md`。
 > **引用约定**：`AUDIT P0-1`~`P3-7` 指审计文档**第一部分**的条目编号（去重后的权威清单，含位置/量化影响/建议）；与本文件的阶段名 P0–P4 是两套编号，审计引用一律带 `AUDIT` 前缀。
 
+> **状态（2026-07-27）**：本机（macOS）可做项已全部完成——P0 5/5、P1 5/5、P2 macOS 侧全清、P3 单源试点收束（tonemap+bloom 单源、场景着色器经逐 pass 数据定案不单源）、P4 四后端对比矩阵含逐 pass 指标跑通、性能速修全清。未勾项仅剩三类：P2 五项需 Windows 环境改并验证；"遗留人工验收"节待真人真机；"Windows 侧"节按 D-015 冻结。下一步动作在用户：Windows 会话 / 前台人工验收 / 决定 push 触发 CI（本地领先远端约 260 提交）。
+
 ## 冷启动协议（被要求"按 TODO 干活"时从这里开始）
 
 1. 当前工作项 = **本文件 P0 节第一个未勾选项**（除非用户指名其他项）。阶段有依赖：P0 先于一切重构（没有可信的测试就没有安全的重构）；P1 是 P3/P4 的骨架；"性能速修"与各阶段无依赖、随时可做。
@@ -51,7 +53,7 @@
 ## P4 对比模式（把测量做成功能）
 
 - [x] `Readback` 正式纳入接缝签名（2026-07-27，随 IRenderBackend 正名完成：接缝 `BaselineCaptured()` 读回面 + 外壳统一收束，捕获机制保持各后端原生挂点）；确定性捕获现经 `PARTICLESATURN_CAPTURE_BASELINE`（固定种子/几何/暂停场景/锁 LOD]）在各后端可用，已被对比模式复用；逐 pass 捕获（`PARTICLESATURN_CAPTURE_PASS_DIR`）已完成（2026-07-27）：三后端导出 scene-hdr（全尺寸）与 bloom（1/6，泛光链终值）中间图，对比脚本逐 pass 出指标。**首组逐 pass 实测**：GL41 vs Metal 总帧 1.74/3.17%、scene-hdr 1.77/3.62%、bloom 0.12/0.000%；MoltenVK vs Metal 总帧 1.06/0.026%、scene-hdr 1.01/0.0004%、bloom 0.05/0.000% → **GL41 分歧 100% 在场景 pass，三后端后处理全部收敛**
-- [x] 对比模式核心：`scripts/compare_macos_backends.sh` + `ParticleSaturnImageCompareTool`——同一确定性帧状态依次送各后端捕获，以 Metal 为参考输出并排图/差异热力图/共享度量。**首组实测**（2026-07-26）：GL41 vs Metal 均值差 1.74、失配 3.17%；MoltenVK vs Metal 均值差 1.18、失配 0.36%。逐 pass 级指标待逐 pass readback 挂点（后续）
+- [x] 对比模式核心：`scripts/compare_macos_backends.sh` + `ParticleSaturnImageCompareTool`——同一确定性帧状态依次送各后端捕获，以 Metal 为参考输出并排图/差异热力图/共享度量。**首组实测**（2026-07-26）：GL41 vs Metal 均值差 1.74、失配 3.17%；MoltenVK vs Metal 均值差 1.18、失配 0.36%。**四后端矩阵补齐**（2026-07-27，含 KosmicKrisp 首组数据）：Kosmic vs Metal 与 Molten vs Metal 各 pass 全部同噪（scene-hdr 均 1.014/0.0004%）；Molten vs Kosmic 直接对比总帧 0.010/0.005%、scene 0.007/0%、bloom 0.001/0% → **双 ICD（D-013）近逐位一致，对 Metal 的 ~1 LSB 场景残差属 Vulkan 翻译路径共性而非驱动个性**
 - [x] 图像差异度量收敛：两份 macOS 实现（视觉基线 PPM 版 / object shader 内存版，聚合语义核实相同）统一到 `tests/common/ImageMetrics.h` 累加器，阈值常量 PerPixelChannelThreshold=8 具名共享；第三份在冻结的 Windows CameraSelector（D-015 不动）。两组基线测试通过（AUDIT P2-9）
 - [x] 粒子 CPU 参照两份合一：一份在 GL41 **生产**初始化、一份在 Metal 测试——归宿改为 `src/shaders/abi/ParticleInit.h`（ABI 旁的规范 CPU 端实现，生产与测试共用；tests/common 方向会让生产依赖测试）；Metal GPU 初始化对拍规范参照通过 = 抽取逐位一致（AUDIT P2-9）
 
