@@ -78,6 +78,25 @@ int ReportStartupFailure(const char* code, const std::string& message) {
     return 1;
 }
 
+// 帧高度接缝端点（D-002 正名，TODO P1）：Vulkan（MoltenVK/KosmicKrisp）路径的
+// IRenderBackend。渲染与读回体由 RunVulkanApplication 就地装配。
+class VulkanRenderBackend final : public ParticleSaturn::Platform::MacOS::IRenderBackend {
+public:
+    VulkanRenderBackend(ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities,
+                        std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame,
+                        std::function<bool()> baselineCaptured)
+        : capabilities_{std::move(capabilities)}, renderFrame_{std::move(renderFrame)},
+          baselineCaptured_{std::move(baselineCaptured)} {}
+    const ParticleSaturn::Platform::MacOS::BackendCapabilities& Capabilities() const override { return capabilities_; }
+    bool RenderFrame(const ParticleSaturn::Platform::MacOS::FrameContext& frame) override { return renderFrame_(frame); }
+    bool BaselineCaptured() const override { return baselineCaptured_(); }
+
+private:
+    ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities_;
+    std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame_;
+    std::function<bool()> baselineCaptured_;
+};
+
 } // namespace
 
 int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
@@ -167,10 +186,10 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         CocoaAppHost appHost{host};
         RunAppConfig shellConfig{
             appHost, controller, settings, smoke, smokeHarness, startup,
-            adapter.AdapterName(), BackendCapabilities{},
+            adapter.AdapterName(),
             /*persistSettings=*/!(smoke.Deterministic() || smokeMode),
             /*cameraEnabled=*/!(smoke.Deterministic() || smokeMode),
-            /*fixedDeltaTime=*/lodSmoke ? 0.05f : 0.0f, {}, {}};
+            /*fixedDeltaTime=*/lodSmoke ? 0.05f : 0.0f, {}};
         shellConfig.preRun = [&]() -> int {
             if (!InteractionSmokeRequested()) return 0;
             const bool debugBefore = controller.State().ui.showDebugWindow;
@@ -187,7 +206,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             }
             return 0;
         };
-        shellConfig.renderFrame = [&](const FrameContext& frame) {
+        VulkanRenderBackend backendSeam{BackendCapabilities{},
+                                        [&](const FrameContext& frame) {
             if (frame.drawableSize.width != drawableSize.width || frame.drawableSize.height != drawableSize.height) {
                 if (!adapter.ResizeSwapChain(frame.drawableSize.width, frame.drawableSize.height)) {
                     ReportStartupFailure("resize", "Vulkan swap chain resize failed");
@@ -254,7 +274,6 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.RequestExit();
                 return false;
             }
-            if (smoke.captureBaseline && adapter.BaselineCaptureRequested()) host.RequestExit();
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
                 if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
                     ReportStartupFailure("lod-smoke", "[smoke] FAILED: Vulkan dynamic LOD smoke test did not reduce particle count");
@@ -263,7 +282,9 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 host.RequestExit();
             }
             return true;
-        };
+        },
+        [&adapter] { return adapter.BaselineCaptured(); }};
+        shellConfig.backend = &backendSeam;
         const int shellExit = RunApp(shellConfig);
         adapter.Shutdown();
         if (runtimeFailed) return 1;

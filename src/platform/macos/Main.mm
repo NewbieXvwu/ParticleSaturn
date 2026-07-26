@@ -154,6 +154,25 @@ std::string PipelineArchivePath(id<MTLDevice> device, const char* libraryPath) {
             ("ParticleSaturn-metal-" + std::to_string(hash) + ".metallibarchive")).string();
 }
 
+// 帧高度接缝端点（D-002 正名，TODO P1）：Metal 路径的 IRenderBackend。渲染与
+// 读回体由 RunMetalApplication 就地装配——后端上下文全部是该函数的局部对象。
+class MetalRenderBackend final : public ParticleSaturn::Platform::MacOS::IRenderBackend {
+public:
+    MetalRenderBackend(ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities,
+                       std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame,
+                       std::function<bool()> baselineCaptured)
+        : capabilities_{std::move(capabilities)}, renderFrame_{std::move(renderFrame)},
+          baselineCaptured_{std::move(baselineCaptured)} {}
+    const ParticleSaturn::Platform::MacOS::BackendCapabilities& Capabilities() const override { return capabilities_; }
+    bool RenderFrame(const ParticleSaturn::Platform::MacOS::FrameContext& frame) override { return renderFrame_(frame); }
+    bool BaselineCaptured() const override { return baselineCaptured_(); }
+
+private:
+    ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities_;
+    std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame_;
+    std::function<bool()> baselineCaptured_;
+};
+
 } // namespace
 
 int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
@@ -223,11 +242,12 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         }
         ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
             appHost, controller, settings, smoke, smokeHarness, startup,
-            "Metal", capabilities,
+            "Metal",
             /*persistSettings=*/!smoke.Deterministic(),
             /*cameraEnabled=*/!smoke.Deterministic(),
-            /*fixedDeltaTime=*/0.0f, {}, {}};
-        shellConfig.renderFrame = [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
+            /*fixedDeltaTime=*/0.0f, {}};
+        MetalRenderBackend backendSeam{std::move(capabilities),
+                                       [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
             const auto& drawableSize = frame.drawableSize;
             renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath,
                             drawableSize.width, drawableSize.height, drawableSize.scale, frame.state,
@@ -271,7 +291,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 if (++baselineFrameCount < 3U) return true;
                 baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, smoke.baselinePath);
                 if (baselineCaptured) {
-                    // 逐 pass 捕获（TODO P4）：终帧确认后导出中间目标。
+                    // 逐 pass 捕获（TODO P4）：终帧确认后导出中间目标。退出请求
+                    // 由外壳按接缝 BaselineCaptured() 收束。
                     const char* passDirectory = std::getenv("PARTICLESATURN_CAPTURE_PASS_DIR");
                     if (passDirectory != nullptr && passDirectory[0] != '\0') {
                         WriteHalfFloatTexturePpm(nativeDevice, targets.SceneHdr(), width, height,
@@ -279,12 +300,13 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                         WriteHalfFloatTexturePpm(nativeDevice, targets.BloomPingPong(), std::max(1U, width / 6U),
                                                  std::max(1U, height / 6U), std::string{passDirectory} + "/bloom.ppm");
                     }
-                    host.RequestExit();
                 }
                 return baselineCaptured;
             });
             return true;
-        };
+        },
+        [&baselineCaptured] { return baselineCaptured; }};
+        shellConfig.backend = &backendSeam;
         const int exitCode = ParticleSaturn::Platform::MacOS::RunApp(shellConfig);
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();

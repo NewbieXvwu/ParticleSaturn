@@ -1334,6 +1334,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 > 各会话完成工作后，进展批注按日期追加到本节。TODO.md 只维护勾选状态和一行备注。
 
+### 2026-07-27 IRenderBackend 正名 + Readback 入接缝（TODO P1 第 5 项 + P4 首项，D-002）
+
+`AppShell.h` 新增命名接口 `IRenderBackend`：`Capabilities()`（能力申报与声明分歧）/ `RenderFrame(FrameContext)`（后端一帧）/ `BaselineCaptured()`（P4 读回面：确定性基线是否已落盘）。`RunAppConfig` 的 `capabilities` 字段与 `renderFrame` 闭包并入 `IRenderBackend* backend`；三个 main 各定义命名端点类（`MetalRenderBackend` / `OpenGL41RenderBackend` / `VulkanRenderBackend`，渲染与读回体仍由 main 就地装配——后端上下文全部是 main 的局部对象，接缝以下保持原生）。**收束统一**：基线"落盘→请求退出"原先三处重复（Metal 捕获回调里 RequestExit、GL41 捕获回调里 StopRunLoop、VulkanMain 帧尾查询），现由外壳按 `BaselineCaptured()` 一处收束；捕获帧可能中止呈现（GL41 捕获后不 swap），故收束不看 RenderFrame 返回值。顺带正名 Vulkan adapter 的误名方法 `BaselineCaptureRequested`（实际返回 requested∧captured）→ `BaselineCaptured`。**范围决策**：D-002 的 Init/Resize/Shutdown 不强行入接口——它们由各 main 的对象生命周期与 RenderFrame 内部处理，外壳无须驱动；强收会打乱构造顺序且无消费者（D-006）。Windows 重启时（D-015）按此模式实现各自的 IRenderBackend。验证：12 unit + 8 gpu + 12 app 全绿；三后端对比模式端到端重跑，逐 pass 指标与重构前逐位一致（scene-hdr 1.765770/3.62%、bloom 0.118463 与 0.045883 均与首组完全相同）。
+
 ### 2026-07-27 场景 pass 分歧定案：全属 API 行为，场景着色器不单源化（TODO P3 收尾，D-004）
 
 逐 pass 数据 + 源码比对回答了用户拍板留下的问题（"3.18% 是 API 行为还是算法漂移"）。**证据链**：① scene-hdr 失配 3.62% 的空间分解（16×16 块按参考图点亮密度分稠密/稀疏区）——环区（占画面 ~10%）贡献失配率的 82%（幅度 8-32 LSB 的大面积亚像素斑），星空稀疏区贡献均值差的主体（幅度 64+ LSB 的亮点差，其中 66% 为同位置双方点亮仅亮度不同）；② 星空着色器逐行等价，但闪烁噪声哈希吃 `gl_FragCoord.xy`——GL 窗口原点左下、Metal/Vulkan 左上，同代码逐像素闪烁模式必然相异（MoltenVK 与 Metal 同约定，scene-hdr 失配 0.0004% 即为对照组）；③ 粒子链逐环节比对：TF 顶点核 vs Metal compute 模拟核逐行等价、片元数学逐行等价、混合态等价（SRC_ALPHA/ONE 加性）、确定性基线下 GL 的解析轨道相位为 0（TF 模式直通）——残差只剩四边形扩展 vs 点精灵/mesh 光栅化覆盖与 cos/sin 驱动实现差，即上述 8-32 LSB 斑。**结论**：像素算法已然等价，单源化场景着色器不会消除任何一项分歧 → 按拍板公式（API 行为→保留观察）**场景着色器不单源化**，P3 推广线到此收束；两项此前未申报的分歧补进 GL41 `declaredDivergences`（星空哈希原点差、环区亚像素光栅化差）经 DiagnosticBus 发布。星空哈希若未来想跨后端一致，做法是把噪声输入换成后端不变量（每星种子 + point_coord），属改算法的新决策，须走 DECISIONS 追加。

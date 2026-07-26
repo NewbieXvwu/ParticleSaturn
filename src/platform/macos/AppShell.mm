@@ -58,9 +58,10 @@ bool CocoaAppHost::NativeFullscreen() {
 int RunApp(RunAppConfig& config) {
     auto& host = config.host;
     auto& controller = config.controller;
+    auto& backend = *config.backend;
 
     // 声明分歧登记（D-004）：故意的实验变量在诊断总线留档，与意外漂移区分。
-    for (const auto& divergence : config.capabilities.declaredDivergences) {
+    for (const auto& divergence : backend.Capabilities().declaredDivergences) {
         Services::Diagnostics::DiagnosticBus::Instance().Publish(
             "backend", "declared-divergence", divergence, Services::Diagnostics::Severity::Info);
     }
@@ -256,14 +257,21 @@ int RunApp(RunAppConfig& config) {
                 [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
                 hooks.drawAcrylicBackground,
                 hooks.drawGraphAcrylic};
-            const Md3PanelBackendFeatures features{config.capabilities.analyticParticles,
-                                                   config.capabilities.objectShaderParticles};
+            const Md3PanelBackendFeatures features{backend.Capabilities().analyticParticles,
+                                                   backend.Capabilities().objectShaderParticles};
             RenderMd3Panel(controller, config.panelTitle.c_str(), fpsMeter.Value(), features, callbacks, handStatus);
         };
 
         const FrameContext context{mutableState, deltaTime, handTracked, gesture,
                                    fpsMeter.Value(), drawableSize, nativeFullscreen, drawPanel};
-        if (!config.renderFrame(context)) return;
+        const bool frameCompleted = backend.RenderFrame(context);
+        // P4 读回收束（原先三个 main 各自重复）：基线一落盘即请求退出。捕获帧
+        // 本身可能中止呈现（GL41 捕获后不再 swap），故不看 frameCompleted。
+        if (config.smoke.captureBaseline && backend.BaselineCaptured()) {
+            host.RequestExit();
+            return;
+        }
+        if (!frameCompleted) return;
 
         config.smokeHarness.TickPerformance(controller.State());
         if (config.smoke.fullscreenSmoke) {

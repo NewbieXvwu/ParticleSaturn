@@ -304,6 +304,25 @@ private:
     std::function<void(ParticleSaturn::Platform::MacOS::HostAction)> action_;
 };
 
+// 帧高度接缝端点（D-002 正名，TODO P1）：GL41 路径的 IRenderBackend。渲染与
+// 读回体由 RunOpenGL41Application 就地装配。
+class OpenGL41RenderBackend final : public ParticleSaturn::Platform::MacOS::IRenderBackend {
+public:
+    OpenGL41RenderBackend(ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities,
+                          std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame,
+                          std::function<bool()> baselineCaptured)
+        : capabilities_{std::move(capabilities)}, renderFrame_{std::move(renderFrame)},
+          baselineCaptured_{std::move(baselineCaptured)} {}
+    const ParticleSaturn::Platform::MacOS::BackendCapabilities& Capabilities() const override { return capabilities_; }
+    bool RenderFrame(const ParticleSaturn::Platform::MacOS::FrameContext& frame) override { return renderFrame_(frame); }
+    bool BaselineCaptured() const override { return baselineCaptured_(); }
+
+private:
+    ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities_;
+    std::function<bool(const ParticleSaturn::Platform::MacOS::FrameContext&)> renderFrame_;
+    std::function<bool()> baselineCaptured_;
+};
+
 } // namespace
 
 int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
@@ -447,11 +466,12 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             "（2026-07-27 逐 pass 实测：失配集中环区但幅度 8-32 LSB，API 行为保留观察）");
         ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
             *appHost, *controller, settings, smoke, smokeHarness, startup,
-            "OpenGL 4.1", capabilities,
+            "OpenGL 4.1",
             /*persistSettings=*/!smoke.Deterministic(),
             /*cameraEnabled=*/!smoke.Deterministic(),
-            /*fixedDeltaTime=*/0.0f, {}, {}};
-        shellConfig.renderFrame = [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
+            /*fixedDeltaTime=*/0.0f, {}};
+        OpenGL41RenderBackend backendSeam{std::move(capabilities),
+                                          [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
             if (!surface->MakeCurrent()) return false;
             const auto& state = frame.state;
             particles->SetSimulationMode(state.render.analyticParticles
@@ -468,8 +488,8 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 if (!smoke.captureBaseline || baselineCaptured) return true;
                 if (++baselineFrameCount < 3U) return false;
                 if (!WriteBaselinePpm(smoke.baselinePath, framebuffer, captureWidth, captureHeight)) return false;
+                // 退出请求由外壳按接缝 BaselineCaptured() 收束。
                 baselineCaptured = true;
-                ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop();
                 return false;
             };
             callbacks.renderUi = [&](std::uint32_t strongBlurTexture, std::uint32_t weakBlurTexture) {
@@ -505,7 +525,9 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             return frameRenderer->Render(*particles, *stars, *targets, *bloom, *toneMapper, *sevenSegment,
                                          width, height, state, frame.handTracked, frame.deltaTime,
                                          frame.framesPerSecond, transparent, callbacks);
-        };
+        },
+        [&baselineCaptured] { return baselineCaptured; }};
+        shellConfig.backend = &backendSeam;
         const int exitCode = ParticleSaturn::Platform::MacOS::RunApp(shellConfig);
         surface->MakeCurrent();
         ImGui_ImplOpenGL3_Shutdown();

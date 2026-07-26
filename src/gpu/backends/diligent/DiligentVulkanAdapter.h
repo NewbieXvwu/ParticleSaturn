@@ -42,7 +42,7 @@ public:
     void SetGestureState(bool tracked, float scale) noexcept;
     void SetFramesPerSecond(std::uint32_t framesPerSecond) noexcept;
     void SetSceneSettings(const App::SceneState& scene, const App::RenderSettings& render) noexcept;
-    bool BaselineCaptureRequested() const noexcept;
+    bool BaselineCaptured() const noexcept;
     void Shutdown() noexcept;
 
     std::string_view Name() const noexcept override;

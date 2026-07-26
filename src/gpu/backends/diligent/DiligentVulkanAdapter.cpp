@@ -988,7 +988,7 @@ void DiligentVulkanAdapter::SetSceneSettings(const App::SceneState& scene,
     bloomBlurStrength_ = std::clamp(render.bloomBlurStrength, 0.0f, 5.0f);
 }
 
-bool DiligentVulkanAdapter::BaselineCaptureRequested() const noexcept {
+bool DiligentVulkanAdapter::BaselineCaptured() const noexcept {
     return baselineCaptureRequested_ && baselineCaptured_;
 }
 

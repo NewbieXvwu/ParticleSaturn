@@ -89,6 +89,23 @@ struct FrameContext {
     const std::function<void(const BackendPanelHooks&)>& drawPanel;
 };
 
+// D-002 帧高度接缝的命名接口（TODO P1 正名）：后端接入外壳的完整契约。
+// 接缝以上（外壳）只见此接口；接缝以下各后端保持最地道的原生实现。
+// Init/Resize/Shutdown 留在各 main 的对象生命周期里（构造前/RenderFrame 内/
+// RunApp 返回后），不强行入接口——外壳无须驱动它们。
+class IRenderBackend {
+public:
+    virtual ~IRenderBackend() = default;
+    // 能力申报与声明分歧（D-004）：外壳按"能力 ∧ 用户设置"解析并发布留档。
+    virtual const BackendCapabilities& Capabilities() const = 0;
+    // 后端一帧：返回 false 表示本帧中止（后端已自行处理失败/退出请求）。
+    virtual bool RenderFrame(const FrameContext& frame) = 0;
+    // P4 读回面（Readback）：确定性基线是否已写盘。捕获机制保持原生
+    //（GL glReadPixels / Metal blit+fp16 / Vulkan staging 拷贝，均在各自帧
+    // 管线的正确挂点），外壳在冒烟捕获模式下据此收束运行循环。
+    virtual bool BaselineCaptured() const = 0;
+};
+
 struct RunAppConfig {
     AppHost& host;
     App::AppController& controller;
@@ -97,15 +114,13 @@ struct RunAppConfig {
     SmokeHarness& smokeHarness;
     StartupGeometry startup;
     std::string panelTitle;               // MD3 面板抬头（按值持有：adapter 名在设备恢复时可能重建）
-    BackendCapabilities capabilities;     // 能力申报与声明分歧（D-004）
     bool persistSettings = true;          // 冒烟/基线模式不读写用户设置
     bool cameraEnabled = true;            // Vulkan 帧数冒烟禁用相机
     float fixedDeltaTime = 0.0f;          // >0 时替代真实帧时（Vulkan lod 冒烟用 0.05）
     // 动作回调安装后、运行循环前调用；返回非零则中止并作为进程退出码（Vulkan
     // 交互冒烟用）。可为空。
     std::function<int()> preRun;
-    // 后端一帧：返回 false 表示本帧中止（后端已自行处理失败/退出请求）。
-    std::function<bool(const FrameContext&)> renderFrame;
+    IRenderBackend* backend = nullptr;    // 帧高度接缝（D-002），构造后必须注入
 };
 
 // 唯一应用外壳。返回进程退出码（冒烟失败→1）。后端资源的构建与析构都在调用方
