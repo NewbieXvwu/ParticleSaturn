@@ -64,7 +64,7 @@
 | 东西 | 位置 | 状态 |
 |---|---|---|
 | 顶层 CMake | `CMakeLists.txt` | macOS 主构建入口 |
-| 着色器编译 + ABI | `cmake/CompileShaders.cmake` 等 | 现行（跨平台 CMake 版） |
+| 着色器编译 + ABI | `cmake/CompileShaders.cmake`（字节码头，需 DXC/FXC，**仅 Windows 段调用**）；macOS 走 `src/shaders/msl`/`glsl410` 子目录 + GenerateShaderAbi | 字节码头仍写入源码树 `src/generated/`（Windows 侧待迁） |
 | 第三方补丁 | `patches/` + `scripts/apply_third_party_patch.*` | imgui-md3.patch 待重生成（D-007） |
 | TFLite macOS | `scripts/build_tflite_macos.sh` | 锁 2.19，XNNPACK ARM64 |
 | Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | 补丁应用已收敛到 apply_third_party_patch 单一入口（2026-07-26，待 push 验证） |
