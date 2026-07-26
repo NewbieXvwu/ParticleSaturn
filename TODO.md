@@ -58,10 +58,10 @@
 ## 性能速修（都在每帧热路径，彼此独立，随时可做；合集见 AUDIT P1-8/P2-8）
 
 - [x] Metal 后处理四个类每帧重新加载 metallib 并重建 compute PSO → EnsurePipelines 惰性构建一次跨帧持有（对象提升为 MetalFrameRenderer 成员；原先每帧构造局部对象+在 pass lambda 里构造 acrylic）；调用方与测试签名零改动；gpu 层 7/7 + 视觉基线逐像素通过（AUDIT P1-8）
-- [ ] `AVFoundationCamera::LatestFrame` 锁内 ~1MB 深拷贝 → `std::move`/交换缓冲（AUDIT P2-8）
+- [x] `AVFoundationCamera::LatestFrame` 锁内 ~1MB 深拷贝 → 消费语义下安全 `std::move`（b6802ce）
 - [ ] XnnpackRuntime 每帧分配输出 vector 与 147KB ROI 缓冲 → 常驻成员复用（AUDIT P2-8）
-- [ ] DiagnosticBus 每 UI 帧全量深拷贝取一条 → `Latest()` 接口 + 环形缓冲（AUDIT P2-8）
-- [ ] OpenGL41 后处理每次绘制按字符串查 uniform 位置 → Initialize 缓存 GLint（AUDIT P2-8）
+- [x] DiagnosticBus 每 UI 帧全量深拷贝取一条 → `Latest()`/`SnapshotSince()` 稳态零拷贝 + deque 环形淘汰；`Snapshot()` 保留给测试断言（dd99248）
+- [x] OpenGL41 逐绘制按字符串查 uniform → Initialize 缓存 GLint（Bloom/ToneMap/Present/StarField/七段 FPS/粒子模拟与渲染，Bloom 一帧省 ~68 次查找；088ec5e）
 
 ## 遗留人工验收（⚠️ 需要真人与真机，agent 勿代做勿勾选；验收定义原文见 MIGRATION_LOG）
 
