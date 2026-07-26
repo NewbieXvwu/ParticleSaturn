@@ -29,9 +29,11 @@ foreach(SHADER_NAME ToneMap BloomDownsample KawaseBlur)
         COMMAND "${PARTICLESATURN_SPIRV_CROSS}" --version 410 --no-420pack-extension "${SPV}" --output "${FRAG}"
         DEPENDS "${SPV}"
         VERBATIM)
+    # MSL 入口改名 <Shader>Fragment：多个翻译产物共入一个 metallib，不能都叫 main0。
     add_custom_command(
         OUTPUT "${MSL}"
-        COMMAND "${PARTICLESATURN_SPIRV_CROSS}" --msl --msl-version 20000 "${SPV}" --output "${MSL}"
+        COMMAND "${PARTICLESATURN_SPIRV_CROSS}" --msl --msl-version 20000
+                --rename-entry-point main "${SHADER_NAME}Fragment" frag "${SPV}" --output "${MSL}"
         DEPENDS "${SPV}"
         VERBATIM)
     list(APPEND PARTICLESATURN_SINGLE_ARTIFACTS "${SPV}" "${FRAG}" "${MSL}")

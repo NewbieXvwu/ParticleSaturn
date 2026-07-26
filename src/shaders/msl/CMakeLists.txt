@@ -8,7 +8,9 @@ set(PARTICLESATURN_METAL_LIBRARY "${PARTICLESATURN_METAL_OUTPUT_DIRECTORY}/Parti
 set(PARTICLESATURN_METAL_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/ParticleKernels.metal"
     "${CMAKE_CURRENT_LIST_DIR}/FullscreenTriangle.metal"
-    "${CMAKE_BINARY_DIR}/generated/single/ToneMap.gen.metal")
+    "${CMAKE_BINARY_DIR}/generated/single/ToneMap.gen.metal"
+    "${CMAKE_BINARY_DIR}/generated/single/BloomDownsample.gen.metal"
+    "${CMAKE_BINARY_DIR}/generated/single/KawaseBlur.gen.metal")
 
 set(PARTICLESATURN_METAL_AIRS)
 foreach(SOURCE IN LISTS PARTICLESATURN_METAL_SOURCES)

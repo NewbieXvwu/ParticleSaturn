@@ -801,7 +801,7 @@ bool MetalToneMapper::EnsureFunctions(MetalDevice& device, const char* libraryPa
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
     id<MTLFunction> vertex = [library newFunctionWithName:@"FullscreenTriangleVertex"];
-    id<MTLFunction> fragment = [library newFunctionWithName:@"main0"];
+    id<MTLFunction> fragment = [library newFunctionWithName:@"ToneMapFragment"];
     [library release];
     if (vertex == nil || fragment == nil) {
         [vertex release];
