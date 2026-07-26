@@ -16,29 +16,9 @@ struct Handle {
 
 struct BufferTag {};
 struct TextureTag {};
-struct TextureViewTag {};
-struct SamplerTag {};
-struct ShaderModuleTag {};
-struct GraphicsPipelineTag {};
-struct ComputePipelineTag {};
-struct BindingLayoutTag {};
-struct BindingSetTag {};
 
 using BufferHandle = Handle<BufferTag>;
 using TextureHandle = Handle<TextureTag>;
-using TextureViewHandle = Handle<TextureViewTag>;
-using SamplerHandle = Handle<SamplerTag>;
-using ShaderModuleHandle = Handle<ShaderModuleTag>;
-using GraphicsPipelineHandle = Handle<GraphicsPipelineTag>;
-using ComputePipelineHandle = Handle<ComputePipelineTag>;
-using BindingLayoutHandle = Handle<BindingLayoutTag>;
-using BindingSetHandle = Handle<BindingSetTag>;
-
-enum class PresentMode : std::uint8_t {
-    Immediate,
-    Fifo,
-    Adaptive,
-};
 
 enum class ResourceUsage : std::uint8_t {
     Undefined,
