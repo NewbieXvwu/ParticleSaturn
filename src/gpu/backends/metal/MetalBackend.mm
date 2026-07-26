@@ -789,22 +789,50 @@ bool MetalToneMapper::Apply(MetalDevice& device, const char* libraryPath, void* 
 }
 
 MetalToneMapper::~MetalToneMapper() {
-    [(id<MTLComputePipelineState>)pipeline_ release];
+    for (const auto& [format, pipeline] : pipelines_) [(id<MTLRenderPipelineState>)pipeline release];
+    [(id<MTLFunction>)vertexFunction_ release];
+    [(id<MTLFunction>)fragmentFunction_ release];
 }
 
-bool MetalToneMapper::EnsurePipelines(MetalDevice& device, const char* libraryPath) {
-    if (pipeline_ != nullptr && libraryPath_ == libraryPath) return true;
+bool MetalToneMapper::EnsureFunctions(MetalDevice& device, const char* libraryPath) {
+    if (vertexFunction_ != nullptr && fragmentFunction_ != nullptr && libraryPath_ == libraryPath) return true;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> pipeline = CreateComputePipeline(library, @"ToneMapWithBloom");
+    id<MTLFunction> vertex = [library newFunctionWithName:@"FullscreenTriangleVertex"];
+    id<MTLFunction> fragment = [library newFunctionWithName:@"main0"];
     [library release];
-    if (pipeline == nil) return false;
-    [(id<MTLComputePipelineState>)pipeline_ release];
-    pipeline_ = pipeline;
+    if (vertex == nil || fragment == nil) {
+        [vertex release];
+        [fragment release];
+        return false;
+    }
+    for (const auto& [format, pipeline] : pipelines_) [(id<MTLRenderPipelineState>)pipeline release];
+    pipelines_.clear();
+    [(id<MTLFunction>)vertexFunction_ release];
+    [(id<MTLFunction>)fragmentFunction_ release];
+    vertexFunction_ = vertex;
+    fragmentFunction_ = fragment;
     libraryPath_ = libraryPath;
     return true;
+}
+
+void* MetalToneMapper::PipelineFor(MetalDevice& device, std::uint32_t pixelFormat) {
+    for (const auto& [format, pipeline] : pipelines_) {
+        if (format == pixelFormat) return pipeline;
+    }
+    MTLRenderPipelineDescriptor* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = (id<MTLFunction>)vertexFunction_;
+    descriptor.fragmentFunction = (id<MTLFunction>)fragmentFunction_;
+    descriptor.colorAttachments[0].pixelFormat = static_cast<MTLPixelFormat>(pixelFormat);
+    NSError* error = nil;
+    id<MTLRenderPipelineState> pipeline =
+        [(id<MTLDevice>)device.NativeDevice() newRenderPipelineStateWithDescriptor:descriptor error:&error];
+    [descriptor release];
+    if (pipeline == nil || error != nil) return nullptr;
+    pipelines_.emplace_back(pixelFormat, (void*)pipeline);
+    return pipeline;
 }
 
 bool MetalToneMapper::Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* hdrTexture,
@@ -812,20 +840,22 @@ bool MetalToneMapper::Encode(MetalDevice& device, void* nativeCommandBuffer, con
                               float bloomStrength, bool transparent) {
     if (nativeCommandBuffer == nullptr || width == 0 || height == 0) return false;
     if (hdrTexture == nullptr || bloomTexture == nullptr || outputTexture == nullptr) return false;
-    if (!EnsurePipelines(device, libraryPath)) return false;
-    id<MTLComputePipelineState> pipeline = (id<MTLComputePipelineState>)pipeline_;
+    if (!EnsureFunctions(device, libraryPath)) return false;
+    id<MTLTexture> output = (id<MTLTexture>)outputTexture;
+    void* pipeline = PipelineFor(device, static_cast<std::uint32_t>([output pixelFormat]));
+    if (pipeline == nullptr) return false;
     id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
-    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:pipeline];
-    [encoder setTexture:(id<MTLTexture>)hdrTexture atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)bloomTexture atIndex:1];
-    [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:2];
-    const float clampedBloomStrength = std::max(0.0f, bloomStrength);
-    [encoder setBytes:&clampedBloomStrength length:sizeof(clampedBloomStrength) atIndex:0];
-    const float transparentValue = transparent ? 1.0f : 0.0f;
-    [encoder setBytes:&transparentValue length:sizeof(transparentValue) atIndex:1];
-    [encoder dispatchThreads:MTLSizeMake(width, height, 1)
-      threadsPerThreadgroup:MTLSizeMake([pipeline threadExecutionWidth], 1, 1)];
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = output;
+    pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;  // 全屏覆盖
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+    [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)pipeline];
+    [encoder setFragmentTexture:(id<MTLTexture>)hdrTexture atIndex:0];
+    [encoder setFragmentTexture:(id<MTLTexture>)bloomTexture atIndex:1];
+    const float constants[4] = {std::max(0.0f, bloomStrength), transparent ? 1.0f : 0.0f, 0.0f, 0.0f};
+    [encoder setFragmentBytes:constants length:sizeof(constants) atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     return true;
 }

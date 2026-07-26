@@ -219,6 +219,8 @@ private:
 
 // 四个后处理类在首次 Encode 时构建计算管线并跨帧持有（AUDIT P1-8），
 // libraryPath 变更时重建；对象须跨帧存活缓存才有意义（见 MetalFrameRenderer 成员）。
+// tonemap 走单源翻译产物（D-004）：全屏三角 + 生成的 fragment（main0），
+// 渲染管线按输出像素格式惰性缓存（drawable=BGRA8 / ui 场景=RGBA16F 两种）。
 class MetalToneMapper {
 public:
     ~MetalToneMapper();
@@ -229,8 +231,12 @@ public:
                 float bloomStrength, bool transparent = false);
 
 private:
-    bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
-    void* pipeline_ = nullptr;
+    bool EnsureFunctions(MetalDevice& device, const char* libraryPath);
+    void* PipelineFor(MetalDevice& device, std::uint32_t pixelFormat);
+
+    void* vertexFunction_ = nullptr;
+    void* fragmentFunction_ = nullptr;
+    std::vector<std::pair<std::uint32_t, void*>> pipelines_;
     std::string libraryPath_;
 };
 

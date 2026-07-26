@@ -43,10 +43,10 @@
 ## P3 着色器单源试点（D-004）
 
 - [x] 工具链已拍板（2026-07-26，用户决定）：**DXC + SPIRV-Cross**，Slang 废止——决议记录于 D-004
-- [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径——**GL41 腿已完成**（2026-07-26）：`src/shaders/single/ToneMap.hlsl` 经构建期 DXC→SPIRV-Cross 产 `ToneMap.gen.frag`，GL41 换装（UBO+组合采样器）并同一提交删手写 frag；**量化**：替换前后 mean=0.000005、失配=0（逐像素等值），视觉基线/冒烟全过。**Vulkan 腿已完成**：adapter 直接消费 DXC 产出的 SPIR-V（Resources/single/ToneMap.spv），顺带消除了原内联源用线性采样器读场景的非故意分歧；量化：替换前后 mean=0.0038/失配 0.0025%，对 Metal 距离由 1.1762/0.359% 收敛到 1.1748/0.358%；Vulkan 全冒烟通过。余下：Metal 腿（compute→fragment 改造）
-- [ ] 用对比模式（P4）量化替换前后差异，通过后推广 bloom → 星空 → 粒子渲染
-- [ ] 声明分歧登记：Metal object/mesh shader 保持手写 MSL（能力表记录）
-- [ ] 完成后更新 MIGRATION_LOG §11 相关描述与 CODEMAP
+- [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径——**GL41 腿已完成**（2026-07-26）：`src/shaders/single/ToneMap.hlsl` 经构建期 DXC→SPIRV-Cross 产 `ToneMap.gen.frag`，GL41 换装（UBO+组合采样器）并同一提交删手写 frag；**量化**：替换前后 mean=0.000005、失配=0（逐像素等值），视觉基线/冒烟全过。**Vulkan 腿已完成**：adapter 直接消费 DXC 产出的 SPIR-V（Resources/single/ToneMap.spv），顺带消除了原内联源用线性采样器读场景的非故意分歧；量化：替换前后 mean=0.0038/失配 0.0025%，对 Metal 距离由 1.1762/0.359% 收敛到 1.1748/0.358%；Vulkan 全冒烟通过。**Metal 腿已完成**：ToneMapWithBloom compute 核改为全屏 fragment 渲染管线（生成的 main0 + 手写全屏三角 VS 样板进 metallib，PSO 按输出格式缓存 BGRA8/RGBA16F 两种）；量化：替换前后 mean=0.00297/失配 0.0022%（compute→光栅浮点微差），unit/gpu/app 全绿。**tonemap 通道三条路径单源化完成**
+- [ ] 推广 bloom → 星空 → 粒子渲染（tonemap 已按对比模式量化通过：GL41 等值、Vulkan 0.0038、Metal 0.00297，均亚阈值）
+- [x] 声明分歧登记：随 BackendCapabilities.declaredDivergences 申报并于 RunApp 启动发布 DiagnosticBus（Metal object/mesh shader 手写 MSL、GL41 无 compute 双策略均已登记）
+- [x] MIGRATION_LOG 归档后进展节已记录试点全程；CODEMAP 已登记 single/ 目录与工具链前置
 
 ## P4 对比模式（把测量做成功能）
 

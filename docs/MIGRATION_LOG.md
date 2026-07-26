@@ -1352,6 +1352,14 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 bloom 推广的前置设计分析（下一步起点）
+
+bloom（Downsample+KawaseBlur）比 tonemap 复杂一档，动手前的关键结论：① 语义基准取 Metal（参考路径）的手写双线性 Load；GL41 现用硬件线性采样 + vTexCoord，切换微差需对比模式量化。② fragment 化后 uv 只能由 SV_Position × OutputTexelSize 得出，而采样偏移在 SOURCE uv 空间——降采样两处调用点源/目标尺寸不同，现行 16 字节 BloomConstants 的 TexelSize 在各调用点语义不一（有的填 1/source、有的填 1/target）；单源版需**扩常量为 32 字节** {SourceTexelSize, OutputTexelSize, Offset, Threshold}，三后端全部调用点同步改。③ Metal 侧 BloomDownsample/KawaseBlur 内核同时被 MetalBloom 与 MetalAcrylic 的模糊链共享——fragment 化会把 Acrylic 的 5 段 compute 链一并改为 render pass 链（ping-pong 目标改 colorAttachment）。④ Vulkan 腿最省事：换 2 个 SPIR-V 字节码 + 绑定名（同 tonemap 配方），ui 模糊复用同管线自动受益。建议顺序：先写双源 HLSL + 扩常量，Vulkan→GL41→Metal(含 Acrylic) 逐腿验证。
+
+### 2026-07-26 P3 试点 Metal 腿落地——tonemap 三路径单源化完成
+
+Metal 的 ToneMapWithBloom compute 核改为全屏 fragment 渲染：单源翻译的 `main0` fragment + 手写 `FullscreenTriangle.metal` 顶点样板（顶点样板不属于单源范围，与 GL 侧 FullscreenTriangle.vert 对应）编入 metallib（msl 构建改多文件 .air 汇编）；MetalToneMapper 持函数对 + 按输出像素格式惰性缓存 PSO（drawable BGRA8 / ui 场景 RGBA16F 两种）。量化：替换前后 mean 0.00297 / mismatch 0.0022%（compute→光栅浮点微差，亚阈值）。**至此 tonemap 通道在三条 macOS 路径全部改由同一 HLSL 源驱动**：路径间 tonemap 差异只剩编译器/驱动行为（D-004 目标达成）。踩坑：OpenGLParticleTests 用源码 glsl410 目录初始化后处理，删手写 ToneMap.frag 后找不到——测试改指已装配的 bundle 着色器目录（与运行时一致，含翻译产物）。三层测试全绿。
+
 ### 2026-07-26 P3 试点 Vulkan 腿落地
 
 adapter 的 tonemap PS 改为直接消费 SPIR-V 字节码（bundle Resources/single/ToneMap.spv；ShaderCI.ByteCode 路径），资源布局改名 SceneTexture/BloomTexture/ToneMapConstants（Diligent 反射用的是块实例名而非类型名——首跑踩坑 type_ToneMapConstants 反射不到）；不再需要立即数线性采样器——**实验观察**：原内联源对全分辨率场景用线性采样，与 Metal/GL41 的逐像素 Load 是一处非故意分歧，本次顺带消除。量化：替换前后 mean 0.0038 / mismatch 0.0025%；对 Metal 距离 1.1762/0.359% → 1.1748/0.358%（更贴参考）。Vulkan Molten/Kosmic 全冒烟通过。GetFullscreenQuadShaderSources 里的 Vulkan tonemap 片段串就此失去 macOS 消费者（Windows Diligent 是否仍用待查），登记为后续清理候选。

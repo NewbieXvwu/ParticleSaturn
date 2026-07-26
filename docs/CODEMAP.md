@@ -24,7 +24,7 @@
 | 着色器 ABI 生成 | `src/shaders/abi/` + CMake 生成器 → `${CMAKE_BINARY_DIR}/generated/shaders` | 四语言结构唯一来源，禁止手写副本 |
 | 粒子规范初始化 | `src/shaders/abi/ParticleInit.h` | 固定种子逐位确定的 CPU 端唯一事实来源；GL41 生产与后端测试共用，勿另写副本 |
 | 着色器源码 | `src/shaders/{msl,glsl,glsl410,hlsl}/` | 共享通道单源化进行中（D-004，TODO P3） |
-| 单源着色器（试点） | `src/shaders/single/ToneMap.hlsl` | 规范源；DXC→SPIR-V→SPIRV-Cross 产 GLSL410/MSL（工具链 2026-07-26 拍板） |
+| 单源着色器（试点） | `src/shaders/single/ToneMap.hlsl` | tonemap 三路径已单源化（GL41 frag/Vulkan SPIR-V/Metal fragment）；构建前置 dxc（scripts/build_dxc_macos.sh）+ spirv-cross |
 | MD3 UI 库 | `src/ui/md3/`（MD3.h、MD3Widgets、MD3Theme、MD3Context、MD3Shaders） | **唯一现行版**；`src/OpenGL/md3`、`src/Diligent/md3` 是待删旧拷贝（冻结区） |
 | 日志 | `src/ui/md3/MD3Log.h` | 共享日志设施（重复合并/AddOnce/ANSI 剥离/级别检测）；macOS 端取代 `src/DebugLog.h` |
 | 结构化诊断 | `src/services/diagnostics/`（DiagnosticBus） | 域/代码/级别/时间戳；UI 显示走 MacOSMd3Panel |
