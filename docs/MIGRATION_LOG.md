@@ -1348,6 +1348,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 **立即显形的旧失败**：修复后 4 个 FullscreenRestore smoke（Metal/GL41/Molten/Kosmic）全部真失败——等满 5 秒 deadline 全屏转换未发生。实验：经 `open -W`（LaunchServices 正常激活）结果相同，排除启动方式；用户空闲仅 69 秒（人在机器旁活跃操作），指向 macOS 焦点保护拒绝非前台 app 的 Space 切换；审计曾在旧 LastTest.log 见到 Vulkan 同款失败消息被记 Passed，证明失败早于本次修复存在。处置：不掩盖，登记 TODO"遗留人工验收"请真人前台复跑确认。其余 app smoke 7/7 通过（Molten/Kosmic 各 Smoke/Recovery/Restart + VisualBaseline），PerformanceLock 4/4 通过。
 
+### 2026-07-26 ctest LABELS 分层 + macOS CI（TODO P0 第 4 项，AUDIT P2-9/P0-2(d)）
+
+36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
+
 ### 2026-07-26 断言/退出码哨兵（TODO P0 第 3 项）
 
 `tests/AssertSentinelTests.cpp` 注册于顶层 CMakeLists，WILL_FAIL TRUE。断言生效 → 副作用求值 → return 1 → 翻转为通过；断言被剥离 → 退出 0 → 翻转为失败报警，同时天然验证非零退出码传播。设计要点：不用 `assert(false)`，因为 ctest 把 SIGABRT 记为 Exception 且 WILL_FAIL 对其不生效。负向验证：`-DNDEBUG` 手动编译确认退出 0。

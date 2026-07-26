@@ -9,6 +9,7 @@ if(BUILD_TESTING)
     add_executable(ParticleSaturnHandTrackingWorkerTests "${CMAKE_SOURCE_DIR}/tests/HandTrackingWorkerTests.cpp")
     target_link_libraries(ParticleSaturnHandTrackingWorkerTests PRIVATE ParticleSaturnMacOSHandTrackingWorker)
     add_test(NAME ParticleSaturnHandTrackingWorkerTests COMMAND ParticleSaturnHandTrackingWorkerTests)
+    set_tests_properties(ParticleSaturnHandTrackingWorkerTests PROPERTIES LABELS unit)
 endif()
 
 set(PARTICLESATURN_TFLITE_LIBRARY "${PARTICLESATURN_TFLITE_ARM64_DIR}/libtensorflow-lite.a")
@@ -34,6 +35,7 @@ if(BUILD_TESTING)
         PARTICLESATURN_PALM_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
         PARTICLESATURN_LANDMARK_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite")
     add_test(NAME ParticleSaturnXnnpackRuntimeTests COMMAND ParticleSaturnXnnpackRuntimeTests)
+    set_tests_properties(ParticleSaturnXnnpackRuntimeTests PROPERTIES LABELS unit)
 
     add_executable(ParticleSaturnHandTrackingPipelineTests
         "${CMAKE_SOURCE_DIR}/tests/HandTrackingPipelineTests.cpp")
@@ -43,4 +45,5 @@ if(BUILD_TESTING)
         PARTICLESATURN_PALM_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
         PARTICLESATURN_LANDMARK_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite")
     add_test(NAME ParticleSaturnHandTrackingPipelineTests COMMAND ParticleSaturnHandTrackingPipelineTests)
+    set_tests_properties(ParticleSaturnHandTrackingPipelineTests PROPERTIES LABELS unit)
 endif()

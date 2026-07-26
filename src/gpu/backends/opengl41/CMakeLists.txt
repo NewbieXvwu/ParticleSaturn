@@ -13,6 +13,7 @@ if(BUILD_TESTING)
     target_link_libraries(ParticleSaturnOpenGLParticleTests PRIVATE ParticleSaturnOpenGL41Backend)
     add_dependencies(ParticleSaturnOpenGLParticleTests ParticleSaturnOpenGL41Shaders)
     add_test(NAME ParticleSaturnOpenGLParticleTests COMMAND ParticleSaturnOpenGLParticleTests "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleSimulationTF.vert" "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleRender.vert" "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleRender.frag" "${CMAKE_SOURCE_DIR}/src/shaders/glsl410")
+    set_tests_properties(ParticleSaturnOpenGLParticleTests PROPERTIES LABELS gpu)
     add_executable(ParticleSaturnCrossBackendParticleTests "${CMAKE_SOURCE_DIR}/tests/CrossBackendParticleSystemTests.mm")
     target_compile_definitions(ParticleSaturnCrossBackendParticleTests PRIVATE GL_SILENCE_DEPRECATION=1)
     target_link_libraries(ParticleSaturnCrossBackendParticleTests PRIVATE ParticleSaturnMetalBackend ParticleSaturnOpenGL41Backend)
@@ -22,4 +23,5 @@ if(BUILD_TESTING)
         "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleSimulationTF.vert"
         "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleRender.vert"
         "${CMAKE_SOURCE_DIR}/src/shaders/glsl410/ParticleRender.frag")
+    set_tests_properties(ParticleSaturnCrossBackendParticleTests PROPERTIES LABELS gpu)
 endif()

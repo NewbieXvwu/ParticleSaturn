@@ -16,7 +16,7 @@
 - [x] 全部测试目标断言生效：顶层 CMake 自动清扫全部 `*Tests` 可执行目标加 `-UNDEBUG`（新增测试目标自动覆盖，libs/ 第三方不受影响）；19/19 现役测试二进制恢复 assert 符号，18/18 非整机 ctest 真实通过，缺参运行由退出 0 变为断言中止。副作用断言保留原样——`-UNDEBUG` 保证其执行，防复发由哨兵测试兜底（下项）
 - [x] smoke 测试失败可传播：`CocoaHost::StopRunLoop()`（`stop:` + 补发唤醒事件）取代 smoke/基线路径的 `terminate:`，main 的 `return 1` 复活；失败点统一打 `[smoke] FAILED` 日志并给全部 smoke 注册 `FAIL_REGULAR_EXPRESSION` 双保险。副作用：交互关窗现在正常走设置保存与清理。立即显形 4 个被掩盖的旧失败（见"遗留人工验收"全屏恢复条目）
 - [x] ctest 自检：`tests/AssertSentinelTests.cpp` + WILL_FAIL——断言生效时 return 1 翻转为通过，断言被剥离时退出 0 翻转为失败报警；同时验证退出码传播。不用 assert(false)：信号型退出被 ctest 记 Exception，WILL_FAIL 不生效。负向验证：手动 -DNDEBUG 编译确认退出 0
-- [ ] ctest LABELS 分层：unit（无 GPU）/ gpu（需设备）/ app（整机 smoke，RUN_SERIAL）；GitHub Actions 增加 macOS unit job（AUDIT P2-9）
+- [x] ctest LABELS 分层：36/36 测试落层 unit 13 / gpu 7 / app 16（app 全部 RUN_SERIAL）；顶层 CMake 强制无标签即配置失败；`.github/workflows/macos-tests.yml` 跑 unit 层（unit 目标不链 DiligentCore，构建很轻）。CI 待下次 push 实际验证——本地领先 origin 226 提交，未代推
 - [ ] 修复 `.github/workflows/release.yml` 四处复制的补丁应用逻辑（指向已迁移旧路径，发布流水线当前损坏）→ 收敛到 `scripts/apply_third_party_patch.*` 单一入口（AUDIT P0-1）
 - [x] MetalObjectShaderBaselineTests 修复 argv/metallib、RGBA16F 格式、半浮点读回（3e951b5 完成）
 

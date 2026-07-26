@@ -7,4 +7,5 @@ if(BUILD_TESTING)
     target_link_libraries(ParticleSaturnVulkanRuntimeTests PRIVATE ParticleSaturnVulkanRuntime)
     add_test(NAME ParticleSaturnVulkanRuntimeTests COMMAND ParticleSaturnVulkanRuntimeTests
         "${CMAKE_BINARY_DIR}/ParticleSaturn.macOS.app/Contents/Resources")
+    set_tests_properties(ParticleSaturnVulkanRuntimeTests PROPERTIES LABELS unit)
 endif()

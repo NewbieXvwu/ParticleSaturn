@@ -174,12 +174,13 @@ if(BUILD_TESTING)
         target_link_options(ParticleSaturnSimdTests PRIVATE -fsanitize=address)
     endif()
     add_test(NAME ParticleSaturnSimdTests COMMAND ParticleSaturnSimdTests)
+    set_tests_properties(ParticleSaturnSimdTests PROPERTIES LABELS unit)
 
     # 哨兵（D-008）：断言被剥离或失败退出码被吞时报警。断言生效时它以
     # return 1 退出，WILL_FAIL 翻转为通过；断言失效时它退出 0，被翻转为失败。
     add_executable(ParticleSaturnAssertSentinelTests tests/AssertSentinelTests.cpp)
     add_test(NAME ParticleSaturnAssertSentinelTests COMMAND ParticleSaturnAssertSentinelTests)
-    set_tests_properties(ParticleSaturnAssertSentinelTests PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(ParticleSaturnAssertSentinelTests PROPERTIES WILL_FAIL TRUE LABELS unit)
 endif()
 
 if(APPLE)
@@ -274,6 +275,26 @@ if(BUILD_TESTING)
         endforeach()
     endfunction()
     particlesaturn_enable_test_asserts("${CMAKE_CURRENT_SOURCE_DIR}")
+
+    # 分层强制（D-008）：每个测试必须声明 LABELS（unit=无 GPU / gpu=需设备 /
+    # app=整机 smoke），否则配置失败——新增测试不得静默游离在 CI 分层之外。
+    function(particlesaturn_require_test_labels dir)
+        if(dir MATCHES "/libs/")
+            return()
+        endif()
+        get_property(_tests DIRECTORY "${dir}" PROPERTY TESTS)
+        foreach(_test IN LISTS _tests)
+            get_property(_labels TEST "${_test}" DIRECTORY "${dir}" PROPERTY LABELS)
+            if(NOT _labels)
+                message(FATAL_ERROR "测试 ${_test} 未声明 LABELS（unit/gpu/app 三选一，D-008）")
+            endif()
+        endforeach()
+        get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+        foreach(_subdir IN LISTS _subdirs)
+            particlesaturn_require_test_labels("${_subdir}")
+        endforeach()
+    endfunction()
+    particlesaturn_require_test_labels("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})

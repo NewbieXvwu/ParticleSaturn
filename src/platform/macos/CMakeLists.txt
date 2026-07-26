@@ -101,9 +101,11 @@ if(BUILD_TESTING)
     add_executable(ParticleSaturnMacOSCrashHandlerTests "${CMAKE_SOURCE_DIR}/tests/MacOSCrashHandlerTests.mm")
     target_link_libraries(ParticleSaturnMacOSCrashHandlerTests PRIVATE ParticleSaturnPlatformMacOS)
     add_test(NAME ParticleSaturnMacOSCrashHandlerTests COMMAND ParticleSaturnMacOSCrashHandlerTests)
+    set_tests_properties(ParticleSaturnMacOSCrashHandlerTests PROPERTIES LABELS unit)
     add_executable(ParticleSaturnMacOSBackendSelectionTests "${CMAKE_SOURCE_DIR}/tests/MacOSBackendSelectionTests.cpp")
     target_link_libraries(ParticleSaturnMacOSBackendSelectionTests PRIVATE ParticleSaturnPlatformMacOS)
     add_test(NAME ParticleSaturnMacOSBackendSelectionTests COMMAND ParticleSaturnMacOSBackendSelectionTests)
+    set_tests_properties(ParticleSaturnMacOSBackendSelectionTests PROPERTIES LABELS unit)
     add_executable(ParticleSaturnVisualBaselineMetricsTests "${CMAKE_SOURCE_DIR}/tests/VisualBaselineMetricsTests.cpp")
     add_dependencies(ParticleSaturnVisualBaselineMetricsTests ParticleSaturn.macOS)
     add_test(NAME ParticleSaturnVisualBaselineTests
@@ -112,7 +114,7 @@ if(BUILD_TESTING)
             "$<TARGET_FILE:ParticleSaturn.macOS>"
             "$<TARGET_FILE:ParticleSaturnVisualBaselineMetricsTests>"
             "${CMAKE_CURRENT_BINARY_DIR}/visual-baseline")
-    set_tests_properties(ParticleSaturnVisualBaselineTests PROPERTIES TIMEOUT 30)
+    set_tests_properties(ParticleSaturnVisualBaselineTests PROPERTIES TIMEOUT 30 LABELS app RUN_SERIAL TRUE)
     add_test(NAME ParticleSaturnMacOSPerformanceLockMetal
         COMMAND "${CMAKE_COMMAND}" -E env
             PARTICLESATURN_GRAPHICS_API=metal
@@ -124,7 +126,7 @@ if(BUILD_TESTING)
             PARTICLESATURN_PERFORMANCE_LOCK_SMOKE=3
             "$<TARGET_FILE:ParticleSaturn.macOS>")
     set_tests_properties(ParticleSaturnMacOSPerformanceLockMetal ParticleSaturnMacOSPerformanceLockOpenGL
-        PROPERTIES TIMEOUT 30)
+        PROPERTIES TIMEOUT 30 LABELS app RUN_SERIAL TRUE)
     add_test(NAME ParticleSaturnMacOSFullscreenRestoreMetal
         COMMAND "${CMAKE_COMMAND}" -E env
             PARTICLESATURN_GRAPHICS_API=metal
@@ -136,7 +138,7 @@ if(BUILD_TESTING)
             PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE=3
             "$<TARGET_FILE:ParticleSaturn.macOS>")
     set_tests_properties(ParticleSaturnMacOSFullscreenRestoreMetal ParticleSaturnMacOSFullscreenRestoreOpenGL
-        PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+        PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE LABELS app)
     # 退出码之外的第二道保险：即使将来再出现退出码被吞的回归，
     # 失败日志本身也会让 ctest 判负（D-008）。
     set_tests_properties(

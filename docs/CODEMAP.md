@@ -52,7 +52,9 @@
 | 视觉基线 | `tests/VisualBaselineMetricsTests.cpp`、`tests/RunMacOSVisualBaseline.sh`、`PARTICLESATURN_CAPTURE_BASELINE` 环境变量 |
 | object shader 基线 | `tests/MetalObjectShaderBaselineTests.mm`（3e951b5 已修 argv/格式/半浮点读回） |
 | 图像差异度量 | ⚠️ 三份实现待收敛到 tests/common/（AUDIT P2-9） |
-| 已知系统性缺陷 | Release 下裸 assert 全部空转、smoke 退出码恒 0 —— 修复是 TODO P0（D-008） |
+| 测试分层 | LABELS `unit`（无 GPU）/`gpu`（需设备）/`app`（整机 smoke，RUN_SERIAL）；顶层 CMake 强制：无标签即配置失败 |
+| 测试基础设施保障 | 全部 `*Tests` 目标自动 `-UNDEBUG`（断言生效）；smoke 失败经 `CocoaHost::StopRunLoop` 传播非零退出码 + `[smoke] FAILED` 日志判负；哨兵 `tests/AssertSentinelTests.cpp` 防复发（均 2026-07-26，D-008） |
+| 已知问题 | 4 个 FullscreenRestore smoke 显形为真失败，需真人前台复核（TODO 遗留人工验收） |
 
 ## 构建
 
@@ -64,6 +66,7 @@
 | 第三方补丁 | `patches/` + `scripts/apply_third_party_patch.*` | imgui-md3.patch 待重生成（D-007） |
 | TFLite macOS | `scripts/build_tflite_macos.sh` | 锁 2.19，XNNPACK ARM64 |
 | Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | release.yml 四处补丁路径**已损坏**（TODO P0，AUDIT P0-1） |
+| macOS 测试 CI | `.github/workflows/macos-tests.yml` | push/PR 构建并运行 unit 层（待下次 push 验证） |
 
 ## 冻结区 — 勿修改、勿扩展、勿模仿
 

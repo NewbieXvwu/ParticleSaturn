@@ -1,0 +1,48 @@
+name: macOS Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只取配置期必需的子模块：imgui（打补丁）与 DiligentCore（add_subdirectory）。
+      # unit 层测试目标不链接 DiligentCore，故只需源码存在，无需编译它。
+      - name: Fetch required submodules
+        run: |
+          git submodule update --init --depth 1 libs/imgui
+          git submodule update --init --recursive --depth 1 libs/DiligentCore
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build unit-tier test targets
+        run: >
+          cmake --build build --parallel 3 --target
+          ParticleSaturnAssertSentinelTests
+          ParticleSaturnSimdTests
+          ParticleSaturnAppCoreTests
+          ParticleSaturnObjectShaderToggleTests
+          ParticleSaturnGpuTests
+          ParticleSaturnRenderTests
+          ParticleSaturnShaderAbiTests
+          ParticleSaturnMacOSCrashHandlerTests
+          ParticleSaturnMacOSBackendSelectionTests
+          ParticleSaturnNSUserDefaultsStoreTests
+          ParticleSaturnAVFoundationCameraErrorTests
+          ParticleSaturnHandTrackingWorkerTests
+          ParticleSaturnVulkanRuntimeTests
+
+      - name: Run unit tests
+        run: ctest --test-dir build -L unit --output-on-failure
