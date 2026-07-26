@@ -38,9 +38,9 @@
 | 入口 | 位置 | 备注 |
 |---|---|---|
 | macOS 统一启动器 | `src/platform/macos/LauncherMain.mm`、MacOSBackendSelection.* | 读持久化 GraphicsApi/VulkanDriver 选路径 |
-| macOS 三个模式 main | `src/platform/macos/{Main,OpenGL41Main,VulkanMain}.mm` | **待合并为 RunApp**（TODO P1） |
+| macOS 三个模式 main | `src/platform/macos/{Main,OpenGL41Main,VulkanMain}.mm` | 已收口到 AppShell::RunApp：只剩后端构造 + renderFrame 闭包 + ImGui 接线 |
 | 冒烟/基线统一支撑 | `src/platform/macos/SmokeHarness.{h,cpp}` | SmokeConfig 环境解析+状态钉死、启动几何、逐帧性能/全屏状态机；三 main 共用 |
-| 唯一应用外壳 | `src/platform/macos/AppShell.{h,mm}`（RunApp + AppHost + FrameContext） | D-002 帧高度接缝：外壳管设置/相机/手势/输入/帧推进/FPS/面板/冒烟；后端经 renderFrame 回调接入（Metal 已切，Vulkan/GL41 迁移中） |
+| 唯一应用外壳 | `src/platform/macos/AppShell.{h,mm}`（RunApp + AppHost + FrameContext） | D-002 帧高度接缝：外壳管设置/相机/手势/输入/帧推进/FPS/面板/冒烟；三 main 全部经 renderFrame 回调接入；GL41 以 AppHost shim 保留自建窗口栈 |
 | Cocoa 宿主/窗口 | `src/platform/macos/CocoaHost.*`、MacOSApplication.* | 全屏/材质/事件 |
 | macOS MD3 调试面板 | `src/platform/macos/MacOSMd3Panel.*` | 三后端共用 |
 | Windows 入口 | `src/Diligent/Main.cpp`、`src/OpenGL/Main.cpp` | 冻结 |

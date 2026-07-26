@@ -1352,6 +1352,12 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 三 main 合并到 AppShell::RunApp（TODO P1 第 1/3 项，D-002/D-009，AUDIT P2-2）
+
+`src/platform/macos/AppShell.{h,mm}`：唯一应用外壳 RunApp + 宿主抽象 AppHost（CocoaAppHost 直通 CocoaHost；GL41 以 OpenGLAppHost 包装自建 NSOpenGL 窗口栈，材质/全屏行为零改动）+ 共享帧描述 FrameContext（含 drawPanel 回调：外壳出面板内容与回调，后端在自己的 ImGui 帧内补 acrylic 纹理钩子）。外壳独占：相机/手势装配、动作分发、帧推进与共享 FpsMeter、手势状态上报、材质/垂直同步应用、窗口状态镜像、冒烟 tick、设置持久化、退出码。三个 main 缩为后端构造 + renderFrame 闭包：Metal 413→242 行，Vulkan 450→271（交互冒烟经 preRun 钩子、重启冒烟保持原位、设备丢失恢复在闭包内），GL41 602→516（观察者改为转发 NativeFullscreenEntered/Exited 动作，按键监视器与菜单统一转发 HostAction）。
+
+**声明的统一化差异**（D-001：测量与外壳只此一份）：Vulkan 改用共享 FpsMeter（原平滑公式弃用），lod 冒烟经 fixedDeltaTime=0.05 驱动；Metal 冒烟期不再加载手势模型（对齐 Vulkan，冒烟渲染不受影响——相机本就未启动）；GL41 垂直同步现在运行时可变更（对齐另两路径）、按键 up/down 都触发设置保存（原仅 down）。踩坑：RunAppConfig.panelTitle 必须按值持有 std::string——Vulkan 设备恢复会重建 adapter 名字串，缓存 c_str() 会悬垂。验证：12/12 app（含 Molten/Kosmic 交互/LOD/恢复/重启/性能锁）、7/7 gpu、视觉基线逐像素、15/15 unit 全部通过。
+
 ### 2026-07-26 SmokeHarness 抽取（TODO P1 第 2 项，AUDIT P2-2）
 
 `src/platform/macos/SmokeHarness.{h,cpp}`：SmokeConfig（解析 CAPTURE_BASELINE/PERFORMANCE_LOCK_SMOKE/FULLSCREEN_RESTORE_SMOKE + ForceInitialState 钉死确定性状态）、ResolveStartupGeometry、SmokeHarness（逐帧性能锁检查与全屏三段状态机，宿主操作以回调注入：Metal/Vulkan 传 CocoaHost，GL41 传原生 NSWindow + StopRunLoop）。失败统一 "[smoke] FAILED" 前缀 + DiagnosticBus 发布（Metal/GL41 由此首次获得诊断总线可见性）。Vulkan 专属冒烟（SMOKE_FRAMES/INTERACTION/LOD/DEVICE_LOST/RESTART）是该后端实验变量，留在 VulkanMain。**范围决策**：未做 BUILD_TESTING 编译隔离——app 层 smoke 的意义就是驱动真实发布二进制（验收铁律"必须来自真实呈现路径"），把 smoke 代码编译出发布二进制会让被测物偏离交付物。已知组合语义差异：Vulkan lod 冒烟的状态解锁现在晚于共享钉死（原顺序 baseline→lod→perf→fs），仅影响从不使用的 lod+perf/baseline 组合，已注释声明不支持。验证：12/12 app 测试通过；全屏恢复冒烟在本机以与抽取前逐位相同的方式失败（同超时、同消息）。

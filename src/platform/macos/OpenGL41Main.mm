@@ -19,6 +19,7 @@
 #include "imgui_impl_osx.h"
 
 #include "MacOSApplication.h"
+#include "AppShell.h"
 #include "CocoaHost.h"
 #include "SmokeHarness.h"
 #include "MacOSMd3Panel.h"
@@ -231,6 +232,75 @@ private:
     bool transparent_ = false;
 };
 
+// GL41 保留自建 NSOpenGL 窗口栈（材质/全屏行为不因合并改变），以 AppHost 接入外壳。
+class OpenGLAppHost final : public ParticleSaturn::Platform::MacOS::AppHost {
+public:
+    OpenGLAppHost(NSWindow* window, NSView* view,
+                  std::shared_ptr<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface> surface,
+                  std::shared_ptr<WindowGlass> glass)
+        : window_{window}, view_{view}, surface_{std::move(surface)}, glass_{std::move(glass)} {}
+
+    ParticleSaturn::Platform::MacOS::DrawableSize CurrentDrawableSize() override {
+        const NSRect backingBounds = [view_ convertRectToBacking:[view_ bounds]];
+        return {static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.width)),
+                static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.height)),
+                static_cast<float>([window_ backingScaleFactor])};
+    }
+    void WindowPosition(std::int32_t& x, std::int32_t& y) override {
+        const NSPoint origin = [window_ frame].origin;
+        x = static_cast<std::int32_t>(origin.x);
+        y = static_cast<std::int32_t>(origin.y);
+    }
+    bool NativeFullscreen() override { return ([window_ styleMask] & NSWindowStyleMaskFullScreen) != 0; }
+    void ToggleFullscreen() override {
+        if (!NativeFullscreen()) glass_->PresentFullscreenBackdrop();
+        [window_ toggleFullScreen:nil];
+    }
+    void SetWindowMaterial(ParticleSaturn::App::WindowMaterial material) override {
+        glass_->ApplyMaterial(material, NativeFullscreen());
+    }
+    void SetPresentationMode(int vsyncMode) override {
+        if (surface_->MakeCurrent()) surface_->SetVSyncMode(vsyncMode);
+    }
+    void RequestExit() override { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }
+    void Show() override {
+        [window_ makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+    void Run(const std::function<void()>& frameCallback) override {
+        if (frameCallback) {
+            auto* callback = new std::function<void()>{frameCallback};
+            const NSInteger refreshRate = std::max<NSInteger>(1, [[window_ screen] maximumFramesPerSecond]);
+            NSTimer* timer = [NSTimer timerWithTimeInterval:1.0 / static_cast<double>(refreshRate)
+                                                     repeats:YES
+                                                       block:^(NSTimer* timer) {
+                if (![NSApp isRunning]) {
+                    [timer invalidate];
+                    delete callback;
+                    return;
+                }
+                (*callback)();
+            }];
+            [timer setTolerance:0.0];
+            [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+        }
+        [NSApp run];
+    }
+    void SetActionCallback(std::function<void(ParticleSaturn::Platform::MacOS::HostAction)> callback) override {
+        action_ = std::move(callback);
+    }
+    void InvokeAction(ParticleSaturn::Platform::MacOS::HostAction action) {
+        if (action_) action_(action);
+    }
+
+private:
+    NSWindow* window_ = nil;
+    NSView* view_ = nil;
+    std::shared_ptr<ParticleSaturn::Gpu::OpenGL41::OpenGL41Surface> surface_;
+    std::shared_ptr<WindowGlass> glass_;
+    std::function<void(ParticleSaturn::Platform::MacOS::HostAction)> action_;
+};
+
 } // namespace
 
 int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
@@ -241,14 +311,10 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
 
         __block ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const auto smoke = ParticleSaturn::Platform::MacOS::SmokeConfig::FromEnvironment();
-        const char* baselinePath = smoke.baselinePath;
         const bool captureBaseline = smoke.captureBaseline;
-        const bool performanceSmoke = smoke.performanceSmoke;
-        const bool fullscreenSmoke = smoke.fullscreenSmoke;
         auto initialState = smoke.Deterministic() ? ParticleSaturn::App::AppState{} : settings.Load({});
         smoke.ForceInitialState(initialState);
         const auto startup = ParticleSaturn::Platform::MacOS::ResolveStartupGeometry(initialState);
-        const bool restoreFullscreen = startup.restoreFullscreen;
         const auto startupWidth = startup.width;
         const auto startupHeight = startup.height;
         const auto startupX = startup.x;
@@ -300,43 +366,37 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         auto controller = std::make_shared<ParticleSaturn::App::AppController>(initialState);
         MD3::Init(1.0f, true);
         MD3::SetDarkMode(controller->State().ui.darkMode);
-        auto* settingsPtr = &settings;
         controller->MutableState().window.fullscreen = false;
-        auto toggleFullscreen = [&] {
-            const bool nativeFullscreen = ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
-            controller->MutableState().window.fullscreen = nativeFullscreen;
-            const auto effect = controller->Dispatch(ParticleSaturn::App::SetFullscreen{
-                !nativeFullscreen});
-            if (!effect.windowChanged) return;
-            if (!nativeFullscreen) glass->PresentFullscreenBackdrop();
-            [window toggleFullScreen:nil];
-            if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
+
+        auto appHost = std::make_shared<OpenGLAppHost>(window, view, surface, glass);
+
+        // 菜单/按键/窗口通知统一转发外壳动作回调（与 CocoaHost 同构）；
+        // 表面/材质的宿主级处理保留在本文件。
+        auto* menuTarget = [[ParticleSaturnOpenGLMenuTarget alloc] init];
+        menuTarget->action = [appHost](ParticleSaturn::Platform::MacOS::HostAction action) {
+            appHost->InvokeAction(action);
         };
+        InstallOpenGLApplicationMenu(menuTarget);
         id closeObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowWillCloseNotification object:window queue:nil
-            usingBlock:^(NSNotification*) { CocoaHost::StopRunLoop(); }];
+            usingBlock:^(NSNotification*) { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }];
         id fullscreenExitObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil
             usingBlock:^(NSNotification*) {
-                controller->MutableState().window.fullscreen = false;
                 surface->MakeCurrent();
                 surface->UpdateDrawable();
                 glass->ApplyMaterial(controller->State().window.material, false);
-                if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
+                appHost->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenExited);
             }];
         id fullscreenWillEnterObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowWillEnterFullScreenNotification object:window queue:nil
-            usingBlock:^(NSNotification*) {
-                controller->MutableState().window.fullscreen = true;
-                glass->PresentFullscreenBackdrop();
-            }];
+            usingBlock:^(NSNotification*) { glass->PresentFullscreenBackdrop(); }];
         id fullscreenEnterObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidEnterFullScreenNotification object:window queue:nil
             usingBlock:^(NSNotification*) {
-                controller->MutableState().window.fullscreen = true;
                 surface->MakeCurrent();
                 surface->UpdateDrawable();
-                if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
+                appHost->InvokeAction(ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenEntered);
             }];
         id resizeObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidResizeNotification object:window queue:nil
@@ -347,210 +407,80 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         id eventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent*(NSEvent* event) {
             if ([event type] == NSEventTypeKeyDown && [event isARepeat]) return nil;
             const bool pressed = [event type] == NSEventTypeKeyDown;
-            const auto dispatchKey = [&](ParticleSaturn::App::InputKey key) {
-                const auto effect = controller->Dispatch(ParticleSaturn::App::SetInputKeyPressed{key, pressed});
-                if (effect.windowChanged) toggleFullscreen();
-                if (effect.exitRequested) CocoaHost::StopRunLoop();
-                if (pressed && !captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
-            };
+            using ParticleSaturn::Platform::MacOS::HostAction;
             switch ([event keyCode]) {
             case 99:
-                dispatchKey(ParticleSaturn::App::InputKey::F3);
+                appHost->InvokeAction(pressed ? HostAction::KeyF3Down : HostAction::KeyF3Up);
                 return nil;
             case 103:
-                dispatchKey(ParticleSaturn::App::InputKey::F11);
+                appHost->InvokeAction(pressed ? HostAction::KeyF11Down : HostAction::KeyF11Up);
                 return nil;
             case 11:
-                dispatchKey(ParticleSaturn::App::InputKey::B);
+                appHost->InvokeAction(pressed ? HostAction::KeyBDown : HostAction::KeyBUp);
                 return nil;
             case 53:
-                dispatchKey(ParticleSaturn::App::InputKey::Escape);
+                appHost->InvokeAction(pressed ? HostAction::KeyEscapeDown : HostAction::KeyEscapeUp);
                 return nil;
             default:
                 return event;
             }
         }];
-        auto baselineCaptured = std::make_shared<bool>(false);
-        auto baselineFrameCount = std::make_shared<std::uint32_t>(0);
-        auto smokeHarness = std::make_shared<ParticleSaturn::Platform::MacOS::SmokeHarness>(
-            smoke, startup, "opengl41",
-            ParticleSaturn::Platform::MacOS::SmokeHarness::HostOps{
-                [window] { [window toggleFullScreen:nil]; },
-                [] { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }});
-        auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
-        auto fpsMeter = std::make_shared<FpsMeter>();
-        auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-        auto camera = std::make_shared<ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera>();
-        auto cameraSelector = std::make_shared<ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow>(*camera);
-        if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) cameraSelector->StartSaved();
-        auto handRuntime = std::make_shared<ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime>();
-        std::shared_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
-        auto lastCameraFrameSize = std::make_shared<std::pair<std::uint32_t, std::uint32_t>>(0U, 0U);
-        std::string handTrackingError;
-        if (handRuntime->Load(ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite"),
-                              ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite"), handTrackingError)) {
-            handTracking = std::make_shared<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker>(
-                [handRuntime](const ParticleSaturn::Services::Camera::Frame& input,
-                              ParticleSaturn::Services::HandTracking::MacOS::HandPose& pose, std::string& error) {
-                    return handRuntime->Invoke(input, error) && handRuntime->DecodeLandmarks(pose);
-                });
-            handTracking->Start();
-        }
-#endif
-        auto* menuTarget = [[ParticleSaturnOpenGLMenuTarget alloc] init];
-        menuTarget->action = [&, settingsPtr] (ParticleSaturn::Platform::MacOS::HostAction action) {
-            switch (action) {
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
-                controller->Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen:
-                toggleFullscreen();
-                return;
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
-                controller->Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller->State().ui.blurEnabled});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::TogglePause:
-                controller->Dispatch(ParticleSaturn::App::TogglePause{});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector:
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-                if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
-                cameraSelector->Show();
-#endif
-                break;
-            default:
-                break;
-            }
-            if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
-        };
-        InstallOpenGLApplicationMenu(menuTarget);
-        auto appliedVsyncMode = std::make_shared<int>(initialState.render.vsyncMode);
 
-        const NSInteger refreshRate = std::max<NSInteger>(1, [[window screen] maximumFramesPerSecond]);
-        NSTimer* frameTimer = [NSTimer timerWithTimeInterval:1.0 / static_cast<double>(refreshRate) repeats:YES block:^(NSTimer* timer) {
-            if (![NSApp isRunning]) {
-                [timer invalidate];
-                return;
-            }
-            if (!surface->MakeCurrent()) return;
-            const auto now = std::chrono::steady_clock::now();
-            const float deltaTime = std::clamp(std::chrono::duration<float>(now - *lastFrame).count(), 0.0f, 0.25f);
-            *lastFrame = now;
-            fpsMeter->AddSample(deltaTime);
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-            ParticleSaturn::App::GestureInput gesture;
-            ParticleSaturn::Services::Camera::Frame cameraFrame;
-            if (handTracking && camera->LatestFrame(cameraFrame)) {
-                *lastCameraFrameSize = {cameraFrame.width, cameraFrame.height};
-                handTracking->Submit(std::move(cameraFrame), controller->State().gesture.handLostDelay);
-            }
-            if (handTracking) gesture = handTracking->LatestGesture();
-            const auto frameSnapshot = coordinator->Advance(*controller, deltaTime, gesture);
-            const bool handTracked = gesture.tracked;
-#else
-            const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
-            const bool handTracked = false;
-#endif
-            ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus handStatus;
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-            using TrackerState = ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus::Tracker;
-            if (!handTracking) {
-                handStatus.tracker = TrackerState::Failed;
-                handStatus.errorMessage = handTrackingError.empty() ? "Hand tracking runtime unavailable"
-                                                                    : handTrackingError;
-            } else {
-                switch (camera->Permission()) {
-                case ParticleSaturn::Services::Camera::Authorization::Authorized:
-                    handStatus.tracker = camera->IsRunning() ? TrackerState::Ready : TrackerState::Initializing;
-                    break;
-                case ParticleSaturn::Services::Camera::Authorization::NotDetermined:
-                    handStatus.tracker = TrackerState::Initializing;
-                    break;
-                default:
-                    handStatus.tracker = TrackerState::Failed;
-                    handStatus.errorMessage = "Camera access denied";
-                    break;
-                }
-                if (lastCameraFrameSize->first > 0 && lastCameraFrameSize->second > 0) {
-                    char cameraInfo[64];
-                    std::snprintf(cameraInfo, sizeof(cameraInfo), "%u x %u", lastCameraFrameSize->first,
-                                  lastCameraFrameSize->second);
-                    handStatus.cameraInfo = cameraInfo;
-                }
-                handStatus.handDetected = gesture.tracked;
-                handStatus.rawScale = gesture.scale;
-                handStatus.rawRotX = gesture.rotationXNormalized;
-                handStatus.rawRotY = gesture.rotationYNormalized;
-            }
-#endif
-            const auto& state = *frameSnapshot.state;
+        bool baselineCaptured = false;
+        std::uint32_t baselineFrameCount = 0;
+        ParticleSaturn::Platform::MacOS::SmokeHarness smokeHarness{smoke, startup, "opengl41", {
+            [window] { [window toggleFullScreen:nil]; },
+            [] { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }}};
+
+        ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
+            *appHost, *controller, settings, smoke, smokeHarness, startup,
+            "OpenGL 4.1", true,
+            /*persistSettings=*/!smoke.Deterministic(),
+            /*cameraEnabled=*/!smoke.Deterministic(),
+            /*fixedDeltaTime=*/0.0f, {}, {}};
+        shellConfig.renderFrame = [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
+            if (!surface->MakeCurrent()) return false;
+            const auto& state = frame.state;
             particles->SetSimulationMode(state.render.analyticParticles
                 ? ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::Analytic
                 : ParticleSaturn::Gpu::OpenGL41::OpenGLParticleSystem::SimulationMode::TransformFeedback);
-            if (*appliedVsyncMode != state.render.vsyncMode) {
-                if (!surface->SetVSyncMode(state.render.vsyncMode)) return;
-                *appliedVsyncMode = state.render.vsyncMode;
-            }
-            const NSSize logicalSize = [view bounds].size;
-            const NSRect backingBounds = [view convertRectToBacking:[view bounds]];
-            const float backingScale = [window backingScaleFactor];
-            controller->MutableState().window.width = static_cast<std::uint32_t>(logicalSize.width);
-            controller->MutableState().window.height = static_cast<std::uint32_t>(logicalSize.height);
-            controller->MutableState().window.dpiScale = backingScale;
-            const bool nativeFullscreen = ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
-            if (!nativeFullscreen) {
-                const NSPoint origin = [window frame].origin;
-                auto& windowState = controller->MutableState().window;
-                windowState.x = static_cast<std::int32_t>(origin.x);
-                windowState.y = static_cast<std::int32_t>(origin.y);
-                windowState.windowedX = windowState.x;
-                windowState.windowedY = windowState.y;
-                windowState.windowedWidth = windowState.width;
-                windowState.windowedHeight = windowState.height;
-            }
-            const auto width = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.width));
-            const auto height = static_cast<std::uint32_t>(std::max(1.0, backingBounds.size.height));
+            const auto width = frame.drawableSize.width;
+            const auto height = frame.drawableSize.height;
+            const float backingScale = frame.drawableSize.scale;
+            const float logicalWidth = std::max(1.0f, static_cast<float>(state.window.width));
+            const float logicalHeight = std::max(1.0f, static_cast<float>(state.window.height));
             const bool transparent = glass->IsTransparent();
             ParticleSaturn::Gpu::OpenGL41::OpenGLFrameCallbacks callbacks;
             callbacks.capture = [&](std::uint32_t framebuffer, std::uint32_t captureWidth, std::uint32_t captureHeight) {
-                if (!captureBaseline || *baselineCaptured) return true;
-                if (++*baselineFrameCount < 3U) return false;
-                if (!WriteBaselinePpm(baselinePath, framebuffer, captureWidth, captureHeight)) return false;
-                *baselineCaptured = true;
-                CocoaHost::StopRunLoop();
+                if (!smoke.captureBaseline || baselineCaptured) return true;
+                if (++baselineFrameCount < 3U) return false;
+                if (!WriteBaselinePpm(smoke.baselinePath, framebuffer, captureWidth, captureHeight)) return false;
+                baselineCaptured = true;
+                ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop();
                 return false;
             };
             callbacks.renderUi = [&](std::uint32_t strongBlurTexture, std::uint32_t weakBlurTexture) {
                 ImGui_ImplOpenGL3_NewFrame();
                 ImGui_ImplOSX_NewFrame(view);
                 ImGui::NewFrame();
-                MD3::BeginFrame(deltaTime);
+                MD3::BeginFrame(frame.deltaTime);
                 MD3::SetDpiScale(1.0f);
-                MD3::SetScreenSize(static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height));
+                MD3::SetScreenSize(logicalWidth, logicalHeight);
                 MD3::SetBlurTexture(state.ui.blurEnabled ? strongBlurTexture : 0, state.ui.blurEnabled);
                 MD3::SetBlurTexture2(state.ui.blurEnabled ? weakBlurTexture : 0);
-                ParticleSaturn::Platform::MacOS::RenderMd3Panel(*controller, "OpenGL 4.1", fpsMeter->Value(), true, {
-                    [&] { if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State()); },
-                    [&] { toggleFullscreen(); },
-                    [&] {
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-                        if (camera->Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera->RequestPermission();
-                        cameraSelector->Show();
-#endif
-                    },
-                    [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
-                    [&](ParticleSaturn::App::WindowMaterial material) { glass->ApplyMaterial(material, controller->State().window.fullscreen); },
-                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize, float rounding) {
-                        const float left = position.x / static_cast<float>(logicalSize.width);
-                        const float top = position.y / static_cast<float>(logicalSize.height);
-                        const float right = (position.x + panelSize.x) / static_cast<float>(logicalSize.width);
-                        const float bottom = (position.y + panelSize.y) / static_cast<float>(logicalSize.height);
-                        MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(strongBlurTexture)), position,
-                                             ImVec2(position.x + panelSize.x, position.y + panelSize.y),
-                                             ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
-                                             rounding * backingScale);
-                    }}, handStatus);
+                ParticleSaturn::Platform::MacOS::BackendPanelHooks hooks;
+                hooks.drawAcrylicBackground = [&](ImDrawList* drawList, const ImVec2& position,
+                                                  const ImVec2& panelSize, float rounding) {
+                    const float left = position.x / logicalWidth;
+                    const float top = position.y / logicalHeight;
+                    const float right = (position.x + panelSize.x) / logicalWidth;
+                    const float bottom = (position.y + panelSize.y) / logicalHeight;
+                    MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(strongBlurTexture)),
+                                         position, ImVec2(position.x + panelSize.x, position.y + panelSize.y),
+                                         ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
+                                         rounding * backingScale);
+                };
+                frame.drawPanel(hooks);
                 MD3::EndFrame();
                 ImGui::Render();
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -559,31 +489,16 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 return glGetError() == GL_NO_ERROR;
             };
             callbacks.present = [&] { surface->Present(); };
-            if (!frameRenderer->Render(*particles, *stars, *targets, *bloom, *toneMapper, *sevenSegment,
-                                       width, height, state, handTracked, deltaTime, fpsMeter->Value(), transparent,
-                                       callbacks)) return;
-            smokeHarness->TickPerformance(controller->State());
-            if (fullscreenSmoke) {
-                const NSPoint origin = [window frame].origin;
-                smokeHarness->TickFullscreen(nativeFullscreen, controller->State(),
-                                             static_cast<std::uint32_t>(logicalSize.width),
-                                             static_cast<std::uint32_t>(logicalSize.height),
-                                             static_cast<std::int32_t>(origin.x),
-                                             static_cast<std::int32_t>(origin.y));
-            }
-        }];
-        [frameTimer setTolerance:0.0];
-        [[NSRunLoop mainRunLoop] addTimer:frameTimer forMode:NSRunLoopCommonModes];
-        [window makeKeyAndOrderFront:nil];
-        [NSApp activateIgnoringOtherApps:YES];
-        if (restoreFullscreen) toggleFullscreen();
-        [NSApp run];
+            return frameRenderer->Render(*particles, *stars, *targets, *bloom, *toneMapper, *sevenSegment,
+                                         width, height, state, frame.handTracked, frame.deltaTime,
+                                         frame.framesPerSecond, transparent, callbacks);
+        };
+        const int exitCode = ParticleSaturn::Platform::MacOS::RunApp(shellConfig);
         surface->MakeCurrent();
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplOSX_Shutdown();
         MD3::Shutdown();
         ImGui::DestroyContext();
-        if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller->State());
         [NSEvent removeMonitor:eventMonitor];
         [[NSNotificationCenter defaultCenter] removeObserver:fullscreenExitObserver];
         [[NSNotificationCenter defaultCenter] removeObserver:fullscreenWillEnterObserver];
@@ -596,7 +511,6 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         glass.reset();
         [view release];
         [window release];
-        if (smokeHarness->Failed()) return 1;
+        return exitCode;
     }
-    return 0;
 }
