@@ -237,39 +237,68 @@ private:
     std::uint32_t height_ = 0;
 };
 
+// 四个后处理类在首次 Encode 时构建计算管线并跨帧持有（AUDIT P1-8），
+// libraryPath 变更时重建；对象须跨帧存活缓存才有意义（见 MetalFrameRenderer 成员）。
 class MetalToneMapper {
 public:
+    ~MetalToneMapper();
     bool Apply(MetalDevice& device, const char* libraryPath, void* hdrTexture, void* bloomTexture, void* outputTexture,
                std::uint32_t width, std::uint32_t height, float bloomStrength, bool transparent = false);
     bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* hdrTexture,
                 void* bloomTexture, void* outputTexture, std::uint32_t width, std::uint32_t height,
                 float bloomStrength, bool transparent = false);
+
+private:
+    bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
+    void* pipeline_ = nullptr;
+    std::string libraryPath_;
 };
 
 class MetalBloom {
 public:
+    ~MetalBloom();
     bool Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* bloomA, void* bloomB,
                std::uint32_t width, std::uint32_t height, float blurStrength);
     bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* sceneHdr,
                 void* bloomA, void* bloomB, std::uint32_t width, std::uint32_t height, float blurStrength);
+
+private:
+    bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
+    void* downsample_ = nullptr;
+    void* blur_ = nullptr;
+    std::string libraryPath_;
 };
 
 class MetalAcrylic {
 public:
+    ~MetalAcrylic();
     bool Apply(MetalDevice& device, const char* libraryPath, void* uiSceneTexture, void* blurA, void* blurB,
                void* blurWeakA, void* blurWeakB, void* outputTexture, void* weakOutputTexture,
                std::uint32_t width, std::uint32_t height, float blurStrength);
     bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* uiSceneTexture,
                 void* blurA, void* blurB, void* blurWeakA, void* blurWeakB, void* outputTexture,
                 void* weakOutputTexture, std::uint32_t width, std::uint32_t height, float blurStrength);
+
+private:
+    bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
+    void* downsample_ = nullptr;
+    void* blur_ = nullptr;
+    void* composite_ = nullptr;
+    std::string libraryPath_;
 };
 
 class MetalSevenSegmentFps {
 public:
+    ~MetalSevenSegmentFps();
     bool Render(MetalDevice& device, const char* libraryPath, void* outputTexture, std::uint32_t width,
                 std::uint32_t height, std::uint32_t framesPerSecond);
     bool Encode(MetalDevice& device, void* nativeCommandBuffer, const char* libraryPath, void* outputTexture,
                 std::uint32_t width, std::uint32_t height, std::uint32_t framesPerSecond);
+
+private:
+    bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
+    void* pipeline_ = nullptr;
+    std::string libraryPath_;
 };
 
 class MetalIndirectDraw {
@@ -324,6 +353,11 @@ public:
 
 private:
     MetalFrameScheduler scheduler_;
+    // 跨帧持有，管线只在首帧构建（AUDIT P1-8）。
+    MetalBloom bloom_;
+    MetalToneMapper toneMapper_;
+    MetalAcrylic acrylic_;
+    MetalSevenSegmentFps fps_;
 };
 
 } // namespace ParticleSaturn::Gpu::Metal

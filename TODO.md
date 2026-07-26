@@ -57,7 +57,7 @@
 
 ## 性能速修（都在每帧热路径，彼此独立，随时可做；合集见 AUDIT P1-8/P2-8）
 
-- [ ] Metal 后处理四个类每帧重新加载 metallib 并重建 compute PSO → Initialize 一次持有（`MetalBackend.mm` ToneMapper/Bloom/Acrylic/SevenSegmentFps，AUDIT P1-8）
+- [x] Metal 后处理四个类每帧重新加载 metallib 并重建 compute PSO → EnsurePipelines 惰性构建一次跨帧持有（对象提升为 MetalFrameRenderer 成员；原先每帧构造局部对象+在 pass lambda 里构造 acrylic）；调用方与测试签名零改动；gpu 层 7/7 + 视觉基线逐像素通过（AUDIT P1-8）
 - [ ] `AVFoundationCamera::LatestFrame` 锁内 ~1MB 深拷贝 → `std::move`/交换缓冲（AUDIT P2-8）
 - [ ] XnnpackRuntime 每帧分配输出 vector 与 147KB ROI 缓冲 → 常驻成员复用（AUDIT P2-8）
 - [ ] DiagnosticBus 每 UI 帧全量深拷贝取一条 → `Latest()` 接口 + 环形缓冲（AUDIT P2-8）
