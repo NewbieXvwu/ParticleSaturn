@@ -1352,6 +1352,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 P3 单源试点启动（D-004；工具链经用户拍板：DXC + SPIRV-Cross）
+
+`src/shaders/single/ToneMap.hlsl`：规范单源，语义逐行对齐 GL41 ToneMap.frag 与 Metal ToneMapWithBloom 的共同算法（两者已核实同构：同双线性、同高光压缩、同预乘 alpha）。设计要点：全程 Load 无采样器对象（翻译面最小）；uv 由 SV_Position 推导（各 API 内场景与 bloom 同向，无翻转问题）；**单源化隐含通道形态统一为全屏 fragment**——Metal 现为 compute 核、Vulkan 为内联源 PS、GL41 为 frag，接入时 Metal 需把 tonemap pass 从 compute 改 render pass（输出应逐像素一致，视觉基线可证）。工具链状态：spirv-cross 已 brew 安装；DXC 无 macOS 官方二进制/brew 公式，正从官方源码后台构建（scratchpad 内，不污染系统；用户已授权自装工具）。**接线顺序**（每步绿树提交）：① CMake 翻译步骤（dxc→spv→spirv-cross→frag/metal，工具缺失时跳过保留手写）② GL41 换装翻译 frag（改 UBO+组合采样器接口）→ 视觉基线验证 ③ Vulkan 换 SPIR-V 字节码 ④ Metal compute→fragment 改造 ⑤ 删对应手写副本（D-005）。
+
 ### 2026-07-26 渲染图静态化（TODO P1 第 4 项，D-003，AUDIT P1-9）
 
 三条 macOS 帧路径的每帧图构建（pass 名字符串拼接、std::function 注册、Read/Write 边、拓扑排序——合计每帧 30-45 次堆分配）全部删除：pass 主体保留为具名 lambda 按书写顺序静态直排（Metal 8 个、GL41 11 个、Vulkan 11 个 + 三个模糊链改为参数化 lambda + for 循环）。合法性依据：Compile() 的依赖只可能指向更早的 pass（lastWriter 单调），拓扑排序输出可证恒等于插入顺序。RenderGraph.{h,cpp} 随之失去全部生产消费者，按 D-005 删除；RenderTests 缩减为 TexturePool 生命周期覆盖（ResourceRegistry/TexturePool 保留——资源缩放重建逻辑已验收不动）。验证：unit/gpu/app 三层全绿，视觉基线逐像素通过（行为不变实证）。
