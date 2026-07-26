@@ -174,6 +174,12 @@ if(BUILD_TESTING)
         target_link_options(ParticleSaturnSimdTests PRIVATE -fsanitize=address)
     endif()
     add_test(NAME ParticleSaturnSimdTests COMMAND ParticleSaturnSimdTests)
+
+    # 哨兵（D-008）：断言被剥离或失败退出码被吞时报警。断言生效时它以
+    # return 1 退出，WILL_FAIL 翻转为通过；断言失效时它退出 0，被翻转为失败。
+    add_executable(ParticleSaturnAssertSentinelTests tests/AssertSentinelTests.cpp)
+    add_test(NAME ParticleSaturnAssertSentinelTests COMMAND ParticleSaturnAssertSentinelTests)
+    set_tests_properties(ParticleSaturnAssertSentinelTests PROPERTIES WILL_FAIL TRUE)
 endif()
 
 if(APPLE)
