@@ -240,6 +240,8 @@ private:
     std::string libraryPath_;
 };
 
+// bloom 走单源翻译产物（D-004）：降采样/模糊为全屏 fragment（入口
+// BloomDownsampleFragment/KawaseBlurFragment），PSO 按输出格式惰性缓存。
 class MetalBloom {
 public:
     ~MetalBloom();
@@ -250,8 +252,11 @@ public:
 
 private:
     bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
-    void* downsample_ = nullptr;
-    void* blur_ = nullptr;
+    void* vertexFunction_ = nullptr;
+    void* downsampleFragment_ = nullptr;
+    void* blurFragment_ = nullptr;
+    std::vector<std::pair<std::uint32_t, void*>> downsamplePipelines_;
+    std::vector<std::pair<std::uint32_t, void*>> blurPipelines_;
     std::string libraryPath_;
 };
 
@@ -267,9 +272,12 @@ public:
 
 private:
     bool EnsurePipelines(MetalDevice& device, const char* libraryPath);
-    void* downsample_ = nullptr;
-    void* blur_ = nullptr;
-    void* composite_ = nullptr;
+    void* vertexFunction_ = nullptr;
+    void* downsampleFragment_ = nullptr;
+    void* blurFragment_ = nullptr;
+    void* composite_ = nullptr;  // 合成核暂保留手写 compute
+    std::vector<std::pair<std::uint32_t, void*>> downsamplePipelines_;
+    std::vector<std::pair<std::uint32_t, void*>> blurPipelines_;
     std::string libraryPath_;
 };
 

@@ -860,6 +860,55 @@ bool MetalToneMapper::Encode(MetalDevice& device, void* nativeCommandBuffer, con
     return true;
 }
 
+namespace {
+
+// 单源 fragment 通道共用工具：按输出格式缓存 PSO + 编码一次全屏绘制。
+void* FragmentPipelineFor(MetalDevice& device, std::vector<std::pair<std::uint32_t, void*>>& cache,
+                          void* vertexFunction, void* fragmentFunction, std::uint32_t pixelFormat) {
+    for (const auto& [format, pipeline] : cache) {
+        if (format == pixelFormat) return pipeline;
+    }
+    MTLRenderPipelineDescriptor* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.vertexFunction = (id<MTLFunction>)vertexFunction;
+    descriptor.fragmentFunction = (id<MTLFunction>)fragmentFunction;
+    descriptor.colorAttachments[0].pixelFormat = static_cast<MTLPixelFormat>(pixelFormat);
+    NSError* error = nil;
+    id<MTLRenderPipelineState> pipeline =
+        [(id<MTLDevice>)device.NativeDevice() newRenderPipelineStateWithDescriptor:descriptor error:&error];
+    [descriptor release];
+    if (pipeline == nil || error != nil) return nullptr;
+    cache.emplace_back(pixelFormat, (void*)pipeline);
+    return pipeline;
+}
+
+// 32 字节规范常量（与 single/*.hlsl 的 BloomConstants 对应）。
+bool EncodeFragmentBloomPass(id<MTLCommandBuffer> commands, void* pipeline, id<MTLTexture> source,
+                             id<MTLTexture> target, float sourceWidth, float sourceHeight, float offset,
+                             float threshold) {
+    if (pipeline == nullptr) return false;
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = target;
+    pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
+    [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)pipeline];
+    [encoder setFragmentTexture:source atIndex:0];
+    const float constants[8] = {1.0f / sourceWidth, 1.0f / sourceHeight,
+                                1.0f / static_cast<float>([target width]), 1.0f / static_cast<float>([target height]),
+                                offset, threshold, 0.0f, 0.0f};
+    [encoder setFragmentBytes:constants length:sizeof(constants) atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [encoder endEncoding];
+    return true;
+}
+
+void ReleaseFragmentCache(std::vector<std::pair<std::uint32_t, void*>>& cache) {
+    for (const auto& [format, pipeline] : cache) [(id<MTLRenderPipelineState>)pipeline release];
+    cache.clear();
+}
+
+} // namespace
+
 bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* sceneHdr, void* bloomA, void* bloomB,
                        std::uint32_t width, std::uint32_t height, float blurStrength) {
     id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
@@ -869,28 +918,38 @@ bool MetalBloom::Apply(MetalDevice& device, const char* libraryPath, void* scene
 }
 
 MetalBloom::~MetalBloom() {
-    [(id<MTLComputePipelineState>)downsample_ release];
-    [(id<MTLComputePipelineState>)blur_ release];
+    ReleaseFragmentCache(downsamplePipelines_);
+    ReleaseFragmentCache(blurPipelines_);
+    [(id<MTLFunction>)downsampleFragment_ release];
+    [(id<MTLFunction>)blurFragment_ release];
+    [(id<MTLFunction>)vertexFunction_ release];
 }
 
 bool MetalBloom::EnsurePipelines(MetalDevice& device, const char* libraryPath) {
-    if (downsample_ != nullptr && blur_ != nullptr && libraryPath_ == libraryPath) return true;
+    if (vertexFunction_ != nullptr && downsampleFragment_ != nullptr && blurFragment_ != nullptr &&
+        libraryPath_ == libraryPath) return true;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> downsample = CreateComputePipeline(library, @"BloomDownsample");
-    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"KawaseBlur");
+    id<MTLFunction> vertex = [library newFunctionWithName:@"FullscreenTriangleVertex"];
+    id<MTLFunction> downsample = [library newFunctionWithName:@"BloomDownsampleFragment"];
+    id<MTLFunction> blur = [library newFunctionWithName:@"KawaseBlurFragment"];
     [library release];
-    if (downsample == nil || blur == nil) {
+    if (vertex == nil || downsample == nil || blur == nil) {
+        [vertex release];
         [downsample release];
         [blur release];
         return false;
     }
-    [(id<MTLComputePipelineState>)downsample_ release];
-    [(id<MTLComputePipelineState>)blur_ release];
-    downsample_ = downsample;
-    blur_ = blur;
+    ReleaseFragmentCache(downsamplePipelines_);
+    ReleaseFragmentCache(blurPipelines_);
+    [(id<MTLFunction>)vertexFunction_ release];
+    [(id<MTLFunction>)downsampleFragment_ release];
+    [(id<MTLFunction>)blurFragment_ release];
+    vertexFunction_ = vertex;
+    downsampleFragment_ = downsample;
+    blurFragment_ = blur;
     libraryPath_ = libraryPath;
     return true;
 }
@@ -899,32 +958,27 @@ bool MetalBloom::Encode(MetalDevice& device, void* nativeCommandBuffer, const ch
                         void* bloomA, void* bloomB, std::uint32_t width, std::uint32_t height, float blurStrength) {
     if (nativeCommandBuffer == nullptr || sceneHdr == nullptr || bloomA == nullptr || bloomB == nullptr || width == 0 || height == 0) return false;
     if (!EnsurePipelines(device, libraryPath)) return false;
-    id<MTLComputePipelineState> downsample = (id<MTLComputePipelineState>)downsample_;
-    id<MTLComputePipelineState> blur = (id<MTLComputePipelineState>)blur_;
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
     const std::uint32_t bloomWidth = std::max(1U, width / 6U);
     const std::uint32_t bloomHeight = std::max(1U, height / 6U);
-    // The bright-pass reads the full-size HDR scene.  Its texel size must
-    // therefore describe that source, matching Diligent's RenderBloom pass.
-    struct BloomConstants { float texelX, texelY, offset, threshold; } constants{
-        1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 1.0f};
-    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
-    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:downsample]; [encoder setTexture:(id<MTLTexture>)sceneHdr atIndex:0]; [encoder setTexture:(id<MTLTexture>)bloomA atIndex:1];
-    [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(bloomWidth, bloomHeight, 1) threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+    // 亮通读全尺寸 HDR 场景：采样偏移用源 texel（规范语义，与 single/*.hlsl 一致）。
+    id<MTLTexture> targetA = (id<MTLTexture>)bloomA;
+    void* downsamplePipeline = FragmentPipelineFor(device, downsamplePipelines_, vertexFunction_, downsampleFragment_,
+                                                   static_cast<std::uint32_t>([targetA pixelFormat]));
+    if (!EncodeFragmentBloomPass(commands, downsamplePipeline, (id<MTLTexture>)sceneHdr, targetA,
+                                 static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f)) return false;
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     const float scale = std::clamp(blurStrength, 0.0f, 5.0f) / 5.0f;
     for (std::size_t index = 1; index < sizeof(offsets) / sizeof(offsets[0]); ++index) {
-        constants.offset = scale * (offsets[index] + 0.5f) - 0.5f;
         const bool writeToB = (index % 2U) == 1U;
-        constants.texelX = 1.0f / static_cast<float>(bloomWidth);
-        constants.texelY = 1.0f / static_cast<float>(bloomHeight);
-        encoder = [commands computeCommandEncoder]; [encoder setComputePipelineState:blur];
-        [encoder setTexture:(id<MTLTexture>)(writeToB ? bloomA : bloomB) atIndex:0];
-        [encoder setTexture:(id<MTLTexture>)(writeToB ? bloomB : bloomA) atIndex:1];
-        [encoder setBytes:&constants length:sizeof(constants) atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(bloomWidth, bloomHeight, 1) threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)]; [encoder endEncoding];
+        id<MTLTexture> source = (id<MTLTexture>)(writeToB ? bloomA : bloomB);
+        id<MTLTexture> target = (id<MTLTexture>)(writeToB ? bloomB : bloomA);
+        void* blurPipeline = FragmentPipelineFor(device, blurPipelines_, vertexFunction_, blurFragment_,
+                                                 static_cast<std::uint32_t>([target pixelFormat]));
+        if (!EncodeFragmentBloomPass(commands, blurPipeline, source, target,
+                                     static_cast<float>(bloomWidth), static_cast<float>(bloomHeight),
+                                     scale * (offsets[index] + 0.5f) - 0.5f, 0.0f)) return false;
     }
     return true;
 }
@@ -940,32 +994,42 @@ bool MetalAcrylic::Apply(MetalDevice& device, const char* libraryPath, void* uiS
 }
 
 MetalAcrylic::~MetalAcrylic() {
-    [(id<MTLComputePipelineState>)downsample_ release];
-    [(id<MTLComputePipelineState>)blur_ release];
+    ReleaseFragmentCache(downsamplePipelines_);
+    ReleaseFragmentCache(blurPipelines_);
+    [(id<MTLFunction>)downsampleFragment_ release];
+    [(id<MTLFunction>)blurFragment_ release];
+    [(id<MTLFunction>)vertexFunction_ release];
     [(id<MTLComputePipelineState>)composite_ release];
 }
 
 bool MetalAcrylic::EnsurePipelines(MetalDevice& device, const char* libraryPath) {
-    if (downsample_ != nullptr && blur_ != nullptr && composite_ != nullptr && libraryPath_ == libraryPath) return true;
+    if (vertexFunction_ != nullptr && downsampleFragment_ != nullptr && blurFragment_ != nullptr &&
+        composite_ != nullptr && libraryPath_ == libraryPath) return true;
     NSError* error = nil;
     id<MTLLibrary> library = [(id<MTLDevice>)device.NativeDevice()
         newLibraryWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:libraryPath]] error:&error];
     if (library == nil || error != nil) return false;
-    id<MTLComputePipelineState> downsample = CreateComputePipeline(library, @"BloomDownsample");
-    id<MTLComputePipelineState> blur = CreateComputePipeline(library, @"KawaseBlur");
+    id<MTLFunction> vertex = [library newFunctionWithName:@"FullscreenTriangleVertex"];
+    id<MTLFunction> downsample = [library newFunctionWithName:@"BloomDownsampleFragment"];
+    id<MTLFunction> blur = [library newFunctionWithName:@"KawaseBlurFragment"];
     id<MTLComputePipelineState> composite = CreateComputePipeline(library, @"AcrylicComposite");
     [library release];
-    if (downsample == nil || blur == nil || composite == nil) {
+    if (vertex == nil || downsample == nil || blur == nil || composite == nil) {
+        [vertex release];
         [downsample release];
         [blur release];
         [composite release];
         return false;
     }
-    [(id<MTLComputePipelineState>)downsample_ release];
-    [(id<MTLComputePipelineState>)blur_ release];
+    ReleaseFragmentCache(downsamplePipelines_);
+    ReleaseFragmentCache(blurPipelines_);
+    [(id<MTLFunction>)vertexFunction_ release];
+    [(id<MTLFunction>)downsampleFragment_ release];
+    [(id<MTLFunction>)blurFragment_ release];
     [(id<MTLComputePipelineState>)composite_ release];
-    downsample_ = downsample;
-    blur_ = blur;
+    vertexFunction_ = vertex;
+    downsampleFragment_ = downsample;
+    blurFragment_ = blur;
     composite_ = composite;
     libraryPath_ = libraryPath;
     return true;
@@ -979,78 +1043,48 @@ bool MetalAcrylic::Encode(MetalDevice& device, void* nativeCommandBuffer, const 
         blurWeakB == nullptr || outputTexture == nullptr || weakOutputTexture == nullptr ||
         nativeCommandBuffer == nullptr || width == 0 || height == 0 || blurStrength < 0.0f) return false;
     if (!EnsurePipelines(device, libraryPath)) return false;
-    id<MTLComputePipelineState> downsample = (id<MTLComputePipelineState>)downsample_;
-    id<MTLComputePipelineState> blur = (id<MTLComputePipelineState>)blur_;
     id<MTLComputePipelineState> composite = (id<MTLComputePipelineState>)composite_;
 
     const std::uint32_t blurWidth = std::max(1U, width / 6U);
     const std::uint32_t blurHeight = std::max(1U, height / 6U);
-    struct BloomConstants { float texelX, texelY, offset, threshold; } blurConstants{
-        1.0f / static_cast<float>(width), 1.0f / static_cast<float>(height), 0.0f, 0.0f};
+    const std::uint32_t weakWidth = std::max(1U, width / 12U);
+    const std::uint32_t weakHeight = std::max(1U, height / 12U);
     id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)nativeCommandBuffer;
-    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:downsample];
-    [encoder setTexture:(id<MTLTexture>)uiSceneTexture atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)blurA atIndex:1];
-    [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(blurWidth, blurHeight, 1)
-      threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)];
-    [encoder endEncoding];
+    const auto pass = [&](void* fragment, std::vector<std::pair<std::uint32_t, void*>>& cache, void* source,
+                          void* target, float sourceWidth, float sourceHeight, float offset, float threshold) {
+        void* pipeline = FragmentPipelineFor(device, cache, vertexFunction_, fragment,
+                                             static_cast<std::uint32_t>([(id<MTLTexture>)target pixelFormat]));
+        return EncodeFragmentBloomPass(commands, pipeline, (id<MTLTexture>)source, (id<MTLTexture>)target,
+                                       sourceWidth, sourceHeight, offset, threshold);
+    };
 
+    // 强模糊链：uiScene（全尺寸）→ 1/6 ping-pong。
+    if (!pass(downsampleFragment_, downsamplePipelines_, uiSceneTexture, blurA,
+              static_cast<float>(width), static_cast<float>(height), 0.0f, 0.0f)) return false;
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     const float scale = std::clamp(blurStrength, 0.0f, 5.0f) / 5.0f;
     for (std::size_t index = 1; index < sizeof(offsets) / sizeof(offsets[0]); ++index) {
-        blurConstants.texelX = 1.0f / static_cast<float>(blurWidth);
-        blurConstants.texelY = 1.0f / static_cast<float>(blurHeight);
-        blurConstants.offset = scale * (offsets[index] + 0.5f) - 0.5f;
         const bool writeToB = (index % 2U) == 1U;
-        encoder = [commands computeCommandEncoder];
-        [encoder setComputePipelineState:blur];
-        [encoder setTexture:(id<MTLTexture>)(writeToB ? blurA : blurB) atIndex:0];
-        [encoder setTexture:(id<MTLTexture>)(writeToB ? blurB : blurA) atIndex:1];
-        [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(blurWidth, blurHeight, 1)
-          threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)];
-        [encoder endEncoding];
+        if (!pass(blurFragment_, blurPipelines_, writeToB ? blurA : blurB, writeToB ? blurB : blurA,
+                  static_cast<float>(blurWidth), static_cast<float>(blurHeight),
+                  scale * (offsets[index] + 0.5f) - 0.5f, 0.0f)) return false;
     }
 
-    // Diligent renders a second, weaker Acrylic source at 1/12 resolution.
-    // It starts from the completed 1/6 blur and returns to blurWeakA after
-    // two low-offset Kawase passes (C -> D -> C in the original path).
-    const std::uint32_t weakWidth = std::max(1U, width / 12U);
-    const std::uint32_t weakHeight = std::max(1U, height / 12U);
-    blurConstants.texelX = 1.0f / static_cast<float>(blurWidth);
-    blurConstants.texelY = 1.0f / static_cast<float>(blurHeight);
-    blurConstants.offset = 0.0f;
-    blurConstants.threshold = 0.0f;
-    encoder = [commands computeCommandEncoder];
-    [encoder setComputePipelineState:downsample];
-    [encoder setTexture:(id<MTLTexture>)blurB atIndex:0];
-    [encoder setTexture:(id<MTLTexture>)blurWeakA atIndex:1];
-    [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
-    [encoder dispatchThreads:MTLSizeMake(weakWidth, weakHeight, 1)
-      threadsPerThreadgroup:MTLSizeMake([downsample threadExecutionWidth], 1, 1)];
-    [encoder endEncoding];
-
+    // 弱模糊链：完成的 1/6 强模糊 → 1/12（C→D→C）。
+    if (!pass(downsampleFragment_, downsamplePipelines_, blurB, blurWeakA,
+              static_cast<float>(blurWidth), static_cast<float>(blurHeight), 0.0f, 0.0f)) return false;
     static constexpr float weakOffsets[] = {0.5f, 1.0f};
     for (std::size_t index = 0; index < sizeof(weakOffsets) / sizeof(weakOffsets[0]); ++index) {
-        blurConstants.texelX = 1.0f / static_cast<float>(weakWidth);
-        blurConstants.texelY = 1.0f / static_cast<float>(weakHeight);
-        blurConstants.offset = scale * (weakOffsets[index] + 0.5f) - 0.5f;
         const bool writeToWeakB = index == 0U;
-        encoder = [commands computeCommandEncoder];
-        [encoder setComputePipelineState:blur];
-        [encoder setTexture:(id<MTLTexture>)(writeToWeakB ? blurWeakA : blurWeakB) atIndex:0];
-        [encoder setTexture:(id<MTLTexture>)(writeToWeakB ? blurWeakB : blurWeakA) atIndex:1];
-        [encoder setBytes:&blurConstants length:sizeof(blurConstants) atIndex:0];
-        [encoder dispatchThreads:MTLSizeMake(weakWidth, weakHeight, 1)
-          threadsPerThreadgroup:MTLSizeMake([blur threadExecutionWidth], 1, 1)];
-        [encoder endEncoding];
+        if (!pass(blurFragment_, blurPipelines_, writeToWeakB ? blurWeakA : blurWeakB,
+                  writeToWeakB ? blurWeakB : blurWeakA,
+                  static_cast<float>(weakWidth), static_cast<float>(weakHeight),
+                  scale * (weakOffsets[index] + 0.5f) - 0.5f, 0.0f)) return false;
     }
 
     struct AcrylicConstants { float tintR, tintG, tintB, baseOpacity, saturation, adaptive, darkMode, exclusion; } constants{
         20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f, 180.0f / 255.0f, 1.35f, 0.35f, 1.0f, 1.0f};
-    encoder = [commands computeCommandEncoder];
+    id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
     [encoder setComputePipelineState:composite];
     [encoder setTexture:(id<MTLTexture>)blurB atIndex:0];
     [encoder setTexture:(id<MTLTexture>)outputTexture atIndex:1];

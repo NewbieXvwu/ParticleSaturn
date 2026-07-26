@@ -1352,6 +1352,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 bloom 站完成——三路径降采样/Kawase 模糊单源化
+
+按前置分析执行完毕：32 字节双 texel BloomConstants；Vulkan 消费 SPIR-V 字节码（六个常量填充点改规范语义，消除弱链 6× 超宽采样步长与线性采样两处非故意分歧）；GL41 换装生成 frag + 共享 UBO（手写 BloomDownsample/KawaseBlur.frag 已删，生成 frag 统一从 bundle single/ 目录加载）；Metal 的 MetalBloom 与 MetalAcrylic 模糊链 compute→fragment（FragmentPipelineFor/EncodeFragmentBloomPass 共用工具，acrylic 合成核暂留 compute）；MSL 入口经 --rename-entry-point 消歧（多产物共 metallib 不能都叫 main0）。**量化**：替换前后 GL41 0.001/0.0001%、Vulkan 0.154/0.21%、Metal 0.005/0.004%；终测 MoltenVK 对 Metal 失配 0.359%→**0.027%**（13 倍收敛），GL41 维持 3.18% → 其分歧确证定位于场景 pass（粒子/星空渲染），与后处理无关。**下一站设计问题**（星空→粒子）：顶点阶段是否纳入单源（现行政策只单源像素算法）；粒子渲染与 object shader 声明分歧的边界。
+
 ### 2026-07-26 bloom 推广的前置设计分析（下一步起点）
 
 bloom（Downsample+KawaseBlur）比 tonemap 复杂一档，动手前的关键结论：① 语义基准取 Metal（参考路径）的手写双线性 Load；GL41 现用硬件线性采样 + vTexCoord，切换微差需对比模式量化。② fragment 化后 uv 只能由 SV_Position × OutputTexelSize 得出，而采样偏移在 SOURCE uv 空间——降采样两处调用点源/目标尺寸不同，现行 16 字节 BloomConstants 的 TexelSize 在各调用点语义不一（有的填 1/source、有的填 1/target）；单源版需**扩常量为 32 字节** {SourceTexelSize, OutputTexelSize, Offset, Threshold}，三后端全部调用点同步改。③ Metal 侧 BloomDownsample/KawaseBlur 内核同时被 MetalBloom 与 MetalAcrylic 的模糊链共享——fragment 化会把 Acrylic 的 5 段 compute 链一并改为 render pass 链（ping-pong 目标改 colorAttachment）。④ Vulkan 腿最省事：换 2 个 SPIR-V 字节码 + 绑定名（同 tonemap 配方），ui 模糊复用同管线自动受益。建议顺序：先写双源 HLSL + 扩常量，Vulkan→GL41→Metal(含 Acrylic) 逐腿验证。
