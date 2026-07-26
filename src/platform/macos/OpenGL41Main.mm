@@ -439,6 +439,12 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         capabilities.analyticParticles = true;
         capabilities.declaredDivergences.push_back(
             "OpenGL 4.1 无 compute：粒子采用变换反馈（默认）/解析式双策略（D-002 豁免设备契约）");
+        capabilities.declaredDivergences.push_back(
+            "星空闪烁噪声哈希 gl_FragCoord：GL 窗口原点在左下（Metal/Vulkan 左上），同代码逐像素闪烁模式相异"
+            "（2026-07-27 逐 pass 实测定性，API 行为保留观察）");
+        capabilities.declaredDivergences.push_back(
+            "粒子四边形扩展光栅化与 TF/compute 超越函数实现差异：环区亚像素级覆盖偏移"
+            "（2026-07-27 逐 pass 实测：失配集中环区但幅度 8-32 LSB，API 行为保留观察）");
         ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
             *appHost, *controller, settings, smoke, smokeHarness, startup,
             "OpenGL 4.1", capabilities,
