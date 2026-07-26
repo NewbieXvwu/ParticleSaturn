@@ -355,26 +355,24 @@ struct QuadVertex {
 using ParticleMesh = metal::mesh<QuadVertex, void, 4, 2, metal::topology::triangle>;
 
 struct ObjectPayload {
-    uint particleId;
+    uint baseParticleId;
 };
 
-[[object, max_total_threads_per_threadgroup(32), max_total_threadgroups_per_mesh_grid(1)]]
+// 每个 object 线程组负责一段 32 个粒子：payload 记录段基址，按剩余
+// 活动粒子数派生对应数量的 mesh 线程组，每个 mesh 组生成一个粒子面片。
+[[object, max_total_threads_per_threadgroup(1), max_total_threadgroups_per_mesh_grid(32)]]
 void ParticleObjectShader(
     mesh_grid_properties meshGridProperties,
     const device Particle* particles [[buffer(0)]],
     constant RenderConstants& constants [[buffer(1)]],
     object_data ObjectPayload& payload [[payload]],
-    uint threadId [[thread_position_in_threadgroup]],
     uint threadgroupId [[threadgroup_position_in_grid]]
 ) {
-    const uint particleId = threadgroupId * 32 + threadId;
-    payload.particleId = particleId;
-
-    if (particleId < constants.particleCount) {
-        meshGridProperties.set_threadgroups_per_grid(uint3(1, 1, 1));
-    } else {
-        meshGridProperties.set_threadgroups_per_grid(uint3(0, 0, 0));
-    }
+    const uint baseParticleId = threadgroupId * 32;
+    payload.baseParticleId = baseParticleId;
+    const uint remaining = constants.particleCount > baseParticleId
+        ? constants.particleCount - baseParticleId : 0U;
+    meshGridProperties.set_threadgroups_per_grid(uint3(min(remaining, 32U), 1, 1));
 }
 
 [[mesh, max_total_threads_per_threadgroup(1)]]
@@ -382,9 +380,10 @@ void ParticleMeshShader(
     ParticleMesh output,
     const device Particle* particles [[buffer(0)]],
     constant RenderConstants& constants [[buffer(1)]],
-    const object_data ObjectPayload& payload [[payload]]
+    const object_data ObjectPayload& payload [[payload]],
+    uint meshGroupId [[threadgroup_position_in_grid]]
 ) {
-    const uint particleId = payload.particleId;
+    const uint particleId = payload.baseParticleId + meshGroupId;
     if (particleId >= constants.particleCount) {
         output.set_primitive_count(0);
         return;
@@ -423,13 +422,16 @@ void ParticleMeshShader(
                             pow(max(constants.pixelRatio, 0.0001f), 0.8f);
     const float clampedSize = clamp(pointSize, 0.0f, 300.0f * (constants.screenHeight / 1080.0f));
 
+    // pointSize 是像素直径：NDC 半高 = size / screenHeight，半宽再除以宽高比
+    // 才能保持正方形像素覆盖，与点精灵光栅化一致。
     const float halfSizeNDC = clampedSize / constants.screenHeight;
+    const float halfSizeNDCX = halfSizeNDC / constants.aspect;
 
     QuadVertex v0, v1, v2, v3;
-    v0.position = float4(centerNDC.x - halfSizeNDC * constants.aspect, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
-    v1.position = float4(centerNDC.x + halfSizeNDC * constants.aspect, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
-    v2.position = float4(centerNDC.x - halfSizeNDC * constants.aspect, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
-    v3.position = float4(centerNDC.x + halfSizeNDC * constants.aspect, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
+    v0.position = float4(centerNDC.x - halfSizeNDCX, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
+    v1.position = float4(centerNDC.x + halfSizeNDCX, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
+    v2.position = float4(centerNDC.x - halfSizeNDCX, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
+    v3.position = float4(centerNDC.x + halfSizeNDCX, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
 
     v0.color = v1.color = v2.color = v3.color = color;
     v0.distance = v1.distance = v2.distance = v3.distance = distance;

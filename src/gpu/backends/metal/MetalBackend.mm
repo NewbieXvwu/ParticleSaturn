@@ -1049,14 +1049,16 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
                 desc.objectFunction = objectFunc;
                 desc.meshFunction = meshFunc;
                 desc.fragmentFunction = fragFunc;
-                desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+                // 附件格式与混合必须与传统粒子管线一致：两条路径都渲染到
+                // RGBA16Float 场景 HDR 目标，混合为 SrcAlpha/One 加色。
+                desc.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
                 desc.colorAttachments[0].blendingEnabled = YES;
-                desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-                desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
                 desc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+                desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+                desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+                desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
                 desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
                 desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-                desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
                 objectShaderPipeline_ = [nativeDevice newRenderPipelineStateWithMeshDescriptor:desc options:MTLPipelineOptionNone reflection:nil error:&error];
                 [desc release];
                 [objectFunc release];
@@ -1124,10 +1126,14 @@ void MetalParticleRenderer::DrawInternal(MetalDevice* device, Gpu::CommandList* 
         [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)objectShaderPipeline_];
         [encoder setObjectBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
         [encoder setObjectBytes:&constants length:sizeof(constants) atIndex:1];
-        const NSUInteger threadgroupSize = 32;
-        const NSUInteger objectCount = (particleCount + threadgroupSize - 1) / threadgroupSize;
+        // Mesh 阶段读取粒子缓冲和常量，需要独立于 object 阶段的绑定表。
+        [encoder setMeshBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
+        [encoder setMeshBytes:&constants length:sizeof(constants) atIndex:1];
+        // 每个 object 线程组单线程处理一段 32 个粒子并派生对应 mesh 组。
+        const NSUInteger particlesPerObjectGroup = 32;
+        const NSUInteger objectCount = (particleCount + particlesPerObjectGroup - 1) / particlesPerObjectGroup;
         [encoder drawMeshThreadgroups:MTLSizeMake(objectCount, 1, 1)
-                threadsPerObjectThreadgroup:MTLSizeMake(threadgroupSize, 1, 1)
+                threadsPerObjectThreadgroup:MTLSizeMake(1, 1, 1)
                   threadsPerMeshThreadgroup:MTLSizeMake(1, 1, 1)];
     } else {
         [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
