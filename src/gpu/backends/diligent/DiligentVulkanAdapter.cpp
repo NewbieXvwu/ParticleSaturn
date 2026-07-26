@@ -561,9 +561,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     };
     void* bloomOutputView = bloomShaderResource_;
     const auto downsamplePass = [&] {
-        const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-            1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
-            1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 1.0f};
+        // 单源语义（D-004）：采样偏移用源（全尺寸 HDR）texel，uv 用输出 texel。
+        const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+            1.0f / static_cast<float>(description.Width), 1.0f / static_cast<float>(description.Height)},
+            {1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 1.0f, {}};
         UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
         auto* renderTargetView = static_cast<::Diligent::ITextureView*>(bloomRenderTarget_);
         context->SetRenderTargets(1, &renderTargetView, nullptr,
@@ -583,10 +584,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     constexpr std::array<float, 7> bloomOffsets{1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     const float bloomBlurScale = std::clamp(bloomBlurStrength_, 0.0f, 5.0f) / 5.0f;
     const auto bloomBlurPass = [&](std::uint32_t index) {
-            const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-                1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
-            1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
-                bloomBlurScale * (bloomOffsets[index] + 0.5f) - 0.5f, 0.0f};
+            const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+                1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+                {1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+                bloomBlurScale * (bloomOffsets[index] + 0.5f) - 0.5f, 0.0f, {}};
             UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
             void* renderTarget = index % 2 == 0 ? bloomPingRenderTarget_ : bloomRenderTarget_;
             void* shaderResource = index % 2 == 0 ? bloomPingShaderResource_ : bloomShaderResource_;
@@ -625,9 +626,9 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     void* uiStrongOutputView = bloomShaderResource_;
     const auto uiDownsampleStrongPass = [&] {
         if (!uiBlurEnabled_) return true;
-        const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-            1.0f / static_cast<float>(description.Width),
-            1.0f / static_cast<float>(description.Height)}, 0.0f, 0.0f};
+        const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+            1.0f / static_cast<float>(description.Width), 1.0f / static_cast<float>(description.Height)},
+            {1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 0.0f, {}};
         UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
         auto* renderTargetView = static_cast<::Diligent::ITextureView*>(bloomRenderTarget_);
         context->SetRenderTargets(1, &renderTargetView, nullptr,
@@ -651,10 +652,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     };
     const auto uiStrongBlurPass = [&](std::uint32_t index) {
             if (!uiBlurEnabled_) return true;
-            const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-                1.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
-                1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
-                scaleUiOffset(uiStrongOffsets[index]), 0.0f};
+            const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+                1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+                {1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+                scaleUiOffset(uiStrongOffsets[index]), 0.0f, {}};
             UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
             const bool writeToPing = index % 2 == 0;
             auto* renderTargetView = static_cast<::Diligent::ITextureView*>(
@@ -676,9 +677,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     };
     const auto uiDownsampleWeakPass = [&] {
         if (!uiBlurEnabled_) return true;
-        const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-            6.0f / static_cast<float>(std::max(1u, description.Width / 6u)),
-            6.0f / static_cast<float>(std::max(1u, description.Height / 6u))}, 0.0f, 0.0f};
+        // 旧实现在此用 6/(W/6) 的超宽采样步长——非故意分歧，统一为规范语义。
+        const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+            1.0f / static_cast<float>(std::max(1u, description.Width / 6u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 6u))},
+            {1.0f / static_cast<float>(std::max(1u, description.Width / 12u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 12u))}, 0.0f, 0.0f, {}};
         UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
         auto* renderTargetView = static_cast<::Diligent::ITextureView*>(uiWeakRenderTarget_);
         context->SetRenderTargets(1, &renderTargetView, nullptr,
@@ -698,10 +700,10 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     constexpr std::array<float, 2> uiWeakOffsets{0.5f, 1.0f};
     const auto uiWeakBlurPass = [&](std::uint32_t index) {
             if (!uiBlurEnabled_) return true;
-            const struct BloomConstants { float texelSize[2]; float offset; float threshold; } values{{
-                1.0f / static_cast<float>(std::max(1u, description.Width / 12u)),
-                1.0f / static_cast<float>(std::max(1u, description.Height / 12u))},
-                scaleUiOffset(uiWeakOffsets[index]), 0.0f};
+            const struct BloomConstants { float sourceTexel[2]; float outputTexel[2]; float offset; float threshold; float padding[2]; } values{{
+                1.0f / static_cast<float>(std::max(1u, description.Width / 12u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 12u))},
+                {1.0f / static_cast<float>(std::max(1u, description.Width / 12u)), 1.0f / static_cast<float>(std::max(1u, description.Height / 12u))},
+                scaleUiOffset(uiWeakOffsets[index]), 0.0f, {}};
             UpdateBuffer(bloomConstants_, 0, std::as_bytes(std::span{&values, 1}));
             const bool writeToPing = index % 2 == 0;
             auto* renderTargetView = static_cast<::Diligent::ITextureView*>(
@@ -1314,10 +1316,13 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
     if (bloomDownsamplePipeline_ != nullptr && bloomBlurPipeline_ != nullptr) return true;
     const auto& bloomDescription = static_cast<::Diligent::ITexture*>(bloomTexture_)->GetDesc();
     const struct BloomConstants {
-        float texelSize[2];
+        float sourceTexel[2];
+        float outputTexel[2];
         float offset;
         float threshold;
-    } values{{1.0f / bloomDescription.Width, 1.0f / bloomDescription.Height}, 0.0f, 1.0f};
+        float padding[2];
+    } values{{1.0f / bloomDescription.Width, 1.0f / bloomDescription.Height},
+             {1.0f / bloomDescription.Width, 1.0f / bloomDescription.Height}, 0.0f, 1.0f, {}};
     bloomConstants_ = CreateBuffer({sizeof(values), 0, BufferUsage::Uniform}, std::as_bytes(std::span{&values, 1}));
     auto* device = static_cast<::Diligent::IRenderDevice*>(device_);
     ::Diligent::SamplerDesc sampler;
@@ -1327,13 +1332,13 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
     sampler.AddressU = ::Diligent::TEXTURE_ADDRESS_CLAMP;
     sampler.AddressV = ::Diligent::TEXTURE_ADDRESS_CLAMP;
     sampler.AddressW = ::Diligent::TEXTURE_ADDRESS_CLAMP;
-    const ::Diligent::ImmutableSamplerDesc immutableSampler{::Diligent::SHADER_TYPE_PIXEL, "g_Texture", sampler};
     const ::Diligent::ShaderResourceVariableDesc variables[] = {
-        {::Diligent::SHADER_TYPE_PIXEL, "g_Texture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {::Diligent::SHADER_TYPE_PIXEL, "BlurCB", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "SourceTexture", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {::Diligent::SHADER_TYPE_PIXEL, "BloomConstants", ::Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
-    auto createPipeline = [&](const Render::ShaderSources& sources, const char* name, void*& pipelineSlot,
-                              void*& bindingSlot, void*& textureVariableSlot) {
+    // 单源翻译产物（D-004）：像素级直接消费 SPIR-V 字节码，全程 Load 无采样器。
+    auto createPipeline = [&](const Render::ShaderSources& sources, const char* spvName, const char* name,
+                              void*& pipelineSlot, void*& bindingSlot, void*& textureVariableSlot) {
         ::Diligent::ShaderCreateInfo shader{};
         shader.SourceLanguage = sources.Language;
         shader.EntryPoint = "main";
@@ -1342,10 +1347,25 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
         shader.Source = sources.Vertex;
         ::Diligent::IShader* vertex = nullptr;
         device->CreateShader(shader, &vertex);
-        shader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
-        shader.Source = sources.Fragment;
+        std::vector<char> pixelBytecode;
+        {
+            std::ifstream input{bundleResources_ + "/single/" + spvName, std::ios::binary | std::ios::ate};
+            if (input) {
+                pixelBytecode.resize(static_cast<std::size_t>(input.tellg()));
+                input.seekg(0);
+                input.read(pixelBytecode.data(), static_cast<std::streamsize>(pixelBytecode.size()));
+            }
+        }
         ::Diligent::IShader* fragment = nullptr;
-        device->CreateShader(shader, &fragment);
+        if (!pixelBytecode.empty()) {
+            ::Diligent::ShaderCreateInfo pixelShader{};
+            pixelShader.EntryPoint = "main";
+            pixelShader.Desc.ShaderType = ::Diligent::SHADER_TYPE_PIXEL;
+            pixelShader.Desc.Name = name;
+            pixelShader.ByteCode = pixelBytecode.data();
+            pixelShader.ByteCodeSize = pixelBytecode.size();
+            device->CreateShader(pixelShader, &fragment);
+        }
         if (vertex == nullptr || fragment == nullptr) {
             if (vertex != nullptr) vertex->Release();
             if (fragment != nullptr) fragment->Release();
@@ -1356,8 +1376,6 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
         pipeline.PSODesc.PipelineType = ::Diligent::PIPELINE_TYPE_GRAPHICS;
         pipeline.PSODesc.ResourceLayout.Variables = variables;
         pipeline.PSODesc.ResourceLayout.NumVariables = static_cast<::Diligent::Uint32>(std::size(variables));
-        pipeline.PSODesc.ResourceLayout.ImmutableSamplers = &immutableSampler;
-        pipeline.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
         pipeline.GraphicsPipeline.NumRenderTargets = 1;
         pipeline.GraphicsPipeline.RTVFormats[0] = ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
         pipeline.GraphicsPipeline.PrimitiveTopology = ::Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
@@ -1370,12 +1388,12 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
         vertex->Release();
         fragment->Release();
         if (state == nullptr) return false;
-        auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BlurCB");
+        auto* constants = state->GetStaticVariableByName(::Diligent::SHADER_TYPE_PIXEL, "BloomConstants");
         if (constants == nullptr) { state->Release(); return false; }
         constants->Set(static_cast<::Diligent::IBuffer*>(ResolveBuffer(bloomConstants_)));
         ::Diligent::IShaderResourceBinding* binding = nullptr;
         state->CreateShaderResourceBinding(&binding, true);
-        auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "g_Texture");
+        auto* texture = binding == nullptr ? nullptr : binding->GetVariableByName(::Diligent::SHADER_TYPE_PIXEL, "SourceTexture");
         if (binding == nullptr || texture == nullptr) {
             if (binding != nullptr) binding->Release();
             state->Release();
@@ -1386,10 +1404,10 @@ bool DiligentVulkanAdapter::CreateBloomPipelines(std::string& error) {
         textureVariableSlot = texture;
         return true;
     };
-    if (!createPipeline(Render::GetBloomDownsampleShaderSources(Render::Backend::Vulkan),
+    if (!createPipeline(Render::GetBloomDownsampleShaderSources(Render::Backend::Vulkan), "BloomDownsample.spv",
                         "ParticleSaturn Vulkan Bloom Downsample", bloomDownsamplePipeline_, bloomDownsampleBinding_,
                         bloomDownsampleTextureVariable_) ||
-        !createPipeline(Render::GetBloomBlurShaderSources(Render::Backend::Vulkan),
+        !createPipeline(Render::GetBloomBlurShaderSources(Render::Backend::Vulkan), "KawaseBlur.spv",
                         "ParticleSaturn Vulkan Bloom Blur", bloomBlurPipeline_, bloomBlurBinding_, bloomBlurTextureVariable_)) {
         error = "Diligent Vulkan could not create Bloom pipelines";
         return false;
