@@ -238,10 +238,8 @@ void LabeledRow(const char* label, const char* fmt, ...) {
 // 把 DiagnosticBus 的新记录并入调试日志，确保诊断在 Log 节可见。
 void SyncDiagnosticsToLog() {
     static std::chrono::system_clock::time_point lastSeen{};
-    const auto records = ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Snapshot();
+    const auto records = ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().SnapshotSince(lastSeen);
     for (const auto& record : records) {
-        if (record.timestamp <= lastSeen) continue;
-        lastSeen = record.timestamp;
         const auto level = record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error
             ? MD3::LogLevel::Error
             : record.severity == ParticleSaturn::Services::Diagnostics::Severity::Warning ? MD3::LogLevel::Warn
@@ -703,11 +701,10 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     }
 
     if (MD3::BeginCollapsingHeader("Diagnostics")) {
-        const auto records = ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Snapshot();
-        if (records.empty()) {
+        ParticleSaturn::Services::Diagnostics::Record record;
+        if (!ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().Latest(record)) {
             ImGui::TextDisabled("No diagnostics");
         } else {
-            const auto& record = records.back();
             const ImVec4 color = record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error
                 ? MD3::GetContext().colors.error : MD3::GetContext().colors.primary;
             ImGui::TextColored(color, "%s: %s", record.domain.c_str(), record.code.c_str());
