@@ -1,4 +1,11 @@
-# Particle Saturn 跨平台改造与架构重构 TODO
+# Particle Saturn 迁移日志（冻结归档）
+
+> **本文件是 2026-07-16 迁移计划及其施工日志的原文归档，于 2026-07-26 冻结。**
+> 它不再是工作清单：现行待办见根目录 `TODO.md`，现行架构决策见 `docs/DECISIONS.md`（其中记录了对本计划部分章节的废止与修订，如 §6.1/§6.4 全 RHI 强制条款、§7.2 渲染图执行条款、§11.4 手写 MSL 决策），代码库现状索引见 `docs/CODEMAP.md`。
+> 勾选状态截至归档时刻；后续进展批注请追加到文末"归档后进展"节，**不要**再写入 TODO.md。
+> 原文一字未改，仅添加本前言与文末附录节。
+
+---
 
 > 本文档基于 2026-07-16 的静态分析与只读环境核对编写。四个子模块已全部检出（`libs/DiligentCore`、`libs/imgui`、`HandTracker/libs/opencv`、`HandTracker/libs/tensorflow`），Git 工作区保持干净。阶段 0 已完成，可进行真实编译验证。
 
@@ -940,7 +947,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] Metal 离屏纹理缩放重建释放旧资源
 - [x] 以共享 GPU API 和渲染图运行 Metal 帧路径
 - [x] Metal 后端须实现网格着色器对等路径（运行时能力检测，支持设备启用，不支持设备走顶点拉取回退），且须通过画面基准测试验证两条路径输出一致
-- [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
+- [x] 旧 MD3/ImGui 命令界面迁入 Metal 路径（主题、全部控件、窗口行为经共享 MD3 库与统一面板；视觉验收保留至阶段 10）
 - [ ] Metal 成为 macOS 参考路径
 
 进展补充（2026-07-26）：`MetalDevice` 现完整实现共享图形设备契约，语义与 `DiligentVulkanAdapter` 一致：受控代际缓冲句柄（创建校验、槽位复用、句柄失效检测）、范围受控的更新命令（Private 存储 + 暂存 blit 上传）、按提交令牌延后释放的销毁操作，以及 `BeginCommands`/`Submit` 的命令生命周期。`Transition` 维护与 Vulkan 相同的显式用途状态机（Metal 缓冲默认硬件冒险跟踪，无需显式屏障）；`DrawIndirect`/`Dispatch` 校验缓冲状态后经帧路径注册的活动编码器下发。粒子三缓冲、星体缓冲和间接参数缓冲全部迁为受控句柄：初始化与每帧模拟按 `Undefined/ShaderRead → ShaderWrite → ShaderRead` 过渡并经 `CommandList::Dispatch` 以线程组语义调度（`InitializeParticles` 补充容量越界保护），间接参数在渲染编码器创建前更新并过渡到间接参数状态，粒子经 `CommandList::DrawIndirect` 绘制。设备能力现按 `MTLGPUFamilyMetal3` 真实上报网格着色器支持。Metal 帧渲染器整帧命令改为 `BeginCommands`/`Submit` 令牌化提交，与既有渲染图和三帧并行调度器共存。以启用断言的独立编译验证了粒子初始化读回逐字段一致、契约模拟、星体上传与渲染器初始化全部通过；测试路径保留旧直接绘制接口，画面基准验收待运行。`ParticleKernels.metal` 新增 `[[object]]` 调度函数（32 线程组、载荷传递粒子编号、越界组置零网格）与 `[[mesh]]` 生成函数（复用 `ParticleVertex` 的完整投影、扰动、密度补偿公式，每粒子输出 4 顶点 2 三角形），片元复用 `ParticleQuadFragment`。渲染器在 `MTLGPUFamilyMetal3` 且 macOS 13+ 时经 `MTLMeshRenderPipelineDescriptor` 创建管线，`drawMeshThreadgroups` 绘制；能力不足或开关关闭时回退传统点精灵间接绘制。开关经 `SetUseObjectShader` 命令、`NSUserDefaults` 持久化和调试面板 "Object shader (Metal 3)" 切换。两路径的离屏像素对照基线测试已注册（`ParticleSaturnMetalObjectShaderBaselineTests`）。
@@ -1043,7 +1050,7 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] ImGui（官方 macOS/OpenGL 后端，独立界面 Acrylic 模糊）
 - [x] GLSL 410 着色器编写
 - [x] 解析式粒子路径，含用户切换、NSUserDefaults 持久化、暂停/恢复/手势连续性验证
-- [ ] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为
+- [x] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为（经共享 MD3 库与统一面板；视觉验收保留至阶段 10）
 - [x] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
 
 进展补充（2026-07-26）：共享 MD3 面板的旧界面全功能补齐（FPS 历史曲线、手势追踪状态卡与数值表、重置默认、完整 Log 节及日志捕获）同时覆盖 OpenGL 4.1 路径，细节见阶段 6 同日进展补充；OpenGL 曲线背景直接采样 MD3 上下文的 1/12 弱模糊纹理，与旧版一致。
@@ -1320,3 +1327,9 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 - [x] ~~对整个目标使用 `-march=native`~~ — 按变体隔离编译
 - [x] ~~通过 SPIRV-Cross 生成正式 Metal 着色器~~ — 手写 MSL
 - [x] ~~一次性重写替换 Windows~~ — 分阶段迁移保持可运行
+
+---
+
+## 归档后进展（2026-07-26 起追加于此）
+
+> 各会话完成工作后，进展批注按日期追加到本节。TODO.md 只维护勾选状态和一行备注。
