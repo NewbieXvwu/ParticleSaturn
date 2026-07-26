@@ -86,7 +86,7 @@ struct RunAppConfig {
     SmokeConfig smoke;
     SmokeHarness& smokeHarness;
     StartupGeometry startup;
-    const char* panelTitle = "";          // MD3 面板抬头（如 "Metal"、adapter 名）
+    std::string panelTitle;               // MD3 面板抬头（按值持有：adapter 名在设备恢复时可能重建）
     bool panelSupportsAnalyticParticles = false;  // RenderMd3Panel 第四参（GL41 为 true）
     bool persistSettings = true;          // 冒烟/基线模式不读写用户设置
     bool cameraEnabled = true;            // Vulkan 帧数冒烟禁用相机

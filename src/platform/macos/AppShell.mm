@@ -249,8 +249,8 @@ int RunApp(RunAppConfig& config) {
                 [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
                 hooks.drawAcrylicBackground,
                 hooks.drawGraphAcrylic};
-            RenderMd3Panel(controller, config.panelTitle, fpsMeter.Value(), config.panelSupportsAnalyticParticles,
-                           callbacks, handStatus);
+            RenderMd3Panel(controller, config.panelTitle.c_str(), fpsMeter.Value(),
+                           config.panelSupportsAnalyticParticles, callbacks, handStatus);
         };
 
         const FrameContext context{mutableState, deltaTime, handTracked, gesture,
