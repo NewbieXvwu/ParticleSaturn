@@ -775,7 +775,7 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
         if ([nativeDevice supportsFamily:MTLGPUFamilyMetal3]) {
             id<MTLFunction> objectFunc = [library newFunctionWithName:@"ParticleObjectShader"];
             id<MTLFunction> meshFunc = [library newFunctionWithName:@"ParticleMeshShader"];
-            id<MTLFunction> fragFunc = [library newFunctionWithName:@"ParticleFragment"];
+            id<MTLFunction> fragFunc = [library newFunctionWithName:@"ParticleQuadFragment"];
             if (objectFunc != nil && meshFunc != nil && fragFunc != nil) {
                 MTLMeshRenderPipelineDescriptor* desc = [[MTLMeshRenderPipelineDescriptor alloc] init];
                 desc.objectFunction = objectFunc;
