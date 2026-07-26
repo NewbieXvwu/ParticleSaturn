@@ -62,7 +62,7 @@ target_include_directories(ParticleSaturn.macOS PRIVATE
     "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController" "-framework QuartzCore")
 target_compile_definitions(ParticleSaturn.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
-add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders)
+add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders ParticleSaturnSingleShaders)
 add_custom_target(ParticleSaturnMacOSMetalResource ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/metal/ParticleKernels.metallib"
@@ -158,6 +158,8 @@ add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/glsl410"
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/src/shaders/glsl410"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/glsl410"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/generated/single/ToneMap.gen.frag"
+        "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/glsl410/ToneMap.gen.frag"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
         "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources/palm_detection_full.tflite"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite"

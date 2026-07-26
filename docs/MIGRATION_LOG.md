@@ -1352,6 +1352,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 P3 试点 GL41 腿落地 + P4 对比模式首组数据
+
+GL41 tonemap 换装单源翻译产物并删手写 frag（D-005 同一提交）：构建期 `dxc -T ps_6_0 -spirv` → `spirv-cross --version 410` 产出 `build/generated/single/ToneMap.gen.frag` 注入 bundle；OpenGLToneMapper 改 std140 UBO（binding 0，16 字节）+ 组合采样器。**量化验收**：替换前后逐像素 mean=0.000005 / mismatch=0.000000（等值）；视觉基线与 GL41 冒烟通过。工具作为构建前置 REQUIRED（scripts/build_dxc_macos.sh 可复现 DXC 安装）。**对比模式首组实测**（Metal 参考）：GL41 mean 1.737 / mismatch 3.17%；MoltenVK mean 1.176 / mismatch 0.36%——GL 路径差异约为 Vulkan 的 9 倍失配，首个可信跨路径信号。
+
 ### 2026-07-26 P3 试点：工具链就位与首次翻译成功
 
 DXC 从官方源码构建完成并持久安装到 `~/.local/opt/dxc/{bin,lib}`（版本 1.10/SM 支持齐全；官方不发 macOS 二进制、brew 无公式，源码构建是最可信供应链）；spirv-cross 经 brew。`ToneMap.hlsl -T ps_6_0 -spirv` → `spirv-cross --version 410 --no-420pack-extension` 产出合法 GLSL410（std140 UBO `type_ToneMapConstants`、组合哑采样器 `SPIRV_Cross_Combined{Scene,Bloom}TextureSPIRV_Cross_DummySampler`、纯 texelFetch、无顶点接口需求——现有 FullscreenTriangle.vert 直接可用，多余 vTexCoord 输出合法悬空）；`--msl --msl-version 20000` 产出 fragment main0（[[texture(0/1)]] [[buffer(0)]]）。**GL41 接线要点**：程序=FullscreenTriangle.vert+生成 frag；UBO 16 字节 {BloomStrength,Transparent,pad2} 绑 binding 0（glUniformBlockBinding+glBindBufferBase）；两个组合采样器 glUniform1i 到单元 0/1（与现 Apply 的纹理单元一致）；Present.frag 不在本次范围。验收=视觉基线逐像素 + 对比模式度量，绿后同一提交删手写 ToneMap.frag（D-005）。

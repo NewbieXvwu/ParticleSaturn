@@ -43,7 +43,7 @@
 ## P3 着色器单源试点（D-004）
 
 - [x] 工具链已拍板（2026-07-26，用户决定）：**DXC + SPIRV-Cross**，Slang 废止——决议记录于 D-004
-- [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径
+- [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径——**GL41 腿已完成**（2026-07-26）：`src/shaders/single/ToneMap.hlsl` 经构建期 DXC→SPIRV-Cross 产 `ToneMap.gen.frag`，GL41 换装（UBO+组合采样器）并同一提交删手写 frag；**量化**：替换前后 mean=0.000005、失配=0（逐像素等值），视觉基线/冒烟全过。余下：Vulkan 腿（换 SPIR-V 字节码）、Metal 腿（compute→fragment 改造）
 - [ ] 用对比模式（P4）量化替换前后差异，通过后推广 bloom → 星空 → 粒子渲染
 - [ ] 声明分歧登记：Metal object/mesh shader 保持手写 MSL（能力表记录）
 - [ ] 完成后更新 MIGRATION_LOG §11 相关描述与 CODEMAP

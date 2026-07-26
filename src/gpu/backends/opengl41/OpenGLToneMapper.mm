@@ -59,17 +59,22 @@ bool OpenGLToneMapper::Initialize(const char* shaderDirectory) {
     if (shaderDirectory == nullptr) return false;
     const std::filesystem::path directory{shaderDirectory};
     const std::string vertexSource = ReadFile(directory / "FullscreenTriangle.vert");
-    const std::string fragmentSource = ReadFile(directory / "ToneMap.frag");
+    // 单源翻译产物（D-004 试点）：DXC→SPIR-V→SPIRV-Cross 生成，构建期产出。
+    const std::string fragmentSource = ReadFile(directory / "ToneMap.gen.frag");
     const std::string presentFragmentSource = ReadFile(directory / "Present.frag");
     program_ = LinkProgram(vertexSource, fragmentSource);
     presentProgram_ = LinkProgram(vertexSource, presentFragmentSource);
     if (program_ != 0 && presentProgram_ != 0) {
-        sceneLocation_ = glGetUniformLocation(program_, "uScene");
-        bloomLocation_ = glGetUniformLocation(program_, "uBloom");
-        bloomStrengthLocation_ = glGetUniformLocation(program_, "uBloomStrength");
-        transparentLocation_ = glGetUniformLocation(program_, "uTransparent");
+        sceneLocation_ = glGetUniformLocation(program_, "SPIRV_Cross_CombinedSceneTextureSPIRV_Cross_DummySampler");
+        bloomLocation_ = glGetUniformLocation(program_, "SPIRV_Cross_CombinedBloomTextureSPIRV_Cross_DummySampler");
         presentSceneLocation_ = glGetUniformLocation(presentProgram_, "uScene");
-        return true;
+        const GLuint blockIndex = glGetUniformBlockIndex(program_, "type_ToneMapConstants");
+        if (blockIndex == GL_INVALID_INDEX) return false;
+        glUniformBlockBinding(program_, blockIndex, 0);
+        glGenBuffers(1, &constantsBuffer_);
+        glBindBuffer(GL_UNIFORM_BUFFER, constantsBuffer_);
+        glBufferData(GL_UNIFORM_BUFFER, 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        return glGetError() == GL_NO_ERROR;
     }
     if (program_ != 0) glDeleteProgram(program_);
     if (presentProgram_ != 0) glDeleteProgram(presentProgram_);
@@ -88,8 +93,10 @@ bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStre
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, targets.BloomPingPongTexture());
     glUniform1i(bloomLocation_, 1);
-    glUniform1f(bloomStrengthLocation_, std::max(0.0f, bloomStrength));
-    glUniform1f(transparentLocation_, transparent ? 1.0f : 0.0f);
+    const float constants[4] = {std::max(0.0f, bloomStrength), transparent ? 1.0f : 0.0f, 0.0f, 0.0f};
+    glBindBuffer(GL_UNIFORM_BUFFER, constantsBuffer_);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(constants), constants);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, constantsBuffer_);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return glGetError() == GL_NO_ERROR;
 }
