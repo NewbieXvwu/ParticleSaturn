@@ -11,6 +11,9 @@ on:
       - 'scripts/build_opencv.cmd'
       - 'patches/tflite-prune.patch'
       - 'patches/tflite-elementwise-compat.patch'
+      - 'patches/imgui-md3.patch'
+      - 'scripts/apply_third_party_patch.cmake'
+      - 'scripts/apply_third_party_patch.sh'
       - 'HandTracker/libs/tensorflow/tensorflow/lite/**'
       - 'HandTracker/libs/opencv/modules/core/**'
 

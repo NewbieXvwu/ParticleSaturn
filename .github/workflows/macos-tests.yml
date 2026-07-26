@@ -21,8 +21,9 @@ jobs:
       # unit 层测试目标不链接 DiligentCore，故只需源码存在，无需编译它。
       - name: Fetch required submodules
         run: |
-          git submodule update --init --depth 1 libs/imgui
-          git submodule update --init --recursive --depth 1 libs/DiligentCore
+          # 浅取回退全量：钉住的子模块提交可能不在远端分支尖端的广告范围内。
+          git submodule update --init --depth 1 libs/imgui || git submodule update --init libs/imgui
+          git submodule update --init --recursive --depth 1 libs/DiligentCore || git submodule update --init --recursive libs/DiligentCore
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -42,7 +43,6 @@ jobs:
           ParticleSaturnNSUserDefaultsStoreTests
           ParticleSaturnAVFoundationCameraErrorTests
           ParticleSaturnHandTrackingWorkerTests
-          ParticleSaturnVulkanRuntimeTests
 
       - name: Run unit tests
         run: ctest --test-dir build -L unit --output-on-failure

@@ -252,10 +252,23 @@ endif()
 # Release 构建下依然生效（-UNDEBUG 位于 CMAKE_<LANG>_FLAGS_RELEASE 的 -DNDEBUG
 # 之后，后者被覆盖）。按目录树自动扫描，新增测试目标无需手动登记；libs/ 下的
 # 第三方目标不受影响（D-007）。防复发哨兵见 tests/AssertSentinelTests。
-# 注意：必须位于下方 legacy 段的早退 return() 之前，且在全部 add_subdirectory 之后。
+# 经 cmake_language(DEFER) 在顶层目录处理完毕后执行——位置无关，晚注册的
+# 目标/测试同样被覆盖，legacy 段的早退 return() 也不影响。
 if(BUILD_TESTING)
+    # 只排除本仓库的 libs/ 第三方子树；用前缀比较而非子串匹配，
+    # 避免检出路径本身含 "libs" 时整棵树被误排除。
+    function(particlesaturn_is_third_party dir out_var)
+        string(FIND "${dir}" "${CMAKE_SOURCE_DIR}/libs/" _libs_pos)
+        if(_libs_pos EQUAL 0)
+            set(${out_var} TRUE PARENT_SCOPE)
+        else()
+            set(${out_var} FALSE PARENT_SCOPE)
+        endif()
+    endfunction()
+
     function(particlesaturn_enable_test_asserts dir)
-        if(dir MATCHES "/libs/")
+        particlesaturn_is_third_party("${dir}" _third_party)
+        if(_third_party)
             return()
         endif()
         get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
@@ -274,12 +287,15 @@ if(BUILD_TESTING)
             particlesaturn_enable_test_asserts("${_subdir}")
         endforeach()
     endfunction()
-    particlesaturn_enable_test_asserts("${CMAKE_CURRENT_SOURCE_DIR}")
+    cmake_language(DEFER CALL particlesaturn_enable_test_asserts "${CMAKE_CURRENT_SOURCE_DIR}")
 
-    # 分层强制（D-008）：每个测试必须声明 LABELS（unit=无 GPU / gpu=需设备 /
-    # app=整机 smoke），否则配置失败——新增测试不得静默游离在 CI 分层之外。
+    # 分层强制（D-008）：每个测试必须声明 LABELS 且取值限于 unit/gpu/app，
+    # 否则配置失败——新增测试不得静默游离在 CI 分层之外。
+    # get_property(TEST ... DIRECTORY) 需要 CMake ≥3.28；旧版本跳过这道守卫
+    # （项目仍可配置，只是失去防线）。
     function(particlesaturn_require_test_labels dir)
-        if(dir MATCHES "/libs/")
+        particlesaturn_is_third_party("${dir}" _third_party)
+        if(_third_party)
             return()
         endif()
         get_property(_tests DIRECTORY "${dir}" PROPERTY TESTS)
@@ -288,13 +304,20 @@ if(BUILD_TESTING)
             if(NOT _labels)
                 message(FATAL_ERROR "测试 ${_test} 未声明 LABELS（unit/gpu/app 三选一，D-008）")
             endif()
+            foreach(_label IN LISTS _labels)
+                if(NOT _label MATCHES "^(unit|gpu|app)$")
+                    message(FATAL_ERROR "测试 ${_test} 的 LABELS 含未知层级 '${_label}'（只允许 unit/gpu/app，D-008）")
+                endif()
+            endforeach()
         endforeach()
         get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
         foreach(_subdir IN LISTS _subdirs)
             particlesaturn_require_test_labels("${_subdir}")
         endforeach()
     endfunction()
-    particlesaturn_require_test_labels("${CMAKE_CURRENT_SOURCE_DIR}")
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+        cmake_language(DEFER CALL particlesaturn_require_test_labels "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
 endif()
 
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})

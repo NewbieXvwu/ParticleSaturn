@@ -10,6 +10,7 @@
 @interface ParticleSaturnCocoaHostDelegate : NSObject<NSWindowDelegate> {
 @public ParticleSaturn::Platform::MacOS::CocoaHost* owner;
 }
+- (void)quitApplication:(id)sender;
 - (void)toggleDebugWindow:(id)sender;
 - (void)toggleFullscreen:(id)sender;
 - (void)toggleBlur:(id)sender;
@@ -18,6 +19,9 @@
 @end
 
 @implementation ParticleSaturnCocoaHostDelegate
+// Cmd+Q 走 RequestExit：运行循环正常结束，main 尾部的设置保存与清理得以执行
+// （terminate: 以退出码 0 直接杀进程，会丢失面板改动）。
+- (void)quitApplication:(id)sender { (void)sender; if (owner != nullptr) owner->RequestExit(); }
 - (void)windowWillClose:(NSNotification*)notification {
     (void)notification;
     if (owner != nullptr) owner->RequestExit();
@@ -56,7 +60,7 @@ static void InstallApplicationMenu(ParticleSaturnCocoaHostDelegate* target) {
     auto* mainMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
     auto* appItem = [[NSMenuItem alloc] initWithTitle:@"Particle Saturn" action:nil keyEquivalent:@""];
     auto* appMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
-    AddMenuAction(appMenu, @"Quit Particle Saturn", @selector(terminate:), NSApp, @"q");
+    AddMenuAction(appMenu, @"Quit Particle Saturn", @selector(quitApplication:), target, @"q");
     [appItem setSubmenu:appMenu]; [appMenu release]; [mainMenu addItem:appItem]; [appItem release];
     auto* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
     auto* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];

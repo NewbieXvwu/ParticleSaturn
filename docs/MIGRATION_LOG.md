@@ -1352,6 +1352,20 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 多智能体代码审查与修复（P0 系列提交的 xhigh 审查）
+
+对 P0 五个提交跑了 33-agent 工作流审查（30 项验证发现收敛 17 项缺陷），已修复：
+- get_property(TEST … DIRECTORY) 是 CMake ≥3.28 特性而项目声明 3.19——标签守卫加版本门（旧版跳过守卫仍可配置）；
+- 两个清扫函数的 "/libs/" 子串匹配未锚定——检出路径含 libs 会整树误排除，改 CMAKE_SOURCE_DIR 前缀比较；
+- 清扫改 cmake_language(DEFER) 执行，消除"必须写在文件特定位置"的脆弱性；
+- 标签词表校验：LABELS 取值限 unit/gpu/app，拼错即配置失败；
+- VulkanRuntimeTests 依赖打包 bundle 的 Vulkan loader/ICD，从 unit 改 gpu 并移出 CI 构建列表（否则 CI 首跑即红）；
+- Vulkan 交换链 resize 失败路径补 runtimeFailed 置位（原退出码 0）；
+- 两处 Cmd+Q 菜单从 terminate: 改走 RequestExit/StopRunLoop（终结"Cmd+Q 丢面板设置"的不一致持久化）；
+- macos-tests.yml 子模块浅取加全量回退（钉住提交可能不在分支尖端广告范围）；
+- release.yml 触发路径补 imgui-md3.patch 与 apply 脚本。
+**有意不修**：4 个 FullscreenRestore 红测试不隔离不禁用——验收铁律反掩盖，等真人复核；[NSApp stop:] 对嵌套模态循环无效属已接受风险（本应用无 AppKit 模态）；app 层属性的 16 处重复登记与 CI 目标清单硬编码留作后续清理。审查中 2 项（标记串分散、stderr/DiagnosticBus 不统一）已被随后的 SmokeHarness/AppShell 工作顺带解决。
+
 ### 2026-07-26 三 main 合并到 AppShell::RunApp（TODO P1 第 1/3 项，D-002/D-009，AUDIT P2-2）
 
 `src/platform/macos/AppShell.{h,mm}`：唯一应用外壳 RunApp + 宿主抽象 AppHost（CocoaAppHost 直通 CocoaHost；GL41 以 OpenGLAppHost 包装自建 NSOpenGL 窗口栈，材质/全屏行为零改动）+ 共享帧描述 FrameContext（含 drawPanel 回调：外壳出面板内容与回调，后端在自己的 ImGui 帧内补 acrylic 纹理钩子）。外壳独占：相机/手势装配、动作分发、帧推进与共享 FpsMeter、手势状态上报、材质/垂直同步应用、窗口状态镜像、冒烟 tick、设置持久化、退出码。三个 main 缩为后端构造 + renderFrame 闭包：Metal 413→242 行，Vulkan 450→271（交互冒烟经 preRun 钩子、重启冒烟保持原位、设备丢失恢复在闭包内），GL41 602→516（观察者改为转发 NativeFullscreenEntered/Exited 动作，按键监视器与菜单统一转发 HostAction）。

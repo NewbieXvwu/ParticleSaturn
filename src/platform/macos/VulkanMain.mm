@@ -191,6 +191,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             if (frame.drawableSize.width != drawableSize.width || frame.drawableSize.height != drawableSize.height) {
                 if (!adapter.ResizeSwapChain(frame.drawableSize.width, frame.drawableSize.height)) {
                     ReportStartupFailure("resize", "Vulkan swap chain resize failed");
+                    runtimeFailed = true;
                     host.RequestExit();
                     return false;
                 }

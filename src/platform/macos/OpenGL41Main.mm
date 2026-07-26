@@ -44,6 +44,7 @@
 @interface ParticleSaturnOpenGLMenuTarget : NSObject {
 @public std::function<void(ParticleSaturn::Platform::MacOS::HostAction)> action;
 }
+- (void)quitApplication:(id)sender;
 - (void)toggleDebugWindow:(id)sender;
 - (void)toggleFullscreen:(id)sender;
 - (void)toggleBlur:(id)sender;
@@ -52,6 +53,8 @@
 @end
 
 @implementation ParticleSaturnOpenGLMenuTarget
+// Cmd+Q 停运行循环而非 terminate:，让 main 尾部的清理与退出码传播执行。
+- (void)quitApplication:(id)sender { (void)sender; ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }
 - (void)toggleDebugWindow:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow); }
 - (void)toggleFullscreen:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen); }
 - (void)toggleBlur:(id)sender { (void)sender; action(ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur); }
@@ -72,7 +75,7 @@ void InstallOpenGLApplicationMenu(ParticleSaturnOpenGLMenuTarget* target) {
     auto* mainMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
     auto* appItem = [[NSMenuItem alloc] initWithTitle:@"Particle Saturn" action:nil keyEquivalent:@""];
     auto* appMenu = [[NSMenu alloc] initWithTitle:@"Particle Saturn"];
-    AddOpenGLMenuAction(appMenu, @"Quit Particle Saturn", @selector(terminate:), NSApp, @"q");
+    AddOpenGLMenuAction(appMenu, @"Quit Particle Saturn", @selector(quitApplication:), target, @"q");
     [appItem setSubmenu:appMenu]; [appMenu release]; [mainMenu addItem:appItem]; [appItem release];
     auto* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
     auto* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
