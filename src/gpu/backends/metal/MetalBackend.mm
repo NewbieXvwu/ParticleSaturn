@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 namespace ParticleSaturn::Gpu::Metal {
@@ -31,11 +32,15 @@ bool MetalDevice::Initialize() {
     }
     commandQueue_ = [(id<MTLDevice>)device_ newCommandQueue];
     if (commandQueue_ == nullptr) return false;
+    bool meshShaders = false;
+    if (@available(macOS 13.0, *)) {
+        meshShaders = [(id<MTLDevice>)device_ supportsFamily:MTLGPUFamilyMetal3];
+    }
     capabilities_ = {
         true,
         true,
         true,
-        false,
+        meshShaders,
         true,
         true,
         true,
@@ -45,6 +50,13 @@ bool MetalDevice::Initialize() {
 }
 
 MetalDevice::~MetalDevice() {
+    for (auto& entry : buffers_) {
+        if (entry.buffer != nullptr) {
+            [(id<MTLBuffer>)entry.buffer release];
+            entry.buffer = nullptr;
+        }
+    }
+    [(id<MTLCommandBuffer>)commandBuffer_ release];
     [(id<MTLCommandQueue>)commandQueue_ release];
     [(id<MTLDevice>)device_ release];
 }
@@ -59,6 +71,215 @@ void* MetalDevice::NativeDevice() const noexcept {
 
 void* MetalDevice::NativeCommandQueue() const noexcept {
     return commandQueue_;
+}
+
+std::string_view MetalDevice::Name() const noexcept {
+    return "Metal";
+}
+
+BufferHandle MetalDevice::CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) {
+    if (device_ == nullptr) throw std::logic_error{"the Metal device is not initialized"};
+    if (desc.size == 0) throw std::invalid_argument{"buffer size must be non-zero"};
+    if (initialData.size() > desc.size) throw std::invalid_argument{"initial buffer data exceeds buffer size"};
+    if (HasUsage(desc.usage, BufferUsage::Storage) &&
+        (desc.elementStride == 0 || desc.size % desc.elementStride != 0)) {
+        throw std::invalid_argument{"a storage buffer requires a non-zero element stride that divides its size"};
+    }
+
+    id<MTLBuffer> nativeBuffer = [(id<MTLDevice>)device_ newBufferWithLength:desc.size
+                                                                     options:MTLResourceStorageModePrivate];
+    if (nativeBuffer == nil) throw std::runtime_error{"Metal could not create a buffer"};
+    if (!initialData.empty()) {
+        id<MTLBuffer> staging = [(id<MTLDevice>)device_ newBufferWithBytes:initialData.data()
+                                                                    length:initialData.size()
+                                                                   options:MTLResourceStorageModeShared];
+        if (staging == nil) {
+            [nativeBuffer release];
+            throw std::runtime_error{"Metal could not create an upload buffer"};
+        }
+        id<MTLCommandBuffer> upload = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+        id<MTLBlitCommandEncoder> blit = [upload blitCommandEncoder];
+        [blit copyFromBuffer:staging sourceOffset:0 toBuffer:nativeBuffer destinationOffset:0
+                        size:initialData.size()];
+        [blit endEncoding];
+        [upload commit];
+        [upload waitUntilCompleted];
+        const bool uploaded = [upload status] == MTLCommandBufferStatusCompleted;
+        [staging release];
+        if (!uploaded) {
+            [nativeBuffer release];
+            throw std::runtime_error{"Metal could not upload initial buffer data"};
+        }
+    }
+
+    for (std::uint32_t index = 0; index < buffers_.size(); ++index) {
+        auto& entry = buffers_[index];
+        if (entry.buffer == nullptr && !entry.pendingRelease) {
+            entry.buffer = nativeBuffer;
+            entry.size = desc.size;
+            entry.usage = ResourceUsage::Undefined;
+            entry.retireAfter = 0;
+            return {index, entry.generation};
+        }
+    }
+    buffers_.push_back({nativeBuffer, desc.size, 1, ResourceUsage::Undefined, 0, false});
+    return {static_cast<std::uint32_t>(buffers_.size() - 1), 1};
+}
+
+void MetalDevice::UpdateBuffer(BufferHandle buffer, std::size_t offset, std::span<const std::byte> data) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before updating a buffer"};
+    if (activeComputeEncoder_ != nullptr || activeRenderEncoder_ != nullptr) {
+        throw std::logic_error{"Metal buffer updates require no active encoder"};
+    }
+    id<MTLBuffer> nativeBuffer = (id<MTLBuffer>)ResolveBuffer(buffer);
+    auto& entry = buffers_[buffer.index];
+    if (data.empty() || offset > entry.size || data.size() > entry.size - offset) {
+        throw std::out_of_range{"buffer update range is invalid"};
+    }
+    id<MTLBuffer> staging = [(id<MTLDevice>)device_ newBufferWithBytes:data.data() length:data.size()
+                                                               options:MTLResourceStorageModeShared];
+    if (staging == nil) throw std::runtime_error{"Metal could not create an upload buffer"};
+    id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer_ blitCommandEncoder];
+    [blit copyFromBuffer:staging sourceOffset:0 toBuffer:nativeBuffer destinationOffset:offset size:data.size()];
+    [blit endEncoding];
+    // 命令缓冲持有暂存缓冲引用直到执行完成，这里可以立即放弃所有权。
+    [staging release];
+    entry.usage = ResourceUsage::CopyDestination;
+}
+
+void MetalDevice::DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) {
+    if (!buffer || buffer.index >= buffers_.size()) {
+        throw std::out_of_range{"buffer handle does not belong to the Metal device"};
+    }
+    auto& entry = buffers_[buffer.index];
+    if (entry.buffer == nullptr || entry.pendingRelease || entry.generation != buffer.generation) {
+        throw std::logic_error{"buffer handle is stale or already scheduled for release"};
+    }
+    entry.pendingRelease = true;
+    entry.retireAfter = afterFrame.value;
+    ++entry.generation;
+    if (entry.generation == 0) entry.generation = 1;
+    ReleaseRetiredBuffers();
+}
+
+Gpu::CommandList& MetalDevice::BeginCommands() {
+    if (device_ == nullptr || commandQueue_ == nullptr) throw std::logic_error{"the Metal device is not initialized"};
+    if (commandsOpen_) throw std::logic_error{"a Metal command list is already open"};
+    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+    if (commandBuffer == nil) throw std::runtime_error{"Metal could not create a command buffer"};
+    commandBuffer_ = [commandBuffer retain];
+    commandsOpen_ = true;
+    return *this;
+}
+
+FrameToken MetalDevice::Submit(Gpu::CommandList& commands) {
+    if (&commands != static_cast<Gpu::CommandList*>(this) || !commandsOpen_) {
+        throw std::invalid_argument{"command list does not belong to the Metal device"};
+    }
+    id<MTLCommandBuffer> commandBuffer = (id<MTLCommandBuffer>)commandBuffer_;
+    [commandBuffer commit];
+    [commandBuffer release];
+    commandBuffer_ = nullptr;
+    commandsOpen_ = false;
+    ClearActiveEncoders();
+    ++submissionValue_;
+    ReleaseRetiredBuffers();
+    return {submissionValue_};
+}
+
+void* MetalDevice::NativeCommandBuffer() const noexcept {
+    return commandBuffer_;
+}
+
+bool MetalDevice::CommandsOpen() const noexcept {
+    return commandsOpen_;
+}
+
+void* MetalDevice::ResolveBufferNative(BufferHandle buffer) const {
+    return ResolveBuffer(buffer);
+}
+
+void MetalDevice::SetActiveComputeEncoder(void* encoder, std::uint32_t threadsPerThreadgroup) noexcept {
+    activeComputeEncoder_ = encoder;
+    activeThreadsPerThreadgroup_ = std::max(1U, threadsPerThreadgroup);
+}
+
+void MetalDevice::SetActiveRenderEncoder(void* encoder, std::uint32_t primitiveType) noexcept {
+    activeRenderEncoder_ = encoder;
+    activePrimitiveType_ = primitiveType;
+}
+
+void MetalDevice::ClearActiveEncoders() noexcept {
+    activeComputeEncoder_ = nullptr;
+    activeThreadsPerThreadgroup_ = 0;
+    activeRenderEncoder_ = nullptr;
+    activePrimitiveType_ = 0;
+}
+
+void MetalDevice::Transition(BufferHandle buffer, ResourceUsage before, ResourceUsage after) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before recording a resource transition"};
+    (void)ResolveBuffer(buffer);
+    auto& entry = buffers_[buffer.index];
+    if (entry.usage != before) throw std::logic_error{"buffer transition does not match the tracked resource state"};
+    // Metal 缓冲默认启用硬件冒险跟踪，这里只推进契约状态机。
+    entry.usage = after;
+}
+
+void MetalDevice::Transition(TextureHandle, ResourceUsage, ResourceUsage) {
+    throw std::logic_error{"Metal texture transitions are not available through the shared device yet"};
+}
+
+void MetalDevice::DrawIndirect(BufferHandle arguments, std::size_t offset) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before recording an indirect draw"};
+    if (offset % sizeof(std::uint32_t) != 0) {
+        throw std::invalid_argument{"indirect draw offset must be aligned to 4 bytes"};
+    }
+    id<MTLBuffer> nativeBuffer = (id<MTLBuffer>)ResolveBuffer(arguments);
+    if (buffers_[arguments.index].usage != ResourceUsage::IndirectArgument) {
+        throw std::logic_error{"indirect draw arguments must be transitioned to the indirect-argument state"};
+    }
+    if (activeRenderEncoder_ == nullptr) {
+        throw std::logic_error{"an active render encoder is required for Metal indirect draws"};
+    }
+    [(id<MTLRenderCommandEncoder>)activeRenderEncoder_ drawPrimitives:(MTLPrimitiveType)activePrimitiveType_
+                                                       indirectBuffer:nativeBuffer
+                                                 indirectBufferOffset:offset];
+}
+
+void MetalDevice::Dispatch(std::uint32_t groupsX, std::uint32_t groupsY, std::uint32_t groupsZ) {
+    if (!commandsOpen_) throw std::logic_error{"begin commands before recording a dispatch"};
+    if (groupsX == 0 || groupsY == 0 || groupsZ == 0) throw std::invalid_argument{"dispatch group counts must be non-zero"};
+    if (activeComputeEncoder_ == nullptr) {
+        throw std::logic_error{"an active compute encoder is required for Metal dispatches"};
+    }
+    [(id<MTLComputeCommandEncoder>)activeComputeEncoder_
+        dispatchThreadgroups:MTLSizeMake(groupsX, groupsY, groupsZ)
+       threadsPerThreadgroup:MTLSizeMake(activeThreadsPerThreadgroup_, 1, 1)];
+}
+
+void* MetalDevice::ResolveBuffer(BufferHandle buffer) const {
+    if (!buffer || buffer.index >= buffers_.size()) {
+        throw std::out_of_range{"buffer handle does not belong to the Metal device"};
+    }
+    const auto& entry = buffers_[buffer.index];
+    if (entry.buffer == nullptr || entry.pendingRelease || entry.generation != buffer.generation) {
+        throw std::logic_error{"buffer handle is stale or already scheduled for release"};
+    }
+    return entry.buffer;
+}
+
+void MetalDevice::ReleaseRetiredBuffers() noexcept {
+    for (auto& entry : buffers_) {
+        if (entry.pendingRelease && entry.retireAfter <= submissionValue_) {
+            // 已提交的命令缓冲持有自己的引用，这里释放契约层所有权即可。
+            [(id<MTLBuffer>)entry.buffer release];
+            entry.buffer = nullptr;
+            entry.size = 0;
+            entry.usage = ResourceUsage::Undefined;
+            entry.retireAfter = 0;
+            entry.pendingRelease = false;
+        }
+    }
 }
 
 MetalSurface::MetalSurface(MetalDevice& device, void* nativeLayer) : device_{device}, layer_{nativeLayer} {
@@ -247,54 +468,89 @@ bool MetalParticleSystem::Initialize(MetalDevice& device, const char* libraryPat
     simulationPipeline_ = CreateComputePipeline(library, @"SimulateParticles");
     [library release];
     if (initializePipeline_ == nil || simulationPipeline_ == nil) return false;
+    device_ = &device;
     commandQueue_ = device.NativeCommandQueue();
-    for (auto& buffer : buffers_) {
-        buffer = [nativeDevice newBufferWithLength:ParticleCount * ParticleSize options:MTLResourceStorageModePrivate];
-        if (buffer == nil) return false;
+    try {
+        const Gpu::BufferDesc bufferDesc{ParticleCount * ParticleSize, ParticleSize,
+                                         Gpu::BufferUsage::Storage | Gpu::BufferUsage::CopySource |
+                                             Gpu::BufferUsage::CopyDestination};
+        for (std::size_t index = 0; index < 3; ++index) {
+            bufferHandles_[index] = device.CreateBuffer(bufferDesc, {});
+            buffers_[index] = device.ResolveBufferNative(bufferHandles_[index]);
+        }
+        auto& commands = device.BeginCommands();
+        id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandBuffer>)device.NativeCommandBuffer() retain];
+        id<MTLComputePipelineState> pipeline = (id<MTLComputePipelineState>)initializePipeline_;
+        const auto threadsPerThreadgroup = static_cast<std::uint32_t>([pipeline threadExecutionWidth]);
+        const std::uint32_t groups = (ParticleCount + threadsPerThreadgroup - 1U) / threadsPerThreadgroup;
+        constexpr std::uint32_t capacity = ParticleCount;
+        for (std::size_t index = 0; index < 3; ++index) {
+            commands.Transition(bufferHandles_[index], ResourceUsage::Undefined, ResourceUsage::ShaderWrite);
+            id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+            [encoder setComputePipelineState:pipeline];
+            [encoder setBuffer:(id<MTLBuffer>)buffers_[index] offset:0 atIndex:0];
+            [encoder setBytes:&seed length:sizeof(seed) atIndex:1];
+            [encoder setBytes:&capacity length:sizeof(capacity) atIndex:2];
+            device.SetActiveComputeEncoder(encoder, threadsPerThreadgroup);
+            commands.Dispatch(groups, 1, 1);
+            device.ClearActiveEncoders();
+            [encoder endEncoding];
+            commands.Transition(bufferHandles_[index], ResourceUsage::ShaderWrite, ResourceUsage::ShaderRead);
+        }
+        device.Submit(commands);
+        [commandBuffer waitUntilCompleted];
+        const bool completed = [commandBuffer status] == MTLCommandBufferStatusCompleted;
+        [commandBuffer release];
+        return completed;
+    } catch (const std::exception&) {
+        return false;
     }
-    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
-    for (void* buffer : buffers_) {
-        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
-        [encoder setComputePipelineState:(id<MTLComputePipelineState>)initializePipeline_];
-        [encoder setBuffer:(id<MTLBuffer>)buffer offset:0 atIndex:0];
-        [encoder setBytes:&seed length:sizeof(seed) atIndex:1];
-        Dispatch(encoder, (id<MTLComputePipelineState>)initializePipeline_, ParticleCount);
-        [encoder endEncoding];
-    }
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    return [commandBuffer status] == MTLCommandBufferStatusCompleted;
 }
 
 bool MetalParticleSystem::Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount) {
-    if (commandQueue_ == nil) return false;
-    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandQueue>)commandQueue_ commandBuffer];
+    if (device_ == nullptr) return false;
     const auto renderIndex = renderIndex_;
     const auto readIndex = readIndex_;
     const auto writeIndex = writeIndex_;
-    if (!EncodeSimulation(commandBuffer, deltaTime, handScale, handTracked, particleCount)) return false;
-    [commandBuffer commit];
+    auto& commands = device_->BeginCommands();
+    id<MTLCommandBuffer> commandBuffer = [(id<MTLCommandBuffer>)device_->NativeCommandBuffer() retain];
+    const bool encoded = EncodeSimulation(commands, deltaTime, handScale, handTracked, particleCount);
+    device_->Submit(commands);
+    if (!encoded) {
+        [commandBuffer release];
+        return false;
+    }
     [commandBuffer waitUntilCompleted];
-    if ([commandBuffer status] == MTLCommandBufferStatusCompleted) return true;
+    const bool completed = [commandBuffer status] == MTLCommandBufferStatusCompleted;
+    [commandBuffer release];
+    if (completed) return true;
     renderIndex_ = renderIndex;
     readIndex_ = readIndex;
     writeIndex_ = writeIndex;
     return false;
 }
 
-bool MetalParticleSystem::EncodeSimulation(void* nativeCommandBuffer, float deltaTime, float handScale, bool handTracked,
-                                           std::uint32_t particleCount) {
-    if (nativeCommandBuffer == nullptr || commandQueue_ == nil) return false;
+bool MetalParticleSystem::EncodeSimulation(Gpu::CommandList& commands, float deltaTime, float handScale,
+                                           bool handTracked, std::uint32_t particleCount) {
+    if (device_ == nullptr || !device_->CommandsOpen()) return false;
+    id<MTLCommandBuffer> commandBuffer = (id<MTLCommandBuffer>)device_->NativeCommandBuffer();
+    if (commandBuffer == nil) return false;
     const SimulationConstants constants{deltaTime, handScale, handTracked ? 1.0f : 0.0f,
                                         std::clamp(particleCount, 1U, ParticleCount)};
-    id<MTLCommandBuffer> commandBuffer = (id<MTLCommandBuffer>)nativeCommandBuffer;
+    id<MTLComputePipelineState> pipeline = (id<MTLComputePipelineState>)simulationPipeline_;
+    const auto threadsPerThreadgroup = static_cast<std::uint32_t>([pipeline threadExecutionWidth]);
+    const std::uint32_t groups = (ParticleCount + threadsPerThreadgroup - 1U) / threadsPerThreadgroup;
+    commands.Transition(bufferHandles_[writeIndex_], ResourceUsage::ShaderRead, ResourceUsage::ShaderWrite);
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
-    [encoder setComputePipelineState:(id<MTLComputePipelineState>)simulationPipeline_];
+    [encoder setComputePipelineState:pipeline];
     [encoder setBuffer:(id<MTLBuffer>)buffers_[readIndex_] offset:0 atIndex:0];
     [encoder setBuffer:(id<MTLBuffer>)buffers_[writeIndex_] offset:0 atIndex:1];
     [encoder setBytes:&constants length:sizeof(constants) atIndex:2];
-    Dispatch(encoder, (id<MTLComputePipelineState>)simulationPipeline_, ParticleCount);
+    device_->SetActiveComputeEncoder(encoder, threadsPerThreadgroup);
+    commands.Dispatch(groups, 1, 1);
+    device_->ClearActiveEncoders();
     [encoder endEncoding];
+    commands.Transition(bufferHandles_[writeIndex_], ResourceUsage::ShaderWrite, ResourceUsage::ShaderRead);
     const auto previousRender = renderIndex_;
     renderIndex_ = readIndex_;
     readIndex_ = writeIndex_;
@@ -417,8 +673,20 @@ bool MetalStarField::Initialize(MetalDevice& device, const char* libraryPath, st
         star.size = 1.0f + random(generator) * 3.0f;
         star.randomSeed = random(generator);
     }
-    buffer_ = [nativeDevice newBufferWithBytes:stars.data() length:stars.size() * sizeof(Star) options:MTLResourceStorageModeShared];
-    return buffer_ != nullptr;
+    (void)nativeDevice;
+    try {
+        const auto initialData = std::as_bytes(std::span{stars});
+        handle_ = device.CreateBuffer({stars.size() * sizeof(Star), sizeof(Star), Gpu::BufferUsage::Storage},
+                                      initialData);
+        buffer_ = device.ResolveBufferNative(handle_);
+        // 星体缓冲创建后立即过渡到着色器读取，供顶点阶段每帧采样。
+        auto& commands = device.BeginCommands();
+        commands.Transition(handle_, ResourceUsage::Undefined, ResourceUsage::ShaderRead);
+        device.Submit(commands);
+        return buffer_ != nullptr;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 void* MetalStarField::Buffer() const noexcept { return buffer_; }
@@ -803,8 +1071,43 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
            particleIndirect_.Create(device, MetalParticleSystem::ParticleCount);
 }
 
+bool MetalParticleRenderer::PrepareIndirectArguments(MetalDevice& device, Gpu::CommandList& commands,
+                                                     std::uint32_t particleCount) {
+    const auto clamped = std::clamp(particleCount, 1U, MetalParticleSystem::ParticleCount);
+    struct Arguments { std::uint32_t vertexCount, instanceCount, vertexStart, baseInstance; };
+    const Arguments arguments{clamped, 1U, 0U, 0U};
+    try {
+        if (!managedIndirect_) {
+            managedIndirect_ = device.CreateBuffer(
+                {sizeof(arguments), 0, Gpu::BufferUsage::Indirect | Gpu::BufferUsage::CopyDestination},
+                std::as_bytes(std::span{&arguments, 1}));
+            commands.Transition(managedIndirect_, ResourceUsage::Undefined, ResourceUsage::IndirectArgument);
+            managedIndirectCount_ = clamped;
+        } else if (managedIndirectCount_ != clamped) {
+            device.UpdateBuffer(managedIndirect_, 0, std::as_bytes(std::span{&arguments, 1}));
+            commands.Transition(managedIndirect_, ResourceUsage::CopyDestination, ResourceUsage::IndirectArgument);
+            managedIndirectCount_ = clamped;
+        }
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void* starBuffer, std::uint32_t width,
                                  std::uint32_t height, const App::AppState& state) {
+    DrawInternal(nullptr, nullptr, nativeEncoder, particleBuffer, starBuffer, width, height, state);
+}
+
+void MetalParticleRenderer::Draw(MetalDevice& device, Gpu::CommandList& commands, void* nativeEncoder,
+                                 void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
+                                 const App::AppState& state) {
+    DrawInternal(&device, &commands, nativeEncoder, particleBuffer, starBuffer, width, height, state);
+}
+
+void MetalParticleRenderer::DrawInternal(MetalDevice* device, Gpu::CommandList* commands, void* nativeEncoder,
+                                         void* particleBuffer, void* starBuffer, std::uint32_t width,
+                                         std::uint32_t height, const App::AppState& state) {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
     const auto particleCount = std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount);
@@ -830,10 +1133,17 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
         [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
         [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
         [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
-        if (!particleIndirect_.Update(particleCount)) return;
-        [encoder drawPrimitives:MTLPrimitiveTypePoint
-                 indirectBuffer:(id<MTLBuffer>)particleIndirect_.Buffer()
-           indirectBufferOffset:0];
+        if (device != nullptr && commands != nullptr && managedIndirect_) {
+            // 共享契约路径：间接参数已由 PrepareIndirectArguments 过渡到位。
+            device->SetActiveRenderEncoder(encoder, MTLPrimitiveTypePoint);
+            commands->DrawIndirect(managedIndirect_, 0);
+            device->ClearActiveEncoders();
+        } else {
+            if (!particleIndirect_.Update(particleCount)) return;
+            [encoder drawPrimitives:MTLPrimitiveTypePoint
+                     indirectBuffer:(id<MTLBuffer>)particleIndirect_.Buffer()
+               indirectBufferOffset:0];
+        }
     }
 }
 
@@ -859,8 +1169,12 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     if (width == 0 || height == 0 || !targets.Create(device, width, height, &scheduler_) || !surface.AcquireDrawable()) return false;
     scheduler_.BeginFrame();
     (void)backingScale;
-    id<MTLCommandBuffer> commands = [(id<MTLCommandQueue>)device.NativeCommandQueue() commandBuffer];
-    if (commands == nil) return false;
+    auto& commandList = device.BeginCommands();
+    id<MTLCommandBuffer> commands = (id<MTLCommandBuffer>)device.NativeCommandBuffer();
+    if (commands == nil) {
+        device.Submit(commandList);
+        return false;
+    }
     MetalBloom bloom;
     MetalToneMapper toneMapper;
     const float bloomStrength = state.render.bloomEnabled ? 0.5f : 0.0f;
@@ -902,16 +1216,17 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     const auto uiOverlay = graph.AddResource({"ui-overlay", {std::max(1U, width / 6U), std::max(1U, height / 6U)}, uiOverlayHandle});
     const auto uiOverlayWeak = graph.AddResource({"ui-overlay-weak", {std::max(1U, width / 12U), std::max(1U, height / 12U)}, uiOverlayWeakHandle});
     const auto simulation = graph.AddPass("particle-simulation", [&] {
-        return state.scene.paused || particles.EncodeSimulation(commands, deltaTime, state.scene.zoom, handTracked, state.render.particleCount);
+        return state.scene.paused || particles.EncodeSimulation(commandList, deltaTime, state.scene.zoom, handTracked, state.render.particleCount);
     });
     const auto scenePass = graph.AddPass("scene-hdr", [&] {
+        if (!particleRenderer.PrepareIndirectArguments(device, commandList, state.render.particleCount)) return false;
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = (id<MTLTexture>)sceneTexture;
         pass.colorAttachments[0].loadAction = MTLLoadActionClear;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         pass.colorAttachments[0].clearColor = MTLClearColorMake(0.005, 0.008, 0.016, 1.0);
         id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
-        particleRenderer.Draw(encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
+        particleRenderer.Draw(device, commandList, encoder, particles.RenderBuffer(), stars.Buffer(), width, height, state);
         [encoder endEncoding];
         return true;
     });
@@ -970,8 +1285,11 @@ bool MetalFrameRenderer::Render(MetalDevice& device, MetalSurface& surface, Meta
     graph.Read(uiPass, uiOverlay, ResourceUsage::ShaderRead);
     graph.Write(uiPass, drawable, ResourceUsage::RenderTarget);
     graph.Read(presentPass, drawable, ResourceUsage::Present);
-    if (!graph.Execute()) return false;
-    [commands commit];
+    if (!graph.Execute()) {
+        device.Submit(commandList);
+        return false;
+    }
+    device.Submit(commandList);
     scheduler_.Submit(commands);
     if (!sceneCapture) return true;
     [commands waitUntilCompleted];

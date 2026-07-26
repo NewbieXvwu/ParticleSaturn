@@ -35,7 +35,10 @@ float3 HexToRgb(uint color) {
 
 kernel void InitializeParticles(device Particle* particles [[buffer(0)]],
                                 constant uint& seed [[buffer(1)]],
+                                constant uint& particleCapacity [[buffer(2)]],
                                 uint id [[thread_position_in_grid]]) {
+    // 线程组调度可能补齐到执行宽度的整数倍，越界线程直接返回。
+    if (id >= particleCapacity) return;
     constexpr float radius = 18.0f;
     uint rng = id * 1973U + seed * 9277U + 26699U;
     const float type = Random01(rng);

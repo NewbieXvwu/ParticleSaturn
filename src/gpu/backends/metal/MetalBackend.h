@@ -3,30 +3,76 @@
 #include "ParticleAbi.h"
 #include "app/state/AppStates.h"
 #include "gpu/interface/GpuCapabilities.h"
+#include "gpu/interface/GpuDevice.h"
 #include "render/ResourceRegistry.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ParticleSaturn::Gpu::Metal {
 
-class MetalDevice {
+// Metal 实现共享图形设备契约：受控代际缓冲句柄、显式资源用途过渡、
+// 命令提交令牌和延迟销毁语义与 DiligentVulkanAdapter 一致。Metal 的
+// 缓冲默认开启硬件冒险跟踪，Transition 因此只维护契约状态机而无需
+// 显式屏障；DrawIndirect/Dispatch 经帧路径注册的活动编码器下发。
+class MetalDevice final : public Gpu::GpuDevice, private Gpu::CommandList {
 public:
-    ~MetalDevice();
+    ~MetalDevice() override;
 
     bool Initialize();
-    const GpuCapabilities& Capabilities() const noexcept;
+    const GpuCapabilities& Capabilities() const noexcept override;
     void* NativeDevice() const noexcept;
     void* NativeCommandQueue() const noexcept;
 
+    std::string_view Name() const noexcept override;
+    BufferHandle CreateBuffer(const BufferDesc& desc, std::span<const std::byte> initialData) override;
+    void UpdateBuffer(BufferHandle buffer, std::size_t offset, std::span<const std::byte> data) override;
+    void DestroyBuffer(BufferHandle buffer, FrameToken afterFrame) override;
+    Gpu::CommandList& BeginCommands() override;
+    FrameToken Submit(Gpu::CommandList& commands) override;
+
+    // 帧路径辅助：命令缓冲访问、原生缓冲解析和活动编码器注册。
+    void* NativeCommandBuffer() const noexcept;
+    bool CommandsOpen() const noexcept;
+    void* ResolveBufferNative(BufferHandle buffer) const;
+    void SetActiveComputeEncoder(void* encoder, std::uint32_t threadsPerThreadgroup) noexcept;
+    void SetActiveRenderEncoder(void* encoder, std::uint32_t primitiveType) noexcept;
+    void ClearActiveEncoders() noexcept;
+
 private:
+    struct BufferEntry {
+        void* buffer = nullptr;
+        std::size_t size = 0;
+        std::uint32_t generation = 1;
+        ResourceUsage usage = ResourceUsage::Undefined;
+        std::uint64_t retireAfter = 0;
+        bool pendingRelease = false;
+    };
+
+    void* ResolveBuffer(BufferHandle buffer) const;
+    void ReleaseRetiredBuffers() noexcept;
+    void Transition(BufferHandle buffer, ResourceUsage before, ResourceUsage after) override;
+    void Transition(TextureHandle texture, ResourceUsage before, ResourceUsage after) override;
+    void DrawIndirect(BufferHandle arguments, std::size_t offset) override;
+    void Dispatch(std::uint32_t groupsX, std::uint32_t groupsY, std::uint32_t groupsZ) override;
+
     void* device_ = nullptr;
     void* commandQueue_ = nullptr;
     GpuCapabilities capabilities_{};
+    std::vector<BufferEntry> buffers_;
+    void* commandBuffer_ = nullptr;
+    std::uint64_t submissionValue_ = 0;
+    bool commandsOpen_ = false;
+    void* activeComputeEncoder_ = nullptr;
+    std::uint32_t activeThreadsPerThreadgroup_ = 0;
+    void* activeRenderEncoder_ = nullptr;
+    std::uint32_t activePrimitiveType_ = 0;
 };
 
 class MetalSurface {
@@ -99,15 +145,19 @@ public:
 
     bool Initialize(MetalDevice& device, const char* libraryPath, std::uint32_t seed);
     bool Simulate(float deltaTime, float handScale, bool handTracked, std::uint32_t particleCount);
-    bool EncodeSimulation(void* nativeCommandBuffer, float deltaTime, float handScale, bool handTracked,
+    // 共享契约版本：要求设备命令已打开，写缓冲经显式用途过渡后由
+    // CommandList::Dispatch 调度，随后回到着色器读取并轮转三缓冲。
+    bool EncodeSimulation(Gpu::CommandList& commands, float deltaTime, float handScale, bool handTracked,
                           std::uint32_t particleCount);
     bool ReadBack(std::vector<ParticleSnapshot>& particles, std::uint32_t count) const;
     void* RenderBuffer() const noexcept;
 
 private:
+    MetalDevice* device_ = nullptr;
     void* commandQueue_ = nullptr;
     void* initializePipeline_ = nullptr;
     void* simulationPipeline_ = nullptr;
+    Gpu::BufferHandle bufferHandles_[3]{};
     void* buffers_[3]{};
     std::uint32_t renderIndex_ = 0;
     std::uint32_t readIndex_ = 1;
@@ -136,6 +186,7 @@ public:
     void* Buffer() const noexcept;
 
 private:
+    Gpu::BufferHandle handle_{};
     void* buffer_ = nullptr;
 };
 
@@ -238,12 +289,22 @@ public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
               const App::AppState& state);
+    // 共享契约路径：受控间接参数缓冲在渲染编码器创建前更新并过渡到
+    // 间接参数状态，粒子经 CommandList::DrawIndirect 下发。
+    bool PrepareIndirectArguments(MetalDevice& device, Gpu::CommandList& commands, std::uint32_t particleCount);
+    void Draw(MetalDevice& device, Gpu::CommandList& commands, void* encoder, void* particleBuffer, void* starBuffer,
+              std::uint32_t width, std::uint32_t height, const App::AppState& state);
 
 private:
+    void DrawInternal(MetalDevice* device, Gpu::CommandList* commands, void* encoder, void* particleBuffer,
+                      void* starBuffer, std::uint32_t width, std::uint32_t height, const App::AppState& state);
+
     void* particlePipeline_ = nullptr;
     void* starPipeline_ = nullptr;
     void* objectShaderPipeline_ = nullptr;
     MetalIndirectDraw particleIndirect_;
+    Gpu::BufferHandle managedIndirect_{};
+    std::uint32_t managedIndirectCount_ = 0;
 };
 
 class MetalFrameRenderer {
