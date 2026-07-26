@@ -60,7 +60,7 @@ bool OpenGLToneMapper::Initialize(const char* shaderDirectory) {
     const std::filesystem::path directory{shaderDirectory};
     const std::string vertexSource = ReadFile(directory / "FullscreenTriangle.vert");
     // 单源翻译产物（D-004 试点）：DXC→SPIR-V→SPIRV-Cross 生成，构建期产出。
-    const std::string fragmentSource = ReadFile(directory / "ToneMap.gen.frag");
+    const std::string fragmentSource = ReadFile(directory.parent_path() / "single" / "ToneMap.gen.frag");
     const std::string presentFragmentSource = ReadFile(directory / "Present.frag");
     program_ = LinkProgram(vertexSource, fragmentSource);
     presentProgram_ = LinkProgram(vertexSource, presentFragmentSource);

@@ -14,12 +14,8 @@ public:
 
 private:
     // uniform 位置在 Initialize 解析一次，绘制时不再按字符串查找（AUDIT P2-8）。
-    struct KawaseUniforms {
-        int source = -1;
-        int texelSize = -1;
-        int offset = -1;
-        int threshold = -1;
-    };
+    // 降采样/模糊来自单源翻译（D-004）：常量走 32 字节 std140 UBO（双 texel），
+    // 纹理为组合采样器；acrylic 合成暂保留手写。
     struct AcrylicUniforms {
         int source = -1;
         int tint = -1;
@@ -30,7 +26,7 @@ private:
         int exclusion = -1;
     };
 
-    void DrawPass(unsigned int program, const KawaseUniforms& uniforms, unsigned int sourceTexture,
+    void DrawPass(unsigned int program, int sourceLocation, unsigned int sourceTexture,
                   unsigned int targetFramebuffer, std::uint32_t targetWidth, std::uint32_t targetHeight,
                   std::uint32_t sourceWidth, std::uint32_t sourceHeight, float offset, float threshold) const;
     void CompositePass(unsigned int sourceTexture, unsigned int targetFramebuffer, std::uint32_t width,
@@ -39,8 +35,9 @@ private:
     unsigned int downsampleProgram_ = 0;
     unsigned int blurProgram_ = 0;
     unsigned int acrylicProgram_ = 0;
-    KawaseUniforms downsampleUniforms_{};
-    KawaseUniforms blurUniforms_{};
+    int downsampleSourceLocation_ = -1;
+    int blurSourceLocation_ = -1;
+    unsigned int constantsBuffer_ = 0;
     AcrylicUniforms acrylicUniforms_{};
 };
 

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace ParticleSaturn::Gpu::OpenGL41 {
 
@@ -35,7 +36,11 @@ GLuint Compile(GLenum stage, const std::string& source) {
 
 GLuint BuildProgram(const std::filesystem::path& directory, const char* fragmentName) {
     const std::string vertex = ReadFile(directory / "FullscreenTriangle.vert");
-    const std::string fragment = ReadFile(directory / fragmentName);
+    // 生成的单源片段在 bundle 的 single/ 同级目录（".gen.frag" 后缀标识）。
+    const std::filesystem::path fragmentPath = std::string_view{fragmentName}.find(".gen.") != std::string_view::npos
+        ? directory.parent_path() / "single" / fragmentName
+        : directory / fragmentName;
+    const std::string fragment = ReadFile(fragmentPath);
     if (vertex.empty() || fragment.empty()) return 0;
     GLuint vertexShader = Compile(GL_VERTEX_SHADER, vertex);
     GLuint fragmentShader = Compile(GL_FRAGMENT_SHADER, fragment);
@@ -59,7 +64,7 @@ GLuint BuildProgram(const std::filesystem::path& directory, const char* fragment
 
 } // namespace
 
-void OpenGLBloom::DrawPass(unsigned int program, const KawaseUniforms& uniforms, unsigned int sourceTexture,
+void OpenGLBloom::DrawPass(unsigned int program, int sourceLocation, unsigned int sourceTexture,
                            unsigned int targetFramebuffer, std::uint32_t targetWidth, std::uint32_t targetHeight,
                            std::uint32_t sourceWidth, std::uint32_t sourceHeight, float offset,
                            float threshold) const {
@@ -68,10 +73,13 @@ void OpenGLBloom::DrawPass(unsigned int program, const KawaseUniforms& uniforms,
     glUseProgram(program);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
-    glUniform1i(uniforms.source, 0);
-    glUniform2f(uniforms.texelSize, 1.0f / sourceWidth, 1.0f / sourceHeight);
-    glUniform1f(uniforms.offset, offset);
-    glUniform1f(uniforms.threshold, threshold);
+    glUniform1i(sourceLocation, 0);
+    const float constants[8] = {1.0f / sourceWidth, 1.0f / sourceHeight,
+                                1.0f / targetWidth, 1.0f / targetHeight,
+                                offset, threshold, 0.0f, 0.0f};
+    glBindBuffer(GL_UNIFORM_BUFFER, constantsBuffer_);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(constants), constants);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, constantsBuffer_);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 
@@ -102,20 +110,24 @@ void OpenGLBloom::CompositePass(unsigned int sourceTexture, unsigned int targetF
 bool OpenGLBloom::Initialize(const char* shaderDirectory) {
     if (shaderDirectory == nullptr) return false;
     const std::filesystem::path directory{shaderDirectory};
-    downsampleProgram_ = BuildProgram(directory, "BloomDownsample.frag");
-    blurProgram_ = BuildProgram(directory, "KawaseBlur.frag");
+    downsampleProgram_ = BuildProgram(directory, "BloomDownsample.gen.frag");
+    blurProgram_ = BuildProgram(directory, "KawaseBlur.gen.frag");
     acrylicProgram_ = BuildProgram(directory, "AcrylicComposite.frag");
     if (downsampleProgram_ == 0 || blurProgram_ == 0 || acrylicProgram_ == 0) return false;
-    const auto kawaseUniforms = [](GLuint program) {
-        KawaseUniforms uniforms;
-        uniforms.source = glGetUniformLocation(program, "uSource");
-        uniforms.texelSize = glGetUniformLocation(program, "uTexelSize");
-        uniforms.offset = glGetUniformLocation(program, "uOffset");
-        uniforms.threshold = glGetUniformLocation(program, "uThreshold");
-        return uniforms;
+    const auto bindConstants = [](GLuint program) {
+        const GLuint blockIndex = glGetUniformBlockIndex(program, "type_BloomConstants");
+        if (blockIndex == GL_INVALID_INDEX) return false;
+        glUniformBlockBinding(program, blockIndex, 0);
+        return true;
     };
-    downsampleUniforms_ = kawaseUniforms(downsampleProgram_);
-    blurUniforms_ = kawaseUniforms(blurProgram_);
+    if (!bindConstants(downsampleProgram_) || !bindConstants(blurProgram_)) return false;
+    downsampleSourceLocation_ =
+        glGetUniformLocation(downsampleProgram_, "SPIRV_Cross_CombinedSourceTextureSPIRV_Cross_DummySampler");
+    blurSourceLocation_ =
+        glGetUniformLocation(blurProgram_, "SPIRV_Cross_CombinedSourceTextureSPIRV_Cross_DummySampler");
+    glGenBuffers(1, &constantsBuffer_);
+    glBindBuffer(GL_UNIFORM_BUFFER, constantsBuffer_);
+    glBufferData(GL_UNIFORM_BUFFER, 8 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
     acrylicUniforms_.source = glGetUniformLocation(acrylicProgram_, "uSource");
     acrylicUniforms_.tint = glGetUniformLocation(acrylicProgram_, "uTint");
     acrylicUniforms_.baseOpacity = glGetUniformLocation(acrylicProgram_, "uBaseOpacity");
@@ -133,7 +145,7 @@ bool OpenGLBloom::ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStre
     const std::uint32_t strongHeight = std::max(1U, targets.Height() / 6U);
     const std::uint32_t weakWidth = std::max(1U, targets.Width() / 12U);
     const std::uint32_t weakHeight = std::max(1U, targets.Height() / 12U);
-    DrawPass(downsampleProgram_, downsampleUniforms_, targets.ToneMappedTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
+    DrawPass(downsampleProgram_, downsampleSourceLocation_, targets.ToneMappedTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
          targets.Width(), targets.Height(), 0.0f, 0.0f);
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -142,19 +154,19 @@ bool OpenGLBloom::ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStre
     for (std::size_t index = 1; index < std::size(offsets); ++index) {
         const bool writePingPong = (index % 2U) == 1U;
         const float offset = scale * (offsets[index] + 0.5f) - 0.5f;
-        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
+        DrawPass(blurProgram_, blurSourceLocation_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
              strongWidth, strongHeight, strongWidth, strongHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
     }
 
-    DrawPass(downsampleProgram_, downsampleUniforms_, targets.BloomPingPongTexture(), targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
+    DrawPass(downsampleProgram_, downsampleSourceLocation_, targets.BloomPingPongTexture(), targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
          strongWidth, strongHeight, 0.0f, 0.0f);
     static constexpr float weakOffsets[] = {0.5f, 1.0f};
     source = targets.BloomWeakTexture();
     for (std::size_t index = 0; index < std::size(weakOffsets); ++index) {
         const bool writePingPong = index == 0U;
         const float offset = scale * (weakOffsets[index] + 0.5f) - 0.5f;
-        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
+        DrawPass(blurProgram_, blurSourceLocation_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
              weakWidth, weakHeight, weakWidth, weakHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomWeakPingPongTexture() : targets.BloomWeakTexture();
     }
@@ -172,7 +184,7 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets, float blurStrength) 
     const std::uint32_t strongHeight = std::max(1U, targets.Height() / 6U);
     const std::uint32_t weakWidth = std::max(1U, targets.Width() / 12U);
     const std::uint32_t weakHeight = std::max(1U, targets.Height() / 12U);
-    DrawPass(downsampleProgram_, downsampleUniforms_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
+    DrawPass(downsampleProgram_, downsampleSourceLocation_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
          targets.Width(), targets.Height(), 0.0f, 1.0f);
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -181,18 +193,18 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets, float blurStrength) 
     for (std::size_t index = 1; index < std::size(offsets); ++index) {
         const bool writePingPong = (index % 2U) == 1U;
         const float offset = scale * (offsets[index] + 0.5f) - 0.5f;
-        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
+        DrawPass(blurProgram_, blurSourceLocation_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
              strongWidth, strongHeight, strongWidth, strongHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
     }
 
-    DrawPass(downsampleProgram_, downsampleUniforms_, source, targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
+    DrawPass(downsampleProgram_, downsampleSourceLocation_, source, targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
          strongWidth, strongHeight, 0.0f, 0.0f);
     source = targets.BloomWeakTexture();
     static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
     for (std::size_t index = 0; index < std::size(secondaryOffsets); ++index) {
         const bool writePingPong = (index % 2U) == 0U;
-        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
+        DrawPass(blurProgram_, blurSourceLocation_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
              weakWidth, weakHeight, weakWidth, weakHeight, secondaryOffsets[index], 0.0f);
         source = writePingPong ? targets.BloomWeakPingPongTexture() : targets.BloomWeakTexture();
     }
