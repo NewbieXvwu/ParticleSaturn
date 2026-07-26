@@ -48,7 +48,8 @@ int main() {
         assert(HandTracking::MacOS::PreprocessCameraFrameToTensor(
             fastPath, 8, 1, fastTensor.data(), preprocessingError, &preprocessingStats));
         assert(preprocessingStats.pixels == 8U);
-        assert(preprocessingStats.elapsedNanoseconds > 0U);
+        // 不断言 elapsedNanoseconds>0：8 像素预处理在 Apple Silicon 上可在同一个
+        // 计时刻度内完成，取整为 0 是合法结果——统计被填充由 pixels/path 断言覆盖。
 #if defined(__aarch64__) || defined(__ARM_NEON)
         assert(preprocessingStats.path == HandTracking::MacOS::PreprocessingPath::NeonFused);
 #else
