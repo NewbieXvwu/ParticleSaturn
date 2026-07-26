@@ -24,9 +24,9 @@
 
 - [x] 三个 macOS main 合并到唯一外壳 `AppShell::RunApp`：外壳独占设置/相机/手势/输入分发/帧推进/共享 FpsMeter（D-001 测量单份）/窗口镜像/材质与垂直同步/MD3 面板/冒烟/退出码；各 main 只剩后端构造 + renderFrame 闭包 + ImGui 接线（Metal 413→242 行、Vulkan 450→271、GL41 602→516 含保留的自建窗口栈）；GL41 经 AppHost shim 接入、窗口行为零改动。12/12 app + 7/7 gpu 通过（AUDIT P2-2）
 - [x] smoke 逻辑抽出为 `src/platform/macos/SmokeHarness`（SmokeConfig 环境解析+状态钉死 / ResolveStartupGeometry / 逐帧性能与全屏状态机，宿主操作回调注入）；三 main 各删 ~90 行重复；失败统一打标+发 DiagnosticBus。未做 BUILD_TESTING 编译隔离——smoke 必须跑真实发布二进制（验收铁律），编译出去会让被测物偏离交付物；12/12 app 测试通过、全屏失败模式逐位一致（AUDIT P2-2）
-- [ ] `IRenderBackend` 窄接缝正名：接缝已以 `RunAppConfig.renderFrame` + `FrameContext` + `AppHost` 形式存在且四路径全部接入；剩余是把它提升为命名接口并补 Capabilities（随下方能力单点项）与 Readback（随 P4）（D-002）
+- [ ] `IRenderBackend` 窄接缝正名：接缝已以 `RunAppConfig.renderFrame` + `FrameContext` + `AppHost` + `BackendCapabilities` 形式存在且四路径全部接入；剩余是提升为命名接口并补 Readback（随 P4 一起做最合适）（D-002）
 - [x] 渲染图静态化：三条 macOS 路径全部改为按书写顺序静态直排（原 Compile 输出可证恒等于插入顺序），Vulkan 的三个模糊链改参数化 lambda + for 循环；RenderGraph.{h,cpp} 无消费者后按 D-005 删除，RenderTests 缩减为 TexturePool 覆盖；unit/gpu/app 全绿 + 视觉基线逐像素（AUDIT P1-9，D-003）
-- [ ] 能力/特性协商单点：后端 `Capabilities()` 申报，特性开关在一处解析（`useObjectShader` 非 Metal 语义、GL41 无 compute 的粒子策略等），替代散落的后端 if；声明分歧在此登记（D-004）
+- [x] 能力/特性协商单点：`BackendCapabilities` 在接缝申报（Metal 按 Metal3 管线实际可用性申报 objectShaderParticles，GL41 申报 analyticParticles），面板按能力显隐取代 `graphicsApi==Metal` 散判；声明分歧随申报登记并在 RunApp 启动发布到 DiagnosticBus 留档（D-004）。后续扩展点：GpuCapabilities 细粒度字段并入此处
 
 ## P2 单一事实来源与死代码清理（D-005/D-006）
 

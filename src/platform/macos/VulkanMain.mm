@@ -167,7 +167,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         CocoaAppHost appHost{host};
         RunAppConfig shellConfig{
             appHost, controller, settings, smoke, smokeHarness, startup,
-            adapter.AdapterName(), false,
+            adapter.AdapterName(), BackendCapabilities{},
             /*persistSettings=*/!(smoke.Deterministic() || smokeMode),
             /*cameraEnabled=*/!(smoke.Deterministic() || smokeMode),
             /*fixedDeltaTime=*/lodSmoke ? 0.05f : 0.0f, {}, {}};

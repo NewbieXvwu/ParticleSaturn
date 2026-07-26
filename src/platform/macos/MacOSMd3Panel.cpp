@@ -471,7 +471,7 @@ void InstallDebugLogCapture() {
 }
 
 void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* backendName, std::uint32_t fps,
-                    bool supportsAnalyticParticles, const Md3PanelCallbacks& callbacks,
+                    const Md3PanelBackendFeatures& features, const Md3PanelCallbacks& callbacks,
                     const Md3PanelHandTrackingStatus& handStatus) {
     // FPS 历史与面板可见性无关，持续采样，保证打开面板时曲线已就绪。
     static FpsHistoryTracker fpsHistory;
@@ -656,13 +656,13 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
                 if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
             }
         }
-        if (supportsAnalyticParticles) {
+        if (features.analyticParticles) {
             bool analytic = state.render.analyticParticles;
             if (MD3::Toggle("Analytic particles", &analytic)) {
                 DispatchAndSave(controller, ParticleSaturn::App::SetAnalyticParticles{analytic}, callbacks);
             }
         }
-        if (state.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Metal) {
+        if (features.objectShaderParticles) {
             bool objectShader = state.render.useObjectShader;
             if (MD3::Toggle("Object shader (Metal 3)", &objectShader)) {
                 DispatchAndSave(controller, ParticleSaturn::App::SetUseObjectShader{objectShader}, callbacks);

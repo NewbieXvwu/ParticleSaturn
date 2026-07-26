@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace ParticleSaturn::Platform::MacOS {
 
@@ -60,6 +61,15 @@ private:
     CocoaHost& host_;
 };
 
+// 后端能力申报（D-002 接缝的 Capabilities 面）：特性开关只在外壳一处按
+// "能力 ∧ 用户设置" 解析，面板按能力显隐；故意的实验分歧（D-004）在此登记，
+// RunApp 启动时发布到 DiagnosticBus 留档。
+struct BackendCapabilities {
+    bool analyticParticles = false;      // 解析式粒子双策略（GL41）
+    bool objectShaderParticles = false;  // object/mesh shader 粒子路径（Metal 3）
+    std::vector<std::string> declaredDivergences;
+};
+
 // 后端在 UI 编码点补充的本帧 acrylic 纹理钩子（可为空）。
 struct BackendPanelHooks {
     std::function<void(ImDrawList*, const ImVec2&, const ImVec2&, float)> drawAcrylicBackground;
@@ -87,7 +97,7 @@ struct RunAppConfig {
     SmokeHarness& smokeHarness;
     StartupGeometry startup;
     std::string panelTitle;               // MD3 面板抬头（按值持有：adapter 名在设备恢复时可能重建）
-    bool panelSupportsAnalyticParticles = false;  // RenderMd3Panel 第四参（GL41 为 true）
+    BackendCapabilities capabilities;     // 能力申报与声明分歧（D-004）
     bool persistSettings = true;          // 冒烟/基线模式不读写用户设置
     bool cameraEnabled = true;            // Vulkan 帧数冒烟禁用相机
     float fixedDeltaTime = 0.0f;          // >0 时替代真实帧时（Vulkan lod 冒烟用 0.05）

@@ -178,9 +178,15 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         MD3::SetScreenSize(static_cast<float>(size.width / size.scale), static_cast<float>(size.height / size.scale));
         if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
         ParticleSaturn::Platform::MacOS::CocoaAppHost appHost{host};
+        ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities;
+        capabilities.objectShaderParticles = particleRenderer.ObjectShaderAvailable();
+        if (capabilities.objectShaderParticles) {
+            capabilities.declaredDivergences.push_back(
+                "Metal object/mesh shader 粒子路径保持手写 MSL（D-004 声明分歧）");
+        }
         ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
             appHost, controller, settings, smoke, smokeHarness, startup,
-            "Metal", false,
+            "Metal", capabilities,
             /*persistSettings=*/!smoke.Deterministic(),
             /*cameraEnabled=*/!smoke.Deterministic(),
             /*fixedDeltaTime=*/0.0f, {}, {}};

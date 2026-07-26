@@ -6,6 +6,7 @@
 
 #include "MacOSApplication.h"
 #include "MD3.h"
+#include "services/diagnostics/DiagnosticBus.h"
 #include "services/camera/macos/AVFoundationCamera.h"
 #include "services/camera/macos/CameraSelectorWindow.h"
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
@@ -57,6 +58,12 @@ bool CocoaAppHost::NativeFullscreen() {
 int RunApp(RunAppConfig& config) {
     auto& host = config.host;
     auto& controller = config.controller;
+
+    // 声明分歧登记（D-004）：故意的实验变量在诊断总线留档，与意外漂移区分。
+    for (const auto& divergence : config.capabilities.declaredDivergences) {
+        Services::Diagnostics::DiagnosticBus::Instance().Publish(
+            "backend", "declared-divergence", divergence, Services::Diagnostics::Severity::Info);
+    }
 
     Services::Camera::MacOS::AVFoundationCamera camera;
     Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
@@ -249,8 +256,9 @@ int RunApp(RunAppConfig& config) {
                 [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
                 hooks.drawAcrylicBackground,
                 hooks.drawGraphAcrylic};
-            RenderMd3Panel(controller, config.panelTitle.c_str(), fpsMeter.Value(),
-                           config.panelSupportsAnalyticParticles, callbacks, handStatus);
+            const Md3PanelBackendFeatures features{config.capabilities.analyticParticles,
+                                                   config.capabilities.objectShaderParticles};
+            RenderMd3Panel(controller, config.panelTitle.c_str(), fpsMeter.Value(), features, callbacks, handStatus);
         };
 
         const FrameContext context{mutableState, deltaTime, handTracked, gesture,

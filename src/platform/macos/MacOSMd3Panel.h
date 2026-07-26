@@ -42,8 +42,14 @@ struct Md3PanelHandTrackingStatus {
     float rawRotY = 0.625f;
 };
 
+// 面板按后端申报的能力显隐特性开关（能力单点，D-002/D-004）。
+struct Md3PanelBackendFeatures {
+    bool analyticParticles = false;
+    bool objectShaderParticles = false;
+};
+
 void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* backendName, std::uint32_t fps,
-                    bool supportsAnalyticParticles, const Md3PanelCallbacks& callbacks,
+                    const Md3PanelBackendFeatures& features, const Md3PanelCallbacks& callbacks,
                     const Md3PanelHandTrackingStatus& handStatus = {});
 
 // 把 std::cout/std::cerr/std::clog 重定向进 MD3 调试日志（内容仍会写回

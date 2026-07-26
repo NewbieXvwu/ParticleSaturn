@@ -296,6 +296,8 @@ private:
 class MetalParticleRenderer {
 public:
     bool Initialize(MetalDevice& device, const char* libraryPath);
+    // Metal 3 object/mesh shader 管线是否可用（能力申报用）。
+    bool ObjectShaderAvailable() const noexcept { return objectShaderPipeline_ != nullptr; }
     void Draw(void* encoder, void* particleBuffer, void* starBuffer, std::uint32_t width, std::uint32_t height,
               const App::AppState& state);
     // 共享契约路径：受控间接参数缓冲在渲染编码器创建前更新并过渡到

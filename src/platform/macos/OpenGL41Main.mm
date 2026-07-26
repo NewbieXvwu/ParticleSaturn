@@ -435,9 +435,13 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             [window] { [window toggleFullScreen:nil]; },
             [] { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }}};
 
+        ParticleSaturn::Platform::MacOS::BackendCapabilities capabilities;
+        capabilities.analyticParticles = true;
+        capabilities.declaredDivergences.push_back(
+            "OpenGL 4.1 无 compute：粒子采用变换反馈（默认）/解析式双策略（D-002 豁免设备契约）");
         ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
             *appHost, *controller, settings, smoke, smokeHarness, startup,
-            "OpenGL 4.1", true,
+            "OpenGL 4.1", capabilities,
             /*persistSettings=*/!smoke.Deterministic(),
             /*cameraEnabled=*/!smoke.Deterministic(),
             /*fixedDeltaTime=*/0.0f, {}, {}};
