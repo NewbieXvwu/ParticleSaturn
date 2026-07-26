@@ -35,15 +35,17 @@ add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     Main.mm
     OpenGL41Main.mm
     VulkanMain.mm
-    MacOSMd3Panel.cpp
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Theme.cpp"
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Context.cpp"
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3/MD3Widgets.cpp")
+    MacOSMd3Panel.cpp)
 set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
 )
-target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnPlatformMacOS ParticleSaturnMetalBackend ParticleSaturnOpenGL41Backend ParticleSaturnMacOSSettings)
+target_link_libraries(ParticleSaturn.macOS PRIVATE
+    ParticleSaturnPlatformMacOS
+    ParticleSaturnMetalBackend
+    ParticleSaturnOpenGL41Backend
+    ParticleSaturnMacOSSettings
+    ParticleSaturnMD3)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera ParticleSaturnMacOSHandTrackingWorker)
 if(TARGET ParticleSaturnMacOSHandTracking)
     target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSHandTracking)
@@ -56,8 +58,7 @@ target_include_directories(ParticleSaturn.macOS PRIVATE
     "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface"
     "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Primitives/interface"
     "${CMAKE_SOURCE_DIR}/libs/imgui"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends"
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_link_libraries(ParticleSaturn.macOS PRIVATE "-framework GameController" "-framework QuartzCore")
 target_compile_definitions(ParticleSaturn.macOS PRIVATE GL_SILENCE_DEPRECATION=1)
 add_dependencies(ParticleSaturn.macOS ParticleSaturnMetalShaders ParticleSaturnOpenGL41Shaders)
