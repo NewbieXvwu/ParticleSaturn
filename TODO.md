@@ -59,7 +59,7 @@
 
 - [x] Metal 后处理四个类每帧重新加载 metallib 并重建 compute PSO → EnsurePipelines 惰性构建一次跨帧持有（对象提升为 MetalFrameRenderer 成员；原先每帧构造局部对象+在 pass lambda 里构造 acrylic）；调用方与测试签名零改动；gpu 层 7/7 + 视觉基线逐像素通过（AUDIT P1-8）
 - [x] `AVFoundationCamera::LatestFrame` 锁内 ~1MB 深拷贝 → 消费语义下安全 `std::move`（b6802ce）
-- [ ] XnnpackRuntime 每帧分配输出 vector 与 147KB ROI 缓冲 → 常驻成员复用（AUDIT P2-8）
+- [x] XnnpackRuntime 每帧分配输出 vector 与 147KB ROI 缓冲 → outputs_ 尺寸稳定后原地复用 + roiScratch_ 常驻成员（先跑 scripts/build_tflite_macos.sh 恢复了 /tmp 下的 TFLite 库才得以验证；3/3 手势测试通过）
 - [x] DiagnosticBus 每 UI 帧全量深拷贝取一条 → `Latest()`/`SnapshotSince()` 稳态零拷贝 + deque 环形淘汰；`Snapshot()` 保留给测试断言（dd99248）
 - [x] OpenGL41 逐绘制按字符串查 uniform → Initialize 缓存 GLint（Bloom/ToneMap/Present/StarField/七段 FPS/粒子模拟与渲染，Bloom 一帧省 ~68 次查找；088ec5e）
 

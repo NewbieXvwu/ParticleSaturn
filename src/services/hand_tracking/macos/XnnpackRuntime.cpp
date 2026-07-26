@@ -232,8 +232,9 @@ bool XnnpackModel::Invoke(const Camera::Frame& frame, std::string& error) {
         error = "XNNPACK model invocation failed";
         return false;
     }
-    outputs_.clear();
+    // 输出缓冲跨帧复用：尺寸稳定后不再分配（AUDIT P2-8）。
     const int outputCount = TfLiteInterpreterGetOutputTensorCount(interpreter_);
+    outputs_.resize(static_cast<std::size_t>(outputCount));
     for (int index = 0; index < outputCount; ++index) {
         const TfLiteTensor* output = TfLiteInterpreterGetOutputTensor(interpreter_, index);
         if (output == nullptr || TfLiteTensorType(output) != kTfLiteFloat32) {
@@ -245,13 +246,13 @@ bool XnnpackModel::Invoke(const Camera::Frame& frame, std::string& error) {
         for (int dimension = 0; dimension < TfLiteTensorNumDims(output); ++dimension) {
             elementCount *= static_cast<std::size_t>(TfLiteTensorDim(output, dimension));
         }
-        std::vector<float> values(elementCount);
+        auto& values = outputs_[static_cast<std::size_t>(index)];
+        values.resize(elementCount);
         if (TfLiteTensorCopyToBuffer(output, values.data(), values.size() * sizeof(float)) != kTfLiteOk) {
             error = "unable to read hand model output";
             outputs_.clear();
             return false;
         }
-        outputs_.push_back(std::move(values));
     }
     error.clear();
     return true;
@@ -280,8 +281,16 @@ bool XnnpackHandTrackingRuntime::Invoke(const Camera::Frame& frame, std::string&
     }
     lastRegion_ = region;
     hasRegion_ = true;
-    Camera::Frame roi{224U, 224U, frame.timestampNanoseconds, 224U * 3U, Camera::PixelFormat::RGB24,
-                      Camera::FrameOrientation::Up, false, std::vector<std::uint8_t>(224U * 224U * 3U)};
+    // ROI 帧常驻复用，避免每帧 147KB 分配（AUDIT P2-8）。
+    Camera::Frame& roi = roiScratch_;
+    roi.width = 224U;
+    roi.height = 224U;
+    roi.timestampNanoseconds = frame.timestampNanoseconds;
+    roi.bytesPerRow = 224U * 3U;
+    roi.pixelFormat = Camera::PixelFormat::RGB24;
+    roi.orientation = Camera::FrameOrientation::Up;
+    roi.mirrored = false;
+    roi.pixels.resize(static_cast<std::size_t>(224U) * 224U * 3U);
     const float cosine = std::cos(region.rotation);
     const float sine = std::sin(region.rotation);
     const bool rotated = frame.orientation == Camera::FrameOrientation::Left ||

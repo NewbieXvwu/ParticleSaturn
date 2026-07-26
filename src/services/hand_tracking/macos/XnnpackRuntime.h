@@ -89,6 +89,8 @@ private:
     XnnpackModel landmark_;
     PalmRegion lastRegion_;
     bool hasRegion_ = false;
+    // ROI 采样缓冲跨帧复用（AUDIT P2-8）。
+    Camera::Frame roiScratch_;
 };
 
 } // namespace ParticleSaturn::Services::HandTracking::MacOS
