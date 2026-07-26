@@ -1334,6 +1334,14 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 > 各会话完成工作后，进展批注按日期追加到本节。TODO.md 只维护勾选状态和一行备注。
 
+### 2026-07-27 逐 pass 仪表化落地 + 首组逐 pass 数据（TODO P4，D-001；用户拍板"先仪表化再定场景着色器去留"）
+
+对比模式在最终帧指标之外新增中间 pass 导出：设 `PARTICLESATURN_CAPTURE_PASS_DIR` 时，三后端在基线捕获帧同时落盘 `scene-hdr.ppm`（全尺寸 HDR 场景，钳位 8-bit）与 `bloom.ppm`（1/6 尺寸，泛光链**终值**）。挂点：GL41 在 `OpenGLFrameRenderer` 帧序列内联（scene 在粒子 pass 后、bloom 在泛光链后即时 glReadPixels）；Metal 在 `Main.mm` 基线回调里 blit RGBA16F→staging 后以 `__fp16` 读出（`SceneHdr`/`BloomPingPong`）；Vulkan 在 `DiligentVulkanAdapter` 帧尾捕获 scene-hdr、**帧中**捕获 bloom。`compare_macos_backends.sh` 每后端建 `passes-<backend>/` 并逐 pass 出指标。
+
+**捕获点等价性教训**（首轮数据出过假异常）：首轮 Vulkan bloom tap 测得 7.15/11.9% 而最终帧仅 0.027%——不是渲染分歧，是捕获点错位：① 泛光 7 次迭代终值泊在 ping（偶数索引写 ping），首版错导出了倒数第二次迭代所在的 bloom 纹理；② Vulkan 的 UI 亚克力链复用 bloom/ping 纹理，帧尾时内容早被覆盖（Metal 亚克力用独立 uiBlur 纹理无此问题）。修正为紧跟泛光链的帧中捕获后：0.046/0.000%。教训：**跨后端对中间纹理，必须先核对捕获点在链中的位置与纹理复用情况，帧尾 ≠ pass 输出**。
+
+**首组逐 pass 实测**（Metal 参考，均值差/失配率）：GL41 总帧 1.740/3.17%、scene-hdr 1.766/3.62%、bloom 0.118/0.000%；MoltenVK 总帧 1.057/0.026%、scene-hdr 1.014/0.0004%、bloom 0.046/0.000%。**结论：GL41 的 3.17% 分歧 100% 定位于场景 pass（粒子+星空），三后端后处理（bloom+tonemap）已全部收敛**；MoltenVK scene-hdr 均值差 ~1 LSB 属阈下噪声。下一步：按拍板方针分析场景 pass 分歧属 API 行为（保留观察）还是算法漂移（应单源化），再定星空/粒子着色器去留。验证：12 unit + 8 gpu + 12 app（除 FullscreenRestore）全绿。
+
 ### 2026-07-26 测试断言生效（TODO P0 第 1 项，AUDIT P0-2(a)，D-008）
 
 顶层 CMakeLists 末尾（legacy 早退 `return()` 之前）新增 `particlesaturn_enable_test_asserts` 目录树清扫：对所有名字以 `Tests` 结尾的可执行目标追加 `-UNDEBUG`（MSVC 用 `/UNDEBUG`），该标志位于 `CMAKE_<LANG>_FLAGS_RELEASE` 的 `-DNDEBUG` 之后故覆盖之。选择自动清扫而非逐目标登记：新增测试目标零成本自动受保护，正对本仓库"agent 失忆重复发明"的病根。`libs/` 子树跳过（D-007）。

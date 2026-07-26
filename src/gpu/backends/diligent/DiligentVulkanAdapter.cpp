@@ -56,7 +56,9 @@ bool WriteMappedBaseline(const ::Diligent::MappedTextureSubresource& mapped,
                       format == ::Diligent::TEX_FORMAT_BGRA8_UNORM_SRGB;
     const bool rgba = format == ::Diligent::TEX_FORMAT_RGBA8_UNORM ||
                       format == ::Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
-    if (!bgra && !rgba) return false;
+    const bool halfFloat = format == ::Diligent::TEX_FORMAT_RGBA16_FLOAT;
+    if (!bgra && !rgba && !halfFloat) return false;
+    if (halfFloat && mapped.Stride < static_cast<std::uint64_t>(width) * 8U) return false;
     std::ofstream output{path, std::ios::binary};
     if (!output) return false;
     output << "P6\n" << width << ' ' << height << "\n255\n";
@@ -64,12 +66,54 @@ bool WriteMappedBaseline(const ::Diligent::MappedTextureSubresource& mapped,
     for (std::uint32_t row = 0; row < height; ++row) {
         const auto* source = bytes + static_cast<std::size_t>(row) * mapped.Stride;
         for (std::uint32_t column = 0; column < width; ++column) {
-            const auto* pixel = source + static_cast<std::size_t>(column) * 4U;
-            const std::uint8_t rgb[] = {pixel[bgra ? 2 : 0], pixel[1], pixel[bgra ? 0 : 2]};
-            output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
+            if (halfFloat) {
+                const auto* pixel = reinterpret_cast<const __fp16*>(source) + static_cast<std::size_t>(column) * 4U;
+                const auto channel = [&](std::size_t offset) {
+                    const float value = static_cast<float>(pixel[offset]);
+                    return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+                };
+                const std::uint8_t rgb[] = {channel(0), channel(1), channel(2)};
+                output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
+            } else {
+                const auto* pixel = source + static_cast<std::size_t>(column) * 4U;
+                const std::uint8_t rgb[] = {pixel[bgra ? 2 : 0], pixel[1], pixel[bgra ? 0 : 2]};
+                output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
+            }
         }
     }
     return output.good();
+}
+
+// 逐 pass 捕获（TODO P4，2026-07-27 拍板）：中间纹理经临时 staging 导出 PPM。
+bool CaptureIntermediatePass(::Diligent::IRenderDevice* device, ::Diligent::IDeviceContext* context,
+                             void* sourceTexture, std::uint32_t width, std::uint32_t height,
+                             const std::string& path) {
+    if (device == nullptr || context == nullptr || sourceTexture == nullptr) return false;
+    ::Diligent::TextureDesc stagingDescription;
+    stagingDescription.Name = "ParticleSaturn Vulkan pass staging";
+    stagingDescription.Type = ::Diligent::RESOURCE_DIM_TEX_2D;
+    stagingDescription.Width = width;
+    stagingDescription.Height = height;
+    stagingDescription.Format = static_cast<::Diligent::ITexture*>(sourceTexture)->GetDesc().Format;
+    stagingDescription.Usage = ::Diligent::USAGE_STAGING;
+    stagingDescription.CPUAccessFlags = ::Diligent::CPU_ACCESS_READ;
+    ::Diligent::ITexture* staging = nullptr;
+    device->CreateTexture(stagingDescription, nullptr, &staging);
+    if (staging == nullptr) return false;
+    ::Diligent::CopyTextureAttribs copy;
+    copy.pSrcTexture = static_cast<::Diligent::ITexture*>(sourceTexture);
+    copy.SrcTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    copy.pDstTexture = staging;
+    copy.DstTextureTransitionMode = ::Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    context->CopyTexture(copy);
+    context->Flush();
+    context->WaitForIdle();
+    ::Diligent::MappedTextureSubresource mapped;
+    context->MapTextureSubresource(staging, 0, 0, ::Diligent::MAP_READ, ::Diligent::MAP_FLAG_NONE, nullptr, mapped);
+    const bool written = WriteMappedBaseline(mapped, width, height, stagingDescription.Format, path.c_str());
+    context->UnmapTextureSubresource(staging, 0, 0);
+    staging->Release();
+    return written;
 }
 
 void DILIGENT_CALL_TYPE ReportDiligentVulkanMessage(::Diligent::DEBUG_MESSAGE_SEVERITY severity,
@@ -787,6 +831,17 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         if (imgui_ != nullptr) imgui_->Render(context, target);
         return true;
     };
+    const auto bloomCapturePass = [&] {
+        // bloom/ping 随后被 UI 亚克力链复用，帧尾已是别的内容；终值泊在 ping
+        // （7 次迭代、偶数索引写 ping），必须紧跟泛光链在此即时捕获。
+        if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
+            presentedFrameCount_ < 3) return;
+        const char* passDirectory = std::getenv("PARTICLESATURN_CAPTURE_PASS_DIR");
+        if (passDirectory == nullptr || passDirectory[0] == '\0') return;
+        CaptureIntermediatePass(static_cast<::Diligent::IRenderDevice*>(device_), context, bloomPingTexture_,
+                                std::max(1u, description.Width / 6u), std::max(1u, description.Height / 6u),
+                                std::string{passDirectory} + "/bloom.ppm");
+    };
     const auto capturePass = [&] {
         if (!baselineCaptureRequested_ || baselineCaptured_ || baselineStagingTexture_ == nullptr ||
             presentedFrameCount_ < 3) return true;
@@ -812,6 +867,7 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
         for (std::uint32_t index = 0; index < bloomOffsets.size(); ++index) {
             if (!bloomBlurPass(index)) return false;
         }
+        bloomCapturePass();
         if (!toneMapPass()) return false;
         if (!uiDownsampleStrongPass()) return false;
         for (std::uint32_t index = 0; index < uiStrongOffsets.size(); ++index) {
@@ -838,6 +894,15 @@ bool DiligentVulkanAdapter::PresentSceneFrame(std::uint32_t syncInterval) {
     baselineCaptured_ = WriteMappedBaseline(mapped, baselineStagingWidth_, baselineStagingHeight_, stagingFormat,
                                              baselinePath_.c_str());
     context->UnmapTextureSubresource(static_cast<::Diligent::ITexture*>(baselineStagingTexture_), 0, 0);
+    if (baselineCaptured_) {
+        const char* passDirectory = std::getenv("PARTICLESATURN_CAPTURE_PASS_DIR");
+        if (passDirectory != nullptr && passDirectory[0] != '\0') {
+            // scene HDR 全帧无人复写，帧尾捕获有效；bloom 在链后即时捕获（见 bloomCapturePass）。
+            CaptureIntermediatePass(static_cast<::Diligent::IRenderDevice*>(device_), context, hdrTexture_,
+                                    description.Width, description.Height,
+                                    std::string{passDirectory} + "/scene-hdr.ppm");
+        }
+    }
     return baselineCaptured_;
 }
 

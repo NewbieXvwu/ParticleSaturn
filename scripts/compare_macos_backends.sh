@@ -20,14 +20,17 @@ mkdir -p "$out"
 capture() {
     backend=$1
     ppm="$out/$backend.ppm"
+    passdir="$out/passes-$backend"
+    mkdir -p "$passdir"
     case "$backend" in
     vulkan-*)
         driver=${backend#vulkan-}
         env PARTICLESATURN_GRAPHICS_API=vulkan PARTICLESATURN_VULKAN_DRIVER="$driver" \
-            PARTICLESATURN_CAPTURE_BASELINE="$ppm" "$app"
+            PARTICLESATURN_CAPTURE_BASELINE="$ppm" PARTICLESATURN_CAPTURE_PASS_DIR="$passdir" "$app"
         ;;
     *)
-        env PARTICLESATURN_GRAPHICS_API="$backend" PARTICLESATURN_CAPTURE_BASELINE="$ppm" "$app"
+        env PARTICLESATURN_GRAPHICS_API="$backend" PARTICLESATURN_CAPTURE_BASELINE="$ppm" \
+            PARTICLESATURN_CAPTURE_PASS_DIR="$passdir" "$app"
         ;;
     esac
     [ -s "$ppm" ] || { echo "capture failed for $backend" >&2; exit 1; }
@@ -47,5 +50,12 @@ for backend in $backends; do
     fi
     echo "== $backend vs $reference"
     "$tool" "$out/$reference.ppm" "$out/$backend.ppm" "$out/$backend-vs-$reference"
+    for pass in scene-hdr bloom; do
+        if [ -s "$out/passes-$reference/$pass.ppm" ] && [ -s "$out/passes-$backend/$pass.ppm" ]; then
+            echo "==   pass $pass"
+            "$tool" "$out/passes-$reference/$pass.ppm" "$out/passes-$backend/$pass.ppm" \
+                "$out/$backend-vs-$reference-$pass"
+        fi
+    done
 done
 echo "== outputs in $out"

@@ -44,13 +44,13 @@
 
 - [x] 工具链已拍板（2026-07-26，用户决定）：**DXC + SPIRV-Cross**，Slang 废止——决议记录于 D-004
 - [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径——**GL41 腿已完成**（2026-07-26）：`src/shaders/single/ToneMap.hlsl` 经构建期 DXC→SPIRV-Cross 产 `ToneMap.gen.frag`，GL41 换装（UBO+组合采样器）并同一提交删手写 frag；**量化**：替换前后 mean=0.000005、失配=0（逐像素等值），视觉基线/冒烟全过。**Vulkan 腿已完成**：adapter 直接消费 DXC 产出的 SPIR-V（Resources/single/ToneMap.spv），顺带消除了原内联源用线性采样器读场景的非故意分歧；量化：替换前后 mean=0.0038/失配 0.0025%，对 Metal 距离由 1.1762/0.359% 收敛到 1.1748/0.358%；Vulkan 全冒烟通过。**Metal 腿已完成**：ToneMapWithBloom compute 核改为全屏 fragment 渲染管线（生成的 main0 + 手写全屏三角 VS 样板进 metallib，PSO 按输出格式缓存 BGRA8/RGBA16F 两种）；量化：替换前后 mean=0.00297/失配 0.0022%（compute→光栅浮点微差），unit/gpu/app 全绿。**tonemap 通道三条路径单源化完成**
-- [ ] 推广 星空 → 粒子渲染（**bloom 站已完成**：三路径降采样/Kawase 模糊全部单源化，替换前后 GL41 0.001/Vulkan 0.154/Metal 0.005；Vulkan 顺带消除两处非故意分歧后对 Metal 失配 0.359%→0.027%，13 倍收敛；GL41 距离不变 → **分歧定位在场景 pass**。下一站涉及顶点阶段与声明分歧（object shader），需先做单源范围设计）
+- [ ] 推广 星空 → 粒子渲染（**bloom 站已完成**：三路径降采样/Kawase 模糊全部单源化，替换前后 GL41 0.001/Vulkan 0.154/Metal 0.005；Vulkan 顺带消除两处非故意分歧后对 Metal 失配 0.359%→0.027%，13 倍收敛；GL41 距离不变 → **分歧定位在场景 pass**。**2026-07-27 用户拍板：先逐 pass 仪表化**——用逐 pass 数据分清 3.18% 是 API 行为（保留观察）还是算法漂移（应统一），再决定场景着色器是否单源化）
 - [x] 声明分歧登记：随 BackendCapabilities.declaredDivergences 申报并于 RunApp 启动发布 DiagnosticBus（Metal object/mesh shader 手写 MSL、GL41 无 compute 双策略均已登记）
 - [x] MIGRATION_LOG 归档后进展节已记录试点全程；CODEMAP 已登记 single/ 目录与工具链前置
 
 ## P4 对比模式（把测量做成功能）
 
-- [ ] `Readback` 正式纳入接缝签名（随 IRenderBackend 正名做）；确定性捕获现经 `PARTICLESATURN_CAPTURE_BASELINE`（固定种子/几何/暂停场景/锁 LOD）在各后端可用，已被对比模式复用
+- [ ] `Readback` 正式纳入接缝签名（随 IRenderBackend 正名做）；确定性捕获现经 `PARTICLESATURN_CAPTURE_BASELINE`（固定种子/几何/暂停场景/锁 LOD]）在各后端可用，已被对比模式复用；逐 pass 捕获（`PARTICLESATURN_CAPTURE_PASS_DIR`）已完成（2026-07-27）：三后端导出 scene-hdr（全尺寸）与 bloom（1/6，泛光链终值）中间图，对比脚本逐 pass 出指标。**首组逐 pass 实测**：GL41 vs Metal 总帧 1.74/3.17%、scene-hdr 1.77/3.62%、bloom 0.12/0.000%；MoltenVK vs Metal 总帧 1.06/0.026%、scene-hdr 1.01/0.0004%、bloom 0.05/0.000% → **GL41 分歧 100% 在场景 pass，三后端后处理全部收敛**
 - [x] 对比模式核心：`scripts/compare_macos_backends.sh` + `ParticleSaturnImageCompareTool`——同一确定性帧状态依次送各后端捕获，以 Metal 为参考输出并排图/差异热力图/共享度量。**首组实测**（2026-07-26）：GL41 vs Metal 均值差 1.74、失配 3.17%；MoltenVK vs Metal 均值差 1.18、失配 0.36%。逐 pass 级指标待逐 pass readback 挂点（后续）
 - [x] 图像差异度量收敛：两份 macOS 实现（视觉基线 PPM 版 / object shader 内存版，聚合语义核实相同）统一到 `tests/common/ImageMetrics.h` 累加器，阈值常量 PerPixelChannelThreshold=8 具名共享；第三份在冻结的 Windows CameraSelector（D-015 不动）。两组基线测试通过（AUDIT P2-9）
 - [x] 粒子 CPU 参照两份合一：一份在 GL41 **生产**初始化、一份在 Metal 测试——归宿改为 `src/shaders/abi/ParticleInit.h`（ABI 旁的规范 CPU 端实现，生产与测试共用；tests/common 方向会让生产依赖测试）；Metal GPU 初始化对拍规范参照通过 = 抽取逐位一致（AUDIT P2-9）

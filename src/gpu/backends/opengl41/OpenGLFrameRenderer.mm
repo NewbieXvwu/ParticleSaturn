@@ -10,8 +10,45 @@
 #include "OpenGLToneMapper.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#include <vector>
 
 namespace ParticleSaturn::Gpu::OpenGL41 {
+
+namespace {
+
+// 逐 pass 捕获（TODO P4，2026-07-27 拍板）：PARTICLESATURN_CAPTURE_PASS_DIR
+// 设定时把中间目标写为 <dir>/<pass>.ppm。8-bit clamp、行序翻转到自上而下，
+// 与 Metal/Vulkan 的捕获同规，供对比工具逐 pass 比对。
+const char* PassCaptureDirectory() {
+    static const char* directory = std::getenv("PARTICLESATURN_CAPTURE_PASS_DIR");
+    return directory != nullptr && directory[0] != '\0' ? directory : nullptr;
+}
+
+void MaybeCapturePass(const char* passName, std::uint32_t framebuffer, std::uint32_t width, std::uint32_t height) {
+    const char* directory = PassCaptureDirectory();
+    if (directory == nullptr || width == 0 || height == 0) return;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4U);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    if (glGetError() != GL_NO_ERROR) return;
+    std::ofstream output{std::string{directory} + "/" + passName + ".ppm", std::ios::binary};
+    if (!output) return;
+    output << "P6\n" << width << ' ' << height << "\n255\n";
+    for (std::uint32_t row = 0; row < height; ++row) {
+        const std::uint32_t sourceRow = height - 1U - row;
+        for (std::uint32_t column = 0; column < width; ++column) {
+            const auto* pixel = &pixels[(static_cast<std::size_t>(sourceRow) * width + column) * 4U];
+            output.write(reinterpret_cast<const char*>(pixel), 3);
+        }
+    }
+}
+
+} // namespace
 
 bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarField& stars,
                                  OpenGLRenderTargets& targets, OpenGLBloom& bloom,
@@ -92,7 +129,18 @@ bool OpenGLFrameRenderer::Render(OpenGLParticleSystem& particles, OpenGLStarFiel
     };
 
     // 通道按书写顺序静态直排（D-003）：原图 Compile 输出恒等于插入顺序。
-    return starPass() && simulationPass() && particlePass() && bloomPass() && toneMapPass() &&
+    const auto particlePassWithCapture = [&] {
+        if (!particlePass()) return false;
+        MaybeCapturePass("scene-hdr", targets.SceneFramebuffer(), width, height);
+        return true;
+    };
+    const auto bloomPassWithCapture = [&] {
+        if (!bloomPass()) return false;
+        MaybeCapturePass("bloom", targets.BloomPingPongFramebuffer(), std::max(1U, width / 6U),
+                         std::max(1U, height / 6U));
+        return true;
+    };
+    return starPass() && simulationPass() && particlePassWithCapture() && bloomPassWithCapture() && toneMapPass() &&
            capturePass() && acrylicPass() && presentPass() && fpsPass() && uiPass() && swapPass();
 }
 

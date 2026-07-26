@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -89,6 +90,42 @@ bool WriteBaselinePpm(void* nativeDevice, void* nativeTexture, std::uint32_t wid
                 const std::uint8_t rgb[] = {pixel[2], pixel[1], pixel[0]};
                 output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
             }
+        }
+    }
+    [queue release];
+    [staging release];
+    return completed && output.good();
+}
+
+// 逐 pass 捕获（TODO P4）：RGBA16F 中间目标 → 8-bit clamp PPM，与 GL41/Vulkan 同规。
+bool WriteHalfFloatTexturePpm(void* nativeDevice, void* nativeTexture, std::uint32_t width, std::uint32_t height,
+                              const std::string& path) {
+    if (nativeDevice == nullptr || nativeTexture == nullptr || width == 0 || height == 0) return false;
+    id<MTLDevice> device = (id<MTLDevice>)nativeDevice;
+    const NSUInteger bytesPerRow = static_cast<NSUInteger>(width) * 8U;
+    id<MTLBuffer> staging = [device newBufferWithLength:bytesPerRow * height options:MTLResourceStorageModeShared];
+    id<MTLCommandQueue> queue = [device newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    id<MTLBlitCommandEncoder> encoder = [commands blitCommandEncoder];
+    [encoder copyFromTexture:(id<MTLTexture>)nativeTexture sourceSlice:0 sourceLevel:0
+                 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(width, height, 1)
+                   toBuffer:staging destinationOffset:0 destinationBytesPerRow:bytesPerRow
+         destinationBytesPerImage:bytesPerRow * height];
+    [encoder endEncoding];
+    [commands commit];
+    [commands waitUntilCompleted];
+    const bool completed = [commands status] == MTLCommandBufferStatusCompleted;
+    std::ofstream output{path, std::ios::binary};
+    if (completed && output) {
+        output << "P6\n" << width << ' ' << height << "\n255\n";
+        const auto* pixels = static_cast<const __fp16*>([staging contents]);
+        for (std::size_t pixel = 0; pixel < static_cast<std::size_t>(width) * height; ++pixel) {
+            const auto channel = [&](std::size_t offset) {
+                const float value = static_cast<float>(pixels[pixel * 4U + offset]);
+                return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+            };
+            const std::uint8_t rgb[] = {channel(0), channel(1), channel(2)};
+            output.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
         }
     }
     [queue release];
@@ -233,7 +270,17 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 if (!smoke.captureBaseline || baselineCaptured) return true;
                 if (++baselineFrameCount < 3U) return true;
                 baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, smoke.baselinePath);
-                if (baselineCaptured) host.RequestExit();
+                if (baselineCaptured) {
+                    // 逐 pass 捕获（TODO P4）：终帧确认后导出中间目标。
+                    const char* passDirectory = std::getenv("PARTICLESATURN_CAPTURE_PASS_DIR");
+                    if (passDirectory != nullptr && passDirectory[0] != '\0') {
+                        WriteHalfFloatTexturePpm(nativeDevice, targets.SceneHdr(), width, height,
+                                                 std::string{passDirectory} + "/scene-hdr.ppm");
+                        WriteHalfFloatTexturePpm(nativeDevice, targets.BloomPingPong(), std::max(1U, width / 6U),
+                                                 std::max(1U, height / 6U), std::string{passDirectory} + "/bloom.ppm");
+                    }
+                    host.RequestExit();
+                }
                 return baselineCaptured;
             });
             return true;
