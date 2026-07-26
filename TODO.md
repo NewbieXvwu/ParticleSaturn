@@ -35,7 +35,7 @@
 - [ ] CrashAnalyzer 两份合一（~620/630 行相同，已现分叉）；Win7Compat shim 两 vcxproj 共享同一 .cpp（AUDIT P2-7/P3-7）
 - [x] 死代码批删（部分）：已删 `scripts/compile_shaders.ps1`（零引用）、`src/Diligent/SuperResolution.h`（仅自引用）、`MetalResourceManager`/`MetalCommandContext`（零消费者的 §8.1 骨架）、`NormalizeRGBRow`（无调用别名）。**保留**：CMake FastRelease 配置牵涉 Windows 构建本机无法验证（待 Windows 环境处理）；SIMD 的 SSE/AVX 枚举经查是 Windows 现役跨平台模式接口，非死代码
 - [ ] `src/gpu/interface/` 清理至 D-002 冻结范围：删未消费的 GpuTypes 词汇类型与 GpuCapabilities 未用辅助（AUDIT P2-1）
-- [ ] `ParticleSimulationStrategy` 接入真实策略选择或删除（ParticleSaturnGpu 库唯一源文件、无生产调用方；详见 AUDIT 第二部分 Medium）
+- [x] `ParticleSimulationStrategy` 删除：无生产调用者，且其"按 GpuCapabilities 选模式"是 RHI 高度旧思路，与 D-002 帧高度接缝相悖——真实的策略协商归 P1 能力单点在接缝高度重建；ParticleSaturnGpu 随之改为纯头 INTERFACE 库（契约头即其全部内容）
 - [ ] 单实现服务接口去虚化（ICameraCapture / SettingsStore 基类；保留共享数据类型）（AUDIT P2-1）
 - [ ] 着色器字节码头生成改到 `${CMAKE_BINARY_DIR}/generated`，脱离源码树（AUDIT P2-4）
 - [ ] `CompileShaders.cmake` 收敛：单一 compile_stage 函数取代 7 段复制、REGEX 取代逐字节 hex 循环（AUDIT P2-4）
