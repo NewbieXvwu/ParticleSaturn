@@ -57,45 +57,47 @@ GLuint BuildProgram(const std::filesystem::path& directory, const char* fragment
     return 0;
 }
 
-void Draw(GLuint program, GLuint sourceTexture, GLuint targetFramebuffer, std::uint32_t targetWidth,
-          std::uint32_t targetHeight, std::uint32_t sourceWidth, std::uint32_t sourceHeight, float offset, float threshold) {
+} // namespace
+
+void OpenGLBloom::DrawPass(unsigned int program, const KawaseUniforms& uniforms, unsigned int sourceTexture,
+                           unsigned int targetFramebuffer, std::uint32_t targetWidth, std::uint32_t targetHeight,
+                           std::uint32_t sourceWidth, std::uint32_t sourceHeight, float offset,
+                           float threshold) const {
     glBindFramebuffer(GL_FRAMEBUFFER, targetFramebuffer);
     glViewport(0, 0, targetWidth, targetHeight);
     glUseProgram(program);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
-    glUniform1i(glGetUniformLocation(program, "uSource"), 0);
-    glUniform2f(glGetUniformLocation(program, "uTexelSize"), 1.0f / sourceWidth, 1.0f / sourceHeight);
-    glUniform1f(glGetUniformLocation(program, "uOffset"), offset);
-    glUniform1f(glGetUniformLocation(program, "uThreshold"), threshold);
+    glUniform1i(uniforms.source, 0);
+    glUniform2f(uniforms.texelSize, 1.0f / sourceWidth, 1.0f / sourceHeight);
+    glUniform1f(uniforms.offset, offset);
+    glUniform1f(uniforms.threshold, threshold);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 
-void Composite(GLuint program, GLuint sourceTexture, GLuint targetFramebuffer, std::uint32_t width,
-               std::uint32_t height, bool weak) {
+void OpenGLBloom::CompositePass(unsigned int sourceTexture, unsigned int targetFramebuffer, std::uint32_t width,
+                                std::uint32_t height, bool weak) const {
     glBindFramebuffer(GL_FRAMEBUFFER, targetFramebuffer);
     glViewport(0, 0, width, height);
-    glUseProgram(program);
+    glUseProgram(acrylicProgram_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
-    glUniform1i(glGetUniformLocation(program, "uSource"), 0);
+    glUniform1i(acrylicUniforms_.source, 0);
     if (weak) {
-        glUniform3f(glGetUniformLocation(program, "uTint"), 35.0f / 255.0f, 35.0f / 255.0f, 40.0f / 255.0f);
-        glUniform1f(glGetUniformLocation(program, "uBaseOpacity"), 160.0f / 255.0f);
-        glUniform1f(glGetUniformLocation(program, "uSaturation"), 1.30f);
-        glUniform1f(glGetUniformLocation(program, "uAdaptive"), 0.30f);
+        glUniform3f(acrylicUniforms_.tint, 35.0f / 255.0f, 35.0f / 255.0f, 40.0f / 255.0f);
+        glUniform1f(acrylicUniforms_.baseOpacity, 160.0f / 255.0f);
+        glUniform1f(acrylicUniforms_.saturation, 1.30f);
+        glUniform1f(acrylicUniforms_.adaptive, 0.30f);
     } else {
-        glUniform3f(glGetUniformLocation(program, "uTint"), 20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f);
-        glUniform1f(glGetUniformLocation(program, "uBaseOpacity"), 180.0f / 255.0f);
-        glUniform1f(glGetUniformLocation(program, "uSaturation"), 1.35f);
-        glUniform1f(glGetUniformLocation(program, "uAdaptive"), 0.35f);
+        glUniform3f(acrylicUniforms_.tint, 20.0f / 255.0f, 20.0f / 255.0f, 25.0f / 255.0f);
+        glUniform1f(acrylicUniforms_.baseOpacity, 180.0f / 255.0f);
+        glUniform1f(acrylicUniforms_.saturation, 1.35f);
+        glUniform1f(acrylicUniforms_.adaptive, 0.35f);
     }
-    glUniform1f(glGetUniformLocation(program, "uDarkMode"), 1.0f);
-    glUniform1f(glGetUniformLocation(program, "uExclusion"), 1.0f);
+    glUniform1f(acrylicUniforms_.darkMode, 1.0f);
+    glUniform1f(acrylicUniforms_.exclusion, 1.0f);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 }
-
-} // namespace
 
 bool OpenGLBloom::Initialize(const char* shaderDirectory) {
     if (shaderDirectory == nullptr) return false;
@@ -103,7 +105,25 @@ bool OpenGLBloom::Initialize(const char* shaderDirectory) {
     downsampleProgram_ = BuildProgram(directory, "BloomDownsample.frag");
     blurProgram_ = BuildProgram(directory, "KawaseBlur.frag");
     acrylicProgram_ = BuildProgram(directory, "AcrylicComposite.frag");
-    return downsampleProgram_ != 0 && blurProgram_ != 0 && acrylicProgram_ != 0;
+    if (downsampleProgram_ == 0 || blurProgram_ == 0 || acrylicProgram_ == 0) return false;
+    const auto kawaseUniforms = [](GLuint program) {
+        KawaseUniforms uniforms;
+        uniforms.source = glGetUniformLocation(program, "uSource");
+        uniforms.texelSize = glGetUniformLocation(program, "uTexelSize");
+        uniforms.offset = glGetUniformLocation(program, "uOffset");
+        uniforms.threshold = glGetUniformLocation(program, "uThreshold");
+        return uniforms;
+    };
+    downsampleUniforms_ = kawaseUniforms(downsampleProgram_);
+    blurUniforms_ = kawaseUniforms(blurProgram_);
+    acrylicUniforms_.source = glGetUniformLocation(acrylicProgram_, "uSource");
+    acrylicUniforms_.tint = glGetUniformLocation(acrylicProgram_, "uTint");
+    acrylicUniforms_.baseOpacity = glGetUniformLocation(acrylicProgram_, "uBaseOpacity");
+    acrylicUniforms_.saturation = glGetUniformLocation(acrylicProgram_, "uSaturation");
+    acrylicUniforms_.adaptive = glGetUniformLocation(acrylicProgram_, "uAdaptive");
+    acrylicUniforms_.darkMode = glGetUniformLocation(acrylicProgram_, "uDarkMode");
+    acrylicUniforms_.exclusion = glGetUniformLocation(acrylicProgram_, "uExclusion");
+    return true;
 }
 
 bool OpenGLBloom::ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStrength) const {
@@ -113,7 +133,7 @@ bool OpenGLBloom::ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStre
     const std::uint32_t strongHeight = std::max(1U, targets.Height() / 6U);
     const std::uint32_t weakWidth = std::max(1U, targets.Width() / 12U);
     const std::uint32_t weakHeight = std::max(1U, targets.Height() / 12U);
-    Draw(downsampleProgram_, targets.ToneMappedTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
+    DrawPass(downsampleProgram_, downsampleUniforms_, targets.ToneMappedTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
          targets.Width(), targets.Height(), 0.0f, 0.0f);
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -122,26 +142,26 @@ bool OpenGLBloom::ApplyUiBlur(const OpenGLRenderTargets& targets, float blurStre
     for (std::size_t index = 1; index < std::size(offsets); ++index) {
         const bool writePingPong = (index % 2U) == 1U;
         const float offset = scale * (offsets[index] + 0.5f) - 0.5f;
-        Draw(blurProgram_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
+        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
              strongWidth, strongHeight, strongWidth, strongHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
     }
 
-    Draw(downsampleProgram_, targets.BloomPingPongTexture(), targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
+    DrawPass(downsampleProgram_, downsampleUniforms_, targets.BloomPingPongTexture(), targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
          strongWidth, strongHeight, 0.0f, 0.0f);
     static constexpr float weakOffsets[] = {0.5f, 1.0f};
     source = targets.BloomWeakTexture();
     for (std::size_t index = 0; index < std::size(weakOffsets); ++index) {
         const bool writePingPong = index == 0U;
         const float offset = scale * (weakOffsets[index] + 0.5f) - 0.5f;
-        Draw(blurProgram_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
+        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
              weakWidth, weakHeight, weakWidth, weakHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomWeakPingPongTexture() : targets.BloomWeakTexture();
     }
 
-    Composite(acrylicProgram_, targets.BloomPingPongTexture(), targets.BloomStrongFramebuffer(),
+    CompositePass(targets.BloomPingPongTexture(), targets.BloomStrongFramebuffer(),
               strongWidth, strongHeight, false);
-    Composite(acrylicProgram_, targets.BloomWeakTexture(), targets.BloomWeakPingPongFramebuffer(),
+    CompositePass(targets.BloomWeakTexture(), targets.BloomWeakPingPongFramebuffer(),
               weakWidth, weakHeight, true);
     return glGetError() == GL_NO_ERROR;
 }
@@ -152,7 +172,7 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets, float blurStrength) 
     const std::uint32_t strongHeight = std::max(1U, targets.Height() / 6U);
     const std::uint32_t weakWidth = std::max(1U, targets.Width() / 12U);
     const std::uint32_t weakHeight = std::max(1U, targets.Height() / 12U);
-    Draw(downsampleProgram_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
+    DrawPass(downsampleProgram_, downsampleUniforms_, targets.SceneTexture(), targets.BloomStrongFramebuffer(), strongWidth, strongHeight,
          targets.Width(), targets.Height(), 0.0f, 1.0f);
 
     static constexpr float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -161,18 +181,18 @@ bool OpenGLBloom::Apply(const OpenGLRenderTargets& targets, float blurStrength) 
     for (std::size_t index = 1; index < std::size(offsets); ++index) {
         const bool writePingPong = (index % 2U) == 1U;
         const float offset = scale * (offsets[index] + 0.5f) - 0.5f;
-        Draw(blurProgram_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
+        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomPingPongFramebuffer() : targets.BloomStrongFramebuffer(),
              strongWidth, strongHeight, strongWidth, strongHeight, offset, 0.0f);
         source = writePingPong ? targets.BloomPingPongTexture() : targets.BloomStrongTexture();
     }
 
-    Draw(downsampleProgram_, source, targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
+    DrawPass(downsampleProgram_, downsampleUniforms_, source, targets.BloomWeakFramebuffer(), weakWidth, weakHeight,
          strongWidth, strongHeight, 0.0f, 0.0f);
     source = targets.BloomWeakTexture();
     static constexpr float secondaryOffsets[] = {0.5f, 1.0f};
     for (std::size_t index = 0; index < std::size(secondaryOffsets); ++index) {
         const bool writePingPong = (index % 2U) == 0U;
-        Draw(blurProgram_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
+        DrawPass(blurProgram_, blurUniforms_, source, writePingPong ? targets.BloomWeakPingPongFramebuffer() : targets.BloomWeakFramebuffer(),
              weakWidth, weakHeight, weakWidth, weakHeight, secondaryOffsets[index], 0.0f);
         source = writePingPong ? targets.BloomWeakPingPongTexture() : targets.BloomWeakTexture();
     }

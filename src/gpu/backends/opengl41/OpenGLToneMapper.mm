@@ -63,7 +63,14 @@ bool OpenGLToneMapper::Initialize(const char* shaderDirectory) {
     const std::string presentFragmentSource = ReadFile(directory / "Present.frag");
     program_ = LinkProgram(vertexSource, fragmentSource);
     presentProgram_ = LinkProgram(vertexSource, presentFragmentSource);
-    if (program_ != 0 && presentProgram_ != 0) return true;
+    if (program_ != 0 && presentProgram_ != 0) {
+        sceneLocation_ = glGetUniformLocation(program_, "uScene");
+        bloomLocation_ = glGetUniformLocation(program_, "uBloom");
+        bloomStrengthLocation_ = glGetUniformLocation(program_, "uBloomStrength");
+        transparentLocation_ = glGetUniformLocation(program_, "uTransparent");
+        presentSceneLocation_ = glGetUniformLocation(presentProgram_, "uScene");
+        return true;
+    }
     if (program_ != 0) glDeleteProgram(program_);
     if (presentProgram_ != 0) glDeleteProgram(presentProgram_);
     program_ = presentProgram_ = 0;
@@ -77,12 +84,12 @@ bool OpenGLToneMapper::Apply(const OpenGLRenderTargets& targets, float bloomStre
     glUseProgram(program_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, targets.SceneTexture());
-    glUniform1i(glGetUniformLocation(program_, "uScene"), 0);
+    glUniform1i(sceneLocation_, 0);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, targets.BloomPingPongTexture());
-    glUniform1i(glGetUniformLocation(program_, "uBloom"), 1);
-    glUniform1f(glGetUniformLocation(program_, "uBloomStrength"), std::max(0.0f, bloomStrength));
-    glUniform1f(glGetUniformLocation(program_, "uTransparent"), transparent ? 1.0f : 0.0f);
+    glUniform1i(bloomLocation_, 1);
+    glUniform1f(bloomStrengthLocation_, std::max(0.0f, bloomStrength));
+    glUniform1f(transparentLocation_, transparent ? 1.0f : 0.0f);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return glGetError() == GL_NO_ERROR;
 }
@@ -106,7 +113,7 @@ bool OpenGLToneMapper::Present(const OpenGLRenderTargets& targets, bool transpar
     glUseProgram(presentProgram_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, targets.ToneMappedTexture());
-    glUniform1i(glGetUniformLocation(presentProgram_, "uScene"), 0);
+    glUniform1i(presentSceneLocation_, 0);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glDisable(GL_BLEND);
     return glGetError() == GL_NO_ERROR;

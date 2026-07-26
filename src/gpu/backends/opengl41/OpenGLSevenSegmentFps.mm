@@ -56,6 +56,8 @@ bool OpenGLSevenSegmentFps::Initialize(const char* shaderDirectory) {
     glGetProgramiv(program_, GL_LINK_STATUS, &linked);
     if (linked != GL_TRUE) return false;
     glGenVertexArrays(1, &vertexArray_);
+    framesPerSecondLocation_ = glGetUniformLocation(program_, "uFramesPerSecond");
+    outputSizeLocation_ = glGetUniformLocation(program_, "uOutputSize");
     return vertexArray_ != 0 && glGetError() == GL_NO_ERROR;
 }
 
@@ -68,8 +70,8 @@ bool OpenGLSevenSegmentFps::Render(std::uint32_t framebuffer, std::uint32_t widt
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glViewport(0, 0, width, height);
     glUseProgram(program_);
-    glUniform1ui(glGetUniformLocation(program_, "uFramesPerSecond"), framesPerSecond);
-    glUniform2ui(glGetUniformLocation(program_, "uOutputSize"), width, height);
+    glUniform1ui(framesPerSecondLocation_, framesPerSecond);
+    glUniform2ui(outputSizeLocation_, width, height);
     glEnable(GL_BLEND);
     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_SCISSOR_TEST);

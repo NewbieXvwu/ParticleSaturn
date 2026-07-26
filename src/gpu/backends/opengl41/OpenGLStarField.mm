@@ -95,14 +95,16 @@ bool OpenGLStarField::Initialize(const char* vertexShaderPath, const char* fragm
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Star), reinterpret_cast<void*>(12));
     glEnableVertexAttribArray(2); glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Star), reinterpret_cast<void*>(24));
     glEnableVertexAttribArray(3); glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Star), reinterpret_cast<void*>(28));
+    timeLocation_ = glGetUniformLocation(program_, "uTime");
+    aspectLocation_ = glGetUniformLocation(program_, "uAspect");
     return glGetError() == GL_NO_ERROR;
 }
 
 void OpenGLStarField::Draw(float timeSeconds, std::uint32_t width, std::uint32_t height) const {
     if (program_ == 0 || vertexArray_ == 0 || height == 0) return;
     glUseProgram(program_);
-    glUniform1f(glGetUniformLocation(program_, "uTime"), timeSeconds);
-    glUniform1f(glGetUniformLocation(program_, "uAspect"), static_cast<float>(width) / static_cast<float>(height));
+    glUniform1f(timeLocation_, timeSeconds);
+    glUniform1f(aspectLocation_, static_cast<float>(width) / static_cast<float>(height));
     glBindVertexArray(vertexArray_);
     glDrawArrays(GL_POINTS, 0, StarCount);
 }

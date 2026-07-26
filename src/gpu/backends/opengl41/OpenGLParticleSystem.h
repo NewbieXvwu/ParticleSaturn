@@ -45,6 +45,12 @@ private:
     std::uint32_t writeIndex_ = 2;
     SimulationMode simulationMode_ = SimulationMode::TransformFeedback;
     float analyticPhase_ = 0.0f;
+    // uniform 位置在 Initialize 解析一次，模拟/绘制时不再按字符串查找（AUDIT P2-8）。
+    int deltaTimeLocation_ = -1;
+    int handScaleLocation_ = -1;
+    int handTrackedLocation_ = -1;
+    static constexpr std::uint32_t RenderUniformCount = 9;
+    int renderUniformLocations_[RenderUniformCount]{};
 };
 
 } // namespace ParticleSaturn::Gpu::OpenGL41

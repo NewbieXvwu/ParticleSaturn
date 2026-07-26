@@ -194,6 +194,15 @@ bool OpenGLParticleSystem::Initialize(const char* transformFeedbackVertexShader,
     program_ = BuildTransformFeedbackProgram(transformFeedbackVertexShader);
     renderProgram_ = BuildRenderProgram(renderVertexShader, renderFragmentShader);
     if (program_ == 0 || renderProgram_ == 0) return false;
+    deltaTimeLocation_ = glGetUniformLocation(program_, "uDeltaTime");
+    handScaleLocation_ = glGetUniformLocation(program_, "uHandScale");
+    handTrackedLocation_ = glGetUniformLocation(program_, "uHandTracked");
+    // 与 DrawIndirect 中 setFloat 的取值顺序一一对应。
+    static constexpr const char* renderUniformNames[RenderUniformCount] = {
+        "uTime", "uScale", "uRotationX", "uRotationY", "uAspect",
+        "uScreenHeight", "uPixelRatio", "uDensityCompensation", "uAnalyticPhase"};
+    for (std::uint32_t index = 0; index < RenderUniformCount; ++index)
+        renderUniformLocations_[index] = glGetUniformLocation(renderProgram_, renderUniformNames[index]);
     glGenBuffers(3, buffers_);
     glGenVertexArrays(3, vertexArrays_);
     std::vector<ParticleSnapshot> initialParticles(ParticleCount);
@@ -224,9 +233,9 @@ void OpenGLParticleSystem::Simulate(float deltaTime, float handScale, bool handT
         return;
     }
     glUseProgram(program_);
-    glUniform1f(glGetUniformLocation(program_, "uDeltaTime"), deltaTime);
-    glUniform1f(glGetUniformLocation(program_, "uHandScale"), handScale);
-    glUniform1f(glGetUniformLocation(program_, "uHandTracked"), handTracked ? 1.0f : 0.0f);
+    glUniform1f(deltaTimeLocation_, deltaTime);
+    glUniform1f(handScaleLocation_, handScale);
+    glUniform1f(handTrackedLocation_, handTracked ? 1.0f : 0.0f);
     glEnable(GL_RASTERIZER_DISCARD);
     glBindVertexArray(vertexArrays_[readIndex_]);
     glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, transformFeedback_);
@@ -271,19 +280,15 @@ void OpenGLParticleSystem::DrawIndirect(float timeSeconds, std::uint32_t width, 
                                         float rotationX, float rotationY, float pixelRatio,
                                         float densityCompensation, std::uint32_t particleCount) const {
     glUseProgram(renderProgram_);
-    const auto setFloat = [this](const char* name, float value) {
-        const GLint location = glGetUniformLocation(renderProgram_, name);
-        if (location >= 0) glUniform1f(location, value);
-    };
-    setFloat("uTime", timeSeconds);
-    setFloat("uScale", scale);
-    setFloat("uRotationX", rotationX);
-    setFloat("uRotationY", rotationY);
-    setFloat("uAspect", static_cast<float>(std::max(width, 1U)) / static_cast<float>(std::max(height, 1U)));
-    setFloat("uScreenHeight", static_cast<float>(std::max(height, 1U)));
-    setFloat("uPixelRatio", pixelRatio);
-    setFloat("uDensityCompensation", densityCompensation);
-    setFloat("uAnalyticPhase", simulationMode_ == SimulationMode::Analytic ? analyticPhase_ : 0.0f);
+    // 顺序与 Initialize 中 renderUniformNames 一致。
+    const float renderUniformValues[RenderUniformCount] = {
+        timeSeconds, scale, rotationX, rotationY,
+        static_cast<float>(std::max(width, 1U)) / static_cast<float>(std::max(height, 1U)),
+        static_cast<float>(std::max(height, 1U)), pixelRatio, densityCompensation,
+        simulationMode_ == SimulationMode::Analytic ? analyticPhase_ : 0.0f};
+    for (std::uint32_t index = 0; index < RenderUniformCount; ++index) {
+        if (renderUniformLocations_[index] >= 0) glUniform1f(renderUniformLocations_[index], renderUniformValues[index]);
+    }
     glBindVertexArray(simulationMode_ == SimulationMode::Analytic ? analyticVertexArray_ : vertexArrays_[renderIndex_]);
     for (GLuint attribute = 0; attribute < 5; ++attribute) glVertexAttribDivisor(attribute, 1);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer_);
