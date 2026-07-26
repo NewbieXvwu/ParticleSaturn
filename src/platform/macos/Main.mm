@@ -25,6 +25,7 @@
 #include "CocoaHost.h"
 #include "MacOSMd3Panel.h"
 #include "MacOSApplication.h"
+#include "AppShell.h"
 #include "SmokeHarness.h"
 #include "MD3.h"
 #include "app/AppController.h"
@@ -123,14 +124,10 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         InstallDebugLogCapture();
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const auto smoke = ParticleSaturn::Platform::MacOS::SmokeConfig::FromEnvironment();
-        const char* baselinePath = smoke.baselinePath;
         const bool captureBaseline = smoke.captureBaseline;
-        const bool performanceSmoke = smoke.performanceSmoke;
-        const bool fullscreenSmoke = smoke.fullscreenSmoke;
         auto initialState = smoke.Deterministic() ? ParticleSaturn::App::AppState{} : settings.Load({});
         smoke.ForceInitialState(initialState);
         const auto startup = ParticleSaturn::Platform::MacOS::ResolveStartupGeometry(initialState);
-        const bool restoreFullscreen = startup.restoreFullscreen;
         const auto startupWidth = startup.width;
         const auto startupHeight = startup.height;
         ParticleSaturn::Platform::MacOS::CocoaHost host{startupWidth, startupHeight, "Particle Saturn"};
@@ -168,95 +165,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Gpu::Metal::MetalFrameRenderer renderer;
         ParticleSaturn::Gpu::Metal::MetalParticleRenderer particleRenderer;
         ParticleSaturn::App::AppController controller{initialState};
-        ParticleSaturn::Services::Camera::MacOS::AVFoundationCamera camera;
-        ParticleSaturn::Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
-        if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) cameraSelector.StartSaved();
-        host.SetActionCallback([&](ParticleSaturn::Platform::MacOS::HostAction action) {
-            switch (action) {
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleDebugWindow:
-                controller.Dispatch(ParticleSaturn::App::ToggleDebugWindow{});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleFullscreen: {
-                const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{
-                    !controller.State().window.fullscreen});
-                if (effect.windowChanged) host.ToggleFullscreen();
-                break;
-            }
-            case ParticleSaturn::Platform::MacOS::HostAction::ToggleBlur:
-                controller.Dispatch(ParticleSaturn::App::SetBlurEnabled{!controller.State().ui.blurEnabled});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::TogglePause:
-                controller.Dispatch(ParticleSaturn::App::TogglePause{});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenEntered:
-                controller.Dispatch(ParticleSaturn::App::SetFullscreen{true});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::NativeFullscreenExited:
-                controller.Dispatch(ParticleSaturn::App::SetFullscreen{false});
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::ShowCameraSelector:
-                if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
-                cameraSelector.Show();
-                break;
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyF3Up:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyF11Up:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyBDown:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyBUp:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeDown:
-            case ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeUp: {
-                const bool pressed = action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down ||
-                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down ||
-                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyBDown ||
-                    action == ParticleSaturn::Platform::MacOS::HostAction::KeyEscapeDown;
-                const auto key = (action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Down ||
-                                  action == ParticleSaturn::Platform::MacOS::HostAction::KeyF3Up)
-                    ? ParticleSaturn::App::InputKey::F3
-                    : (action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Down ||
-                       action == ParticleSaturn::Platform::MacOS::HostAction::KeyF11Up)
-                    ? ParticleSaturn::App::InputKey::F11
-                    : (action == ParticleSaturn::Platform::MacOS::HostAction::KeyBDown ||
-                       action == ParticleSaturn::Platform::MacOS::HostAction::KeyBUp)
-                    ? ParticleSaturn::App::InputKey::B
-                    : ParticleSaturn::App::InputKey::Escape;
-                const auto effect = controller.Dispatch(ParticleSaturn::App::SetInputKeyPressed{key, pressed});
-                if (effect.windowChanged) host.ToggleFullscreen();
-                if (effect.exitRequested) host.RequestExit();
-                break;
-            }
-            }
-            if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
-        });
         bool baselineCaptured = false;
         std::uint32_t baselineFrameCount = 0;
-        auto appliedWindowMaterial = controller.State().window.material;
-        auto appliedVsyncMode = controller.State().render.vsyncMode;
-        host.SetWindowMaterial(appliedWindowMaterial);
-        host.SetPresentationMode(appliedVsyncMode);
-        ParticleSaturn::App::FrameCoordinator coordinator;
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-        ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
-        std::unique_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
-        std::string handTrackingError;
-        std::uint32_t lastCameraFrameWidth = 0;
-        std::uint32_t lastCameraFrameHeight = 0;
-        const auto palmModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
-        const auto landmarkModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
-        if (!handTrackingRuntime.Load(palmModel, landmarkModel, handTrackingError)) {
-            std::clog << "[HandTracking] " << handTrackingError << '\n';
-        } else {
-            handTracking = std::make_unique<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker>(
-                [&handTrackingRuntime](const ParticleSaturn::Services::Camera::Frame& frame,
-                                       ParticleSaturn::Services::HandTracking::MacOS::HandPose& pose,
-                                       std::string& error) {
-                    return handTrackingRuntime.Invoke(frame, error) && handTrackingRuntime.DecodeLandmarks(pose);
-                });
-            handTracking->Start();
-        }
-#endif
-        FpsMeter fpsMeter;
-        auto lastFrameTime = std::chrono::steady_clock::now();
         if (!particleRenderer.Initialize(device, libraryPath)) return 1;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -267,147 +177,66 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         MD3::SetDarkMode(controller.State().ui.darkMode);
         MD3::SetScreenSize(static_cast<float>(size.width / size.scale), static_cast<float>(size.height / size.scale));
         if (!ImGui_ImplOSX_Init((NSView*)host.NativeView()) || !ImGui_ImplMetal_Init((id<MTLDevice>)device.NativeDevice())) return 1;
-        host.Show();
-        if (restoreFullscreen) host.ToggleFullscreen();
-        host.Run([&] {
-            const auto now = std::chrono::steady_clock::now();
-            const float deltaTime = std::clamp(std::chrono::duration<float>(now - lastFrameTime).count(), 0.0f, 0.25f);
-            lastFrameTime = now;
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-            ParticleSaturn::App::GestureInput gesture;
-            ParticleSaturn::Services::Camera::Frame cameraFrame;
-            if (handTracking && camera.LatestFrame(cameraFrame)) {
-                lastCameraFrameWidth = cameraFrame.width;
-                lastCameraFrameHeight = cameraFrame.height;
-                handTracking->Submit(std::move(cameraFrame), controller.State().gesture.handLostDelay);
-            }
-            if (handTracking) gesture = handTracking->LatestGesture();
-            const bool handTracked = gesture.tracked;
-            const auto frame = coordinator.Advance(controller, deltaTime, gesture);
-#else
-            const bool handTracked = false;
-            const auto frame = coordinator.Advance(controller, deltaTime);
-#endif
-            fpsMeter.AddSample(deltaTime);
-            ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus handStatus;
-#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
-            using TrackerState = ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus::Tracker;
-            if (!handTracking) {
-                handStatus.tracker = TrackerState::Failed;
-                handStatus.errorMessage = handTrackingError.empty() ? "Hand tracking runtime unavailable"
-                                                                    : handTrackingError;
-            } else {
-                switch (camera.Permission()) {
-                case ParticleSaturn::Services::Camera::Authorization::Authorized:
-                    handStatus.tracker = camera.IsRunning() ? TrackerState::Ready : TrackerState::Initializing;
-                    break;
-                case ParticleSaturn::Services::Camera::Authorization::NotDetermined:
-                    handStatus.tracker = TrackerState::Initializing;
-                    break;
-                default:
-                    handStatus.tracker = TrackerState::Failed;
-                    handStatus.errorMessage = "Camera access denied";
-                    break;
-                }
-                if (lastCameraFrameWidth > 0 && lastCameraFrameHeight > 0) {
-                    char cameraInfo[64];
-                    std::snprintf(cameraInfo, sizeof(cameraInfo), "%u x %u", lastCameraFrameWidth,
-                                  lastCameraFrameHeight);
-                    handStatus.cameraInfo = cameraInfo;
-                }
-                handStatus.handDetected = gesture.tracked;
-                handStatus.rawScale = gesture.scale;
-                handStatus.rawRotX = gesture.rotationXNormalized;
-                handStatus.rawRotY = gesture.rotationYNormalized;
-            }
-#endif
-            if (frame.state->window.material != appliedWindowMaterial) {
-                host.SetWindowMaterial(frame.state->window.material);
-                appliedWindowMaterial = frame.state->window.material;
-            }
-            if (frame.state->render.vsyncMode != appliedVsyncMode) {
-                host.SetPresentationMode(frame.state->render.vsyncMode);
-                appliedVsyncMode = frame.state->render.vsyncMode;
-            }
-            const auto drawableSize = host.CurrentDrawableSize();
-            auto& mutableState = controller.MutableState();
-            mutableState.window.width = static_cast<std::uint32_t>(drawableSize.width / drawableSize.scale);
-            mutableState.window.height = static_cast<std::uint32_t>(drawableSize.height / drawableSize.scale);
-            mutableState.window.dpiScale = drawableSize.scale;
-            const bool nativeFullscreen = ([[(NSView*)host.NativeView() window] styleMask] &
-                                           NSWindowStyleMaskFullScreen) != 0;
-            if (!nativeFullscreen) {
-                host.GetWindowPosition(mutableState.window.x, mutableState.window.y);
-                mutableState.window.windowedX = mutableState.window.x;
-                mutableState.window.windowedY = mutableState.window.y;
-                mutableState.window.windowedWidth = mutableState.window.width;
-                mutableState.window.windowedHeight = mutableState.window.height;
-            }
-            renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath, drawableSize.width, drawableSize.height,
-                            drawableSize.scale, *frame.state, handTracked, deltaTime, fpsMeter.Value(), [&](void* commands, void* encoder, void* pass, void* uiOverlayTexture) {
+        ParticleSaturn::Platform::MacOS::CocoaAppHost appHost{host};
+        ParticleSaturn::Platform::MacOS::RunAppConfig shellConfig{
+            appHost, controller, settings, smoke, smokeHarness, startup,
+            "Metal", false,
+            /*persistSettings=*/!smoke.Deterministic(),
+            /*cameraEnabled=*/!smoke.Deterministic(),
+            /*fixedDeltaTime=*/0.0f, {}, {}};
+        shellConfig.renderFrame = [&](const ParticleSaturn::Platform::MacOS::FrameContext& frame) {
+            const auto& drawableSize = frame.drawableSize;
+            renderer.Render(device, surface, particles, stars, particleRenderer, targets, libraryPath,
+                            drawableSize.width, drawableSize.height, drawableSize.scale, frame.state,
+                            frame.handTracked, frame.deltaTime, frame.framesPerSecond,
+                            [&](void* commands, void* encoder, void* pass, void* uiOverlayTexture) {
                 ImGui_ImplMetal_NewFrame((MTLRenderPassDescriptor*)pass);
                 ImGui_ImplOSX_NewFrame((NSView*)host.NativeView());
                 ImGui::NewFrame();
-                MD3::BeginFrame(deltaTime);
+                MD3::BeginFrame(frame.deltaTime);
                 MD3::SetDpiScale(1.0f);
                 MD3::SetScreenSize(static_cast<float>(drawableSize.width / drawableSize.scale),
                                    static_cast<float>(drawableSize.height / drawableSize.scale));
-                ParticleSaturn::Platform::MacOS::RenderMd3Panel(controller, "Metal", fpsMeter.Value(), false, {
-                    [&] { if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State()); },
-                    [&] {
-                        const auto effect = controller.Dispatch(ParticleSaturn::App::SetFullscreen{!controller.State().window.fullscreen});
-                        if (effect.windowChanged) host.ToggleFullscreen();
-                    },
-                    [&] {
-                        if (camera.Permission() == ParticleSaturn::Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
-                        cameraSelector.Show();
-                    },
-                    [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
-                    [&](ParticleSaturn::App::WindowMaterial material) { host.SetWindowMaterial(material); },
-                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize, float rounding) {
-                        const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
-                        const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
-                        const float right = (position.x + panelSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
-                        const float bottom = (position.y + panelSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
-                        MD3::AddImageRounded(drawList, uiOverlayTexture, position,
-                                             ImVec2(position.x + panelSize.x, position.y + panelSize.y),
-                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
-                    },
-                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& regionSize, float rounding) {
-                        const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
-                        const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
-                        const float right = (position.x + regionSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
-                        const float bottom = (position.y + regionSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
-                        MD3::AddImageRounded(drawList, uiOverlayTexture, position,
-                                             ImVec2(position.x + regionSize.x, position.y + regionSize.y),
-                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
-                    }}, handStatus);
+                ParticleSaturn::Platform::MacOS::BackendPanelHooks hooks;
+                hooks.drawAcrylicBackground = [&](ImDrawList* drawList, const ImVec2& position,
+                                                  const ImVec2& panelSize, float rounding) {
+                    const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
+                    const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
+                    const float right = (position.x + panelSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                    const float bottom = (position.y + panelSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                    MD3::AddImageRounded(drawList, uiOverlayTexture, position,
+                                         ImVec2(position.x + panelSize.x, position.y + panelSize.y),
+                                         ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
+                };
+                hooks.drawGraphAcrylic = [&](ImDrawList* drawList, const ImVec2& position,
+                                             const ImVec2& regionSize, float rounding) {
+                    const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
+                    const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
+                    const float right = (position.x + regionSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                    const float bottom = (position.y + regionSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                    MD3::AddImageRounded(drawList, uiOverlayTexture, position,
+                                         ImVec2(position.x + regionSize.x, position.y + regionSize.y),
+                                         ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
+                };
+                frame.drawPanel(hooks);
                 MD3::EndFrame();
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,
                                                (id<MTLRenderCommandEncoder>)encoder);
             }, [&](void* nativeDevice, void* texture, std::uint32_t width, std::uint32_t height) {
-                if (!captureBaseline || baselineCaptured) return true;
+                if (!smoke.captureBaseline || baselineCaptured) return true;
                 if (++baselineFrameCount < 3U) return true;
-                baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, baselinePath);
+                baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, smoke.baselinePath);
                 if (baselineCaptured) host.RequestExit();
                 return baselineCaptured;
             });
-            smokeHarness.TickPerformance(controller.State());
-            if (fullscreenSmoke) {
-                std::int32_t x = 0;
-                std::int32_t y = 0;
-                host.GetWindowPosition(x, y);
-                smokeHarness.TickFullscreen(nativeFullscreen, mutableState, mutableState.window.width,
-                                            mutableState.window.height, x, y);
-            }
-        });
+            return true;
+        };
+        const int exitCode = ParticleSaturn::Platform::MacOS::RunApp(shellConfig);
         ImGui_ImplMetal_Shutdown();
         ImGui_ImplOSX_Shutdown();
         MD3::Shutdown();
         ImGui::DestroyContext();
-        if (!smoke.Deterministic()) settings.Save(controller.State());
-        if (smokeHarness.Failed()) return 1;
+        return exitCode;
     }
-    return 0;
 }

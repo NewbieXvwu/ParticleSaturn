@@ -32,6 +32,7 @@ target_link_libraries(ParticleSaturnMacOSImGui PUBLIC
     "-framework QuartzCore")
 
 add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
+    AppShell.mm
     LauncherMain.mm
     Main.mm
     OpenGL41Main.mm
