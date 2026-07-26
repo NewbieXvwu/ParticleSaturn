@@ -30,7 +30,7 @@
 
 ## P2 单一事实来源与死代码清理（D-005/D-006）
 
-- [ ] 删除 `src/OpenGL/md3/`、`src/Diligent/md3/`：Windows 目标改链 `src/ui/md3`（vcxproj 指向 + `_WIN32` 分支承接 Diligent 侧差异）；先移除 macOS include 路径上的旧 MD3.h（ODR 隐患）（AUDIT P0-3）
+- [ ] 删除 `src/OpenGL/md3/`、`src/Diligent/md3/`：Windows 目标改链 `src/ui/md3`（vcxproj 指向 + `_WIN32` 分支承接 Diligent 侧差异；需 Windows 环境验证）。**macOS 侧 ODR 隐患已关闭**：ParticleSaturnMacOSImGui 上的 `src/OpenGL/md3` PUBLIC include 纯属遗留（其源码根本不含 MD3.h），已删，全量构建+gpu/app 测试通过（AUDIT P0-3 第一步）
 - [ ] `src/AppState.h` 旧状态模型处置：Windows 侧迁移到 `src/app/state/` 或显式冻结声明（AUDIT P1-4）
 - [ ] CrashAnalyzer 两份合一（~620/630 行相同，已现分叉）；Win7Compat shim 两 vcxproj 共享同一 .cpp（AUDIT P2-7/P3-7）
 - [x] 死代码批删（部分）：已删 `scripts/compile_shaders.ps1`（零引用）、`src/Diligent/SuperResolution.h`（仅自引用）、`MetalResourceManager`/`MetalCommandContext`（零消费者的 §8.1 骨架）、`NormalizeRGBRow`（无调用别名）。**保留**：CMake FastRelease 配置牵涉 Windows 构建本机无法验证（待 Windows 环境处理）；SIMD 的 SSE/AVX 枚举经查是 Windows 现役跨平台模式接口，非死代码

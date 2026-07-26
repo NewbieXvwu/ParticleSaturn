@@ -22,8 +22,7 @@ target_include_directories(ParticleSaturnMacOSImGui PUBLIC
     "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Platforms/Apple/interface"
     "${CMAKE_SOURCE_DIR}/libs/DiligentCore/Primitives/interface"
     "${CMAKE_SOURCE_DIR}/libs/imgui"
-    "${CMAKE_SOURCE_DIR}/libs/imgui/backends"
-    "${CMAKE_SOURCE_DIR}/src/OpenGL/md3")
+    "${CMAKE_SOURCE_DIR}/libs/imgui/backends")
 target_compile_definitions(ParticleSaturnMacOSImGui PUBLIC PLATFORM_MACOS=1)
 target_link_libraries(ParticleSaturnMacOSImGui PUBLIC
     "-framework Cocoa"
