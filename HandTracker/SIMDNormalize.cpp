@@ -138,10 +138,6 @@ void NormalizeRGB(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
     Kernels::NormalizeRGBScalar(src, dst, pixelCount);
 }
 
-void NormalizeRGBRow(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
-    NormalizeRGB(src, dst, pixelCount);
-}
-
 void FlipHorizontalAndNormalize(const std::uint8_t* src, float* dst, int width, int height) {
     if (!g_initialized) Init();
     switch (Select(Internal::KernelOperation::FlipNormalize)) {

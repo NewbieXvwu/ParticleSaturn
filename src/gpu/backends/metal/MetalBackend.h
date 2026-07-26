@@ -117,26 +117,6 @@ private:
     std::vector<SubmittedFrame> submittedCommandBuffers_;
 };
 
-class MetalResourceManager {
-public:
-    explicit MetalResourceManager(MetalDevice& device);
-    void* CreateBuffer(std::size_t size);
-
-private:
-    MetalDevice& device_;
-};
-
-class MetalCommandContext {
-public:
-    explicit MetalCommandContext(MetalDevice& device);
-    bool Begin();
-    void Commit();
-
-private:
-    MetalDevice& device_;
-    void* commandBuffer_ = nullptr;
-};
-
 class MetalParticleSystem {
 public:
     static constexpr std::uint32_t ParticleCount = 1200000;

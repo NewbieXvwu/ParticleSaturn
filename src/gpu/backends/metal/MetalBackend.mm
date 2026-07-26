@@ -385,24 +385,6 @@ std::uint64_t MetalFrameScheduler::LastCompletedFrame() const noexcept {
     return lastCompletedFrame_;
 }
 
-MetalResourceManager::MetalResourceManager(MetalDevice& device) : device_{device} {}
-
-void* MetalResourceManager::CreateBuffer(std::size_t size) {
-    return [(id<MTLDevice>)device_.NativeDevice() newBufferWithLength:size options:MTLResourceStorageModePrivate];
-}
-
-MetalCommandContext::MetalCommandContext(MetalDevice& device) : device_{device} {}
-
-bool MetalCommandContext::Begin() {
-    commandBuffer_ = [(id<MTLCommandQueue>)device_.NativeCommandQueue() commandBuffer];
-    return commandBuffer_ != nullptr;
-}
-
-void MetalCommandContext::Commit() {
-    [(id<MTLCommandBuffer>)commandBuffer_ commit];
-    commandBuffer_ = nullptr;
-}
-
 namespace {
 
 struct SimulationConstants {

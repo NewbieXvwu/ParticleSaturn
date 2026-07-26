@@ -64,7 +64,6 @@
 |---|---|---|
 | 顶层 CMake | `CMakeLists.txt` | macOS 主构建入口 |
 | 着色器编译 + ABI | `cmake/CompileShaders.cmake` 等 | 现行（跨平台 CMake 版） |
-| `scripts/compile_shaders.ps1` | — | **死代码待删**（被 CMake 版取代，AUDIT P1-11） |
 | 第三方补丁 | `patches/` + `scripts/apply_third_party_patch.*` | imgui-md3.patch 待重生成（D-007） |
 | TFLite macOS | `scripts/build_tflite_macos.sh` | 锁 2.19，XNNPACK ARM64 |
 | Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | 补丁应用已收敛到 apply_third_party_patch 单一入口（2026-07-26，待 push 验证） |
@@ -78,4 +77,4 @@
 | `src/AppState.h/.cpp` | 旧状态模型；现行 `src/app/state/` |
 | `src/OpenGL/`、`src/Diligent/`、`src/CameraSelector/`、`HandTracker/`（SIMD 调度除外） | Windows 现役但冻结（D-015）；重启时走窄接缝 |
 | `src/Settings.h`、`src/ErrorHandler.h`、`src/DebugLog.h` | Windows 专属旧设施；macOS 对应物见共享层 |
-| `scripts/compile_shaders.ps1`、CMake FastRelease 配置、`src/Diligent/SuperResolution.h` | 死代码，删除排期 TODO P2（AUDIT P1-11/P2-5/P2-1） |
+| CMake FastRelease 配置 | 疑似死配置（AUDIT P2-5）；牵涉 Windows 构建，待 Windows 环境验证后删 |
