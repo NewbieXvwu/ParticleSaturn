@@ -240,6 +240,36 @@ if(APPLE)
     add_subdirectory(src/gpu/backends/diligent)
 endif()
 
+# ---------------------------------------------------------------------------
+# 测试断言生效（D-008）：全部 *Tests 可执行目标剥离 NDEBUG，使裸 assert() 在
+# Release 构建下依然生效（-UNDEBUG 位于 CMAKE_<LANG>_FLAGS_RELEASE 的 -DNDEBUG
+# 之后，后者被覆盖）。按目录树自动扫描，新增测试目标无需手动登记；libs/ 下的
+# 第三方目标不受影响（D-007）。防复发哨兵见 tests/AssertSentinelTests。
+# 注意：必须位于下方 legacy 段的早退 return() 之前，且在全部 add_subdirectory 之后。
+if(BUILD_TESTING)
+    function(particlesaturn_enable_test_asserts dir)
+        if(dir MATCHES "/libs/")
+            return()
+        endif()
+        get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_target IN LISTS _targets)
+            get_target_property(_type "${_target}" TYPE)
+            if(_type STREQUAL "EXECUTABLE" AND _target MATCHES "Tests$")
+                if(MSVC)
+                    target_compile_options("${_target}" PRIVATE /UNDEBUG)
+                else()
+                    target_compile_options("${_target}" PRIVATE -UNDEBUG)
+                endif()
+            endif()
+        endforeach()
+        get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+        foreach(_subdir IN LISTS _subdirs)
+            particlesaturn_enable_test_asserts("${_subdir}")
+        endforeach()
+    endfunction()
+    particlesaturn_enable_test_asserts("${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
 option(PARTICLESATURN_BUILD_LEGACY_DILIGENT "Build the Windows Diligent renderer" ${WIN32})
 
 if(PARTICLESATURN_BUILD_LEGACY_DILIGENT AND NOT WIN32)

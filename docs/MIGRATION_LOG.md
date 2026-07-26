@@ -1333,3 +1333,11 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 ## 归档后进展（2026-07-26 起追加于此）
 
 > 各会话完成工作后，进展批注按日期追加到本节。TODO.md 只维护勾选状态和一行备注。
+
+### 2026-07-26 测试断言生效（TODO P0 第 1 项，AUDIT P0-2(a)，D-008）
+
+顶层 CMakeLists 末尾（legacy 早退 `return()` 之前）新增 `particlesaturn_enable_test_asserts` 目录树清扫：对所有名字以 `Tests` 结尾的可执行目标追加 `-UNDEBUG`（MSVC 用 `/UNDEBUG`），该标志位于 `CMAKE_<LANG>_FLAGS_RELEASE` 的 `-DNDEBUG` 之后故覆盖之。选择自动清扫而非逐目标登记：新增测试目标零成本自动受保护，正对本仓库"agent 失忆重复发明"的病根。`libs/` 子树跳过（D-007）。
+
+实证：修复前 34/34 测试空转（nm 无 assert 符号）；修复后 19/19 现役测试二进制含 `___assert_rtn`，非整机 18/18 ctest 真实通过，`MetalObjectShaderBaselineTests` 缺参运行由"退出 0 假通过"变为断言中止（exit 134）。
+
+**范围决策**：TODO 原文的"副作用调用移出断言表达式"未执行——测试内约 274 处断言含函数调用，`-UNDEBUG` 保证其全部真实执行，搬出只剩装饰价值却翻搅 21 个文件；"标志将来丢失"的复发风险由哨兵测试（P0 第 3 项，`assert(false)` + WILL_FAIL）结构性兜底。踩坑记录：清扫块最初放在文件物理末尾，但顶层 CMakeLists 在 macOS 上于 legacy Diligent 段前 `return()` 早退，块从未执行——现位置在早退之前并加注释说明。

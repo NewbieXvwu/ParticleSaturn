@@ -13,7 +13,7 @@
 
 ## P0 测试安全网（先于一切重构，D-008，AUDIT P0-2）
 
-- [ ] 全部测试目标断言生效：去 NDEBUG（测试目标加 `-UNDEBUG` 或专用编译选项）或引入 NDEBUG 免疫的 REQUIRE/CHECK 宏；副作用调用移出断言表达式。现状：21 个测试文件裸 `assert()` 在 Release 全部空转（3e951b5 已实证其掩盖了 4 个真 bug）
+- [x] 全部测试目标断言生效：顶层 CMake 自动清扫全部 `*Tests` 可执行目标加 `-UNDEBUG`（新增测试目标自动覆盖，libs/ 第三方不受影响）；19/19 现役测试二进制恢复 assert 符号，18/18 非整机 ctest 真实通过，缺参运行由退出 0 变为断言中止。副作用断言保留原样——`-UNDEBUG` 保证其执行，防复发由哨兵测试兜底（下项）
 - [ ] smoke 测试失败可传播：`[NSApp terminate:nil]` 恒退出码 0，`return 1` 是死代码（`src/platform/macos/CocoaHost.mm:195-197`）→ 改 `[NSApp stop:]` + 显式退出码或失败即 `std::exit(1)`；ctest 加 `FAIL_REGULAR_EXPRESSION`
 - [ ] ctest 自检：注册一个故意失败的测试可执行文件，验证其确实以非零退出（防再度出现占位测试）
 - [ ] ctest LABELS 分层：unit（无 GPU）/ gpu（需设备）/ app（整机 smoke，RUN_SERIAL）；GitHub Actions 增加 macOS unit job（AUDIT P2-9）
