@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -247,6 +248,7 @@ private:
 
 int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
     @autoreleasepool {
+        InstallDebugLogCapture();
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
@@ -425,6 +427,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         if (!captureBaseline && !performanceSmoke && !fullscreenSmoke) cameraSelector->StartSaved();
         auto handRuntime = std::make_shared<ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime>();
         std::shared_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
+        auto lastCameraFrameSize = std::make_shared<std::pair<std::uint32_t, std::uint32_t>>(0U, 0U);
         std::string handTrackingError;
         if (handRuntime->Load(ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite"),
                               ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite"), handTrackingError)) {
@@ -479,13 +482,48 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
 #if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
             ParticleSaturn::App::GestureInput gesture;
             ParticleSaturn::Services::Camera::Frame cameraFrame;
-            if (handTracking && camera->LatestFrame(cameraFrame)) handTracking->Submit(std::move(cameraFrame), controller->State().gesture.handLostDelay);
+            if (handTracking && camera->LatestFrame(cameraFrame)) {
+                *lastCameraFrameSize = {cameraFrame.width, cameraFrame.height};
+                handTracking->Submit(std::move(cameraFrame), controller->State().gesture.handLostDelay);
+            }
             if (handTracking) gesture = handTracking->LatestGesture();
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime, gesture);
             const bool handTracked = gesture.tracked;
 #else
             const auto frameSnapshot = coordinator->Advance(*controller, deltaTime);
             const bool handTracked = false;
+#endif
+            ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus handStatus;
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            using TrackerState = ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus::Tracker;
+            if (!handTracking) {
+                handStatus.tracker = TrackerState::Failed;
+                handStatus.errorMessage = handTrackingError.empty() ? "Hand tracking runtime unavailable"
+                                                                    : handTrackingError;
+            } else {
+                switch (camera->Permission()) {
+                case ParticleSaturn::Services::Camera::Authorization::Authorized:
+                    handStatus.tracker = camera->IsRunning() ? TrackerState::Ready : TrackerState::Initializing;
+                    break;
+                case ParticleSaturn::Services::Camera::Authorization::NotDetermined:
+                    handStatus.tracker = TrackerState::Initializing;
+                    break;
+                default:
+                    handStatus.tracker = TrackerState::Failed;
+                    handStatus.errorMessage = "Camera access denied";
+                    break;
+                }
+                if (lastCameraFrameSize->first > 0 && lastCameraFrameSize->second > 0) {
+                    char cameraInfo[64];
+                    std::snprintf(cameraInfo, sizeof(cameraInfo), "%u x %u", lastCameraFrameSize->first,
+                                  lastCameraFrameSize->second);
+                    handStatus.cameraInfo = cameraInfo;
+                }
+                handStatus.handDetected = gesture.tracked;
+                handStatus.rawScale = gesture.scale;
+                handStatus.rawRotX = gesture.rotationXNormalized;
+                handStatus.rawRotY = gesture.rotationYNormalized;
+            }
 #endif
             const auto& state = *frameSnapshot.state;
             particles->SetSimulationMode(state.render.analyticParticles
@@ -544,7 +582,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                     },
                     [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
                     [&](ParticleSaturn::App::WindowMaterial material) { glass->ApplyMaterial(material, controller->State().window.fullscreen); },
-                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
+                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize, float rounding) {
                         const float left = position.x / static_cast<float>(logicalSize.width);
                         const float top = position.y / static_cast<float>(logicalSize.height);
                         const float right = (position.x + panelSize.x) / static_cast<float>(logicalSize.width);
@@ -552,8 +590,8 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                         MD3::AddImageRounded(drawList, reinterpret_cast<void*>(static_cast<uintptr_t>(strongBlurTexture)), position,
                                              ImVec2(position.x + panelSize.x, position.y + panelSize.y),
                                              ImVec2(left, 1.0f - top), ImVec2(right, 1.0f - bottom), IM_COL32_WHITE,
-                                             12.0f * backingScale);
-                    }});
+                                             rounding * backingScale);
+                    }}, handStatus);
                 MD3::EndFrame();
                 ImGui::Render();
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);

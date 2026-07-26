@@ -888,9 +888,9 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 建立 ABI 描述文件和生成工具
 - [x] 生成 C++/HLSL/GLSL 结构声明
 - [x] 生成 MSL 声明并让四种语言的实际着色器与后端消费生成 ABI
-- [ ] 由 `RenderGraph` 执行所有生产帧通道，接入资源生命周期和缩放重建
+- [x] 由 `RenderGraph` 执行所有生产帧通道，接入资源生命周期和缩放重建
 - [ ] Windows 三个 Diligent 后端全部恢复一致
-- [ ] 着色器构建目标平台中立化
+- [x] 着色器构建目标平台中立化
 
 ### 阶段 5：最小 Cocoa 宿主和 Metal 表面
 
@@ -942,6 +942,10 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [ ] Metal 后端须实现网格着色器对等路径（运行时能力检测，支持设备启用，不支持设备走顶点拉取回退），且须通过画面基准测试验证两条路径输出一致
 - [ ] 旧 MD3/ImGui 命令界面迁入 Metal 路径
 - [ ] Metal 成为 macOS 参考路径
+
+进展补充（2026-07-26）：Metal 3 对象/网格着色器路径代码已完整：`ParticleKernels.metal` 新增 `[[object]]` 调度函数（32 线程组、载荷传递粒子编号、越界组置零网格）与 `[[mesh]]` 生成函数（复用 `ParticleVertex` 的完整投影、扰动、密度补偿公式，每粒子输出 4 顶点 2 三角形），片元复用 `ParticleQuadFragment`。渲染器在 `MTLGPUFamilyMetal3` 且 macOS 13+ 时经 `MTLMeshRenderPipelineDescriptor` 创建管线，`drawMeshThreadgroups` 绘制；能力不足或开关关闭时回退传统点精灵间接绘制。开关经 `SetUseObjectShader` 命令、`NSUserDefaults` 持久化和调试面板 "Object shader (Metal 3)" 切换。两路径的离屏像素对照基线测试已注册（`ParticleSaturnMetalObjectShaderBaselineTests`），实机验收待运行。
+
+进展补充（2026-07-26）：共享 MD3 调试面板已补齐至旧 OpenGL/Diligent 面板全功能：Performance 增加三档 FPS 配色、活动/上限粒子数、像素比例行，以及完整的 60 样本 50ms 低频采样 FPS 历史曲线（Catmull-Rom 平滑、ease-out 滚动动画、最小 30 范围加 10% 边距的自适应动画 Y 轴、1/12 弱模糊 Acrylic 背景与噪点、Y 轴刻度 overlay、悬停提示）。Gestures 增加追踪器状态卡（初始化/就绪/失败三色状态、失败原因、相机分辨率、手检测指示）、原始手势数值表（scale/rotX/rotY）、平滑动画值表（场景 zoom/rotationX/rotationY）、灵敏度域对齐旧版 0.1–3.0、并排反转开关与"Reset defaults"按钮。新增完整 Log 节：级别过滤、圆角搜索框带右键粘贴、自绘 MD3 暂停/继续按钮（矢量图标+ripple+阴影+状态层）、清空/复制过滤文本、时间轴双列日志列表；日志设施为共享库版 `MD3Log.h`（完整平移旧 `DebugLog`：重复合并、AddOnce、ANSI 剥离、级别检测、暂停滚动），三个 macOS 入口统一安装 `std::cout/cerr/clog` 捕获，`DiagnosticBus` 记录持续桥接入日志。三后端曲线背景各自完整：OpenGL 用 MD3 弱模糊纹理，Metal 用界面 Acrylic 纹理回调，Vulkan 适配器新增 `UiWeakBlurImGuiTexture()` 将 1/12 弱模糊输出经 ImGui 纹理绑定采样；Vulkan 面板相机选择按钮同时接通相机权限请求与选择窗口。
 
 ### 阶段 7：AVFoundation、NEON、TensorFlow Lite ARM64
 
@@ -1039,6 +1043,8 @@ ParticleSaturn.macOS             # macOS .app 包目标
 - [x] 解析式粒子路径，含用户切换、NSUserDefaults 持久化、暂停/恢复/手势连续性验证
 - [ ] 迁入旧 MD3/ImGui 界面主题、全部控件和窗口行为
 - [x] 以共享 GPU API 和渲染图运行 OpenGL 4.1 帧路径
+
+进展补充（2026-07-26）：共享 MD3 面板的旧界面全功能补齐（FPS 历史曲线、手势追踪状态卡与数值表、重置默认、完整 Log 节及日志捕获）同时覆盖 OpenGL 4.1 路径，细节见阶段 6 同日进展补充；OpenGL 曲线背景直接采样 MD3 上下文的 1/12 弱模糊纹理，与旧版一致。
 
 ### 阶段 9：Vulkan Loader、MoltenVK、KosmicKrisp
 

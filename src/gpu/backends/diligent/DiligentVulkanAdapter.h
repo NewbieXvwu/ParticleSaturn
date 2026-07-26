@@ -35,6 +35,9 @@ public:
     bool DeviceLost() const noexcept;
     void SetAcrylicSettings(bool enabled, float strength, bool darkMode) noexcept;
     void SetAcrylicPanelRect(float x, float y, float width, float height, float dpiScale) noexcept;
+    // 弱模糊输出的 shader resource view，可直接作为 ImTextureID 供 ImGui 采样；
+    // blur 关闭或资源未就绪时返回 nullptr。
+    void* UiWeakBlurImGuiTexture() const noexcept;
     void SetParticleSettings(std::uint32_t particleCount, bool paused) noexcept;
     void SetGestureState(bool tracked, float scale) noexcept;
     void SetFramesPerSecond(std::uint32_t framesPerSecond) noexcept;

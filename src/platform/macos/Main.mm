@@ -8,6 +8,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
@@ -132,6 +133,7 @@ std::string PipelineArchivePath(id<MTLDevice> device, const char* libraryPath) {
 
 int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
     @autoreleasepool {
+        InstallDebugLogCapture();
         ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
@@ -281,6 +283,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
         ParticleSaturn::Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
         std::unique_ptr<ParticleSaturn::Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
         std::string handTrackingError;
+        std::uint32_t lastCameraFrameWidth = 0;
+        std::uint32_t lastCameraFrameHeight = 0;
         const auto palmModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
         const auto landmarkModel = ParticleSaturn::Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
         if (!handTrackingRuntime.Load(palmModel, landmarkModel, handTrackingError)) {
@@ -317,6 +321,8 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             ParticleSaturn::App::GestureInput gesture;
             ParticleSaturn::Services::Camera::Frame cameraFrame;
             if (handTracking && camera.LatestFrame(cameraFrame)) {
+                lastCameraFrameWidth = cameraFrame.width;
+                lastCameraFrameHeight = cameraFrame.height;
                 handTracking->Submit(std::move(cameraFrame), controller.State().gesture.handLostDelay);
             }
             if (handTracking) gesture = handTracking->LatestGesture();
@@ -327,6 +333,38 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
             const auto frame = coordinator.Advance(controller, deltaTime);
 #endif
             fpsMeter.AddSample(deltaTime);
+            ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus handStatus;
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            using TrackerState = ParticleSaturn::Platform::MacOS::Md3PanelHandTrackingStatus::Tracker;
+            if (!handTracking) {
+                handStatus.tracker = TrackerState::Failed;
+                handStatus.errorMessage = handTrackingError.empty() ? "Hand tracking runtime unavailable"
+                                                                    : handTrackingError;
+            } else {
+                switch (camera.Permission()) {
+                case ParticleSaturn::Services::Camera::Authorization::Authorized:
+                    handStatus.tracker = camera.IsRunning() ? TrackerState::Ready : TrackerState::Initializing;
+                    break;
+                case ParticleSaturn::Services::Camera::Authorization::NotDetermined:
+                    handStatus.tracker = TrackerState::Initializing;
+                    break;
+                default:
+                    handStatus.tracker = TrackerState::Failed;
+                    handStatus.errorMessage = "Camera access denied";
+                    break;
+                }
+                if (lastCameraFrameWidth > 0 && lastCameraFrameHeight > 0) {
+                    char cameraInfo[64];
+                    std::snprintf(cameraInfo, sizeof(cameraInfo), "%u x %u", lastCameraFrameWidth,
+                                  lastCameraFrameHeight);
+                    handStatus.cameraInfo = cameraInfo;
+                }
+                handStatus.handDetected = gesture.tracked;
+                handStatus.rawScale = gesture.scale;
+                handStatus.rawRotX = gesture.rotationXNormalized;
+                handStatus.rawRotY = gesture.rotationYNormalized;
+            }
+#endif
             if (frame.state->window.material != appliedWindowMaterial) {
                 host.SetWindowMaterial(frame.state->window.material);
                 appliedWindowMaterial = frame.state->window.material;
@@ -370,15 +408,24 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                     },
                     [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
                     [&](ParticleSaturn::App::WindowMaterial material) { host.SetWindowMaterial(material); },
-                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize) {
+                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& panelSize, float rounding) {
                         const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
                         const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
                         const float right = (position.x + panelSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
                         const float bottom = (position.y + panelSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
                         MD3::AddImageRounded(drawList, uiOverlayTexture, position,
                                              ImVec2(position.x + panelSize.x, position.y + panelSize.y),
-                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, 12.0f);
-                    }});
+                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
+                    },
+                    [&](ImDrawList* drawList, const ImVec2& position, const ImVec2& regionSize, float rounding) {
+                        const float left = position.x * drawableSize.scale / static_cast<float>(drawableSize.width);
+                        const float top = position.y * drawableSize.scale / static_cast<float>(drawableSize.height);
+                        const float right = (position.x + regionSize.x) * drawableSize.scale / static_cast<float>(drawableSize.width);
+                        const float bottom = (position.y + regionSize.y) * drawableSize.scale / static_cast<float>(drawableSize.height);
+                        MD3::AddImageRounded(drawList, uiOverlayTexture, position,
+                                             ImVec2(position.x + regionSize.x, position.y + regionSize.y),
+                                             ImVec2(left, top), ImVec2(right, bottom), IM_COL32_WHITE, rounding);
+                    }}, handStatus);
                 MD3::EndFrame();
                 ImGui::Render();
                 ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (id<MTLCommandBuffer>)commands,

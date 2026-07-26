@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -93,6 +94,7 @@ int ReportStartupFailure(const char* code, const std::string& message) {
 
 int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
     @autoreleasepool {
+        InstallDebugLogCapture();
         Services::Settings::MacOS::NSUserDefaultsStore settings;
         const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
         const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
@@ -208,9 +210,11 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         Services::Camera::MacOS::CameraSelectorWindow cameraSelector{camera};
         Services::HandTracking::MacOS::XnnpackHandTrackingRuntime handTrackingRuntime;
         std::unique_ptr<Services::HandTracking::MacOS::HandTrackingWorker> handTracking;
+        std::string handTrackingError;
+        std::uint32_t lastCameraFrameWidth = 0;
+        std::uint32_t lastCameraFrameHeight = 0;
         if (!captureBaseline && !smokeMode && !performanceSmoke && !fullscreenSmoke) {
             cameraSelector.StartSaved();
-            std::string handTrackingError;
             const auto palmModel = Services::Resources::MacOS::LocateModel("palm_detection_full.tflite");
             const auto landmarkModel = Services::Resources::MacOS::LocateModel("hand_landmark_full.tflite");
             if (!handTrackingRuntime.Load(palmModel, landmarkModel, handTrackingError)) {
@@ -352,6 +356,8 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             App::GestureInput gesture;
             Services::Camera::Frame cameraFrame;
             if (handTracking && camera.LatestFrame(cameraFrame)) {
+                lastCameraFrameWidth = cameraFrame.width;
+                lastCameraFrameHeight = cameraFrame.height;
                 handTracking->Submit(std::move(cameraFrame), controller.State().gesture.handLostDelay);
             }
             if (handTracking) gesture = handTracking->LatestGesture();
@@ -359,6 +365,38 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
 #else
             App::GestureInput gesture;
             coordinator.Advance(controller, elapsedSeconds);
+#endif
+            Md3PanelHandTrackingStatus handStatus;
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+            using TrackerState = Md3PanelHandTrackingStatus::Tracker;
+            if (!handTracking) {
+                handStatus.tracker = TrackerState::Failed;
+                handStatus.errorMessage = handTrackingError.empty() ? "Hand tracking runtime unavailable"
+                                                                    : handTrackingError;
+            } else {
+                switch (camera.Permission()) {
+                case Services::Camera::Authorization::Authorized:
+                    handStatus.tracker = camera.IsRunning() ? TrackerState::Ready : TrackerState::Initializing;
+                    break;
+                case Services::Camera::Authorization::NotDetermined:
+                    handStatus.tracker = TrackerState::Initializing;
+                    break;
+                default:
+                    handStatus.tracker = TrackerState::Failed;
+                    handStatus.errorMessage = "Camera access denied";
+                    break;
+                }
+                if (lastCameraFrameWidth > 0 && lastCameraFrameHeight > 0) {
+                    char cameraInfo[64];
+                    std::snprintf(cameraInfo, sizeof(cameraInfo), "%u x %u", lastCameraFrameWidth,
+                                  lastCameraFrameHeight);
+                    handStatus.cameraInfo = cameraInfo;
+                }
+                handStatus.handDetected = gesture.tracked;
+                handStatus.rawScale = gesture.scale;
+                handStatus.rawRotX = gesture.rotationXNormalized;
+                handStatus.rawRotY = gesture.rotationYNormalized;
+            }
 #endif
             const auto syncInterval = mutableState.render.vsyncMode == 0 ? 0U : 1U;
             adapter.SetParticleSettings(mutableState.render.particleCount, mutableState.scene.paused);
@@ -371,19 +409,40 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
             MD3::SetDpiScale(1.0f);
             MD3::SetScreenSize(static_cast<float>(mutableState.window.width),
                                static_cast<float>(mutableState.window.height));
-            RenderMd3Panel(controller, adapter.AdapterName().c_str(), currentFramesPerSecond, false, {
+            Md3PanelCallbacks panelCallbacks{
                 [&] { if (!smokeMode && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State()); },
                 [&] {
                     const auto effect = controller.Dispatch(App::SetFullscreen{!controller.State().window.fullscreen});
                     if (effect.windowChanged) host.ToggleFullscreen();
                 },
-                {},
+                [&] {
+#if defined(PARTICLESATURN_HAS_XNNPACK_RUNTIME)
+                    if (camera.Permission() == Services::Camera::Authorization::NotDetermined) camera.RequestPermission();
+                    cameraSelector.Show();
+#endif
+                },
                 [&] { if (ParticleSaturn::Platform::MacOS::RestartApplication()) [NSApp terminate:nil]; },
                 [&](App::WindowMaterial material) { host.SetWindowMaterial(material); },
-                [&](ImDrawList*, const ImVec2& position, const ImVec2& size) {
+                [&](ImDrawList*, const ImVec2& position, const ImVec2& size, float) {
                     adapter.SetAcrylicPanelRect(position.x, position.y, size.x, size.y,
                                                 mutableState.window.dpiScale);
-                }});
+                },
+                {}};
+            if (void* weakBlurTexture = adapter.UiWeakBlurImGuiTexture()) {
+                panelCallbacks.drawGraphAcrylic = [&, weakBlurTexture](ImDrawList* drawList, const ImVec2& position,
+                                                                       const ImVec2& regionSize, float rounding) {
+                    const float screenWidth = std::max(1.0f, static_cast<float>(mutableState.window.width));
+                    const float screenHeight = std::max(1.0f, static_cast<float>(mutableState.window.height));
+                    MD3::AddImageRounded(drawList, weakBlurTexture, position,
+                                         ImVec2(position.x + regionSize.x, position.y + regionSize.y),
+                                         ImVec2(position.x / screenWidth, position.y / screenHeight),
+                                         ImVec2((position.x + regionSize.x) / screenWidth,
+                                                (position.y + regionSize.y) / screenHeight),
+                                         IM_COL32_WHITE, rounding);
+                };
+            }
+            RenderMd3Panel(controller, adapter.AdapterName().c_str(), currentFramesPerSecond, false, panelCallbacks,
+                           handStatus);
             MD3::EndFrame();
             if (!adapter.PresentSceneFrame(syncInterval)) {
                 if (adapter.DeviceLost()) {

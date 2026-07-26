@@ -918,6 +918,11 @@ void DiligentVulkanAdapter::SetAcrylicPanelRect(float x, float y, float width, f
     uiPanelVisible_ = width > 0.0f && height > 0.0f;
 }
 
+void* DiligentVulkanAdapter::UiWeakBlurImGuiTexture() const noexcept {
+    // 弱模糊链固定两趟，最终结果写回 uiWeak（非 ping）纹理。
+    return uiBlurEnabled_ ? uiWeakShaderResource_ : nullptr;
+}
+
 std::string_view DiligentVulkanAdapter::Name() const noexcept {
     return adapterName_;
 }
