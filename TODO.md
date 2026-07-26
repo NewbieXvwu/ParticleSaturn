@@ -17,7 +17,7 @@
 - [x] smoke 测试失败可传播：`CocoaHost::StopRunLoop()`（`stop:` + 补发唤醒事件）取代 smoke/基线路径的 `terminate:`，main 的 `return 1` 复活；失败点统一打 `[smoke] FAILED` 日志并给全部 smoke 注册 `FAIL_REGULAR_EXPRESSION` 双保险。副作用：交互关窗现在正常走设置保存与清理。立即显形 4 个被掩盖的旧失败（见"遗留人工验收"全屏恢复条目）
 - [x] ctest 自检：`tests/AssertSentinelTests.cpp` + WILL_FAIL——断言生效时 return 1 翻转为通过，断言被剥离时退出 0 翻转为失败报警；同时验证退出码传播。不用 assert(false)：信号型退出被 ctest 记 Exception，WILL_FAIL 不生效。负向验证：手动 -DNDEBUG 编译确认退出 0
 - [x] ctest LABELS 分层：36/36 测试落层 unit 13 / gpu 7 / app 16（app 全部 RUN_SERIAL）；顶层 CMake 强制无标签即配置失败；`.github/workflows/macos-tests.yml` 跑 unit 层（unit 目标不链 DiligentCore，构建很轻）。CI 待下次 push 实际验证——本地领先 origin 226 提交，未代推
-- [ ] 修复 `.github/workflows/release.yml` 四处复制的补丁应用逻辑（指向已迁移旧路径，发布流水线当前损坏）→ 收敛到 `scripts/apply_third_party_patch.*` 单一入口（AUDIT P0-1）
+- [x] 修复 `.github/workflows/release.yml` 补丁逻辑：4 处 `git apply scripts/…`（路径全错，imgui 连文件名都错）收敛到 `sh scripts/apply_third_party_patch.sh` 单一入口；paths 过滤与 2 处缓存键同步指向 `patches/`；TFLite 现在正确应用双补丁（elementwise-compat 为标准 C++ 修正，MSVC 安全）。实际生效待下次 push
 - [x] MetalObjectShaderBaselineTests 修复 argv/metallib、RGBA16F 格式、半浮点读回（3e951b5 完成）
 
 ## P1 接缝与外壳统一（对比实验室骨架，D-002/D-003/D-009）

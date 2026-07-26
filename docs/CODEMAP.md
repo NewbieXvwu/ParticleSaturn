@@ -65,7 +65,7 @@
 | `scripts/compile_shaders.ps1` | — | **死代码待删**（被 CMake 版取代，AUDIT P1-11） |
 | 第三方补丁 | `patches/` + `scripts/apply_third_party_patch.*` | imgui-md3.patch 待重生成（D-007） |
 | TFLite macOS | `scripts/build_tflite_macos.sh` | 锁 2.19，XNNPACK ARM64 |
-| Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | release.yml 四处补丁路径**已损坏**（TODO P0，AUDIT P0-1） |
+| Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | 补丁应用已收敛到 apply_third_party_patch 单一入口（2026-07-26，待 push 验证） |
 | macOS 测试 CI | `.github/workflows/macos-tests.yml` | push/PR 构建并运行 unit 层（待下次 push 验证） |
 
 ## 冻结区 — 勿修改、勿扩展、勿模仿

@@ -9,7 +9,8 @@ on:
     paths:
       - 'scripts/build_tflite.cmd'
       - 'scripts/build_opencv.cmd'
-      - 'scripts/tflite-prune.patch'
+      - 'patches/tflite-prune.patch'
+      - 'patches/tflite-elementwise-compat.patch'
       - 'HandTracker/libs/tensorflow/tensorflow/lite/**'
       - 'HandTracker/libs/opencv/modules/core/**'
 
@@ -38,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: HandTracker/libs/tensorflow/tflite_build/install
-          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'scripts/tflite-prune.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
+          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'patches/tflite-prune.patch', 'patches/tflite-elementwise-compat.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
           restore-keys: |
             tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd') }}-
             tflite-vs2022-static-
@@ -47,9 +48,10 @@ jobs:
         if: steps.cache-tflite.outputs.cache-hit != 'true'
         run: reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
-      - name: Apply TFLite patch
+      - name: Apply TFLite patches
         if: steps.cache-tflite.outputs.cache-hit != 'true'
-        run: git apply scripts/tflite-prune.patch --directory=HandTracker/libs/tensorflow
+        run: sh scripts/apply_third_party_patch.sh tensorflow-lite
+        shell: bash
 
       - name: Build TFLite
         if: steps.cache-tflite.outputs.cache-hit != 'true'
@@ -138,7 +140,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: HandTracker/libs/tensorflow/tflite_build/install
-          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'scripts/tflite-prune.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
+          key: tflite-vs2022-static-${{ hashFiles('scripts/build_tflite.cmd', 'patches/tflite-prune.patch', 'patches/tflite-elementwise-compat.patch', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.cc', 'HandTracker/libs/tensorflow/tensorflow/lite/**/*.h') }}
           fail-on-cache-miss: true
 
       - name: Restore OpenCV Cache
@@ -156,7 +158,7 @@ jobs:
         shell: bash
 
       - name: Apply ImGui MD3 patch
-        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        run: sh scripts/apply_third_party_patch.sh imgui-md3
         shell: bash
 
       - name: Build HandTracker Release
@@ -206,7 +208,7 @@ jobs:
         shell: bash
 
       - name: Apply ImGui MD3 patch
-        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        run: sh scripts/apply_third_party_patch.sh imgui-md3
         shell: bash
 
       - name: Build OpenGL Release
@@ -293,7 +295,7 @@ jobs:
         shell: bash
 
       - name: Apply ImGui MD3 patch
-        run: git apply scripts/imgui_md3.patch --directory=libs/imgui
+        run: sh scripts/apply_third_party_patch.sh imgui-md3
         shell: bash
 
       - name: Build Diligent Release
