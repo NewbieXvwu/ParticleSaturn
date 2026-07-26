@@ -1352,6 +1352,10 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 
 36/36 测试打上 LABELS：unit 13（无 GPU，0.13s）/ gpu 7（需设备，1.67s）/ app 16（整机 smoke，全部 RUN_SERIAL）。顶层 CMakeLists 增加 `particlesaturn_require_test_labels` 递归检查——任何测试缺 LABELS 直接配置失败，新测试无法游离在分层之外。新增 `.github/workflows/macos-tests.yml`：macos-15 runner，只取 imgui+DiligentCore 子模块（配置期需要），构建 13 个 unit 目标（经核实均不链接 DiligentCore，构建轻量）后 `ctest -L unit`。注意：仓库领先 origin/main 226 提交、未代推，CI 生效待用户下次 push；CMAKE_OSX_DEPLOYMENT_TARGET=26 对 runner SDK 15 预期只产生版本警告，若报错可改 runs-on: macos-26。
 
+### 2026-07-26 SmokeHarness 抽取（TODO P1 第 2 项，AUDIT P2-2）
+
+`src/platform/macos/SmokeHarness.{h,cpp}`：SmokeConfig（解析 CAPTURE_BASELINE/PERFORMANCE_LOCK_SMOKE/FULLSCREEN_RESTORE_SMOKE + ForceInitialState 钉死确定性状态）、ResolveStartupGeometry、SmokeHarness（逐帧性能锁检查与全屏三段状态机，宿主操作以回调注入：Metal/Vulkan 传 CocoaHost，GL41 传原生 NSWindow + StopRunLoop）。失败统一 "[smoke] FAILED" 前缀 + DiagnosticBus 发布（Metal/GL41 由此首次获得诊断总线可见性）。Vulkan 专属冒烟（SMOKE_FRAMES/INTERACTION/LOD/DEVICE_LOST/RESTART）是该后端实验变量，留在 VulkanMain。**范围决策**：未做 BUILD_TESTING 编译隔离——app 层 smoke 的意义就是驱动真实发布二进制（验收铁律"必须来自真实呈现路径"），把 smoke 代码编译出发布二进制会让被测物偏离交付物。已知组合语义差异：Vulkan lod 冒烟的状态解锁现在晚于共享钉死（原顺序 baseline→lod→perf→fs），仅影响从不使用的 lod+perf/baseline 组合，已注释声明不支持。验证：12/12 app 测试通过；全屏恢复冒烟在本机以与抽取前逐位相同的方式失败（同超时、同消息）。
+
 ### 2026-07-26 release.yml 补丁路径修复（TODO P0 第 5 项，AUDIT P0-1）
 
 4 处 `git apply scripts/…` 全部指向已迁移路径（补丁实际在 `patches/`；imgui 的连名字都错：`scripts/imgui_md3.patch` vs `patches/imgui-md3.patch`），发布流水线自补丁迁移起损坏。收敛到 `sh scripts/apply_third_party_patch.sh <name>` 单一入口（幂等、含 tensorflow-lite 双补丁与 --exclude 逻辑）；push 触发 paths 过滤与两处 actions/cache 键同步改指 `patches/`。核实 tflite-elementwise-compat（std::abs<float> 取址 → lambda）为标准 C++ 修正，Windows/MSVC 应用安全。本地验证：入口幂等重跑通过、YAML 解析通过；流水线实际生效待下次 push。

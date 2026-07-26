@@ -1,4 +1,5 @@
 add_library(ParticleSaturnPlatformMacOS STATIC CocoaHost.mm MacOSApplication.mm MacOSBackendSelection.cpp
+    SmokeHarness.cpp
     "${CMAKE_SOURCE_DIR}/src/services/diagnostics/macos/MacOSCrashHandler.mm")
 add_library(ParticleSaturn.Platform.macOS ALIAS ParticleSaturnPlatformMacOS)
 target_include_directories(ParticleSaturnPlatformMacOS PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../..")

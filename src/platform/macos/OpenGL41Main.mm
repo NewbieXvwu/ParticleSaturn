@@ -20,6 +20,7 @@
 
 #include "MacOSApplication.h"
 #include "CocoaHost.h"
+#include "SmokeHarness.h"
 #include "MacOSMd3Panel.h"
 #include "MD3.h"
 #include "app/AppController.h"
@@ -58,20 +59,6 @@
 @end
 
 namespace {
-
-std::uint32_t PerformanceLockSmokeFrames() {
-    const char* value = std::getenv("PARTICLESATURN_PERFORMANCE_LOCK_SMOKE");
-    if (value == nullptr || value[0] == '\0') return 0;
-    const auto parsed = std::strtoul(value, nullptr, 10);
-    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
-}
-
-std::uint32_t FullscreenRestoreSmokeFrames() {
-    const char* value = std::getenv("PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE");
-    if (value == nullptr || value[0] == '\0') return 0;
-    const auto parsed = std::strtoul(value, nullptr, 10);
-    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
-}
 
 void AddOpenGLMenuAction(NSMenu* menu, NSString* title, SEL selector, id target, NSString* keyEquivalent = @"") {
     auto* item = [[NSMenuItem alloc] initWithTitle:title action:selector keyEquivalent:keyEquivalent];
@@ -253,45 +240,19 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
         __block ParticleSaturn::Services::Settings::MacOS::NSUserDefaultsStore settings;
-        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
-        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
-        const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
-        const bool performanceSmoke = performanceSmokeFrames != 0;
-        const auto fullscreenSmokeFrames = FullscreenRestoreSmokeFrames();
-        const bool fullscreenSmoke = fullscreenSmokeFrames != 0;
-        auto initialState = captureBaseline || performanceSmoke || fullscreenSmoke
-            ? ParticleSaturn::App::AppState{} : settings.Load({});
-        if (captureBaseline) {
-            initialState.window.width = 1512;
-            initialState.window.height = 827;
-            initialState.scene.paused = true;
-            initialState.lod.locked = true;
-        }
-        if (performanceSmoke) {
-            initialState.render.particleCount = ParticleSaturn::App::RenderSettings::MaxParticles;
-            initialState.render.pixelRatio = 1.0f;
-            initialState.render.bloomEnabled = true;
-            initialState.render.bloomBlurStrength = 2.0f;
-            initialState.ui.blurEnabled = true;
-            initialState.ui.blurStrength = 2.0f;
-            initialState.lod.locked = true;
-        }
-        if (fullscreenSmoke) {
-            initialState.window.x = 24;
-            initialState.window.y = 36;
-            initialState.window.width = 1111;
-            initialState.window.height = 777;
-            initialState.window.windowedX = 100;
-            initialState.window.windowedY = 100;
-            initialState.window.windowedWidth = 640;
-            initialState.window.windowedHeight = 360;
-            initialState.window.fullscreen = true;
-        }
-        const bool restoreFullscreen = initialState.window.fullscreen;
-        const auto startupWidth = restoreFullscreen ? initialState.window.windowedWidth : initialState.window.width;
-        const auto startupHeight = restoreFullscreen ? initialState.window.windowedHeight : initialState.window.height;
-        const auto startupX = restoreFullscreen ? initialState.window.windowedX : initialState.window.x;
-        const auto startupY = restoreFullscreen ? initialState.window.windowedY : initialState.window.y;
+        const auto smoke = ParticleSaturn::Platform::MacOS::SmokeConfig::FromEnvironment();
+        const char* baselinePath = smoke.baselinePath;
+        const bool captureBaseline = smoke.captureBaseline;
+        const bool performanceSmoke = smoke.performanceSmoke;
+        const bool fullscreenSmoke = smoke.fullscreenSmoke;
+        auto initialState = smoke.Deterministic() ? ParticleSaturn::App::AppState{} : settings.Load({});
+        smoke.ForceInitialState(initialState);
+        const auto startup = ParticleSaturn::Platform::MacOS::ResolveStartupGeometry(initialState);
+        const bool restoreFullscreen = startup.restoreFullscreen;
+        const auto startupWidth = startup.width;
+        const auto startupHeight = startup.height;
+        const auto startupX = startup.x;
+        const auto startupY = startup.y;
         const NSRect visibleFrame = [[NSScreen mainScreen] visibleFrame];
         const NSSize maximumContentSize = [NSWindow contentRectForFrameRect:visibleFrame
                                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
@@ -411,13 +372,11 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         }];
         auto baselineCaptured = std::make_shared<bool>(false);
         auto baselineFrameCount = std::make_shared<std::uint32_t>(0);
-        auto performanceFrameCount = std::make_shared<std::uint32_t>(0);
-        auto performanceFailed = std::make_shared<bool>(false);
-        auto fullscreenFrameCount = std::make_shared<std::uint32_t>(0);
-        auto fullscreenFailed = std::make_shared<bool>(false);
-        auto fullscreenExitRequested = std::make_shared<bool>(false);
-        auto fullscreenDeadline = std::make_shared<std::chrono::steady_clock::time_point>(
-            std::chrono::steady_clock::now() + std::chrono::seconds{5});
+        auto smokeHarness = std::make_shared<ParticleSaturn::Platform::MacOS::SmokeHarness>(
+            smoke, startup, "opengl41",
+            ParticleSaturn::Platform::MacOS::SmokeHarness::HostOps{
+                [window] { [window toggleFullScreen:nil]; },
+                [] { ParticleSaturn::Platform::MacOS::CocoaHost::StopRunLoop(); }});
         auto coordinator = std::make_shared<ParticleSaturn::App::FrameCoordinator>();
         auto fpsMeter = std::make_shared<FpsMeter>();
         auto lastFrame = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
@@ -603,45 +562,14 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             if (!frameRenderer->Render(*particles, *stars, *targets, *bloom, *toneMapper, *sevenSegment,
                                        width, height, state, handTracked, deltaTime, fpsMeter->Value(), transparent,
                                        callbacks)) return;
-            if (performanceSmoke) {
-                const auto& performanceState = controller->State();
-                if (performanceState.render.particleCount != ParticleSaturn::App::RenderSettings::MaxParticles ||
-                    performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
-                    performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
-                    performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
-                    std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 quality lock state changed during performance smoke test\n");
-                    *performanceFailed = true;
-                    CocoaHost::StopRunLoop();
-                } else if (++*performanceFrameCount >= performanceSmokeFrames) {
-                    CocoaHost::StopRunLoop();
-                }
-            }
+            smokeHarness->TickPerformance(controller->State());
             if (fullscreenSmoke) {
-                if (nativeFullscreen && !*fullscreenExitRequested) {
-                    if (++*fullscreenFrameCount >= fullscreenSmokeFrames) {
-                        [window toggleFullScreen:nil];
-                        *fullscreenExitRequested = true;
-                        *fullscreenFrameCount = 0;
-                        *fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-                    }
-                } else if (!nativeFullscreen && *fullscreenExitRequested) {
-                    const NSPoint origin = [window frame].origin;
-                    const bool geometryRestored = static_cast<std::uint32_t>(logicalSize.width) == startupWidth &&
-                        static_cast<std::uint32_t>(logicalSize.height) == startupHeight &&
-                        static_cast<std::int32_t>(origin.x) == startupX &&
-                        static_cast<std::int32_t>(origin.y) == startupY;
-                    if (geometryRestored && !controller->State().window.fullscreen) {
-                        if (++*fullscreenFrameCount >= fullscreenSmokeFrames) CocoaHost::StopRunLoop();
-                    } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
-                        std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 window geometry was not restored after fullscreen\n");
-                        *fullscreenFailed = true;
-                        CocoaHost::StopRunLoop();
-                    }
-                } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
-                    std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 window did not complete fullscreen transition\n");
-                    *fullscreenFailed = true;
-                    CocoaHost::StopRunLoop();
-                }
+                const NSPoint origin = [window frame].origin;
+                smokeHarness->TickFullscreen(nativeFullscreen, controller->State(),
+                                             static_cast<std::uint32_t>(logicalSize.width),
+                                             static_cast<std::uint32_t>(logicalSize.height),
+                                             static_cast<std::int32_t>(origin.x),
+                                             static_cast<std::int32_t>(origin.y));
             }
         }];
         [frameTimer setTolerance:0.0];
@@ -668,7 +596,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         glass.reset();
         [view release];
         [window release];
-        if (*performanceFailed || *fullscreenFailed) return 1;
+        if (smokeHarness->Failed()) return 1;
     }
     return 0;
 }

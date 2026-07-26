@@ -38,7 +38,8 @@
 | 入口 | 位置 | 备注 |
 |---|---|---|
 | macOS 统一启动器 | `src/platform/macos/LauncherMain.mm`、MacOSBackendSelection.* | 读持久化 GraphicsApi/VulkanDriver 选路径 |
-| macOS 三个模式 main | `src/platform/macos/{Main,OpenGL41Main,VulkanMain}.mm` | **待合并为 RunApp**（TODO P1）；内嵌 smoke 逻辑待抽 SmokeHarness |
+| macOS 三个模式 main | `src/platform/macos/{Main,OpenGL41Main,VulkanMain}.mm` | **待合并为 RunApp**（TODO P1） |
+| 冒烟/基线统一支撑 | `src/platform/macos/SmokeHarness.{h,cpp}` | SmokeConfig 环境解析+状态钉死、启动几何、逐帧性能/全屏状态机；三 main 共用 |
 | Cocoa 宿主/窗口 | `src/platform/macos/CocoaHost.*`、MacOSApplication.* | 全屏/材质/事件 |
 | macOS MD3 调试面板 | `src/platform/macos/MacOSMd3Panel.*` | 三后端共用 |
 | Windows 入口 | `src/Diligent/Main.cpp`、`src/OpenGL/Main.cpp` | 冻结 |

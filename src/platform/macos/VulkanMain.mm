@@ -2,6 +2,7 @@
 
 #include "CocoaHost.h"
 #include "MacOSApplication.h"
+#include "SmokeHarness.h"
 #include "app/AppController.h"
 #include "app/FrameCoordinator.h"
 #include "gpu/backends/diligent/DiligentVulkanAdapter.h"
@@ -49,20 +50,6 @@ std::uint32_t SmokeFrameLimit() {
     return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 10000UL));
 }
 
-std::uint32_t PerformanceLockSmokeFrames() {
-    const char* value = std::getenv("PARTICLESATURN_PERFORMANCE_LOCK_SMOKE");
-    if (value == nullptr || value[0] == '\0') return 0;
-    const auto parsed = std::strtoul(value, nullptr, 10);
-    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
-}
-
-std::uint32_t FullscreenRestoreSmokeFrames() {
-    const char* value = std::getenv("PARTICLESATURN_FULLSCREEN_RESTORE_SMOKE");
-    if (value == nullptr || value[0] == '\0') return 0;
-    const auto parsed = std::strtoul(value, nullptr, 10);
-    return static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 100UL));
-}
-
 bool InteractionSmokeRequested() {
     const char* value = std::getenv("PARTICLESATURN_VULKAN_INTERACTION_SMOKE");
     return value != nullptr && std::string_view{value} == "1";
@@ -96,59 +83,33 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
     @autoreleasepool {
         InstallDebugLogCapture();
         Services::Settings::MacOS::NSUserDefaultsStore settings;
-        const char* baselinePath = std::getenv("PARTICLESATURN_CAPTURE_BASELINE");
-        const bool captureBaseline = baselinePath != nullptr && baselinePath[0] != '\0';
+        const auto smoke = SmokeConfig::FromEnvironment();
+        const char* baselinePath = smoke.baselinePath;
+        const bool captureBaseline = smoke.captureBaseline;
+        const bool performanceSmoke = smoke.performanceSmoke;
+        const bool fullscreenSmoke = smoke.fullscreenSmoke;
         const auto smokeFrames = SmokeFrameLimit();
         const bool smokeMode = smokeFrames != 0;
-        const auto performanceSmokeFrames = PerformanceLockSmokeFrames();
-        const bool performanceSmoke = performanceSmokeFrames != 0;
-        const auto fullscreenSmokeFrames = FullscreenRestoreSmokeFrames();
-        const bool fullscreenSmoke = fullscreenSmokeFrames != 0;
         const bool lodSmoke = LodSmokeRequested();
         App::AppState defaults;
         defaults.render.graphicsApi = App::GraphicsApi::Vulkan;
-        auto state = captureBaseline || smokeMode || performanceSmoke || fullscreenSmoke
-            ? defaults : settings.Load(defaults);
+        auto state = smoke.Deterministic() || smokeMode ? defaults : settings.Load(defaults);
         state.render.graphicsApi = App::GraphicsApi::Vulkan;
         state.render.vulkanDriver = SelectedDriver(state.render.vulkanDriver);
-        if (captureBaseline) {
-            state.window.width = 1512;
-            state.window.height = 827;
-            state.scene.paused = true;
-            state.lod.locked = true;
-        }
+        smoke.ForceInitialState(state);
+        // lod 冒烟在共享钉死之后解锁 LOD；不支持与 performance/baseline 冒烟组合使用。
         if (lodSmoke) {
             state.render.particleCount = App::RenderSettings::MaxParticles;
             state.lod.locked = false;
         }
-        if (performanceSmoke) {
-            state.render.particleCount = App::RenderSettings::MaxParticles;
-            state.render.pixelRatio = 1.0f;
-            state.render.bloomEnabled = true;
-            state.render.bloomBlurStrength = 2.0f;
-            state.ui.blurEnabled = true;
-            state.ui.blurStrength = 2.0f;
-            state.lod.locked = true;
-        }
-        if (fullscreenSmoke) {
-            state.window.x = 24;
-            state.window.y = 36;
-            state.window.width = 1111;
-            state.window.height = 777;
-            state.window.windowedX = 100;
-            state.window.windowedY = 100;
-            state.window.windowedWidth = 640;
-            state.window.windowedHeight = 360;
-            state.window.fullscreen = true;
-        }
-        const bool restoreFullscreen = state.window.fullscreen;
-        const auto startupWidth = restoreFullscreen ? state.window.windowedWidth : state.window.width;
-        const auto startupHeight = restoreFullscreen ? state.window.windowedHeight : state.window.height;
-        const auto startupX = restoreFullscreen ? state.window.windowedX : state.window.x;
-        const auto startupY = restoreFullscreen ? state.window.windowedY : state.window.y;
+        const auto startup = ResolveStartupGeometry(state);
+        const bool restoreFullscreen = startup.restoreFullscreen;
 
-        CocoaHost host{startupWidth, startupHeight, "Particle Saturn - Vulkan"};
-        host.SetWindowPosition(startupX, startupY);
+        CocoaHost host{startup.width, startup.height, "Particle Saturn - Vulkan"};
+        host.SetWindowPosition(startup.x, startup.y);
+        SmokeHarness smokeHarness{smoke, startup, "vulkan", {
+            [&host] { [[(NSView*)host.NativeView() window] toggleFullScreen:nil]; },
+            [&host] { host.RequestExit(); }}};
         host.SetPresentationMode(state.render.vsyncMode);
         host.SetWindowMaterial(state.window.material);
 
@@ -306,12 +267,6 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         }
 
         std::uint32_t renderedFrames = 0;
-        std::uint32_t performanceFrameCount = 0;
-        bool performanceFailed = false;
-        std::uint32_t fullscreenFrameCount = 0;
-        bool fullscreenFailed = false;
-        bool fullscreenExitRequested = false;
-        auto fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         bool runtimeFailed = false;
         auto appliedVsync = state.render.vsyncMode;
         host.Show();
@@ -471,45 +426,13 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                 return;
             }
             if (captureBaseline && adapter.BaselineCaptureRequested()) host.RequestExit();
-            if (performanceSmoke) {
-                const auto& performanceState = controller.State();
-                if (performanceState.render.particleCount != App::RenderSettings::MaxParticles ||
-                    performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
-                    performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
-                    performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
-                    ReportStartupFailure("performance-lock-smoke", "[smoke] FAILED: Vulkan quality lock state changed during performance smoke test");
-                    performanceFailed = true;
-                    host.RequestExit();
-                } else if (++performanceFrameCount >= performanceSmokeFrames) {
-                    host.RequestExit();
-                }
-            }
+            smokeHarness.TickPerformance(controller.State());
             if (fullscreenSmoke) {
-                if (nativeFullscreen && !fullscreenExitRequested) {
-                    if (++fullscreenFrameCount >= fullscreenSmokeFrames) {
-                        [[(NSView*)host.NativeView() window] toggleFullScreen:nil];
-                        fullscreenExitRequested = true;
-                        fullscreenFrameCount = 0;
-                        fullscreenDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-                    }
-                } else if (!nativeFullscreen && fullscreenExitRequested) {
-                    std::int32_t x = 0;
-                    std::int32_t y = 0;
-                    host.GetWindowPosition(x, y);
-                    const bool geometryRestored = mutableState.window.width == startupWidth &&
-                        mutableState.window.height == startupHeight && x == startupX && y == startupY;
-                    if (geometryRestored && !mutableState.window.fullscreen) {
-                        if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
-                    } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
-                        ReportStartupFailure("fullscreen-restore-smoke", "[smoke] FAILED: Vulkan window geometry was not restored after fullscreen");
-                        fullscreenFailed = true;
-                        host.RequestExit();
-                    }
-                } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
-                    ReportStartupFailure("fullscreen-restore-smoke", "[smoke] FAILED: Vulkan window did not complete fullscreen transition");
-                    fullscreenFailed = true;
-                    host.RequestExit();
-                }
+                std::int32_t x = 0;
+                std::int32_t y = 0;
+                host.GetWindowPosition(x, y);
+                smokeHarness.TickFullscreen(nativeFullscreen, mutableState, mutableState.window.width,
+                                            mutableState.window.height, x, y);
             }
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
                 if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
@@ -521,7 +444,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
         });
         if (!smokeMode && !performanceSmoke && !fullscreenSmoke) settings.Save(controller.State());
         adapter.Shutdown();
-        if (runtimeFailed || performanceFailed || fullscreenFailed) return 1;
+        if (runtimeFailed || smokeHarness.Failed()) return 1;
     }
     return 0;
 }

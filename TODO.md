@@ -23,7 +23,7 @@
 ## P1 接缝与外壳统一（对比实验室骨架，D-002/D-003/D-009）
 
 - [ ] 合并三个 macOS main（`src/platform/macos/{Main,OpenGL41Main,VulkanMain}.mm`）为唯一 `RunApp(backendFactory)`；各 main 只留设备/表面构造（AUDIT P2-2）
-- [ ] 内嵌在生产 main 里的 8 环境变量 smoke 逻辑（约 150 行 ×3）抽出为 SmokeHarness，`BUILD_TESTING` 隔离出发布二进制（AUDIT P2-2）
+- [x] smoke 逻辑抽出为 `src/platform/macos/SmokeHarness`（SmokeConfig 环境解析+状态钉死 / ResolveStartupGeometry / 逐帧性能与全屏状态机，宿主操作回调注入）；三 main 各删 ~90 行重复；失败统一打标+发 DiagnosticBus。未做 BUILD_TESTING 编译隔离——smoke 必须跑真实发布二进制（验收铁律），编译出去会让被测物偏离交付物；12/12 app 测试通过、全屏失败模式逐位一致（AUDIT P2-2）
 - [ ] 定义 `IRenderBackend` 窄接缝（Init / Capabilities / Resize / RenderFrame / Readback / Shutdown）；四条 macOS 路径以包装类接入，内部实现不改（D-002）
 - [ ] 渲染图静态化：删除每帧 Compile/重建与拓扑排序（三后端每帧 30-45 次堆分配），pass 清单一次构建或静态直排，行为不变（AUDIT P1-9，D-003）
 - [ ] 能力/特性协商单点：后端 `Capabilities()` 申报，特性开关在一处解析（`useObjectShader` 非 Metal 语义、GL41 无 compute 的粒子策略等），替代散落的后端 if；声明分歧在此登记（D-004）
