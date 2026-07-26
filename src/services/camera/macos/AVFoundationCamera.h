@@ -6,18 +6,18 @@
 
 namespace ParticleSaturn::Services::Camera::MacOS {
 
-class AVFoundationCamera final : public ICameraCapture {
+class AVFoundationCamera final {
 public:
     AVFoundationCamera();
-    ~AVFoundationCamera() override;
-    Authorization Permission() const override;
-    void RequestPermission() override;
-    std::vector<Device> Devices() const override;
-    bool Start(const std::string& deviceId, std::uint32_t width, std::uint32_t height) override;
-    void Stop() override;
-    bool IsRunning() const override;
-    bool LatestFrame(Frame& frame) override;
-    std::string LastError() const override;
+    ~AVFoundationCamera();
+    Authorization Permission() const;
+    void RequestPermission();
+    std::vector<Device> Devices() const;
+    bool Start(const std::string& deviceId, std::uint32_t width, std::uint32_t height);
+    void Stop();
+    bool IsRunning() const;
+    bool LatestFrame(Frame& frame);
+    std::string LastError() const;
     void* NativeSession() const;
     void PublishPixelBuffer(void* pixelBuffer, std::uint64_t timestampNanoseconds);
     void HandleDeviceDisconnected(const char* deviceId);

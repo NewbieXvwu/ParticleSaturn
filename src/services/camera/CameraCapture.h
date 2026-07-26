@@ -27,17 +27,4 @@ struct Frame {
     std::vector<std::uint8_t> pixels;
 };
 
-class ICameraCapture {
-public:
-    virtual ~ICameraCapture() = default;
-    virtual Authorization Permission() const = 0;
-    virtual void RequestPermission() = 0;
-    virtual std::vector<Device> Devices() const = 0;
-    virtual bool Start(const std::string& deviceId, std::uint32_t width, std::uint32_t height) = 0;
-    virtual void Stop() = 0;
-    virtual bool IsRunning() const = 0;
-    virtual bool LatestFrame(Frame& frame) = 0;
-    virtual std::string LastError() const = 0;
-};
-
 } // namespace ParticleSaturn::Services::Camera
