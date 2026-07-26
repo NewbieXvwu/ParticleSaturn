@@ -53,6 +53,8 @@
 
 作为实验对象的路径（当前：Metal object/mesh shader 粒子路径）**保留手写 MSL**，在能力/技术登记中记录为**声明分歧**——它们是故意的实验变量，不是漂移。
 
+**2026-07-26 拍板**（用户决定）：工具链定为 **DXC + SPIRV-Cross**；Slang 备选废止。理由：SPIRV-Cross/glslang 已随 DiligentCore 在库、零新依赖；现有 `src/shaders/hlsl` 源直接复用；MoltenVK 本身经 SPIRV-Cross 生成 MSL，翻译层与现役路径同源，对比信号更干净。
+
 **部分废止**：2026-07-16 决策"正式 Metal 包只加载手写 MSL 生成的 metallib，SPIRV-Cross 仅开发期对照"（MIGRATION_LOG §8.4、§11.4、§20 第 9 条）——对声明分歧路径继续有效，对共享通道废止。
 
 ## D-005 迁移纪律：替换必删旧（2026-07-26，有效）

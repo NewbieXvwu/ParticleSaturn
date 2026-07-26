@@ -42,7 +42,7 @@
 
 ## P3 着色器单源试点（D-004）
 
-- [ ] （需拍板）选定工具链：DXC+SPIRV-Cross 或 Slang——向用户给出对比与推荐后由用户定
+- [x] 工具链已拍板（2026-07-26，用户决定）：**DXC + SPIRV-Cross**，Slang 废止——决议记录于 D-004
 - [ ] tonemap 通道先行：单源产出 MSL/GLSL410/SPIR-V，接入三条 macOS 路径
 - [ ] 用对比模式（P4）量化替换前后差异，通过后推广 bloom → 星空 → 粒子渲染
 - [ ] 声明分歧登记：Metal object/mesh shader 保持手写 MSL（能力表记录）
