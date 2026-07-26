@@ -1,7 +1,7 @@
 # CODEMAP — 代码库地图
 
 > **写代码前先查这里。** 需要某个能力（接口/服务/工具/脚本）时：① 查本表 ② 全库 grep 确认 ③ 都没有才新建，并在**同一提交**把新东西登记到本表。
-> 本表只描述"现在有什么、在哪、什么状态"；历史见 `MIGRATION_LOG.md`，理由见 `DECISIONS.md`（引用格式 D-xxx），债务明细见 `AUDIT_2026-07.md`（引用格式 AUDIT #n）。
+> 本表只描述"现在有什么、在哪、什么状态"；历史见 `MIGRATION_LOG.md`，理由见 `DECISIONS.md`（引用格式 D-xxx），债务明细见 `AUDIT_2026-07.md`（引用其第一部分编号 AUDIT P0-1~P3-7）。
 > **过期地图比没有地图更害人**：移动/新增/删除模块时同一提交更新本表。
 
 ## 渲染路径（对比实验的被测对象；接缝以下保持原生写法，D-001/D-002）
@@ -51,7 +51,7 @@
 | 跨后端粒子一致性 | `tests/CrossBackendParticleSystemTests.mm`（固定种子逐字段读回） |
 | 视觉基线 | `tests/VisualBaselineMetricsTests.cpp`、`tests/RunMacOSVisualBaseline.sh`、`PARTICLESATURN_CAPTURE_BASELINE` 环境变量 |
 | object shader 基线 | `tests/MetalObjectShaderBaselineTests.mm`（3e951b5 已修 argv/格式/半浮点读回） |
-| 图像差异度量 | ⚠️ 三份实现待收敛到 tests/common/（AUDIT #48） |
+| 图像差异度量 | ⚠️ 三份实现待收敛到 tests/common/（AUDIT P2-9） |
 | 已知系统性缺陷 | Release 下裸 assert 全部空转、smoke 退出码恒 0 —— 修复是 TODO P0（D-008） |
 
 ## 构建
@@ -60,17 +60,17 @@
 |---|---|---|
 | 顶层 CMake | `CMakeLists.txt` | macOS 主构建入口 |
 | 着色器编译 + ABI | `cmake/CompileShaders.cmake` 等 | 现行（跨平台 CMake 版） |
-| `scripts/compile_shaders.ps1` | — | **死代码待删**（被 CMake 版取代，AUDIT #30） |
+| `scripts/compile_shaders.ps1` | — | **死代码待删**（被 CMake 版取代，AUDIT P1-11） |
 | 第三方补丁 | `patches/` + `scripts/apply_third_party_patch.*` | imgui-md3.patch 待重生成（D-007） |
 | TFLite macOS | `scripts/build_tflite_macos.sh` | 锁 2.19，XNNPACK ARM64 |
-| Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | release.yml 四处补丁路径**已损坏**（TODO P0，AUDIT #28） |
+| Windows 构建 | `*.vcxproj`、`scripts/*.ps1/.cmd`、`.github/workflows/release.yml` | release.yml 四处补丁路径**已损坏**（TODO P0，AUDIT P0-1） |
 
 ## 冻结区 — 勿修改、勿扩展、勿模仿
 
 | 对象 | 原因 / 去向 |
 |---|---|
-| `src/OpenGL/md3/`、`src/Diligent/md3/` | MD3 旧拷贝，待删（TODO P2）；现行版 `src/ui/md3`；macOS include 路径存在 ODR 隐患（AUDIT #13） |
+| `src/OpenGL/md3/`、`src/Diligent/md3/` | MD3 旧拷贝，待删（TODO P2）；现行版 `src/ui/md3`；macOS include 路径存在 ODR 隐患（AUDIT P0-3） |
 | `src/AppState.h/.cpp` | 旧状态模型；现行 `src/app/state/` |
 | `src/OpenGL/`、`src/Diligent/`、`src/CameraSelector/`、`HandTracker/`（SIMD 调度除外） | Windows 现役但冻结（D-015）；重启时走窄接缝 |
 | `src/Settings.h`、`src/ErrorHandler.h`、`src/DebugLog.h` | Windows 专属旧设施；macOS 对应物见共享层 |
-| `scripts/compile_shaders.ps1`、CMake FastRelease 配置、`src/Diligent/SuperResolution.h` | 死代码，删除排期 TODO P2（AUDIT #30/#31/#17） |
+| `scripts/compile_shaders.ps1`、CMake FastRelease 配置、`src/Diligent/SuperResolution.h` | 死代码，删除排期 TODO P2（AUDIT P1-11/P2-5/P2-1） |

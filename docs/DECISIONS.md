@@ -59,11 +59,11 @@
 
 任何迁移/提取/替换必须在**同一提交系列**内删除旧实现。确实暂不能删的，登记进 `docs/CODEMAP.md` 冻结区并注明原因与删除条件。半途迁移是最危险状态：双份维护 + 漂移 + ODR 隐患。
 
-历史教训（见 AUDIT_2026-07）：MD3 三份拷贝（#12/#13）、AppState 双模型（#26）、CrashAnalyzer 双份（#23）、Win7Compat 双份、compile_shaders.ps1 尸体（#30）。
+历史教训（见 AUDIT_2026-07 第一部分）：MD3 三份拷贝（P0-3）、AppState 双模型（P1-4）、CrashAnalyzer 双份（P2-7）、Win7Compat 双份（P3-7）、compile_shaders.ps1 尸体（P1-11）。
 
 ## D-006 无第二消费者不建抽象（2026-07-26，有效）
 
-接口/抽象层在第二个真实消费者出现之前不得新建。需要某能力先查 CODEMAP + 全库 grep。历史教训：GpuDevice 大表停滞十日（后按 D-002 收窄范围才落地）、TexturePool 零池化使用（#4）、单实现服务接口（#25）。
+接口/抽象层在第二个真实消费者出现之前不得新建。需要某能力先查 CODEMAP + 全库 grep。历史教训：GpuDevice 大表停滞十日（后按 D-002 收窄范围才落地）、TexturePool 零池化使用（AUDIT P1-9）、单实现服务接口（AUDIT P2-1）。
 
 ## D-007 第三方只读边界（2026-07-26，有效）
 
