@@ -50,8 +50,8 @@
 
 ## P4 对比模式（把测量做成功能）
 
-- [ ] `Readback` 纳入接缝；固定种子 + 固定时间步长的确定性模式（复用 `PARTICLESATURN_CAPTURE_BASELINE` 基础）
-- [ ] 同一帧状态送 2+ 后端离屏渲染：并排图、差异热力图、逐 pass 均值/失配率指标
+- [ ] `Readback` 正式纳入接缝签名（随 IRenderBackend 正名做）；确定性捕获现经 `PARTICLESATURN_CAPTURE_BASELINE`（固定种子/几何/暂停场景/锁 LOD）在各后端可用，已被对比模式复用
+- [x] 对比模式核心：`scripts/compare_macos_backends.sh` + `ParticleSaturnImageCompareTool`——同一确定性帧状态依次送各后端捕获，以 Metal 为参考输出并排图/差异热力图/共享度量。**首组实测**（2026-07-26）：GL41 vs Metal 均值差 1.74、失配 3.17%；MoltenVK vs Metal 均值差 1.18、失配 0.36%。逐 pass 级指标待逐 pass readback 挂点（后续）
 - [x] 图像差异度量收敛：两份 macOS 实现（视觉基线 PPM 版 / object shader 内存版，聚合语义核实相同）统一到 `tests/common/ImageMetrics.h` 累加器，阈值常量 PerPixelChannelThreshold=8 具名共享；第三份在冻结的 Windows CameraSelector（D-015 不动）。两组基线测试通过（AUDIT P2-9）
 - [x] 粒子 CPU 参照两份合一：一份在 GL41 **生产**初始化、一份在 Metal 测试——归宿改为 `src/shaders/abi/ParticleInit.h`（ABI 旁的规范 CPU 端实现，生产与测试共用；tests/common 方向会让生产依赖测试）；Metal GPU 初始化对拍规范参照通过 = 抽取逐位一致（AUDIT P2-9）
 

@@ -52,6 +52,7 @@
 | 东西 | 位置 / 说明 |
 |---|---|
 | 测试全集 | `tests/`（ctest 注册散布于各 CMakeLists） |
+| 对比模式 | `scripts/compare_macos_backends.sh` + `ParticleSaturnImageCompareTool`（tests/ImageCompareTool.cpp）：确定性捕获→并排/热力图/度量 |
 | 跨后端粒子一致性 | `tests/CrossBackendParticleSystemTests.mm`（固定种子逐字段读回） |
 | 视觉基线 | `tests/VisualBaselineMetricsTests.cpp`、`tests/RunMacOSVisualBaseline.sh`、`PARTICLESATURN_CAPTURE_BASELINE` 环境变量 |
 | object shader 基线 | `tests/MetalObjectShaderBaselineTests.mm`（3e951b5 已修 argv/格式/半浮点读回） |

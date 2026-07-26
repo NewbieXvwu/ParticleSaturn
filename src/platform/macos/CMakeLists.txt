@@ -98,6 +98,10 @@ if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
     file(WRITE "${PARTICLESATURN_KOSMICKRISP_BUNDLE_ICD}" "${PARTICLESATURN_KOSMICKRISP_ICD_CONTENT}")
 endif()
 
+# 对比模式工具（TODO P4）：不是测试——始终构建，退出码不做阈值判定。
+add_executable(ParticleSaturnImageCompareTool "${CMAKE_SOURCE_DIR}/tests/ImageCompareTool.cpp")
+target_compile_features(ParticleSaturnImageCompareTool PRIVATE cxx_std_20)
+
 if(BUILD_TESTING)
     add_executable(ParticleSaturnMacOSCrashHandlerTests "${CMAKE_SOURCE_DIR}/tests/MacOSCrashHandlerTests.mm")
     target_link_libraries(ParticleSaturnMacOSCrashHandlerTests PRIVATE ParticleSaturnPlatformMacOS)
