@@ -769,6 +769,35 @@ bool MetalParticleRenderer::Initialize(MetalDevice& device, const char* libraryP
     if (library == nil || error != nil) return false;
     particlePipeline_ = CreateRenderPipeline(nativeDevice, library, @"ParticleVertex", @"ParticleFragment");
     starPipeline_ = CreateRenderPipeline(nativeDevice, library, @"StarVertex", @"StarFragment");
+
+    // Create object shader pipeline if device supports it (Metal 3+)
+    if (@available(macOS 13.0, *)) {
+        if ([nativeDevice supportsFamily:MTLGPUFamilyMetal3]) {
+            id<MTLFunction> objectFunc = [library newFunctionWithName:@"ParticleObjectShader"];
+            id<MTLFunction> meshFunc = [library newFunctionWithName:@"ParticleMeshShader"];
+            id<MTLFunction> fragFunc = [library newFunctionWithName:@"ParticleFragment"];
+            if (objectFunc != nil && meshFunc != nil && fragFunc != nil) {
+                MTLMeshRenderPipelineDescriptor* desc = [[MTLMeshRenderPipelineDescriptor alloc] init];
+                desc.objectFunction = objectFunc;
+                desc.meshFunction = meshFunc;
+                desc.fragmentFunction = fragFunc;
+                desc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+                desc.colorAttachments[0].blendingEnabled = YES;
+                desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+                desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+                desc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+                desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+                desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+                desc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+                objectShaderPipeline_ = [nativeDevice newRenderPipelineStateWithMeshDescriptor:desc options:MTLPipelineOptionNone reflection:nil error:&error];
+                [desc release];
+                [objectFunc release];
+                [meshFunc release];
+                [fragFunc release];
+            }
+        }
+    }
+
     [library release];
     return particlePipeline_ != nullptr && starPipeline_ != nullptr &&
            particleIndirect_.Create(device, MetalParticleSystem::ParticleCount);
@@ -778,22 +807,34 @@ void MetalParticleRenderer::Draw(void* nativeEncoder, void* particleBuffer, void
                                  std::uint32_t height, const App::AppState& state) {
     if (nativeEncoder == nullptr || particleBuffer == nullptr || starBuffer == nullptr || height == 0) return;
     id<MTLRenderCommandEncoder> encoder = (id<MTLRenderCommandEncoder>)nativeEncoder;
-    struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY, pixelRatio, densityCompensation; } constants{
+    const auto particleCount = std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount);
+    struct RenderConstants { float aspect, screenHeight, time, scale, rotationX, rotationY, pixelRatio, densityCompensation; std::uint32_t particleCount; } constants{
         static_cast<float>(width) / static_cast<float>(height), static_cast<float>(height),
         static_cast<float>(state.scene.simulationTimeSeconds), state.scene.zoom, state.scene.rotationX, state.scene.rotationY,
-        state.render.pixelRatio, state.render.densityCompensation};
+        state.render.pixelRatio, state.render.densityCompensation, particleCount};
     [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)starPipeline_];
     [encoder setVertexBuffer:(id<MTLBuffer>)starBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
     [encoder drawPrimitives:MTLPrimitiveTypePoint vertexStart:0 vertexCount:MetalStarField::StarCount];
-    [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
-    [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
-    [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
-    const auto particleCount = std::clamp(state.render.particleCount, 1U, MetalParticleSystem::ParticleCount);
-    if (!particleIndirect_.Update(particleCount)) return;
-    [encoder drawPrimitives:MTLPrimitiveTypePoint
-             indirectBuffer:(id<MTLBuffer>)particleIndirect_.Buffer()
-       indirectBufferOffset:0];
+
+    if (state.render.useObjectShader && objectShaderPipeline_ != nullptr) {
+        [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)objectShaderPipeline_];
+        [encoder setObjectBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
+        [encoder setObjectBytes:&constants length:sizeof(constants) atIndex:1];
+        const NSUInteger threadgroupSize = 32;
+        const NSUInteger objectCount = (particleCount + threadgroupSize - 1) / threadgroupSize;
+        [encoder drawMeshThreadgroups:MTLSizeMake(objectCount, 1, 1)
+                threadsPerObjectThreadgroup:MTLSizeMake(threadgroupSize, 1, 1)
+                  threadsPerMeshThreadgroup:MTLSizeMake(1, 1, 1)];
+    } else {
+        [encoder setRenderPipelineState:(id<MTLRenderPipelineState>)particlePipeline_];
+        [encoder setVertexBuffer:(id<MTLBuffer>)particleBuffer offset:0 atIndex:0];
+        [encoder setVertexBytes:&constants length:sizeof(constants) atIndex:1];
+        if (!particleIndirect_.Update(particleCount)) return;
+        [encoder drawPrimitives:MTLPrimitiveTypePoint
+                 indirectBuffer:(id<MTLBuffer>)particleIndirect_.Buffer()
+           indirectBufferOffset:0];
+    }
 }
 
 MetalFrameRenderer::~MetalFrameRenderer() {

@@ -45,6 +45,9 @@ CommandEffect AppController::Dispatch(const AppCommand& command) {
         } else if constexpr (std::is_same_v<Command, SetAnalyticParticles>) {
             effect.renderSettingsChanged = state_.render.analyticParticles != value.value;
             state_.render.analyticParticles = value.value;
+        } else if constexpr (std::is_same_v<Command, SetUseObjectShader>) {
+            effect.renderSettingsChanged = state_.render.useObjectShader != value.value;
+            state_.render.useObjectShader = value.value;
         } else if constexpr (std::is_same_v<Command, SetBlurEnabled>) {
             effect.renderSettingsChanged = state_.ui.blurEnabled != value.value;
             state_.ui.blurEnabled = value.value;

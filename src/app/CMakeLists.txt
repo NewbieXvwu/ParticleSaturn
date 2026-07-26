@@ -24,4 +24,10 @@ if(BUILD_TESTING)
     )
     target_link_libraries(ParticleSaturnAppCoreTests PRIVATE ParticleSaturnAppCore)
     add_test(NAME ParticleSaturnAppCoreTests COMMAND ParticleSaturnAppCoreTests)
+
+    add_executable(ParticleSaturnObjectShaderToggleTests
+        "${CMAKE_CURRENT_LIST_DIR}/../../tests/ObjectShaderToggleTests.cpp"
+    )
+    target_link_libraries(ParticleSaturnObjectShaderToggleTests PRIVATE ParticleSaturnAppCore)
+    add_test(NAME ParticleSaturnObjectShaderToggleTests COMMAND ParticleSaturnObjectShaderToggleTests)
 endif()

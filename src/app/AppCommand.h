@@ -16,6 +16,7 @@ struct SetVSyncMode { int value; };
 struct SetBloomEnabled { bool value; };
 struct SetBloomBlurStrength { float value; };
 struct SetAnalyticParticles { bool value; };
+struct SetUseObjectShader { bool value; };
 struct SetBlurEnabled { bool value; };
 struct SetBlurStrength { float value; };
 struct SetDarkMode { bool value; };
@@ -43,6 +44,7 @@ using AppCommand = std::variant<
     SetBloomEnabled,
     SetBloomBlurStrength,
     SetAnalyticParticles,
+    SetUseObjectShader,
     SetBlurEnabled,
     SetBlurStrength,
     SetDarkMode,

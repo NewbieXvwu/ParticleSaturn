@@ -183,6 +183,12 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
                 DispatchAndSave(controller, ParticleSaturn::App::SetAnalyticParticles{analytic}, callbacks);
             }
         }
+        if (state.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Metal) {
+            bool objectShader = state.render.useObjectShader;
+            if (MD3::Toggle("Object shader (Metal 3)", &objectShader)) {
+                DispatchAndSave(controller, ParticleSaturn::App::SetUseObjectShader{objectShader}, callbacks);
+            }
+        }
         MD3::EndCollapsingHeader();
     }
 

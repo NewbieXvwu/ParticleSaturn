@@ -242,6 +242,7 @@ public:
 private:
     void* particlePipeline_ = nullptr;
     void* starPipeline_ = nullptr;
+    void* objectShaderPipeline_ = nullptr;
     MetalIndirectDraw particleIndirect_;
 };
 

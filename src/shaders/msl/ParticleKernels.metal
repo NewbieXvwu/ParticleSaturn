@@ -251,6 +251,7 @@ struct RenderConstants {
     float rotationY;
     float pixelRatio;
     float densityCompensation;
+    uint particleCount;
 };
 
 float4 UnpackColor(uint color) {
@@ -319,6 +320,142 @@ vertex PointVertex ParticleVertex(const device Particle* particles [[buffer(0)]]
 }
 
 fragment float4 ParticleFragment(PointVertex input [[stage_in]], float2 point [[point_coord]]) {
+    const float radiusSquared = dot(point * 2.0f - 1.0f, point * 2.0f - 1.0f);
+    if (radiusSquared > 1.0f) discard_fragment();
+    const float glow = smoothstep(1.0f, 0.4f, radiusSquared);
+    const float t = clamp((input.scale - 0.15f) * 0.4255f, 0.0f, 1.0f);
+    const float smoothedT = smoothstep(0.1f, 0.9f, t);
+    float3 color = mix(float3(0.35f, 0.22f, 0.05f), input.color.rgb, smoothedT) * (0.2f + t);
+    const float closeMix = smoothstep(40.0f, 0.0f, input.distance);
+    const float3 ringColor = color + float3(0.15f, 0.12f, 0.1f) * closeMix;
+    const float3 bodyColor = mix(color, pow(input.color.rgb, float3(1.4f)) * 1.5f, closeMix * 0.8f);
+    color = mix(bodyColor, ringColor, input.isRing);
+    const float depthAlpha = smoothstep(0.0f, 10.0f, input.distance);
+    const float alpha = glow * input.color.a * (0.25f + 0.45f * smoothstep(0.0f, 0.5f, t)) * depthAlpha * input.densityCompensation;
+    return float4(color, alpha);
+}
+
+// ============================================================================
+// Object Shader Path (Metal 3+)
+// ============================================================================
+
+struct QuadVertex {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;
+    float distance;
+    float scale;
+    float isRing;
+    float densityCompensation;
+};
+
+using ParticleMesh = metal::mesh<QuadVertex, void, 4, 2, metal::topology::triangle>;
+
+struct ObjectPayload {
+    uint particleId;
+};
+
+[[object, max_total_threads_per_threadgroup(32), max_total_threadgroups_per_mesh_grid(1)]]
+void ParticleObjectShader(
+    mesh_grid_properties meshGridProperties,
+    const device Particle* particles [[buffer(0)]],
+    constant RenderConstants& constants [[buffer(1)]],
+    object_data ObjectPayload& payload [[payload]],
+    uint threadId [[thread_position_in_threadgroup]],
+    uint threadgroupId [[threadgroup_position_in_grid]]
+) {
+    const uint particleId = threadgroupId * 32 + threadId;
+    payload.particleId = particleId;
+
+    if (particleId < constants.particleCount) {
+        meshGridProperties.set_threadgroups_per_grid(uint3(1, 1, 1));
+    } else {
+        meshGridProperties.set_threadgroups_per_grid(uint3(0, 0, 0));
+    }
+}
+
+[[mesh, max_total_threads_per_threadgroup(1)]]
+void ParticleMeshShader(
+    ParticleMesh output,
+    const device Particle* particles [[buffer(0)]],
+    constant RenderConstants& constants [[buffer(1)]],
+    const object_data ObjectPayload& payload [[payload]]
+) {
+    const uint particleId = payload.particleId;
+    if (particleId >= constants.particleCount) {
+        output.set_primitive_count(0);
+        return;
+    }
+
+    const Particle particle = particles[particleId];
+    const float3 position = RotateSaturn(particle.position.xyz * constants.scale, constants.rotationX, constants.rotationY);
+    const float distance = 100.0f - position.z;
+    const float focalLength = 1.0f / tan(1.047f * 0.5f);
+    float3 viewPosition = float3(position.x, position.y, position.z - 100.0f);
+
+    float chaos = smoothstep(25.0f, 0.1f, distance);
+    chaos = chaos * chaos * chaos;
+    if (chaos > 0.001f) {
+        const float highFrequencyTime = constants.time * 40.0f;
+        const float3 scaledPosition = particle.position.xyz * 10.0f;
+        const float3 noise = float3(
+            FastSin(highFrequencyTime + scaledPosition.x) * ParticleHash(particle.position.y * 43758.5f) * 0.5f,
+            FastSin(highFrequencyTime + scaledPosition.y + 1.5708f) * ParticleHash(particle.position.x * 43758.5f) * 0.5f,
+            FastSin(highFrequencyTime * 0.5f) * ParticleHash(particle.position.z * 43758.5f) * 0.5f
+        ) * 3.0f;
+        viewPosition += noise * chaos;
+    }
+
+    const float projectedDistance = max(-viewPosition.z, 0.001f);
+    const float2 centerNDC = float2(
+        viewPosition.x * focalLength / (constants.aspect * projectedDistance),
+        viewPosition.y * focalLength / projectedDistance
+    );
+
+    const float4 color = UnpackColor(particle.color);
+    const float nearMask = distance <= 50.0f ? 1.0f : 0.0f;
+    const float ringFactor = mix(mix(1.0f, 0.8f, nearMask), 1.0f, float(particle.isRing));
+    const float pointSize = particle.position.w * 350.0f * 0.55f / max(distance, 0.1f) *
+                            (constants.screenHeight / 1080.0f) * ringFactor *
+                            pow(max(constants.pixelRatio, 0.0001f), 0.8f);
+    const float clampedSize = clamp(pointSize, 0.0f, 300.0f * (constants.screenHeight / 1080.0f));
+
+    const float halfSizeNDC = clampedSize / constants.screenHeight;
+
+    QuadVertex v0, v1, v2, v3;
+    v0.position = float4(centerNDC.x - halfSizeNDC * constants.aspect, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
+    v1.position = float4(centerNDC.x + halfSizeNDC * constants.aspect, centerNDC.y - halfSizeNDC, 0.0f, 1.0f);
+    v2.position = float4(centerNDC.x - halfSizeNDC * constants.aspect, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
+    v3.position = float4(centerNDC.x + halfSizeNDC * constants.aspect, centerNDC.y + halfSizeNDC, 0.0f, 1.0f);
+
+    v0.color = v1.color = v2.color = v3.color = color;
+    v0.distance = v1.distance = v2.distance = v3.distance = distance;
+    v0.scale = v1.scale = v2.scale = v3.scale = constants.scale;
+    v0.isRing = v1.isRing = v2.isRing = v3.isRing = float(particle.isRing);
+    v0.densityCompensation = v1.densityCompensation = v2.densityCompensation = v3.densityCompensation = constants.densityCompensation;
+
+    v0.uv = float2(0.0f, 0.0f);
+    v1.uv = float2(1.0f, 0.0f);
+    v2.uv = float2(0.0f, 1.0f);
+    v3.uv = float2(1.0f, 1.0f);
+
+    output.set_vertex(0, v0);
+    output.set_vertex(1, v1);
+    output.set_vertex(2, v2);
+    output.set_vertex(3, v3);
+
+    output.set_index(0, 0);
+    output.set_index(1, 1);
+    output.set_index(2, 2);
+    output.set_index(3, 1);
+    output.set_index(4, 3);
+    output.set_index(5, 2);
+
+    output.set_primitive_count(2);
+}
+
+fragment float4 ParticleQuadFragment(QuadVertex input [[stage_in]]) {
+    const float2 point = input.uv;
     const float radiusSquared = dot(point * 2.0f - 1.0f, point * 2.0f - 1.0f);
     if (radiusSquared > 1.0f) discard_fragment();
     const float glow = smoothstep(1.0f, 0.4f, radiusSquared);

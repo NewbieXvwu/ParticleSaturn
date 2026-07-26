@@ -44,6 +44,7 @@ struct RenderSettings {
     int vsyncMode                = -1;
     bool bloomEnabled            = true;
     bool analyticParticles       = false;
+    bool useObjectShader         = false;
     // Bloom is a scene post-process.  Keep its blur radius independent from
     // the Acrylic control, which only affects ImGui window backgrounds.
     float bloomBlurStrength      = 2.0f;
