@@ -339,10 +339,12 @@ if(MSVC)
 endif()
 
 # ============================================================================
-# 着色器预编译：在构建前自动编译 HLSL/GLSL 到字节码
+# 着色器预编译：在构建前自动编译 HLSL/GLSL 到字节码（跨平台）
 # ============================================================================
-set(SHADER_COMPILE_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/compile_shaders.ps1")
+set(SHADER_COMPILE_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/CompileShaders.cmake")
 set(SHADER_BYTECODES_HEADER "${CMAKE_SOURCE_DIR}/src/generated/ShaderBytecodes.h")
+set(SHADER_ABI_GENERATOR "${CMAKE_SOURCE_DIR}/cmake/GenerateShaderAbi.cmake")
+set(SHADER_ABI_INPUT "${CMAKE_SOURCE_DIR}/src/shaders/abi/particle_abi.json")
 
 # 收集所有着色器源文件作为依赖
 file(GLOB HLSL_SHADER_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/hlsl/*.hlsl")
@@ -350,12 +352,19 @@ file(GLOB GLSL_SHADER_SOURCES "${CMAKE_SOURCE_DIR}/src/shaders/glsl/*.glsl")
 
 add_custom_command(
     OUTPUT "${SHADER_BYTECODES_HEADER}"
-    COMMAND PowerShell -NoProfile -ExecutionPolicy Bypass -File "${SHADER_COMPILE_SCRIPT}"
-        -AbiOutputDir "${CMAKE_BINARY_DIR}/generated/shaders"
-    DEPENDS ${HLSL_SHADER_SOURCES} ${GLSL_SHADER_SOURCES} "${SHADER_COMPILE_SCRIPT}"
-        "${CMAKE_BINARY_DIR}/generated/shaders/Particle.hlsl" "${CMAKE_BINARY_DIR}/generated/shaders/Particle.glsl"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Compiling shaders to bytecode..."
+    COMMAND ${CMAKE_COMMAND}
+        "-DSHADER_SRC_DIR=${CMAKE_SOURCE_DIR}/src/shaders"
+        "-DABI_OUTPUT_DIR=${CMAKE_BINARY_DIR}/generated/shaders"
+        "-DOUTPUT_HEADER=${SHADER_BYTECODES_HEADER}"
+        "-DABI_GENERATOR=${SHADER_ABI_GENERATOR}"
+        "-DABI_INPUT=${SHADER_ABI_INPUT}"
+        -P "${SHADER_COMPILE_SCRIPT}"
+    DEPENDS ${HLSL_SHADER_SOURCES} ${GLSL_SHADER_SOURCES}
+        "${SHADER_COMPILE_SCRIPT}" "${SHADER_ABI_GENERATOR}" "${SHADER_ABI_INPUT}"
+        "${CMAKE_BINARY_DIR}/generated/shaders/Particle.hlsl"
+        "${CMAKE_BINARY_DIR}/generated/shaders/Particle.glsl"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Compiling shaders to bytecode (cross-platform)..."
     VERBATIM
 )
 
