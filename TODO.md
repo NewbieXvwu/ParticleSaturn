@@ -37,7 +37,7 @@
 - [x] `src/gpu/interface/` 收敛至 D-002 冻结范围：删 7 个零消费的 §6.1 句柄标签/别名（TextureView/Sampler/ShaderModule/Pipeline/Binding*）、PresentMode 枚举、RequiredCapability+Supports+CapabilityName 三件套；GpuCapabilities 字段保留（后端在填）。unit/gpu 全绿（AUDIT P2-1）
 - [x] `ParticleSimulationStrategy` 删除：无生产调用者，且其"按 GpuCapabilities 选模式"是 RHI 高度旧思路，与 D-002 帧高度接缝相悖——真实的策略协商归 P1 能力单点在接缝高度重建；ParticleSaturnGpu 随之改为纯头 INTERFACE 库（契约头即其全部内容）
 - [x] 单实现服务接口去虚化：删 ICameraCapture 基类（Frame/Device/Authorization 等共享数据类型保留）与 SettingsStore.h（整文件即基类）；AVFoundationCamera/NSUserDefaultsStore 去 override，全库无任何多态使用点。unit + 相机/设置测试通过（AUDIT P2-1）
-- [ ] 着色器字节码头生成改到 `${CMAKE_BINARY_DIR}/generated`，脱离源码树（AUDIT P2-4）
+- [ ] 着色器字节码头生成改到 `${CMAKE_BINARY_DIR}/generated`，脱离源码树——经查为 **Windows 专属**：macOS 的 metallib/ABI 已在 build 目录；`src/generated/ShaderBytecodes.h` 由 Windows 流程生成、`src/Diligent/DiligentBackend.cpp` 引用，需 Windows 环境改并验证（AUDIT P2-4）
 - [ ] `CompileShaders.cmake` 收敛：单一 compile_stage 函数取代 7 段复制、REGEX 取代逐字节 hex 循环（AUDIT P2-4）
 
 ## P3 着色器单源试点（D-004）
