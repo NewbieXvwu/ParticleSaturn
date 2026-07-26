@@ -34,4 +34,13 @@ if(BUILD_TESTING)
         PARTICLESATURN_PALM_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
         PARTICLESATURN_LANDMARK_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite")
     add_test(NAME ParticleSaturnXnnpackRuntimeTests COMMAND ParticleSaturnXnnpackRuntimeTests)
+
+    add_executable(ParticleSaturnHandTrackingPipelineTests
+        "${CMAKE_SOURCE_DIR}/tests/HandTrackingPipelineTests.cpp")
+    target_link_libraries(ParticleSaturnHandTrackingPipelineTests PRIVATE
+        ParticleSaturnMacOSHandTracking ParticleSaturnMacOSHandTrackingWorker)
+    target_compile_definitions(ParticleSaturnHandTrackingPipelineTests PRIVATE
+        PARTICLESATURN_PALM_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/palm_detection_full.tflite"
+        PARTICLESATURN_LANDMARK_MODEL_PATH="${CMAKE_SOURCE_DIR}/HandTracker/models/hand_landmark_full.tflite")
+    add_test(NAME ParticleSaturnHandTrackingPipelineTests COMMAND ParticleSaturnHandTrackingPipelineTests)
 endif()
