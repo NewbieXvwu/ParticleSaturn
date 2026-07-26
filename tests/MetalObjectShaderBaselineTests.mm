@@ -1,3 +1,5 @@
+#include "common/ImageMetrics.h"
+
 #include "gpu/backends/metal/MetalBackend.h"
 #include "app/state/AppStates.h"
 
@@ -42,23 +44,11 @@ BaselineMetrics CompareSurfaces(const std::vector<Pixel>& a, const std::vector<P
     assert(a.size() == width * height);
     assert(b.size() == width * height);
 
-    double totalDiff = 0.0;
-    std::uint32_t diffPixels = 0;
-
+    ParticleSaturn::TestCommon::ImageDifferenceAccumulator accumulator;
     for (std::uint32_t i = 0; i < width * height; ++i) {
-        const int dr = std::abs(static_cast<int>(a[i].r) - static_cast<int>(b[i].r));
-        const int dg = std::abs(static_cast<int>(a[i].g) - static_cast<int>(b[i].g));
-        const int db = std::abs(static_cast<int>(a[i].b) - static_cast<int>(b[i].b));
-        const int maxDiff = std::max({dr, dg, db});
-
-        totalDiff += (dr + dg + db) / 3.0;
-        if (maxDiff > 8) ++diffPixels;
+        accumulator.AddPixel(a[i].r, a[i].g, a[i].b, b[i].r, b[i].g, b[i].b);
     }
-
-    return BaselineMetrics{
-        totalDiff / static_cast<double>(width * height),
-        static_cast<double>(diffPixels) / static_cast<double>(width * height)
-    };
+    return BaselineMetrics{accumulator.MeanChannelDifference(), accumulator.MismatchFraction()};
 }
 
 std::vector<Pixel> CaptureFrame(Gpu::Metal::MetalDevice& device,

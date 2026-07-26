@@ -1,3 +1,5 @@
+#include "common/ImageMetrics.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -57,18 +59,13 @@ int main(int argc, char* argv[]) {
         Image candidate;
         assert(ReadPpm(argv[imageIndex], candidate));
         assert(reference.width == candidate.width && reference.height == candidate.height);
-        std::uint64_t totalDifference = 0;
-        std::uint64_t mismatchedPixels = 0;
+        ParticleSaturn::TestCommon::ImageDifferenceAccumulator accumulator;
         for (std::size_t pixel = 0; pixel < reference.pixels.size(); pixel += 3U) {
-            const auto red = std::abs(static_cast<int>(reference.pixels[pixel]) - static_cast<int>(candidate.pixels[pixel]));
-            const auto green = std::abs(static_cast<int>(reference.pixels[pixel + 1U]) - static_cast<int>(candidate.pixels[pixel + 1U]));
-            const auto blue = std::abs(static_cast<int>(reference.pixels[pixel + 2U]) - static_cast<int>(candidate.pixels[pixel + 2U]));
-            totalDifference += static_cast<std::uint64_t>(red + green + blue);
-            mismatchedPixels += std::max({red, green, blue}) > 8;
+            accumulator.AddPixel(reference.pixels[pixel], reference.pixels[pixel + 1U], reference.pixels[pixel + 2U],
+                                 candidate.pixels[pixel], candidate.pixels[pixel + 1U], candidate.pixels[pixel + 2U]);
         }
-        const float meanDifference = static_cast<float>(totalDifference) / static_cast<float>(reference.pixels.size());
-        const float mismatchFraction = static_cast<float>(mismatchedPixels) /
-                                       static_cast<float>(reference.width) / static_cast<float>(reference.height);
+        const float meanDifference = static_cast<float>(accumulator.MeanChannelDifference());
+        const float mismatchFraction = static_cast<float>(accumulator.MismatchFraction());
         std::cout << argv[imageIndex] << ": mean_channel_difference=" << meanDifference
                   << " mismatch_fraction=" << mismatchFraction << '\n';
         assert(meanDifference <= meanLimit);

@@ -52,7 +52,7 @@
 
 - [ ] `Readback` 纳入接缝；固定种子 + 固定时间步长的确定性模式（复用 `PARTICLESATURN_CAPTURE_BASELINE` 基础）
 - [ ] 同一帧状态送 2+ 后端离屏渲染：并排图、差异热力图、逐 pass 均值/失配率指标
-- [ ] 三份图像差异度量实现收敛为 tests/common 一份，阈值常量具名共享（AUDIT P2-9）
+- [x] 图像差异度量收敛：两份 macOS 实现（视觉基线 PPM 版 / object shader 内存版，聚合语义核实相同）统一到 `tests/common/ImageMetrics.h` 累加器，阈值常量 PerPixelChannelThreshold=8 具名共享；第三份在冻结的 Windows CameraSelector（D-015 不动）。两组基线测试通过（AUDIT P2-9）
 - [x] 粒子 CPU 参照两份合一：一份在 GL41 **生产**初始化、一份在 Metal 测试——归宿改为 `src/shaders/abi/ParticleInit.h`（ABI 旁的规范 CPU 端实现，生产与测试共用；tests/common 方向会让生产依赖测试）；Metal GPU 初始化对拍规范参照通过 = 抽取逐位一致（AUDIT P2-9）
 
 ## 性能速修（都在每帧热路径，彼此独立，随时可做；合集见 AUDIT P1-8/P2-8）

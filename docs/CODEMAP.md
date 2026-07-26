@@ -54,7 +54,7 @@
 | 跨后端粒子一致性 | `tests/CrossBackendParticleSystemTests.mm`（固定种子逐字段读回） |
 | 视觉基线 | `tests/VisualBaselineMetricsTests.cpp`、`tests/RunMacOSVisualBaseline.sh`、`PARTICLESATURN_CAPTURE_BASELINE` 环境变量 |
 | object shader 基线 | `tests/MetalObjectShaderBaselineTests.mm`（3e951b5 已修 argv/格式/半浮点读回） |
-| 图像差异度量 | ⚠️ 三份实现待收敛到 tests/common/（AUDIT P2-9） |
+| 图像差异度量 | `tests/common/ImageMetrics.h` 唯一实现（阈值具名共享）；Windows CameraSelector 内旧份随 D-015 冻结 |
 | 测试分层 | LABELS `unit`（无 GPU）/`gpu`（需设备）/`app`（整机 smoke，RUN_SERIAL）；顶层 CMake 强制：无标签即配置失败 |
 | 测试基础设施保障 | 全部 `*Tests` 目标自动 `-UNDEBUG`（断言生效）；smoke 失败经 `CocoaHost::StopRunLoop` 传播非零退出码 + `[smoke] FAILED` 日志判负；哨兵 `tests/AssertSentinelTests.cpp` 防复发（均 2026-07-26，D-008） |
 | 已知问题 | 4 个 FullscreenRestore smoke 显形为真失败，需真人前台复核（TODO 遗留人工验收） |
