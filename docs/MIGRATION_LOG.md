@@ -1341,3 +1341,9 @@ Metal 是参考路径，MoltenVK 和 KosmicKrisp 的输出分别与 Metal 对比
 实证：修复前 34/34 测试空转（nm 无 assert 符号）；修复后 19/19 现役测试二进制含 `___assert_rtn`，非整机 18/18 ctest 真实通过，`MetalObjectShaderBaselineTests` 缺参运行由"退出 0 假通过"变为断言中止（exit 134）。
 
 **范围决策**：TODO 原文的"副作用调用移出断言表达式"未执行——测试内约 274 处断言含函数调用，`-UNDEBUG` 保证其全部真实执行，搬出只剩装饰价值却翻搅 21 个文件；"标志将来丢失"的复发风险由哨兵测试（P0 第 3 项，`assert(false)` + WILL_FAIL）结构性兜底。踩坑记录：清扫块最初放在文件物理末尾，但顶层 CMakeLists 在 macOS 上于 legacy Diligent 段前 `return()` 早退，块从未执行——现位置在早退之前并加注释说明。
+
+### 2026-07-26 smoke 失败退出码可传播（TODO P0 第 2 项，AUDIT P0-2(b)，D-008）
+
+`CocoaHost::RequestExit` 由 `[NSApp terminate:nil]`（恒以 0 结束进程）改为新静态 `StopRunLoop()`：`[NSApp stop:nil]` + 补发一个 ApplicationDefined 空事件（`stop:` 要等处理完真实事件才生效，帧定时器回调不产生事件）。三个 main 的 smoke/基线退出路径全部改走停循环，使各自的 `return 1` 复活；VulkanMain 原本就用 `host.RequestExit()`，零改动受益。保留 `terminate:`：三处 RestartApplication（立即退出 0 语义正确）与菜单 Cmd+Q。Metal/GL41 失败点补 `[smoke] FAILED:` stderr 日志（原先静默），Vulkan 的 4 条 smoke 专属消息统一加该前缀；全部 14 个 smoke 测试注册 `FAIL_REGULAR_EXPRESSION "\[smoke\] FAILED"` 作为退出码之外的第二道保险。附带修复：交互关窗/Esc 退出现在正常走 main 尾部的设置保存与 ImGui/MD3 清理（terminate: 从前把它们全部跳过）。
+
+**立即显形的旧失败**：修复后 4 个 FullscreenRestore smoke（Metal/GL41/Molten/Kosmic）全部真失败——等满 5 秒 deadline 全屏转换未发生。实验：经 `open -W`（LaunchServices 正常激活）结果相同，排除启动方式；用户空闲仅 69 秒（人在机器旁活跃操作），指向 macOS 焦点保护拒绝非前台 app 的 Space 切换；审计曾在旧 LastTest.log 见到 Vulkan 同款失败消息被记 Passed，证明失败早于本次修复存在。处置：不掩盖，登记 TODO"遗留人工验收"请真人前台复跑确认。其余 app smoke 7/7 通过（Molten/Kosmic 各 Smoke/Recovery/Restart + VisualBaseline），PerformanceLock 4/4 通过。

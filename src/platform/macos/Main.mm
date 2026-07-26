@@ -434,7 +434,7 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                 if (!captureBaseline || baselineCaptured) return true;
                 if (++baselineFrameCount < 3U) return true;
                 baselineCaptured = WriteBaselinePpm(nativeDevice, texture, width, height, baselinePath);
-                if (baselineCaptured) [NSApp terminate:nil];
+                if (baselineCaptured) host.RequestExit();
                 return baselineCaptured;
             });
             if (performanceSmoke) {
@@ -443,10 +443,11 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                     performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
                     performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
                     performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
+                    std::fprintf(stderr, "[smoke] FAILED: Metal quality lock state changed during performance smoke test\n");
                     performanceFailed = true;
-                    [NSApp terminate:nil];
+                    host.RequestExit();
                 } else if (++performanceFrameCount >= performanceSmokeFrames) {
-                    [NSApp terminate:nil];
+                    host.RequestExit();
                 }
             }
             if (fullscreenSmoke) {
@@ -464,14 +465,16 @@ int ParticleSaturn::Platform::MacOS::RunMetalApplication() {
                     const bool geometryRestored = mutableState.window.width == startupWidth &&
                         mutableState.window.height == startupHeight && x == startupX && y == startupY;
                     if (geometryRestored && !mutableState.window.fullscreen) {
-                        if (++fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                        if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
                     } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                        std::fprintf(stderr, "[smoke] FAILED: Metal window geometry was not restored after fullscreen\n");
                         fullscreenFailed = true;
-                        [NSApp terminate:nil];
+                        host.RequestExit();
                     }
                 } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
+                    std::fprintf(stderr, "[smoke] FAILED: Metal window did not complete fullscreen transition\n");
                     fullscreenFailed = true;
-                    [NSApp terminate:nil];
+                    host.RequestExit();
                 }
             }
         });

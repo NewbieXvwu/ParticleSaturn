@@ -353,7 +353,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
         };
         id closeObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowWillCloseNotification object:window queue:nil
-            usingBlock:^(NSNotification*) { [NSApp terminate:nil]; }];
+            usingBlock:^(NSNotification*) { CocoaHost::StopRunLoop(); }];
         id fullscreenExitObserver = [[NSNotificationCenter defaultCenter]
             addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil
             usingBlock:^(NSNotification*) {
@@ -389,7 +389,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
             const auto dispatchKey = [&](ParticleSaturn::App::InputKey key) {
                 const auto effect = controller->Dispatch(ParticleSaturn::App::SetInputKeyPressed{key, pressed});
                 if (effect.windowChanged) toggleFullscreen();
-                if (effect.exitRequested) [NSApp terminate:nil];
+                if (effect.exitRequested) CocoaHost::StopRunLoop();
                 if (pressed && !captureBaseline && !performanceSmoke && !fullscreenSmoke) settingsPtr->Save(controller->State());
             };
             switch ([event keyCode]) {
@@ -559,7 +559,7 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                 if (++*baselineFrameCount < 3U) return false;
                 if (!WriteBaselinePpm(baselinePath, framebuffer, captureWidth, captureHeight)) return false;
                 *baselineCaptured = true;
-                [NSApp terminate:nil];
+                CocoaHost::StopRunLoop();
                 return false;
             };
             callbacks.renderUi = [&](std::uint32_t strongBlurTexture, std::uint32_t weakBlurTexture) {
@@ -609,10 +609,11 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                     performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
                     performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
                     performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
+                    std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 quality lock state changed during performance smoke test\n");
                     *performanceFailed = true;
-                    [NSApp terminate:nil];
+                    CocoaHost::StopRunLoop();
                 } else if (++*performanceFrameCount >= performanceSmokeFrames) {
-                    [NSApp terminate:nil];
+                    CocoaHost::StopRunLoop();
                 }
             }
             if (fullscreenSmoke) {
@@ -630,14 +631,16 @@ int ParticleSaturn::Platform::MacOS::RunOpenGL41Application() {
                         static_cast<std::int32_t>(origin.x) == startupX &&
                         static_cast<std::int32_t>(origin.y) == startupY;
                     if (geometryRestored && !controller->State().window.fullscreen) {
-                        if (++*fullscreenFrameCount >= fullscreenSmokeFrames) [NSApp terminate:nil];
+                        if (++*fullscreenFrameCount >= fullscreenSmokeFrames) CocoaHost::StopRunLoop();
                     } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
+                        std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 window geometry was not restored after fullscreen\n");
                         *fullscreenFailed = true;
-                        [NSApp terminate:nil];
+                        CocoaHost::StopRunLoop();
                     }
                 } else if (std::chrono::steady_clock::now() >= *fullscreenDeadline) {
+                    std::fprintf(stderr, "[smoke] FAILED: OpenGL 4.1 window did not complete fullscreen transition\n");
                     *fullscreenFailed = true;
-                    [NSApp terminate:nil];
+                    CocoaHost::StopRunLoop();
                 }
             }
         }];

@@ -137,6 +137,12 @@ if(BUILD_TESTING)
             "$<TARGET_FILE:ParticleSaturn.macOS>")
     set_tests_properties(ParticleSaturnMacOSFullscreenRestoreMetal ParticleSaturnMacOSFullscreenRestoreOpenGL
         PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    # 退出码之外的第二道保险：即使将来再出现退出码被吞的回归，
+    # 失败日志本身也会让 ctest 判负（D-008）。
+    set_tests_properties(
+        ParticleSaturnMacOSPerformanceLockMetal ParticleSaturnMacOSPerformanceLockOpenGL
+        ParticleSaturnMacOSFullscreenRestoreMetal ParticleSaturnMacOSFullscreenRestoreOpenGL
+        PROPERTIES FAIL_REGULAR_EXPRESSION "\\[smoke\\] FAILED")
 endif()
 add_custom_command(TARGET ParticleSaturn.macOS POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:ParticleSaturn.macOS>/../Resources"

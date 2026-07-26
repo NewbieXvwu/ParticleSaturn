@@ -477,7 +477,7 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                     performanceState.render.pixelRatio != 1.0f || !performanceState.render.bloomEnabled ||
                     performanceState.render.bloomBlurStrength != 2.0f || !performanceState.ui.blurEnabled ||
                     performanceState.ui.blurStrength != 2.0f || !performanceState.lod.locked) {
-                    ReportStartupFailure("performance-lock-smoke", "Vulkan quality lock state changed during performance smoke test");
+                    ReportStartupFailure("performance-lock-smoke", "[smoke] FAILED: Vulkan quality lock state changed during performance smoke test");
                     performanceFailed = true;
                     host.RequestExit();
                 } else if (++performanceFrameCount >= performanceSmokeFrames) {
@@ -501,19 +501,19 @@ int ParticleSaturn::Platform::MacOS::RunVulkanApplication() {
                     if (geometryRestored && !mutableState.window.fullscreen) {
                         if (++fullscreenFrameCount >= fullscreenSmokeFrames) host.RequestExit();
                     } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
-                        ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window geometry was not restored after fullscreen");
+                        ReportStartupFailure("fullscreen-restore-smoke", "[smoke] FAILED: Vulkan window geometry was not restored after fullscreen");
                         fullscreenFailed = true;
                         host.RequestExit();
                     }
                 } else if (std::chrono::steady_clock::now() >= fullscreenDeadline) {
-                    ReportStartupFailure("fullscreen-restore-smoke", "Vulkan window did not complete fullscreen transition");
+                    ReportStartupFailure("fullscreen-restore-smoke", "[smoke] FAILED: Vulkan window did not complete fullscreen transition");
                     fullscreenFailed = true;
                     host.RequestExit();
                 }
             }
             if (smokeFrames != 0 && ++renderedFrames >= smokeFrames) {
                 if (lodSmoke && controller.State().render.particleCount >= App::RenderSettings::MaxParticles) {
-                    ReportStartupFailure("lod-smoke", "Vulkan dynamic LOD smoke test did not reduce particle count");
+                    ReportStartupFailure("lod-smoke", "[smoke] FAILED: Vulkan dynamic LOD smoke test did not reduce particle count");
                     runtimeFailed = true;
                 }
                 host.RequestExit();

@@ -14,7 +14,7 @@
 ## P0 测试安全网（先于一切重构，D-008，AUDIT P0-2）
 
 - [x] 全部测试目标断言生效：顶层 CMake 自动清扫全部 `*Tests` 可执行目标加 `-UNDEBUG`（新增测试目标自动覆盖，libs/ 第三方不受影响）；19/19 现役测试二进制恢复 assert 符号，18/18 非整机 ctest 真实通过，缺参运行由退出 0 变为断言中止。副作用断言保留原样——`-UNDEBUG` 保证其执行，防复发由哨兵测试兜底（下项）
-- [ ] smoke 测试失败可传播：`[NSApp terminate:nil]` 恒退出码 0，`return 1` 是死代码（`src/platform/macos/CocoaHost.mm:195-197`）→ 改 `[NSApp stop:]` + 显式退出码或失败即 `std::exit(1)`；ctest 加 `FAIL_REGULAR_EXPRESSION`
+- [x] smoke 测试失败可传播：`CocoaHost::StopRunLoop()`（`stop:` + 补发唤醒事件）取代 smoke/基线路径的 `terminate:`，main 的 `return 1` 复活；失败点统一打 `[smoke] FAILED` 日志并给全部 smoke 注册 `FAIL_REGULAR_EXPRESSION` 双保险。副作用：交互关窗现在正常走设置保存与清理。立即显形 4 个被掩盖的旧失败（见"遗留人工验收"全屏恢复条目）
 - [ ] ctest 自检：注册一个故意失败的测试可执行文件，验证其确实以非零退出（防再度出现占位测试）
 - [ ] ctest LABELS 分层：unit（无 GPU）/ gpu（需设备）/ app（整机 smoke，RUN_SERIAL）；GitHub Actions 增加 macOS unit job（AUDIT P2-9）
 - [ ] 修复 `.github/workflows/release.yml` 四处复制的补丁应用逻辑（指向已迁移旧路径，发布流水线当前损坏）→ 收敛到 `scripts/apply_third_party_patch.*` 单一入口（AUDIT P0-1）
@@ -70,6 +70,7 @@
 - [ ] 网格着色器对等路径实机验收（基线测试已修，待断言生效构建下重跑确认阈值）
 - [ ] MD3 界面迁移视觉验收（功能项已勾，视觉对照保留）
 - [ ] 窗口行为对齐；Retina 与外接显示器；睡眠唤醒（§16 阶段 10）
+- [ ] **全屏恢复 smoke 真人复核**：退出码修复后 4 个 FullscreenRestore smoke（Metal/GL41/Molten/Kosmic）显形为真失败——转换等满 5 秒 deadline 未完成。证据指向环境因素（用户在别的应用活跃时 macOS 焦点保护拒绝后台 app 的 Space 切换；审计在旧 LastTest.log 早见过同样失败被记 Passed）。请在前台无干扰时跑 `ctest -R FullscreenRestore` 亲眼确认窗口是否正常进出全屏；若交互下也失败则是真 bug 需修
 - [ ] 手势输入端到端验证（真实镜头：模型输出、关键点、丢手、旋转、缩放）
 - [ ] 摄像头异常状态交互验收（拔线恢复、权限流程；无硬件部分已测）
 - [ ] 四种 macOS 模式构建/启动/呈现/交互总验收；设置持久化、主题、材质、垂直同步、快捷键、LOD 行为对齐（交互部分）

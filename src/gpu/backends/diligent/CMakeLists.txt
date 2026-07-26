@@ -84,6 +84,12 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:ParticleSaturn.macOS>")
         set_tests_properties(ParticleSaturnVulkanApplicationMoltenFullscreenRestore
             PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+        # 退出码之外的第二道保险（D-008）：失败日志出现即判负。
+        set_tests_properties(
+            ParticleSaturnVulkanApplicationMoltenSmoke ParticleSaturnVulkanApplicationMoltenRecovery
+            ParticleSaturnVulkanApplicationMoltenRestart ParticleSaturnVulkanApplicationMoltenPerformanceLock
+            ParticleSaturnVulkanApplicationMoltenFullscreenRestore
+            PROPERTIES FAIL_REGULAR_EXPRESSION "\\[smoke\\] FAILED")
         if(PARTICLESATURN_KOSMICKRISP_OUTPUT_DIR)
             add_test(NAME ParticleSaturnVulkanApplicationKosmicSmoke
                 COMMAND "${CMAKE_COMMAND}" -E env
@@ -124,6 +130,11 @@ if(BUILD_TESTING)
                     "$<TARGET_FILE:ParticleSaturn.macOS>")
             set_tests_properties(ParticleSaturnVulkanApplicationKosmicFullscreenRestore
                 PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+            set_tests_properties(
+                ParticleSaturnVulkanApplicationKosmicSmoke ParticleSaturnVulkanApplicationKosmicRecovery
+                ParticleSaturnVulkanApplicationKosmicRestart ParticleSaturnVulkanApplicationKosmicPerformanceLock
+                ParticleSaturnVulkanApplicationKosmicFullscreenRestore
+                PROPERTIES FAIL_REGULAR_EXPRESSION "\\[smoke\\] FAILED")
         endif()
     endif()
 endif()

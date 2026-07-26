@@ -193,7 +193,25 @@ void CocoaHost::SetFullscreenActive(bool active) {
 }
 
 void CocoaHost::RequestExit() {
-    [NSApp terminate:nil];
+    StopRunLoop();
+}
+
+void CocoaHost::StopRunLoop() {
+    [NSApp stop:nil];
+    // stop: 要等处理完一个真实事件才生效，而帧定时器回调不产生事件；
+    // 补发一个空事件让运行循环立即醒来退出。
+    @autoreleasepool {
+        NSEvent* wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                                           location:NSMakePoint(0, 0)
+                                      modifierFlags:0
+                                          timestamp:0
+                                       windowNumber:0
+                                            context:nil
+                                            subtype:0
+                                              data1:0
+                                              data2:0];
+        [NSApp postEvent:wake atStart:YES];
+    }
 }
 
 void CocoaHost::SetPresentationMode(int vsyncMode) {
