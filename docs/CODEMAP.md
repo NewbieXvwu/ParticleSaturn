@@ -21,7 +21,8 @@
 | 应用状态/命令/帧协调 | `src/app/`（AppController、AppCommand、FrameCoordinator、state/） | 唯一现行状态模型；`src/AppState.h` 是旧模型，勿用 |
 | GPU 设备契约 | `src/gpu/interface/`（GpuDevice.h、GpuTypes.h、GpuCapabilities.h） | 范围已冻结（D-002）：句柄/过渡/令牌/Dispatch/DrawIndirect；**勿扩表面积** |
 | 渲染资源生命周期 | `src/render/`（ResourceRegistry/TexturePool） | pass 顺序已按 D-003 在各后端静态直排；RenderGraph 已删（2026-07-26） |
-| 着色器 ABI 生成 | `src/shaders/abi/` + CMake 生成器 → `src/generated/` | 四语言结构唯一来源，禁止手写副本 |
+| 着色器 ABI 生成 | `src/shaders/abi/` + CMake 生成器 → `${CMAKE_BINARY_DIR}/generated/shaders` | 四语言结构唯一来源，禁止手写副本 |
+| 粒子规范初始化 | `src/shaders/abi/ParticleInit.h` | 固定种子逐位确定的 CPU 端唯一事实来源；GL41 生产与后端测试共用，勿另写副本 |
 | 着色器源码 | `src/shaders/{msl,glsl,glsl410,hlsl}/` | 共享通道拟单源化（D-004，TODO P3） |
 | MD3 UI 库 | `src/ui/md3/`（MD3.h、MD3Widgets、MD3Theme、MD3Context、MD3Shaders） | **唯一现行版**；`src/OpenGL/md3`、`src/Diligent/md3` 是待删旧拷贝（冻结区） |
 | 日志 | `src/ui/md3/MD3Log.h` | 共享日志设施（重复合并/AddOnce/ANSI 剥离/级别检测）；macOS 端取代 `src/DebugLog.h` |
