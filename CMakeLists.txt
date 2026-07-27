@@ -217,6 +217,10 @@ if(APPLE)
             endif()
         endforeach()
     endif()
+    # 着色器翻译工具链（dxc/spirv-cross/glslangValidator/xcrun metal）是应用与
+    # gpu 层测试的构建前置，unit 层不消费。OFF 时三目录退化为空桩目标，供 CI
+    # unit job 配置通过（.github/workflows/macos-tests.yml）；开发机保持 ON 硬要求。
+    option(PARTICLESATURN_SHADER_TOOLCHAIN "着色器翻译工具链为必需（OFF 仅限 unit 层 CI）" ON)
     add_subdirectory(src/shaders/single)
     add_subdirectory(src/shaders/msl)
     add_subdirectory(src/shaders/glsl410)

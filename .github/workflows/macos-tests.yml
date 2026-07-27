@@ -25,8 +25,9 @@ jobs:
           git submodule update --init --depth 1 libs/imgui || git submodule update --init libs/imgui
           git submodule update --init --recursive --depth 1 libs/DiligentCore || git submodule update --init --recursive libs/DiligentCore
 
+      # unit 层不消费着色器产物，跳过翻译工具链（dxc 需源码构建，runner 上不装）。
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPARTICLESATURN_SHADER_TOOLCHAIN=OFF
 
       - name: Build unit-tier test targets
         run: >

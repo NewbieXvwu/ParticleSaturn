@@ -1,6 +1,10 @@
 # 单源着色器翻译（D-004 试点，2026-07-26 拍板 DXC + SPIRV-Cross）。
 # 工具是 macOS 构建前置（与 glsl410 的 glslangValidator REQUIRED 同例）：
 # dxc 官方不发 macOS 二进制，用 scripts/build_dxc_macos.sh 构建安装。
+if(NOT PARTICLESATURN_SHADER_TOOLCHAIN)
+    add_custom_target(ParticleSaturnSingleShaders)  # CI unit 层空桩（见顶层 option）
+    return()
+endif()
 find_program(PARTICLESATURN_DXC dxc HINTS "$ENV{HOME}/.local/opt/dxc/bin")
 find_program(PARTICLESATURN_SPIRV_CROSS spirv-cross)
 if(NOT PARTICLESATURN_DXC)

@@ -1,3 +1,7 @@
+if(NOT PARTICLESATURN_SHADER_TOOLCHAIN)
+    add_custom_target(ParticleSaturnMetalShaders)  # CI unit 层空桩（见顶层 option）
+    return()
+endif()
 find_program(PARTICLESATURN_XCRUN xcrun REQUIRED)
 
 set(PARTICLE_ABI_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/generated/shaders")

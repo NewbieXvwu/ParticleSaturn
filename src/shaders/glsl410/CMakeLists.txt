@@ -1,3 +1,7 @@
+if(NOT PARTICLESATURN_SHADER_TOOLCHAIN)
+    add_custom_target(ParticleSaturnOpenGL41Shaders)  # CI unit 层空桩（见顶层 option）
+    return()
+endif()
 find_program(PARTICLESATURN_GLSLANG_VALIDATOR glslangValidator REQUIRED)
 file(GLOB PARTICLESATURN_GLSL410_SOURCES "${CMAKE_CURRENT_LIST_DIR}/*.vert" "${CMAKE_CURRENT_LIST_DIR}/*.frag")
 
