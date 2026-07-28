@@ -377,9 +377,14 @@ inline void HandleFileDrop(const char* path) {
     }
 }
 
-// Render crash analyzer window with optional blur background
-// Diligent version: uses ImTextureID (ITextureView*) for blur texture
-inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned int scrWidth = 0,
+// Render crash analyzer window with optional blur background.
+// blurTex 类型随后端而变：Diligent 传 ImTextureID（ITextureView*），OpenGL 传 GLuint。
+#if defined(MD3_BACKEND_DILIGENT)
+using CrashBlurTex = ImTextureID;
+#else
+using CrashBlurTex = unsigned int;
+#endif
+inline void Render(bool enableBlur = false, CrashBlurTex blurTex = 0, unsigned int scrWidth = 0,
                    unsigned int scrHeight = 0, bool isDarkMode = true) {
     if (!g_state.windowOpen) {
         return;
@@ -406,16 +411,22 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
         ImDrawList* dl   = ImGui::GetWindowDrawList();
 
         if (enableBlur && blurTex != 0 && scrWidth > 0 && scrHeight > 0) {
+#if defined(MD3_BACKEND_DILIGENT)
             // UV 计算：D3D12/Vulkan 坐标系（Y 从上到下，无需翻转）
             ImVec2 uv0 = ImVec2(pos.x / scrWidth, pos.y / scrHeight);
             ImVec2 uv1 = ImVec2((pos.x + size.x) / scrWidth, (pos.y + size.y) / scrHeight);
+#else
+            // UV 计算：OpenGL 坐标系（Y 从下到上，需翻转）
+            ImVec2 uv0 = ImVec2(pos.x / scrWidth, 1.0f - pos.y / scrHeight);
+            ImVec2 uv1 = ImVec2((pos.x + size.x) / scrWidth, 1.0f - (pos.y + size.y) / scrHeight);
+#endif
 
             // blurTex 在 Diligent 版传入的是“已合成的 Acrylic 结果”
             MD3::AddImageRounded(dl, blurTex, pos, ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1,
                                  IM_COL32(255, 255, 255, 255), style.WindowRounding);
 
             // 噪点层：防 banding + 增加“材质感”
-            if (MD3::GetContext().noiseTextureID != nullptr) {
+            if (MD3::GetContext().noiseTextureID != 0) {
                 float intensity = MD3::GetContext().noiseIntensity;
                 if (intensity < 0.0f) {
                     intensity = 0.0f;
@@ -431,7 +442,7 @@ inline void Render(bool enableBlur = false, ImTextureID blurTex = 0, unsigned in
                     a = 64;
                 }
                 const ImU32 noiseCol = IM_COL32(255, 255, 255, a);
-                MD3::AddImageRounded(dl, reinterpret_cast<ImTextureID>(MD3::GetContext().noiseTextureID), pos,
+                MD3::AddImageRounded(dl, MD3::GetContext().noiseTextureID, pos,
                                      ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1, noiseCol, style.WindowRounding);
             }
 

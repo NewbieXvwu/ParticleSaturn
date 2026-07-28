@@ -1129,9 +1129,15 @@ bool BeginCollapsingHeader(const char* label, bool default_open) {
     // 如果启用模糊且有次级模糊纹理，绘制 Acrylic 背景（对齐 Diligent 版）
     ImVec2 endPos(pos.x + width, pos.y + height);
     if (ctx.blurEnabled && ctx.blurTextureID2 != 0 && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+#if defined(MD3_BACKEND_DILIGENT)
+        // UV 计算：D3D12/Vulkan 纹理坐标系（Y 从上到下）
+        ImVec2 uv0(pos.x / ctx.screenWidth, pos.y / ctx.screenHeight);
+        ImVec2 uv1(endPos.x / ctx.screenWidth, endPos.y / ctx.screenHeight);
+#else
         // UV 计算：OpenGL 纹理坐标系（Y 需要翻转）
         ImVec2 uv0(pos.x / ctx.screenWidth, 1.0f - pos.y / ctx.screenHeight);
         ImVec2 uv1(endPos.x / ctx.screenWidth, 1.0f - endPos.y / ctx.screenHeight);
+#endif
 
         // 弱模糊背景（1/12 分辨率，或已合成的 Acrylic 结果）
         AddImageRounded(dl, ctx.blurTextureID2, pos, endPos, uv0, uv1, IM_COL32(255, 255, 255, 255), cornerRadius,
@@ -1280,8 +1286,13 @@ void EndCollapsingHeader() {
     if (animatedHeight > 1.0f) {
         // 内容区域背景
         if (ctx.blurEnabled && ctx.blurTextureID2 != 0 && ctx.screenWidth > 0 && ctx.screenHeight > 0) {
+#if defined(MD3_BACKEND_DILIGENT)
+            ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, contentBoxMin.y / ctx.screenHeight);
+            ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, contentBoxMax.y / ctx.screenHeight);
+#else
             ImVec2 uv0(contentBoxMin.x / ctx.screenWidth, 1.0f - contentBoxMin.y / ctx.screenHeight);
             ImVec2 uv1(contentBoxMax.x / ctx.screenWidth, 1.0f - contentBoxMax.y / ctx.screenHeight);
+#endif
 
             AddImageRounded(dl, ctx.blurTextureID2, contentBoxMin, contentBoxMax, uv0, uv1,
                             IM_COL32(255, 255, 255, 255), cornerRadius, ImDrawFlags_RoundCornersBottom);
@@ -1333,6 +1344,10 @@ void EndCollapsingHeader() {
     // 设置光标到动画高度位置（让下方元素跟随移动）
     float spacing = 8.0f * dpi;
     SetCursorScreenPos(ImVec2(stackItem.headerPos.x, stackItem.contentStartPos.y + animatedHeight + spacing));
+#if defined(MD3_BACKEND_DILIGENT)
+    // 添加 Dummy 以正确扩展窗口边界（修复 ImGui SetCursorPos 警告）
+    Dummy(ImVec2(0, 0));
+#endif
 }
 
 //=============================================================================

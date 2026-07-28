@@ -427,7 +427,8 @@ endif()
 # 着色器预编译：在构建前自动编译 HLSL/GLSL 到字节码（跨平台）
 # ============================================================================
 set(SHADER_COMPILE_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/CompileShaders.cmake")
-set(SHADER_BYTECODES_HEADER "${CMAKE_SOURCE_DIR}/src/generated/ShaderBytecodes.h")
+# Build-time artifact: emit into the build tree, never the source tree (AUDIT P2-4).
+set(SHADER_BYTECODES_HEADER "${CMAKE_BINARY_DIR}/generated/ShaderBytecodes.h")
 set(SHADER_ABI_GENERATOR "${CMAKE_SOURCE_DIR}/cmake/GenerateShaderAbi.cmake")
 set(SHADER_ABI_INPUT "${CMAKE_SOURCE_DIR}/src/shaders/abi/particle_abi.json")
 
@@ -471,10 +472,10 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Win32WindowManager.cpp
     src/Diligent/Settings.cpp
 
-    # MD3 UI system
-    src/Diligent/md3/MD3Theme.cpp
-    src/Diligent/md3/MD3Context.cpp
-    src/Diligent/md3/MD3Widgets.cpp
+    # MD3 UI system (unified source under src/ui/md3, Diligent backend selected via MD3_BACKEND_DILIGENT)
+    src/ui/md3/MD3Theme.cpp
+    src/ui/md3/MD3Context.cpp
+    src/ui/md3/MD3Widgets.cpp
 
     # Camera selector (used by HandTracker)
     src/CameraSelector/CameraEnumerator.cpp
@@ -496,8 +497,10 @@ add_executable(ParticleSaturn.Diligent WIN32
 )
 
 target_include_directories(ParticleSaturn.Diligent PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"  # 着色器字节码头（构建期生成，脱离源码树）
     src/Diligent
-    src/Diligent/md3
+    src/ui
+    src/ui/md3
     src
     HandTracker/include
     libs/imgui
@@ -524,6 +527,10 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
 
 # 确保着色器在编译 C++ 代码之前已预编译
 add_dependencies(ParticleSaturn.Diligent CompileShaders)
+
+# 选择 MD3 UI 的 Diligent 后端（void* 纹理、Diligent PSO Ripple/Stencil、4 参数 Init）。
+# 必须是 target 级定义：DiligentBackend.cpp 与 CrashAnalyzer.h 也包含 MD3.h，需要一致的结构体布局。
+target_compile_definitions(ParticleSaturn.Diligent PRIVATE MD3_BACKEND_DILIGENT)
 
 if(PARTICLESATURN_HANDTRACKER_LINK_MODE STREQUAL "static")
     target_compile_definitions(ParticleSaturn.Diligent PRIVATE HANDTRACKER_STATIC)

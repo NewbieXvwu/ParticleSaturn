@@ -1,6 +1,14 @@
 #pragma once
-// AppState - 应用程序全局状态封装
-// 替代原有的全局变量，提供更好的代码组织和可维护性
+// AppState - 应用程序全局状态封装（旧模型）
+//
+// 【冻结声明 · D-002/D-005 · AUDIT P1-4】
+// 本头是 Windows 专属的遗留全局状态模型，仅被 src/OpenGL 与 src/Diligent 两个
+// Windows 目标消费（GetAppState/SetAppState 经 GLFWwindow 用户指针存取）。
+// 它**有意不迁移**到 macOS 的重设计 `src/app/state/AppStates.h`
+// （`ParticleSaturn::App::AppState`）：本模型携带 macOS 模型刻意舍弃的 Windows 专属
+// 状态——DWM 背景材质选择（backdrop）、OpenGL 崩溃报告信息（gl）、GLFW 窗口指针
+// 辅助函数、imgui 惰性初始化标志、按键防抖输入、LOD 决策码——两模型是不同设计而非
+// 变体。Windows 目标处于冻结区，此处保持原样；新代码请勿把两模型混用或强行合并。
 
 #include <string>
 #include <unordered_map>

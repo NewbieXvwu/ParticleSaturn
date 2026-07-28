@@ -3,7 +3,7 @@
 > **现行工作清单。** 历史与已完成：`docs/MIGRATION_LOG.md`（旧计划原文冻结归档，章节引用 §n）；架构决策：`docs/DECISIONS.md`（D-xxx）；代码库地图：`docs/CODEMAP.md`；技术债明细：`docs/AUDIT_2026-07.md`。
 > **引用约定**：`AUDIT P0-1`~`P3-7` 指审计文档**第一部分**的条目编号（去重后的权威清单，含位置/量化影响/建议）；与本文件的阶段名 P0–P4 是两套编号，审计引用一律带 `AUDIT` 前缀。
 
-> **状态（2026-07-27）**：本机（macOS）可做项已全部完成——P0 5/5、P1 5/5、P2 macOS 侧全清、P3 单源试点收束（tonemap+bloom 单源、场景着色器经逐 pass 数据定案不单源）、P4 四后端对比矩阵含逐 pass 指标跑通、性能速修全清。未勾项仅剩三类：P2 五项需 Windows 环境改并验证；"遗留人工验收"节待真人真机；"Windows 侧"节按 D-015 冻结。下一步动作在用户：Windows 会话 / 前台人工验收 / 决定 push 触发 CI（本地领先远端约 260 提交）。
+> **状态（2026-07-27）**：P0 5/5、P1 5/5、P3 单源试点收束（tonemap+bloom 单源、场景着色器经逐 pass 数据定案不单源）、P4 四后端对比矩阵含逐 pass 指标跑通、性能速修全清。**P2 五项此前被错误地整体推迟到"Windows 环境"——已纠正（2026-07-27 用户裁定）**：每项拆为「代码实现+静态验证（本机必做）」与「Windows 构建/运行验证（遗留）」两段；本机段未完成前不得声称"macOS 可做项全清"。其余未勾项："遗留人工验收"节待真人真机；"Windows 侧"节按 D-015 冻结。
 
 ## 冷启动协议（被要求"按 TODO 干活"时从这里开始）
 
@@ -12,6 +12,7 @@
 3. 一次一项：实现 → 在**断言生效的构建**下验证（D-008）→ 勾选并留一行备注 → 提交（提交信息引用条目）→ 有值得记录的细节则批注到 MIGRATION_LOG 文末"归档后进展"节。
 4. **"遗留人工验收"节需要真人与真机**（真实摄像头、外接显示器、睡眠唤醒、肉眼看画面），agent 不得代做、不得标记完成，只能为其准备脚本与操作说明。
 5. 标注（需拍板）的项先向用户提问，不要自行选定。
+6. **缺环境 ≠ 不写代码（2026-07-27 用户裁定）**：涉及 Windows 的项必须先在本机完成全部代码实现与静态验证（vcxproj/CMake 一致性核对、diff 审阅、MSVC 兼容性人工检查、可在 macOS 编译的共享代码实机编译），只把"Windows 实机构建+运行"留作遗留验证段。禁止以"需 Windows 环境"为由整项搁置。
 
 ## P0 测试安全网（先于一切重构，D-008，AUDIT P0-2）
 
@@ -32,15 +33,25 @@
 
 ## P2 单一事实来源与死代码清理（D-005/D-006）
 
-- [ ] 删除 `src/OpenGL/md3/`、`src/Diligent/md3/`：Windows 目标改链 `src/ui/md3`（vcxproj 指向 + `_WIN32` 分支承接 Diligent 侧差异；需 Windows 环境验证）。**macOS 侧 ODR 隐患已关闭**：ParticleSaturnMacOSImGui 上的 `src/OpenGL/md3` PUBLIC include 纯属遗留（其源码根本不含 MD3.h），已删，全量构建+gpu/app 测试通过（AUDIT P0-3 第一步）
+- [ ] 删除 `src/OpenGL/md3/`、`src/Diligent/md3/`：Windows 目标改链 `src/ui/md3`（vcxproj 指向 + `_WIN32` 分支承接 Diligent 侧差异）。**macOS 侧 ODR 隐患已关闭**：ParticleSaturnMacOSImGui 上的 `src/OpenGL/md3` PUBLIC include 纯属遗留（其源码根本不含 MD3.h），已删，全量构建+gpu/app 测试通过（AUDIT P0-3 第一步）
+  - [x] 本机段（2026-07-27 完成）：两目录（`src/OpenGL/md3`、`src/Diligent/md3`）已删；三目标统一编译 `src/ui/md3`；Diligent 侧差异（4 参 Init / void* 纹理 / Diligent PSO Ripple / stencil 圆角裁剪 / ApplyImGuiStyle / Acrylic UV 不翻转）以 `MD3_BACKEND_DILIGENT` 分支承接，GL 侧以 `MD3_HAS_OPENGL` 分支承接（互斥）；CMakeLists + 两 vcxproj 改指 `src/ui/md3` 并补 `src/ui` 使 `#include "md3/MD3.h"` 闭合；`.filters` 无 md3 条目无需改。**静态验证三重通过**：① macOS GL 路径 `ParticleSaturnMD3` 全绿；② 三份 .cpp 的 Diligent 分支对真实 Diligent 头 `clang -fsyntax-only` 零错（仅 Apple 平台头 `_countof` 宏重定义告警）；③ src/Diligent 下 37 个 `MD3::` 调用符号全部在统一 MD3.h 声明，签名逐一核对（Init 4 参 / SetBlurTexture(void*,bool)/2/Noise void* / ApplyImGuiStyle / DrawRipples / Shutdown / SetDpiScale）
+  - [ ] Windows 验证段：两目标实机编译+运行+MD3 面板视觉确认
 - [ ] `src/AppState.h` 旧状态模型处置：Windows 侧迁移到 `src/app/state/` 或显式冻结声明（AUDIT P1-4）
+  - [x] 本机段（2026-07-28 完成）：择**显式冻结**而非迁移。盘点消费者：仅 src/OpenGL 与 src/Diligent 两个 Windows 目标经 `GetAppState/SetAppState`（GLFWwindow 用户指针）存取。判定迁移不可行——本模型（扁平全局 struct）携带 macOS 重设计 `ParticleSaturn::App::AppState` 刻意舍弃的 Windows 专属状态（DWM backdrop 材质、gl 崩溃报告信息、GLFW 窗口辅助、imguiInitialized 惰性标志、按键防抖 input、LOD 决策码），且字段命名体系全然不同（isDarkMode/enableBlur/handParams/window.isFullscreen vs darkMode/blurEnabled/gesture/window.fullscreen），二者是不同设计而非变体，合并将是跨 9 个 Windows 文件的大规模不可验证重写。已在 `src/AppState.h` 头部写入冻结声明 banner（D-002/D-005），显式标注不迁移理由并禁止新代码混用两模型。
+  - [ ] Windows 验证段：实机编译确认
 - [ ] CrashAnalyzer 两份合一（~620/630 行相同，已现分叉）；Win7Compat shim 两 vcxproj 共享同一 .cpp（AUDIT P2-7/P3-7）
+  - [x] 本机段（2026-07-28 完成）：**CrashAnalyzer** 合一到共享 `src/CrashAnalyzer.h`（以 Diligent 版为基，GL 差异用 `MD3_BACKEND_DILIGENT` 承接：`CrashBlurTex` 类型别名统一 blur 句柄 ImTextureID/GLuint、Acrylic UV 的 Y 翻转分支；噪点判空统一为 `!=0`（void*/uint 通用）并去掉 `reinterpret_cast`（AddImageRounded 双重载按目标各自解析）；GL 侧顺带采用本地化 `str.*` 文案）；`src/OpenGL`、`src/Diligent` 两旧拷贝已删，OpenGL vcxproj 的 ClInclude 改指 `src\CrashAnalyzer.h`，Diligent 经 `src` include 目录解析。**Win7Compat** 收敛到唯一 `HandTracker/Win7Compat_GetSystemTimePreciseAsFileTime.cpp`（两份逻辑逐字节相同，HandTracker 版更全含 32 位 stdcall alias 且无 pch.h）；`src/` 拷贝已删，OpenGL vcxproj 改指 HandTracker 版并对全部 5 配置置 `NotUsing` PCH（免 pch.h 依赖），HandTracker.vcxproj 及其 DLL 构建零改动。静态闭合：grep 全库无代码残留引用旧路径。**注**：二者均 Windows-only（Windows.h/DbgHelp/`__imp_` 链接符号），macOS 无法编译验证，留待 Windows 段。
+  - [ ] Windows 验证段：两目标实机编译+崩溃路径冒烟
 - [x] 死代码批删（部分）：已删 `scripts/compile_shaders.ps1`（零引用）、`src/Diligent/SuperResolution.h`（仅自引用）、`MetalResourceManager`/`MetalCommandContext`（零消费者的 §8.1 骨架）、`NormalizeRGBRow`（无调用别名）。**保留**：CMake FastRelease 配置牵涉 Windows 构建本机无法验证（待 Windows 环境处理）；SIMD 的 SSE/AVX 枚举经查是 Windows 现役跨平台模式接口，非死代码
 - [x] `src/gpu/interface/` 收敛至 D-002 冻结范围：删 7 个零消费的 §6.1 句柄标签/别名（TextureView/Sampler/ShaderModule/Pipeline/Binding*）、PresentMode 枚举、RequiredCapability+Supports+CapabilityName 三件套；GpuCapabilities 字段保留（后端在填）。unit/gpu 全绿（AUDIT P2-1）
 - [x] `ParticleSimulationStrategy` 删除：无生产调用者，且其"按 GpuCapabilities 选模式"是 RHI 高度旧思路，与 D-002 帧高度接缝相悖——真实的策略协商归 P1 能力单点在接缝高度重建；ParticleSaturnGpu 随之改为纯头 INTERFACE 库（契约头即其全部内容）
 - [x] 单实现服务接口去虚化：删 ICameraCapture 基类（Frame/Device/Authorization 等共享数据类型保留）与 SettingsStore.h（整文件即基类）；AVFoundationCamera/NSUserDefaultsStore 去 override，全库无任何多态使用点。unit + 相机/设置测试通过（AUDIT P2-1）
-- [ ] 着色器字节码头生成改到 `${CMAKE_BINARY_DIR}/generated`，脱离源码树——经查为 **Windows 专属**：macOS 的 metallib/ABI 已在 build 目录；`src/generated/ShaderBytecodes.h` 由 Windows 流程生成、`src/Diligent/DiligentBackend.cpp` 引用，需 Windows 环境改并验证（AUDIT P2-4）
-- [ ] `CompileShaders.cmake` 收敛：单一 compile_stage 函数取代 7 段复制、REGEX 取代逐字节 hex 循环——经查脚本无 DXC/FXC 即 FATAL、仅被顶层 CMake 的 Windows 段调用，本机无法执行验证，需 Windows 环境做（AUDIT P2-4）
+- [ ] 着色器字节码头生成改到 `${CMAKE_BINARY_DIR}/generated`，脱离源码树——Windows 专属流程：macOS 的 metallib/ABI 已在 build 目录；`src/generated/ShaderBytecodes.h` 由 Windows 流程生成、`src/Diligent/DiligentBackend.cpp` 引用（AUDIT P2-4）
+  - [x] 本机段（2026-07-28 完成）：`CMakeLists.txt` 的 `SHADER_BYTECODES_HEADER` 输出改到 `${CMAKE_BINARY_DIR}/generated/ShaderBytecodes.h`；为 `ParticleSaturn.Diligent` 加 `target_include_directories` 首项 `${CMAKE_BINARY_DIR}/generated`；`DiligentBackend.cpp` 的引用由 `"../generated/ShaderBytecodes.h"` 改为 `"ShaderBytecodes.h"`（经 include 目录解析，`LogControlIcons.h` 仍是源码树 tracked 资产不动）；`.gitignore` 删除已废的 `src/generated/ShaderBytecodes.h` 条目（新位置在已忽略的 `bin_diligent/`、`build*/` 下）；vcxproj IntelliSense 路径 `DiligentIncludePaths` 首项补 `$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\generated`（CMAKE_BINARY_DIR 即 build 脚本传入的 BuildDir）。静态核对：全库无残留旧路径引用；源码树 `src/generated/` 仅剩 tracked 的 `LogControlIcons.h`，无生成物残留。与 AUDIT P2-4 建议逐条一致。
+  - [ ] Windows 验证段：实机配置+编译确认生成物落在 build 目录
+- [ ] `CompileShaders.cmake` 收敛：单一 compile_stage 函数取代 7 段复制、REGEX 取代逐字节 hex 循环——脚本无 DXC/FXC 即 FATAL、仅被顶层 CMake 的 Windows 段调用（AUDIT P2-4）
+  - [x] 本机段（2026-07-28 完成）：`convert_to_byte_array` 的逐字节 `substring`+`APPEND` 内循环改为 REGEX 一次成型（按 16 字节/行分块，每块 `string(REGEX REPLACE "(..)" "0x\\1, ")`；CMake regex 不支持 `{n}` 量词故保留块级步进）；8 段近乎复制的 per-stage 代码块收敛为单一 `compile_stage(NAME LANG STAGE)` 函数（HLSL VS/PS/CS/MS/MeshPS + GLSL VS/PS/CS），映射源后缀/临时产物名/数组名/profile 或 glslang stage，就地 `PARENT_SCOPE` 累加 HEADER_CONTENT 与三计数器；驱动循环仅剩按原发射顺序（HLSL VS→PS→CS→MS→MeshPS，GLSL VS→PS→CS）的分派。计数语义逐段对齐旧版：常规段缺源 +SKIP/失败 +FAIL，MeshPS 尽力而为（缺源不 +SKIP、失败不 +FAIL），GLSL 段无 glslang 静默跳过不计。无 DXC/FXC 即 FATAL 与仅 Windows 段调用（顶层 CMake line 336 `return()` 门）均保持。**macOS 三重对拍验证**：① hex 转换独立 `cmake -P` 对拍旧/新实现，随机字节 N∈{1,2,15,16,17,31,32,33,100,255,1024} 及空文件全部逐位 MATCH；② `compile_stage` 直调测试确认 SKIP/FAIL/SUCCESS 计数、best-effort MeshPS、glslang 缺失跳过、数组名与 header append 均正确；③ 全脚本 `cmake -P` 词法解析通过，且旧版经同一 harness 在相同 `list(GET)` 点失败——证明我未引入新分歧（该 SHADERS 分词属既有行为，非本项范围）。
+  - [ ] Windows 验证段：实机跑 DXC/FXC 全链路确认产物一致
 
 ## P3 着色器单源试点（D-004）
 

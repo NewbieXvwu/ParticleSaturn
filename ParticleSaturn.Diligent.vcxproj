@@ -116,8 +116,8 @@
 
   <!-- Common IntelliSense paths for all configurations -->
   <PropertyGroup>
-    <DiligentIncludePaths>$(ProjectDir)src;$(ProjectDir)src\Diligent;$(ProjectDir)src\Diligent\md3;$(ProjectDir)libs\imgui;$(ProjectDir)libs\imgui\backends;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngine\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineD3D12\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineVulkan\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsAccessories\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsTools\include;$(ProjectDir)libs\DiligentCore\Common\include;$(ProjectDir)libs\DiligentCore\Primitives\interface;$(ProjectDir)libs\DiligentCore\Platforms\interface;$(ProjectDir)libs\DiligentCore\Platforms\Basic\include;$(ProjectDir)libs\DiligentCore\Platforms\Win32\include</DiligentIncludePaths>
-    <DiligentPreprocessorDefs>UNICODE;_UNICODE;NOMINMAX;WIN32;_WINDOWS;IMGUI_USER_CONFIG="imconfig.h"</DiligentPreprocessorDefs>
+    <DiligentIncludePaths>$(ProjectDir)bin_diligent\$(Platform)\$(Configuration)\generated;$(ProjectDir)src;$(ProjectDir)src\Diligent;$(ProjectDir)src\ui;$(ProjectDir)src\ui\md3;$(ProjectDir)libs\imgui;$(ProjectDir)libs\imgui\backends;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngine\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineD3D12\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsEngineVulkan\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsAccessories\include;$(ProjectDir)libs\DiligentCore\Graphics\GraphicsTools\include;$(ProjectDir)libs\DiligentCore\Common\include;$(ProjectDir)libs\DiligentCore\Primitives\interface;$(ProjectDir)libs\DiligentCore\Platforms\interface;$(ProjectDir)libs\DiligentCore\Platforms\Basic\include;$(ProjectDir)libs\DiligentCore\Platforms\Win32\include</DiligentIncludePaths>
+    <DiligentPreprocessorDefs>UNICODE;_UNICODE;NOMINMAX;WIN32;_WINDOWS;MD3_BACKEND_DILIGENT;IMGUI_USER_CONFIG="imconfig.h"</DiligentPreprocessorDefs>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

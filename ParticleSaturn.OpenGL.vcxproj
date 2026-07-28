@@ -136,7 +136,7 @@
       <PreprocessorDefinitions>IMGUI_USER_CONFIG="imconfig.h";APP_VERSION="$(AppVersion)";_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src\ui;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -158,7 +158,7 @@
       <PreprocessorDefinitions>IMGUI_USER_CONFIG="imconfig.h";APP_VERSION="$(AppVersion)";NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src\ui;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -181,7 +181,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\OpenGL;$(SolutionDir)src\ui;$(SolutionDir)src;$(SolutionDir);$(SolutionDir)HandTracker\include;$(SolutionDir)libs\imgui;$(SolutionDir)libs\imgui\backends;$(SolutionDir)HandTracker\libs\opencv\build\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -209,7 +209,13 @@
     <ClCompile Include="src\OpenGL\UIManager.cpp" />
     <ClCompile Include="src\AppState.cpp" />
     <ClCompile Include="src\OpenGL\ParticleSystem.cpp" />
-    <ClCompile Include="src\Win7Compat_GetSystemTimePreciseAsFileTime.cpp" />
+    <ClCompile Include="HandTracker\Win7Compat_GetSystemTimePreciseAsFileTime.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\CameraSelector\CameraEnumerator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
@@ -230,17 +236,17 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\OpenGL\md3\MD3Context.cpp">
+    <ClCompile Include="src\ui\md3\MD3Context.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\OpenGL\md3\MD3Theme.cpp">
+    <ClCompile Include="src\ui\md3\MD3Theme.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\OpenGL\md3\MD3Widgets.cpp">
+    <ClCompile Include="src\ui\md3\MD3Widgets.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_Static|x64'">NotUsing</PrecompiledHeader>
@@ -287,14 +293,15 @@
     <ClInclude Include="src\OpenGL\UIManager.h" />
     <ClInclude Include="src\Localization.h" />
     <ClInclude Include="src\ErrorHandler.h" />
-    <ClInclude Include="src\OpenGL\CrashAnalyzer.h" />
+    <ClInclude Include="src\CrashAnalyzer.h" />
     <ClInclude Include="src\AppState.h" />
     <ClInclude Include="src\CameraSelector\CameraSelector.h" />
     <ClInclude Include="src\CameraSelector\CameraEnumerator.h" />
     <ClInclude Include="src\CameraSelector\D2DRenderer.h" />
     <ClInclude Include="src\CameraSelector\CameraPreview.h" />
-    <ClInclude Include="src\OpenGL\md3\MD3.h" />
-    <ClInclude Include="src\OpenGL\md3\MD3Shaders.h" />
+    <ClInclude Include="src\ui\md3\MD3.h" />
+    <ClInclude Include="src\ui\md3\MD3Shaders.h" />
+    <ClInclude Include="src\ui\md3\MD3Log.h" />
     <ClInclude Include="Resource.h" />
   </ItemGroup>
   <ItemGroup>

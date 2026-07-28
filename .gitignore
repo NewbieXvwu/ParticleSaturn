@@ -7,7 +7,7 @@ bin_diligent/
 out/
 
 # Build-time generated files
-src/generated/ShaderBytecodes.h
+# ShaderBytecodes.h now emits to ${CMAKE_BINARY_DIR}/generated (build dirs above), not the source tree.
 
 # Visual Studio
 .vs/

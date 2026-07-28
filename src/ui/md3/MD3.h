@@ -12,8 +12,23 @@
 struct ImVec2;
 struct ImVec4;
 struct ImRect;
+struct ImDrawList;
 typedef unsigned int ImGuiID;
+
+#if defined(MD3_BACKEND_DILIGENT)
+// Diligent 后端：Ripple/Stencil 使用 Diligent PSO，需要 RenderBackend 枚举与 Diligent 前向声明
+    #include "RenderBackend.h"
+namespace Diligent {
+class IRenderDevice;
+class IDeviceContext;
+class IPipelineState;
+class IShaderResourceBinding;
+class IBuffer;
+} // namespace Diligent
+#else
+// OpenGL/回退后端：仅需 GLuint 别名
 typedef unsigned int GLuint;
+#endif
 
 namespace MD3 {
 
@@ -306,7 +321,11 @@ struct CollapsingHeaderAnimState {
 
     CollapsingHeaderAnimState()
         : hoverState(0.0f, 500.0f, 30.0f),
+#if defined(MD3_BACKEND_DILIGENT)
+          openState(0.0f, 350.0f, 38.0f), // damping 38 ≥ 2*sqrt(350)≈37.4 临界阻尼，消除振荡
+#else
           openState(0.0f, 350.0f, 26.0f),
+#endif
           arrowRotation(0.0f, 350.0f, 26.0f),
           lastContentHeight(0.0f) {}
 };
@@ -385,6 +404,24 @@ struct SmoothScrollState {
 // MD3 上下文
 //=============================================================================
 
+#if defined(MD3_BACKEND_DILIGENT)
+// Diligent 渲染上下文（用于 Ripple 和 Stencil）
+struct DiligentRenderContext {
+    Diligent::IRenderDevice*          device          = nullptr;
+    Diligent::IDeviceContext*         context         = nullptr;
+    Diligent::IPipelineState*         ripplePSO       = nullptr;
+    Diligent::IShaderResourceBinding* rippleSRB       = nullptr;
+    Diligent::IBuffer*                rippleConstants = nullptr;
+    Diligent::IBuffer*                rippleVB        = nullptr;
+
+    // Stencil PSO for rounded clip
+    Diligent::IPipelineState* stencilWritePSO = nullptr;
+    Diligent::IPipelineState* stencilTestPSO  = nullptr;
+
+    bool initialized = false;
+};
+#endif
+
 // MD3 系统上下文（内部使用）
 struct MD3Context {
     bool  initialized = false;
@@ -397,6 +434,14 @@ struct MD3Context {
     // 色彩方案
     MD3ColorScheme colors;
 
+#if defined(MD3_BACKEND_DILIGENT)
+    // Ripple 系统
+    RippleConfig             rippleConfig;
+    std::vector<RippleState> ripples;
+
+    // Diligent 渲染资源
+    DiligentRenderContext diligent;
+#else
     // 后端标志
     bool useOpenGL = false;
 
@@ -406,6 +451,7 @@ struct MD3Context {
     unsigned int             rippleProgram = 0; // OpenGL 程序 ID（仅 OpenGL 后端）
     unsigned int             rippleVAO     = 0; // OpenGL VAO（仅 OpenGL 后端）
     unsigned int             rippleVBO     = 0; // OpenGL VBO（仅 OpenGL 后端）
+#endif
 
     // 控件动画状态缓存
     std::unordered_map<ImGuiID, ToggleAnimState>           toggleStates;
@@ -427,12 +473,22 @@ struct MD3Context {
     float screenWidth  = 1920.0f;
     float screenHeight = 1080.0f;
 
-    // 模糊纹理（用于 Acrylic/玻璃背景）
+    // 模糊纹理
+#if defined(MD3_BACKEND_DILIGENT)
+    // Diligent：ImTextureID (ITextureView*) 指针
+    void* blurTextureID  = nullptr; // 1/6 分辨率强模糊（或已合成的 Acrylic 结果）
+    void* blurTextureID2 = nullptr; // 1/12 分辨率弱模糊（折叠区域）
+    void* noiseTextureID = nullptr; // 全分辨率噪点（防 banding + 质感）
+    float noiseIntensity = 0.01f;   // 噪点强度（建议 0.0~0.03）
+    bool  blurEnabled    = false;
+#else
+    // OpenGL：GL 纹理 ID
     unsigned int blurTextureID  = 0;     // 1/6 分辨率强模糊（或已合成的 Acrylic 结果）
     unsigned int blurTextureID2 = 0;     // 1/12 分辨率弱模糊（折叠区域）
     unsigned int noiseTextureID = 0;     // 全分辨率噪点（防 banding + 质感）
     float        noiseIntensity = 0.01f; // 噪点强度（建议 0.0~0.03）
     bool         blurEnabled    = false;
+#endif
 };
 
 // 获取全局上下文
@@ -442,9 +498,15 @@ MD3Context& GetContext();
 // 公共 API
 //=============================================================================
 
+#if defined(MD3_BACKEND_DILIGENT)
+// 初始化 MD3 系统（Diligent 版本）
+void Init(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, ParticleSaturn::Render::Backend backend,
+          float dpiScale = 1.0f);
+#else
 // 初始化 MD3 系统
 // Metal 使用纯 ImGui 绘制回退，避免在没有 OpenGL 上下文时创建 GL 资源。
 void Init(float dpiScale = 1.0f, bool useOpenGL = false);
+#endif
 
 // 关闭 MD3 系统
 void Shutdown();
@@ -467,6 +529,16 @@ void SetScreenSize(float width, float height);
 // 设置 DPI 缩放
 void SetDpiScale(float scale);
 
+#if defined(MD3_BACKEND_DILIGENT)
+// 设置模糊纹理（用于窗口背景玻璃效果）
+void SetBlurTexture(void* textureID, bool enabled);
+
+// 设置次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
+void SetBlurTexture2(void* textureID);
+
+// 设置噪点纹理（全分辨率，避免依赖 wrap sampler）
+void SetNoiseTexture(void* textureID);
+#else
 // 设置模糊纹理（用于窗口背景玻璃/Acrylic）
 void SetBlurTexture(unsigned int textureID, bool enabled);
 
@@ -475,9 +547,15 @@ void SetBlurTexture2(unsigned int textureID);
 
 // 设置噪点纹理（全分辨率）
 void SetNoiseTexture(unsigned int textureID);
+#endif
 
 // 设置噪点强度（建议 0.0~0.03）
 void SetNoiseIntensity(float intensity);
+
+#if defined(MD3_BACKEND_DILIGENT)
+// 应用 MD3 主题到 ImGui 样式（窗口、表格、滚动条等）—— 仅 Diligent 后端
+void ApplyImGuiStyle();
+#endif
 
 //=============================================================================
 // MD3 控件
@@ -599,6 +677,11 @@ void TriggerRippleForCurrentItem(ImGuiID id, float cornerRadius = 0.0f);
 // 绘制所有活跃的 Ripple（在控件绘制后调用）
 // 使用 ImDrawList 渲染，自动跟随滚动位置
 void DrawRipples();
+
+#if defined(MD3_BACKEND_DILIGENT)
+// 使用 Diligent 渲染 Ripple（可选，提供更精确的圆角裁剪）
+void DrawRipplesDiligent();
+#endif
 
 //=============================================================================
 // 工具函数

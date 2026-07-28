@@ -20,7 +20,7 @@
 #include "../Settings.h"
 #include "../ShaderCompileProgress.h"
 #include "../generated/LogControlIcons.h"
-#include "../generated/ShaderBytecodes.h"
+#include "ShaderBytecodes.h"  // 构建期生成于 ${CMAKE_BINARY_DIR}/generated，经 include 目录解析
 
 #include "ArchiverFactoryLoader.h"
 #include "CommandQueueD3D12.h"
