@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace ParticleSaturn::App {
 
@@ -50,6 +52,7 @@ struct RenderSettings {
     float bloomBlurStrength      = 2.0f;
     GraphicsApi graphicsApi      = GraphicsApi::Vulkan;
     VulkanDriver vulkanDriver    = VulkanDriver::MoltenVK;
+    bool adaptiveVSyncSupported  = false;
 };
 
 struct UiState {
@@ -59,6 +62,7 @@ struct UiState {
     bool blurEnabled     = true;
     float blurStrength   = 2.0f;
     float noiseIntensity = 0.01f;
+    bool imguiInitialized = false;
 };
 
 struct GestureSettings {
@@ -71,6 +75,8 @@ struct GestureSettings {
 struct LodState {
     bool locked = false;
     float smoothedFrameSeconds = 1.0f / 60.0f;
+    int lastDecision = 0;
+    float lastDecisionTime = 0.0f;
 };
 
 struct InputState {
@@ -91,7 +97,26 @@ struct WindowState {
     std::uint32_t windowedHeight = 1080;
     float dpiScale       = 1.0f;
     bool fullscreen      = false;
+    bool resized         = true;
     WindowMaterial material = WindowMaterial::Solid;
+};
+
+// Windows DWM 背景材质选择状态（macOS 以 WindowState::material 表达，Windows
+// 侧沿用可用材质列表 + 当前索引的原生形态）。
+struct BackdropState {
+    std::vector<int> availableBackdrops = {0};
+    int backdropIndex = 0;
+    bool useTransparent = false;
+    bool transparentSupported = true;
+};
+
+// OpenGL 驱动信息（崩溃报告用）。
+struct GlInfo {
+    std::string version;
+    std::string renderer;
+    int major = 0;
+    int minor = 0;
+    bool persistentMapping = false;
 };
 
 struct AppState {
@@ -102,6 +127,8 @@ struct AppState {
     LodState lod;
     InputState input;
     WindowState window;
+    BackdropState backdrop;
+    GlInfo gl;
 };
 
 inline float Clamp(float value, float minimum, float maximum) {

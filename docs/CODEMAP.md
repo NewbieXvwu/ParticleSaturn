@@ -18,7 +18,7 @@
 
 | 能力 | 位置 | 备注 |
 |---|---|---|
-| 应用状态/命令/帧协调 | `src/app/`（AppController、AppCommand、FrameCoordinator、state/） | 唯一现行状态模型；`src/AppState.h` 是旧模型，勿用 |
+| 应用状态/命令/帧协调 | `src/app/`（AppController、AppCommand、FrameCoordinator、state/） | 唯一现行状态模型；`src/AppState.h` 已退化为薄别名头 `using AppState = App::AppState`（D-017，同一类型） |
 | GPU 设备契约 | `src/gpu/interface/`（GpuDevice.h、GpuTypes.h、GpuCapabilities.h） | 范围已冻结（D-002）：句柄/过渡/令牌/Dispatch/DrawIndirect；**勿扩表面积** |
 | 渲染资源生命周期 | `src/render/`（ResourceRegistry/TexturePool） | pass 顺序已按 D-003 在各后端静态直排；RenderGraph 已删（2026-07-26） |
 | 着色器 ABI 生成 | `src/shaders/abi/` + CMake 生成器 → `${CMAKE_BINARY_DIR}/generated/shaders` | 四语言结构唯一来源，禁止手写副本 |
@@ -78,7 +78,7 @@
 | 对象 | 原因 / 去向 |
 |---|---|
 | `src/OpenGL/md3/`、`src/Diligent/md3/` | MD3 旧拷贝，待删（TODO P2）；现行版 `src/ui/md3`；macOS include 路径存在 ODR 隐患（AUDIT P0-3） |
-| `src/AppState.h/.cpp` | 旧状态模型；现行 `src/app/state/` |
-| `src/OpenGL/`、`src/Diligent/`、`src/CameraSelector/`、`HandTracker/`（SIMD 调度除外） | Windows 现役但冻结（D-015）；重启时走窄接缝 |
+| `src/AppState.h/.cpp` | 已收敛：`.h` 为薄别名头指向 `src/app/state/`（D-017）；`.cpp` 仍持 GLFW user-pointer 存取，非旧模型 |
+| `src/OpenGL/`、`src/Diligent/`、`src/CameraSelector/`、`HandTracker/`（SIMD 调度除外） | Windows 现役但冻结（D-015）；状态模型收敛范围内已定向解除（D-017）；重启时走窄接缝 |
 | `src/Settings.h`、`src/ErrorHandler.h`、`src/DebugLog.h` | Windows 专属旧设施；macOS 对应物见共享层 |
 | CMake FastRelease 配置 | 疑似死配置（AUDIT P2-5）；牵涉 Windows 构建，待 Windows 环境验证后删 |

@@ -2,8 +2,9 @@
 
 #include <windows.h>
 
-// 前向声明：避免头文件互相牵连（AppState 是 Windows 遗留全局模型）。
-struct AppState;
+// 前向声明：AppState 现为 ParticleSaturn::App::AppState 的别名（D-015 Phase C 收敛）。
+namespace ParticleSaturn::App { struct AppState; }
+using AppState = ParticleSaturn::App::AppState;
 
 namespace ParticleSaturn::Render {
 class DiligentBackend;

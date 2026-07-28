@@ -15,7 +15,7 @@ bool DispatchWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Ap
         // 系统主题切换（Win10/11）：更新标题栏暗色模式 + 应用内 dark mode
         if (lParam != 0 && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0) {
             const bool dark      = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
-            state.ui.isDarkMode  = dark;
+            state.ui.darkMode  = dark;
             ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
             if (backend.IsInitialized()) {
                 MD3::ApplyImGuiStyle();
@@ -27,24 +27,24 @@ bool DispatchWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Ap
         switch (wParam) {
         case VK_F3:
             // 防抖：只在按下时触发一次
-            if (!state.input.keyF3_pressed) {
-                state.input.keyF3_pressed = true;
+            if (!state.input.keyF3Pressed) {
+                state.input.keyF3Pressed = true;
                 state.ui.showDebugWindow  = !state.ui.showDebugWindow;
             }
             break;
         case VK_F11:
-            if (!state.input.keyF11_pressed) {
-                state.input.keyF11_pressed = true;
+            if (!state.input.keyF11Pressed) {
+                state.input.keyF11Pressed = true;
                 // 切换全屏
-                state.window.isFullscreen = !state.window.isFullscreen;
-                if (state.window.isFullscreen) {
+                state.window.fullscreen = !state.window.fullscreen;
+                if (state.window.fullscreen) {
                     // 保存窗口位置
                     RECT wr;
                     GetWindowRect(hwnd, &wr);
                     state.window.windowedX = wr.left;
                     state.window.windowedY = wr.top;
-                    state.window.windowedW = wr.right - wr.left;
-                    state.window.windowedH = wr.bottom - wr.top;
+                    state.window.windowedWidth = wr.right - wr.left;
+                    state.window.windowedHeight = wr.bottom - wr.top;
                     // 进入全屏
                     HMONITOR    hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
                     MONITORINFO mi   = {sizeof(mi)};
@@ -57,16 +57,16 @@ bool DispatchWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Ap
                     // 退出全屏
                     SetWindowLongPtrW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
                     SetWindowPos(hwnd, nullptr, state.window.windowedX, state.window.windowedY,
-                                 state.window.windowedW, state.window.windowedH,
+                                 state.window.windowedWidth, state.window.windowedHeight,
                                  SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
                 }
             }
             break;
         case 'B':
-            if (!state.input.keyB_pressed) {
-                state.input.keyB_pressed = true;
+            if (!state.input.keyBPressed) {
+                state.input.keyBPressed = true;
                 // B 键切换模糊效果开关（只有开/关两种状态）
-                state.ui.enableBlur = !state.ui.enableBlur;
+                state.ui.blurEnabled = !state.ui.blurEnabled;
             }
             break;
         case VK_ESCAPE:
@@ -78,13 +78,13 @@ bool DispatchWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Ap
     case WM_KEYUP: {
         switch (wParam) {
         case VK_F3:
-            state.input.keyF3_pressed = false;
+            state.input.keyF3Pressed = false;
             break;
         case VK_F11:
-            state.input.keyF11_pressed = false;
+            state.input.keyF11Pressed = false;
             break;
         case 'B':
-            state.input.keyB_pressed = false;
+            state.input.keyBPressed = false;
             break;
         }
         return true;
@@ -100,7 +100,7 @@ bool DispatchWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, Ap
     case WM_DPICHANGED: {
         // DPI 变化时（如拖动窗口到不同 DPI 显示器）
         const float newDpiScale = static_cast<float>(HIWORD(wParam)) / 96.0f;
-        state.ui.dpiScale        = newDpiScale;
+        state.window.dpiScale        = newDpiScale;
         // 更新 MD3/ImGui 的 DPI 缩放
         MD3::SetDpiScale(newDpiScale);
 

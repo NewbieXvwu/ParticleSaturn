@@ -199,20 +199,23 @@ inline void SetBackdropMode(HWND hwnd, int mode, AppState& state) {
 
 // 切换全屏模式
 inline void ToggleFullscreen(GLFWwindow* window, AppState& state) {
-    if (!state.window.isFullscreen) {
+    if (!state.window.fullscreen) {
         glfwGetWindowPos(window, &state.window.windowedX, &state.window.windowedY);
-        glfwGetWindowSize(window, &state.window.windowedW, &state.window.windowedH);
+        int savedW = 0, savedH = 0;
+        glfwGetWindowSize(window, &savedW, &savedH);
+        state.window.windowedWidth  = static_cast<std::uint32_t>(savedW);
+        state.window.windowedHeight = static_cast<std::uint32_t>(savedH);
 
         GLFWmonitor*       monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode    = glfwGetVideoMode(monitor);
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-        state.window.isFullscreen = true;
+        state.window.fullscreen = true;
         std::cout << "[Window] Fullscreen: " << mode->width << "x" << mode->height << std::endl;
     } else {
-        glfwSetWindowMonitor(window, nullptr, state.window.windowedX, state.window.windowedY, state.window.windowedW,
-                             state.window.windowedH, 0);
-        state.window.isFullscreen = false;
-        std::cout << "[Window] Windowed: " << state.window.windowedW << "x" << state.window.windowedH << std::endl;
+        glfwSetWindowMonitor(window, nullptr, state.window.windowedX, state.window.windowedY, state.window.windowedWidth,
+                             state.window.windowedHeight, 0);
+        state.window.fullscreen = false;
+        std::cout << "[Window] Windowed: " << state.window.windowedWidth << "x" << state.window.windowedHeight << std::endl;
     }
 }
 

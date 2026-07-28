@@ -7,8 +7,9 @@
 
 #include "Diligent/RenderBackend.h"
 
-// 前向声明
-struct AppState;
+// 前向声明（AppState 现为 ParticleSaturn::App::AppState 的别名，D-015 Phase C 收敛）
+namespace ParticleSaturn::App { struct AppState; }
+using AppState = ParticleSaturn::App::AppState;
 
 namespace Settings {
 

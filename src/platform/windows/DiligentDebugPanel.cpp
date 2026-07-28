@@ -57,7 +57,7 @@ void DiligentBackend::RenderDebugPanel() {
                 ImVec2 endPos       = ImVec2(pos.x + size.x, pos.y + size.y);
 
                 // 模糊背景：如果启用且有有效纹理
-                const bool    wantBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : false;
+                const bool    wantBlur = (appState_ != nullptr) ? appState_->ui.blurEnabled : false;
                 ITextureView* blurSRV =
                     (wantBlur && uiAcrylicSRV_Strong_ != nullptr) ? uiAcrylicSRV_Strong_.RawPtr() : nullptr;
                 if (wantBlur) {
@@ -93,7 +93,7 @@ void DiligentBackend::RenderDebugPanel() {
 
                     // 高光边框
                     ImU32 highlight =
-                        appState_->ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                        appState_->ui.darkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                     dl->AddRect(pos, endPos, highlight, cornerRadius, 0, 1.0f);
                 } else {
                     // 无模糊时的纯色背景
@@ -135,7 +135,7 @@ void DiligentBackend::RenderDebugPanel() {
                     ImGui::TextColored(fpsColor, "%.1f", currentFps_);
 
                     const uint32_t uiParticleCount =
-                        (appState_ != nullptr) ? appState_->render.activeParticleCount : particleCount_;
+                        (appState_ != nullptr) ? appState_->render.particleCount : particleCount_;
                     const float uiPixelRatio = (appState_ != nullptr) ? appState_->render.pixelRatio : 1.0f;
                     TwoColumnText(str.particles, "%u / %u", uiParticleCount, kParticleCountMax);
                     TwoColumnText(str.pixelRatio, "%.2f", uiPixelRatio);
@@ -229,12 +229,12 @@ void DiligentBackend::RenderDebugPanel() {
                 }
 
                 // 绘图区域（调整右边距与左侧对齐 - 使用折叠区域的 contentPadding）
-                float       contentIndent = 16.0f * appState_->ui.dpiScale;
+                float       contentIndent = 16.0f * appState_->window.dpiScale;
                 ImVec2      plotSize(ImGui::GetContentRegionAvail().x - contentIndent, 50);
                 ImVec2      plotPos = ImGui::GetCursorScreenPos();
                 ImVec2      plotEnd(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
                 ImDrawList* drawList     = ImGui::GetWindowDrawList();
-                float       cornerRadius = 6.0f * appState_->ui.dpiScale;
+                float       cornerRadius = 6.0f * appState_->window.dpiScale;
 
                 // 背景
                 auto& ctx       = MD3::GetContext();
@@ -448,14 +448,14 @@ void DiligentBackend::RenderDebugPanel() {
                 // 用户可调参数：让它“真的生效”
                 if (appState_ != nullptr) {
                     ImGui::Text("%s:", str.sensitivity);
-                    MD3::Slider("##HandSensitivity", &appState_->handParams.sensitivity, 0.1f, 3.0f, "%.2f");
-                    MD3::Toggle(str.invertX, &appState_->handParams.invertX);
-                    MD3::Toggle(str.invertY, &appState_->handParams.invertY);
+                    MD3::Slider("##HandSensitivity", &appState_->gesture.sensitivity, 0.1f, 3.0f, "%.2f");
+                    MD3::Toggle(str.invertX, &appState_->gesture.invertX);
+                    MD3::Toggle(str.invertY, &appState_->gesture.invertY);
 
                     ImGui::Text("%s (%s):", str.handLostDelay, str.frames);
-                    float delayF = static_cast<float>(appState_->handParams.handLostDelay);
+                    float delayF = static_cast<float>(appState_->gesture.handLostDelay);
                     if (MD3::Slider("##HandLostDelay", &delayF, 1.0f, 30.0f, "%.0f")) {
-                        appState_->handParams.handLostDelay = static_cast<int>(delayF);
+                        appState_->gesture.handLostDelay = static_cast<int>(delayF);
                     }
                 }
 
@@ -562,7 +562,7 @@ void DiligentBackend::RenderDebugPanel() {
             // ========== 视觉效果区域 ==========
             if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
                 // 暗色模式切换 - 使用 MD3 Toggle
-                if (MD3::Toggle(str.darkMode, &appState_->ui.isDarkMode)) {
+                if (MD3::Toggle(str.darkMode, &appState_->ui.darkMode)) {
                     // 应用 MD3 主题样式
                     MD3::ApplyImGuiStyle();
                 }
@@ -579,10 +579,10 @@ void DiligentBackend::RenderDebugPanel() {
                 ImGui::Spacing();
 
                 // 玻璃模糊效果开关（窗口背景）
-                MD3::Toggle(str.glassBlur, &appState_->ui.enableBlur);
+                MD3::Toggle(str.glassBlur, &appState_->ui.blurEnabled);
 
                 // 启用时显示强度滑块
-                if (appState_->ui.enableBlur) {
+                if (appState_->ui.blurEnabled) {
                     ImGui::TextUnformatted(str.blurStrength);
                     MD3::Slider("##BlurStr", &appState_->ui.blurStrength, 0.0f, 5.0f, "%.1f");
                     ImGui::TextUnformatted(str.noise);
@@ -677,7 +677,7 @@ void DiligentBackend::RenderDebugPanel() {
                 ImGui::Dummy(ImVec2(0, 5));
 
                 // 显示状态
-                ImGui::Text("%s: %s", str.fullscreen, appState_->window.isFullscreen ? str.yes : str.no);
+                ImGui::Text("%s: %s", str.fullscreen, appState_->window.fullscreen ? str.yes : str.no);
                 MD3::EndCollapsingHeader();
             }
 
@@ -700,10 +700,10 @@ void DiligentBackend::RenderDebugPanel() {
 
                 // 粒子数量滑块
                 ImGui::Text("%s:", str.particleCount);
-                float particleCount = static_cast<float>(appState_->render.activeParticleCount);
+                float particleCount = static_cast<float>(appState_->render.particleCount);
                 if (MD3::Slider("##ParticleCount", &particleCount, static_cast<float>(kParticleCountMin),
                                 static_cast<float>(kParticleCountMax), "%.0f")) {
-                    appState_->render.activeParticleCount = static_cast<uint32_t>(particleCount);
+                    appState_->render.particleCount = static_cast<uint32_t>(particleCount);
                 }
 
                 ImGui::Dummy(ImVec2(0, 5));
@@ -716,7 +716,7 @@ void DiligentBackend::RenderDebugPanel() {
 
                 // 密度补偿
                 ImGui::Text("%s:", str.densityCompensation);
-                MD3::Slider("##DensityComp", &appState_->render.densityComp, 0.0f, 2.0f, "%.2f");
+                MD3::Slider("##DensityComp", &appState_->render.densityCompensation, 0.0f, 2.0f, "%.2f");
 
                 MD3::EndCollapsingHeader();
             }
@@ -727,7 +727,7 @@ void DiligentBackend::RenderDebugPanel() {
                 static char logSearchBuffer[128] = "";
                 static int  logLevelFilter       = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
-                float dpi           = appState_->ui.dpiScale;
+                float dpi           = appState_->window.dpiScale;
                 float controlHeight = 40.0f * dpi;   // 与 MD3::Combo 控件高度一致
                 float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
 

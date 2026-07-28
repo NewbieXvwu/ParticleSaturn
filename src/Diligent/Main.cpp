@@ -160,7 +160,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     appState.backdrop.transparentSupported = useDComp;
 
     // 初始化 AppState 基本值（对齐 OpenGL：默认粒子数为 MAX=1200000）
-    appState.InitDefaults(1200000);
+    appState.render.particleCount = 1200000;
 
     // 从注册表加载会话状态（覆盖默认值）
     Settings::LoadSession(appState);
@@ -169,15 +169,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     if (savedWindow.valid) {
         appState.window.windowedX    = savedWindow.x;
         appState.window.windowedY    = savedWindow.y;
-        appState.window.windowedW    = savedWindow.w;
-        appState.window.windowedH    = savedWindow.h;
-        appState.window.isFullscreen = savedWindow.fullscreen;
+        appState.window.windowedWidth    = savedWindow.w;
+        appState.window.windowedHeight    = savedWindow.h;
+        appState.window.fullscreen = savedWindow.fullscreen;
     }
 
     // 系统主题/窗口效果初始化
     {
         const bool dark        = ParticleSaturn::Win32WindowManager::IsSystemDarkMode();
-        appState.ui.isDarkMode = dark;
+        appState.ui.darkMode = dark;
         ParticleSaturn::Win32WindowManager::SetTitleBarDarkMode(hwnd, dark);
         std::cout << "[DWM] System theme: " << (dark ? "Dark" : "Light") << std::endl;
 
@@ -188,8 +188,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         }
 
         // 初始化 DPI 缩放
-        appState.ui.dpiScale = GetDpiScaleForWindow(hwnd);
-        std::cout << "[Main] DPI scale: " << appState.ui.dpiScale << std::endl;
+        appState.window.dpiScale = GetDpiScaleForWindow(hwnd);
+        std::cout << "[Main] DPI scale: " << appState.window.dpiScale << std::endl;
     }
 
     OutputDebugStringW(L"[ParticleSaturn] Calling backend.Init()\n");
@@ -227,13 +227,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             if (msg.message == WM_QUIT) {
                 // 退出前保存会话状态
                 // 更新当前窗口位置（仅非全屏模式）
-                if (!appState.window.isFullscreen) {
+                if (!appState.window.fullscreen) {
                     RECT wr;
                     if (GetWindowRect(hwnd, &wr)) {
                         appState.window.windowedX = wr.left;
                         appState.window.windowedY = wr.top;
-                        appState.window.windowedW = wr.right - wr.left;
-                        appState.window.windowedH = wr.bottom - wr.top;
+                        appState.window.windowedWidth = wr.right - wr.left;
+                        appState.window.windowedHeight = wr.bottom - wr.top;
                     }
                 }
                 Settings::SaveSession(appState, requestedBackend);

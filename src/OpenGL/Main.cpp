@@ -102,7 +102,7 @@ void DropCallback(GLFWwindow* window, int count, const char** paths) {
 int main() {
     // 创建应用程序状态
     AppState appState;
-    appState.InitDefaults(MAX_PARTICLES);
+    appState.render.particleCount = MAX_PARTICLES;
 
     // Initialize error handler first
     ErrorHandler::Init();
@@ -302,7 +302,10 @@ int main() {
     int fbW = 0, fbH = 0;
     glfwGetFramebufferSize(window, &fbW, &fbH);
     WindowManager::FramebufferSizeCallback(window, fbW, fbH);
-    glfwGetWindowSize(window, &appState.window.windowedW, &appState.window.windowedH);
+    int winW = 0, winH = 0;
+    glfwGetWindowSize(window, &winW, &winH);
+    appState.window.windowedWidth  = static_cast<std::uint32_t>(winW);
+    appState.window.windowedHeight = static_cast<std::uint32_t>(winH);
 
     // Store OpenGL info for crash reports
     ErrorHandler::SetStage(ErrorHandler::AppStage::OPENGL_INIT);
@@ -329,8 +332,8 @@ int main() {
         }
 
         WindowManager::SetTitleBarDarkMode(hwnd, true);
-        appState.ui.isDarkMode = WindowManager::IsSystemDarkMode();
-        std::cout << "[DWM] System theme: " << (appState.ui.isDarkMode ? "Dark" : "Light") << std::endl;
+        appState.ui.darkMode = WindowManager::IsSystemDarkMode();
+        std::cout << "[DWM] System theme: " << (appState.ui.darkMode ? "Dark" : "Light") << std::endl;
         WindowManager::InstallThemeChangeHook(hwnd);
         WindowManager::DetectAvailableBackdrops(hwnd, appState);
         appState.backdrop.backdropIndex = 0;
@@ -459,7 +462,7 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        progressRenderer.Render(appState.ui.isDarkMode, dt);
+        progressRenderer.Render(appState.ui.darkMode, dt);
 
         ImGui::Render();
         glViewport(0, 0, appState.window.width, appState.window.height);
@@ -770,9 +773,9 @@ int main() {
             // 扩展滞后区间: 38-57 FPS 进一步减少边界震荡
             if (smoothedFps < 38.0f) {
                 // 更保守的降质策略: 0.95 替代 0.9
-                if (appState.render.activeParticleCount > MIN_PARTICLES) {
-                    appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 0.95f);
-                    appState.render.activeParticleCount = std::max(appState.render.activeParticleCount, MIN_PARTICLES);
+                if (appState.render.particleCount > MIN_PARTICLES) {
+                    appState.render.particleCount = (unsigned int)(appState.render.particleCount * 0.95f);
+                    appState.render.particleCount = std::max(appState.render.particleCount, MIN_PARTICLES);
                     particleCountChanged                = true;
                     appState.lod.lastDecision           = 1; // 降低粒子数
                 } else if (appState.render.pixelRatio > 0.7f) {
@@ -788,9 +791,9 @@ int main() {
                     appState.render.pixelRatio = std::min(appState.render.pixelRatio, 1.0f);
                     pixelRatioChanged          = true;
                     appState.lod.lastDecision  = 3; // 提高像素比例
-                } else if (appState.render.activeParticleCount < MAX_PARTICLES) {
-                    appState.render.activeParticleCount = (unsigned int)(appState.render.activeParticleCount * 1.05f);
-                    appState.render.activeParticleCount = std::min(appState.render.activeParticleCount, MAX_PARTICLES);
+                } else if (appState.render.particleCount < MAX_PARTICLES) {
+                    appState.render.particleCount = (unsigned int)(appState.render.particleCount * 1.05f);
+                    appState.render.particleCount = std::min(appState.render.particleCount, MAX_PARTICLES);
                     particleCountChanged                = true;
                     appState.lod.lastDecision           = 4; // 提高粒子数
                 }
@@ -801,13 +804,13 @@ int main() {
             // 更新 Indirect Draw Buffer 中的粒子数量
             if (particleCountChanged) {
                 glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
-                glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.activeParticleCount);
+                glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int), &appState.render.particleCount);
             }
 
             // 优化: 只在粒子数或像素比例变化时重新计算密度补偿
             if (particleCountChanged || pixelRatioChanged) {
-                float ratio                 = (float)appState.render.activeParticleCount / MAX_PARTICLES;
-                appState.render.densityComp = 0.6f / pow(ratio, 0.7f) / pow(appState.render.pixelRatio, 0.5f);
+                float ratio                 = (float)appState.render.particleCount / MAX_PARTICLES;
+                appState.render.densityCompensation = 0.6f / pow(ratio, 0.7f) / pow(appState.render.pixelRatio, 0.5f);
             }
         } else if (lodUpdateTimer >= 0.5f) {
             lodUpdateTimer = 0.0f; // 即使锁定也要重置计时器
@@ -850,8 +853,8 @@ int main() {
         glUniform1f(uc.comp_uDt, dt);
         glUniform1f(uc.comp_uHandScale, currentAnim.scale);
         glUniform1f(uc.comp_uHandHas, handState.hasHand ? 1.0f : 0.0f);
-        glUniform1ui(uc.comp_uParticleCount, appState.render.activeParticleCount);
-        glDispatchCompute((appState.render.activeParticleCount + 255) / 256, 1, 1);
+        glUniform1ui(uc.comp_uParticleCount, appState.render.particleCount);
+        glDispatchCompute((appState.render.particleCount + 255) / 256, 1, 1);
         // 交换缓冲，下一帧渲染刚写入的数据
         particleBuffers.Swap();
         // 优化: 使用更精确的内存屏障组合
@@ -892,7 +895,7 @@ int main() {
         glUniform1f(uc.sat_uTime, t);
         glUniform1f(uc.sat_uScale, currentAnim.scale);
         glUniform1f(uc.sat_uPixelRatio, appState.render.pixelRatio);
-        glUniform1f(uc.sat_uDensityComp, appState.render.densityComp); // 使用缓存值，避免每帧计算
+        glUniform1f(uc.sat_uDensityComp, appState.render.densityCompensation); // 使用缓存值，避免每帧计算
         glUniform1f(uc.sat_uScreenHeight, (float)appState.window.height);
         glBindVertexArray(particleBuffers.GetRenderVAO());
         // 使用 Indirect Drawing: GPU 直接读取绘制参数，减少 CPU-GPU 同步
@@ -928,7 +931,7 @@ int main() {
         // 优化: 预先计算迭代次数，确保最终结果在 fboBlur2 中，避免额外的复制 pass
         GLuint finalBlurTex  = fboBlur2.tex; // 1/6 强模糊结果
         GLuint finalBlurTex2 = fboBlur3.tex; // 1/12 弱模糊结果（用于折叠区域）
-        if (appState.ui.enableBlur) {
+        if (appState.ui.blurEnabled) {
             glBlendFunc(GL_ONE, GL_ZERO);
             glViewport(0, 0, fboBlur1.w, fboBlur1.h);
             glUseProgram(pBlur);
@@ -1008,7 +1011,7 @@ int main() {
             glActiveTexture(GL_TEXTURE0);
             glBindVertexArray(vaoQuad);
 
-            const bool isDark = appState.ui.isDarkMode;
+            const bool isDark = appState.ui.darkMode;
 
             // Strong (1/6)：用于窗口背景
             glViewport(0, 0, fboAcrylic1.w, fboAcrylic1.h);
@@ -1061,7 +1064,7 @@ int main() {
 
         // Update error handler state
         totalFrameCount++;
-        ErrorHandler::UpdateState(totalFrameCount, appState.render.activeParticleCount, appState.render.pixelRatio,
+        ErrorHandler::UpdateState(totalFrameCount, appState.render.particleCount, appState.render.pixelRatio,
                                   handState.hasHand);
 
         // 渲染 ImGui（仅在已初始化时）
@@ -1071,9 +1074,9 @@ int main() {
             ImGui::NewFrame();
 
             // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
-            MD3::SetBlurTexture(appState.ui.enableBlur ? fboAcrylic1.tex : 0, appState.ui.enableBlur);
-            MD3::SetBlurTexture2(appState.ui.enableBlur ? fboAcrylic2.tex : 0);
-            MD3::SetNoiseTexture(appState.ui.enableBlur ? noiseTex : 0);
+            MD3::SetBlurTexture(appState.ui.blurEnabled ? fboAcrylic1.tex : 0, appState.ui.blurEnabled);
+            MD3::SetBlurTexture2(appState.ui.blurEnabled ? fboAcrylic2.tex : 0);
+            MD3::SetNoiseTexture(appState.ui.blurEnabled ? noiseTex : 0);
             MD3::SetNoiseIntensity(appState.ui.noiseIntensity);
 
             // 平滑滚动：必须在提交任何窗口内容之前跑一次（否则这一帧改 ScrollY 没意义）
@@ -1083,14 +1086,14 @@ int main() {
             ErrorHandler::RenderErrorDialog(dt);
 
             // Render crash analyzer window
-            CrashAnalyzer::Render(appState.ui.enableBlur, fboAcrylic1.tex, appState.window.width,
-                                  appState.window.height, appState.ui.isDarkMode);
+            CrashAnalyzer::Render(appState.ui.blurEnabled, fboAcrylic1.tex, appState.window.width,
+                                  appState.window.height, appState.ui.darkMode);
 
             if (appState.ui.showDebugWindow) {
                 const auto& str = i18n::Get();
-                ImGui::SetNextWindowPos(ImVec2(20 * appState.ui.dpiScale, 10 * appState.ui.dpiScale),
+                ImGui::SetNextWindowPos(ImVec2(20 * appState.window.dpiScale, 10 * appState.window.dpiScale),
                                         ImGuiCond_FirstUseEver);
-                ImGui::SetNextWindowSize(ImVec2(450 * appState.ui.dpiScale, 600 * appState.ui.dpiScale),
+                ImGui::SetNextWindowSize(ImVec2(450 * appState.window.dpiScale, 600 * appState.window.dpiScale),
                                          ImGuiCond_FirstUseEver);
                 ImGuiStyle& style            = ImGui::GetStyle();
                 ImVec4      originalWindowBg = style.Colors[ImGuiCol_WindowBg];
@@ -1107,7 +1110,7 @@ int main() {
                 ImVec2      size = ImGui::GetWindowSize();
                 ImDrawList* dl   = ImGui::GetWindowDrawList();
 
-                if (appState.ui.enableBlur) {
+                if (appState.ui.blurEnabled) {
                     ImVec2 uv0 = ImVec2(pos.x / appState.window.width, 1.0f - pos.y / appState.window.height);
                     ImVec2 uv1 = ImVec2((pos.x + size.x) / appState.window.width,
                                         1.0f - (pos.y + size.y) / appState.window.height);
@@ -1122,7 +1125,7 @@ int main() {
                                              noiseCol, style.WindowRounding);
                     }
                     ImU32 highlight =
-                        appState.ui.isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
+                        appState.ui.darkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);
                     dl->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), highlight, style.WindowRounding, 0, 1.0f);
                 } else {
                     // Use the saved original background color instead of the overridden transparent one
@@ -1152,7 +1155,7 @@ int main() {
                     };
 
                     if (ImGui::BeginTable("PerfTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.ui.dpiScale);
+                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.window.dpiScale);
                         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                         // FPS（带颜色）
@@ -1165,7 +1168,7 @@ int main() {
                                                                 : ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
                         ImGui::TextColored(fpsColor, "%.1f", currentFps);
 
-                        TwoColumnText(str.particles, "%u / %u", appState.render.activeParticleCount, MAX_PARTICLES);
+                        TwoColumnText(str.particles, "%u / %u", appState.render.particleCount, MAX_PARTICLES);
                         TwoColumnText(str.pixelRatio, "%.2f", appState.render.pixelRatio);
                         TwoColumnText(str.resolution, "%u x %u", appState.window.width, appState.window.height);
                         TwoColumnText(str.openglVersion, "%d.%d%s", appState.gl.major, appState.gl.minor,
@@ -1250,7 +1253,7 @@ int main() {
 
                     // 背景
                     const auto& md3Ctx       = MD3::GetContext();
-                    const float cornerRadius = 6.0f * appState.ui.dpiScale;
+                    const float cornerRadius = 6.0f * appState.window.dpiScale;
 
                     ImU32 bgColor   = ImGui::GetColorU32(ImGuiCol_FrameBg);
                     ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
@@ -1365,13 +1368,13 @@ int main() {
                     if (appState.lod.locked) {
                         ImGui::Indent(10);
                         // 手动调整粒子数（使用MD3::Slider）
-                        float particleCountFloat = (float)appState.render.activeParticleCount;
+                        float particleCountFloat = (float)appState.render.particleCount;
                         if (MD3::Slider("##Particles", &particleCountFloat, (float)MIN_PARTICLES, (float)MAX_PARTICLES,
                                         "%.0f")) {
-                            appState.render.activeParticleCount = (unsigned int)particleCountFloat;
+                            appState.render.particleCount = (unsigned int)particleCountFloat;
                             glBindBuffer(GL_DRAW_INDIRECT_BUFFER, particleBuffers.GetIndirectBuffer());
                             glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(unsigned int),
-                                            &appState.render.activeParticleCount);
+                                            &appState.render.particleCount);
                         }
                         // 手动调整像素比例
                         MD3::Slider("##PixelRatio", &appState.render.pixelRatio, 0.5f, 1.0f, "%.2f");
@@ -1433,7 +1436,7 @@ int main() {
 
                         if (ImGui::BeginTable("TrackerStatusTable", 2, ImGuiTableFlags_SizingStretchProp)) {
                             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed,
-                                                    100 * appState.ui.dpiScale);
+                                                    100 * appState.window.dpiScale);
                             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                             // 追踪器状态
@@ -1507,7 +1510,7 @@ int main() {
 
                     // ========== 数值显示 ==========
                     if (ImGui::BeginTable("HandDataTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.ui.dpiScale);
+                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.window.dpiScale);
                         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                         ImGui::TableNextRow();
@@ -1534,7 +1537,7 @@ int main() {
                     ImGui::Separator();
                     ImGui::TextDisabled("%s:", str.animationScale);
                     if (ImGui::BeginTable("AnimTable", 2, ImGuiTableFlags_SizingStretchProp)) {
-                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.ui.dpiScale);
+                        ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100 * appState.window.dpiScale);
                         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                         ImGui::TableNextRow();
@@ -1562,23 +1565,23 @@ int main() {
 
                     // ========== 可调参数 ==========
                     ImGui::Text("%s:", str.sensitivity);
-                    MD3::Slider("##Sensitivity", &appState.handParams.sensitivity, 0.1f, 3.0f, "%.2f");
+                    MD3::Slider("##Sensitivity", &appState.gesture.sensitivity, 0.1f, 3.0f, "%.2f");
 
-                    MD3::Toggle(str.invertX, &appState.handParams.invertX);
+                    MD3::Toggle(str.invertX, &appState.gesture.invertX);
                     ImGui::SameLine(0, 20); // 增加间距
-                    MD3::Toggle(str.invertY, &appState.handParams.invertY);
+                    MD3::Toggle(str.invertY, &appState.gesture.invertY);
 
                     ImGui::Text("%s:", str.handLostDelay);
-                    float handLostDelayFloat = (float)appState.handParams.handLostDelay;
+                    float handLostDelayFloat = (float)appState.gesture.handLostDelay;
                     if (MD3::Slider("##HandLostDelay", &handLostDelayFloat, 1.0f, 30.0f, "%.0f")) {
-                        appState.handParams.handLostDelay = (int)handLostDelayFloat;
+                        appState.gesture.handLostDelay = (int)handLostDelayFloat;
                     }
 
                     if (MD3::TonalButton(str.resetDefaults)) {
-                        appState.handParams.sensitivity   = 1.0f;
-                        appState.handParams.invertX       = false;
-                        appState.handParams.invertY       = false;
-                        appState.handParams.handLostDelay = 10;
+                        appState.gesture.sensitivity   = 1.0f;
+                        appState.gesture.invertX       = false;
+                        appState.gesture.invertY       = false;
+                        appState.gesture.handLostDelay = 10;
                     }
 
                     ImGui::Separator();
@@ -1591,13 +1594,13 @@ int main() {
                 }
 
                 if (MD3::BeginCollapsingHeader(str.sectionVisuals)) {
-                    if (MD3::Toggle(str.darkMode, &appState.ui.isDarkMode)) {
-                        UIManager::ApplyMaterialYouTheme(appState.ui.isDarkMode);
-                        MD3::SetDarkMode(appState.ui.isDarkMode);
+                    if (MD3::Toggle(str.darkMode, &appState.ui.darkMode)) {
+                        UIManager::ApplyMaterialYouTheme(appState.ui.darkMode);
+                        MD3::SetDarkMode(appState.ui.darkMode);
                     }
                     ImGui::Dummy(ImVec2(0, 5));
-                    MD3::Toggle(str.glassBlur, &appState.ui.enableBlur);
-                    if (appState.ui.enableBlur) {
+                    MD3::Toggle(str.glassBlur, &appState.ui.blurEnabled);
+                    if (appState.ui.blurEnabled) {
                         ImGui::Indent(10);
                         ImGui::TextUnformatted("Blur Strength");
                         MD3::Slider("##BlurStr", &appState.ui.blurStrength, 0.0f, 5.0f, "%.1f");
@@ -1644,7 +1647,7 @@ int main() {
                         }
                     }
 #endif
-                    ImGui::Text("%s: %s", str.fullscreen, appState.window.isFullscreen ? str.yes : str.no);
+                    ImGui::Text("%s: %s", str.fullscreen, appState.window.fullscreen ? str.yes : str.no);
                     ImGui::Text("%s: %s", str.transparent, appState.backdrop.useTransparent ? str.yes : str.no);
                     MD3::EndCollapsingHeader();
                 }
@@ -1691,7 +1694,7 @@ int main() {
                     static int  logLevelFilter       = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
                     // 第一行：级别过滤、搜索和暂停按钮
-                    float dpi           = appState.ui.dpiScale;
+                    float dpi           = appState.window.dpiScale;
                     float controlHeight = 40.0f * dpi;   // MD3 标准控件高度（与 MD3::Combo 一致）
                     float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
 
@@ -1842,7 +1845,7 @@ int main() {
                 ImGui::Separator();
                 ImGui::Spacing();
                 float buttonWidth  = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-                float buttonHeight = 48 * appState.ui.dpiScale;
+                float buttonHeight = 48 * appState.window.dpiScale;
                 if (MD3::FilledButton(str.cameraSelectorButton, ImVec2(buttonWidth, buttonHeight))) {
                     // 修复：Camera Selector 必须真正重启 HandTracker（否则相机选择不会生效）
                     asyncTracker.Stop();
@@ -1889,10 +1892,10 @@ int main() {
                 MD3::DrawRipples();
 
                 // 绘制 MD3 滚动条
-                MD3::WindowScrollbar(40.0f * appState.ui.dpiScale);
+                MD3::WindowScrollbar(40.0f * appState.window.dpiScale);
 
                 // 处理窗口 resize（自定义实现）
-                MD3::WindowResize(300.0f * appState.ui.dpiScale, 200.0f * appState.ui.dpiScale);
+                MD3::WindowResize(300.0f * appState.window.dpiScale, 200.0f * appState.window.dpiScale);
 
                 // 绘制标题栏（在所有内容之上）
                 MD3::WindowTitleBar(str.debugPanelTitle, &appState.ui.showDebugWindow);
@@ -1913,8 +1916,8 @@ int main() {
 
         // Key handling (使用 AppState 中的输入状态)
         if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
-            if (!appState.input.keyF3_pressed) {
-                appState.input.keyF3_pressed = true;
+            if (!appState.input.keyF3Pressed) {
+                appState.input.keyF3Pressed = true;
                 appState.ui.showDebugWindow  = !appState.ui.showDebugWindow;
 
                 // 惰性初始化 ImGui 和 MD3（首次打开调试窗口时）
@@ -1922,8 +1925,8 @@ int main() {
                     std::cout << "[Main] Lazy-loading UI system..." << std::endl;
                     ErrorHandler::SetStage(ErrorHandler::AppStage::IMGUI_INIT);
                     UIManager::Init(window, appState);
-                    MD3::Init(appState.ui.dpiScale, true);
-                    MD3::SetDarkMode(appState.ui.isDarkMode);
+                    MD3::Init(appState.window.dpiScale, true);
+                    MD3::SetDarkMode(appState.ui.darkMode);
                     MD3::SetScreenSize((float)appState.window.width, (float)appState.window.height);
                     appState.ui.imguiInitialized = true;
                     ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
@@ -1933,32 +1936,32 @@ int main() {
                 std::cout << "[Main] Debug window: " << (appState.ui.showDebugWindow ? "shown" : "hidden") << std::endl;
             }
         } else {
-            appState.input.keyF3_pressed = false;
+            appState.input.keyF3Pressed = false;
         }
 
 #ifdef _WIN32
         HWND hwnd = glfwGetWin32Window(window);
         if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS) {
-            if (!appState.input.keyB_pressed) {
-                appState.input.keyB_pressed = true;
-                appState.ui.enableBlur      = !appState.ui.enableBlur;
+            if (!appState.input.keyBPressed) {
+                appState.input.keyBPressed = true;
+                appState.ui.blurEnabled      = !appState.ui.blurEnabled;
             }
         } else {
-            appState.input.keyB_pressed = false;
+            appState.input.keyBPressed = false;
         }
 
         if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS) {
-            if (!appState.input.keyF11_pressed) {
-                appState.input.keyF11_pressed = true;
+            if (!appState.input.keyF11Pressed) {
+                appState.input.keyF11Pressed = true;
                 WindowManager::ToggleFullscreen(window, appState);
-                if (!appState.window.isFullscreen &&
+                if (!appState.window.fullscreen &&
                     appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex] > 0) {
                     WindowManager::SetBackdropMode(
                         hwnd, appState.backdrop.availableBackdrops[appState.backdrop.backdropIndex], appState);
                 }
             }
         } else {
-            appState.input.keyF11_pressed = false;
+            appState.input.keyF11Pressed = false;
         }
 #endif
 

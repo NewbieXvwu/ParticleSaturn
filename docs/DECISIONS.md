@@ -22,6 +22,7 @@
 | D-014 | 2026-07-16 | 有效(修订) | 不做事项清单（着色器项按 D-004 修订） |
 | D-015 | 2026-07-26 | 有效 | Windows 统一路线重定义，RHI 化路线废止 |
 | D-016 | 2026-07-26 | 有效 | 五文件文档体系与防失忆协议 |
+| D-017 | 2026-07-28 | 有效 | AppState 双模型收敛为单一共享模型；Windows 收敛期冻结定向解除 |
 
 ---
 
@@ -111,3 +112,15 @@ MIGRATION_LOG §20 清单继续有效：不用 DiligentCorePro / bgfx / SDL GPU 
 ## D-016 五文件文档体系与防失忆协议（2026-07-26，有效）
 
 `TODO.md`（未来）/ `docs/MIGRATION_LOG.md`（过去）/ `docs/DECISIONS.md`（永远）/ `docs/CODEMAP.md`（现在）/ `docs/AUDIT_2026-07.md`（债务快照）。维护规则见 CLAUDE.md "Codebase Documentation Protocol"。**文档不得增殖**：新增任何常设文档需在本表登记决策；过期文档比没有文档更害人，每份文档必须有让它保鲜的规则。
+
+## D-017 AppState 双模型收敛为单一共享模型（2026-07-28，有效）
+
+**背景**：历史上存在两份状态模型——Windows 遗留全局 `struct AppState`（`src/AppState.h`，匿名嵌套结构体、字段命名各异）与 macOS `ParticleSaturn::App::AppState`（`src/app/state/AppStates.h`，具名子结构体）。两份并行演化，违反 D-001 推论（除后端外一切共享）与 D-005（替换必删旧），是意外漂移的温床。
+
+**决策**：两份收敛为**同一个类型** `ParticleSaturn::App::AppState`。`src/AppState.h` 退化为薄别名头：`using AppState = ParticleSaturn::App::AppState;`——保留无限定名 `AppState` 供 Windows 遗留代码引用，但它与 macOS 引用的是**同一类型**，不是第二个模型。收敛落地为字段改名 + 结构位移（如 `ui.dpiScale`→`window.dpiScale`）+ 把 Windows 独有字段（`backdrop.*`、`gl.*`、`lod.lastDecision`、`window.resized` 等）并入共享模型。前向声明一律改为 `namespace ParticleSaturn::App { struct AppState; } using AppState = ...;`（避免 `struct AppState;` 与别名冲突 C2371）。
+
+**类型契约变化**：`windowedWidth/Height` 由 `int` 变为 `std::uint32_t`，`glfwGetWindowSize` 的 `int*` 出参需经临时量转换（已在 `Main.cpp`、`WindowManager.h` 处理）。
+
+**冻结定向解除**：D-015 对 `src/OpenGL/`、`src/Diligent/` 的冻结在“状态模型收敛”这一范围内解除——本次改动即属该范围。冻结的其余精神（勿无关重构、勿扩展功能）仍然有效；`src/CameraSelector/`、`HandTracker/` 冻结不受本条影响。
+
+**验证**：Diligent 经 Ninja（Release）全量编译通过；OpenGL 经 `cl /Zs /utf-8` 语法检查通过（改动 TU：`UIManager.cpp`、`Main.cpp`）。OpenGL 全量 MSBuild 仍受既有 `deps/` 沙盒依赖缺口阻塞（与本次收敛无关），运行期回归由用户后续验证。

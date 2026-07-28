@@ -402,7 +402,7 @@ void Controller::ApplyHandParamsFromAppState() {
     if (!apiLoaded_ || appState_ == nullptr) {
         return;
     }
-    const int desired = appState_->handParams.handLostDelay;
+    const int desired = appState_->gesture.handLostDelay;
     if (desired != lastHandLostDelayFrames_) {
 #if defined(HANDTRACKER_STATIC)
         SetTrackerHandLostDelayFrames(desired);

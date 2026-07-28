@@ -1034,20 +1034,20 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
         return false;
     }
     if (appState_ != nullptr) {
-        if (appState_->render.activeParticleCount == 0) {
-            appState_->render.activeParticleCount = particleCount_;
+        if (appState_->render.particleCount == 0) {
+            appState_->render.particleCount = particleCount_;
         }
         if (appState_->render.pixelRatio <= 0.0f) {
             appState_->render.pixelRatio = 1.0f;
         }
         if (!lastLodBasisValid_) {
-            lastLodParticleCount_ = appState_->render.activeParticleCount;
+            lastLodParticleCount_ = appState_->render.particleCount;
             lastLodPixelRatio_    = appState_->render.pixelRatio;
             lastLodBasisValid_    = true;
         }
         // 初始密度补偿：与 OpenGL 旧公式一致
-        appState_->render.densityComp =
-            ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
+        appState_->render.densityCompensation =
+            ComputeDensityComp(appState_->render.particleCount, appState_->render.pixelRatio);
     }
     if (!CreateParticlePSO()) {
         if (lastError_.empty()) {
@@ -1086,7 +1086,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     renderProgress();
 
     // 阶段 6：MD3 UI 系统初始化（使用 AppState 中的 DPI 缩放）
-    const float dpiScale = appState_ ? appState_->ui.dpiScale : 1.0f;
+    const float dpiScale = appState_ ? appState_->window.dpiScale : 1.0f;
     MD3::Init(device_, immediateContext_, backend_, dpiScale);
     MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
     MD3::ApplyImGuiStyle();
@@ -2224,7 +2224,7 @@ void DiligentBackend::RenderAcrylicComposite() {
     if (immediateContext_ == nullptr) {
         return;
     }
-    if (appState_ != nullptr && !appState_->ui.enableBlur) {
+    if (appState_ != nullptr && !appState_->ui.blurEnabled) {
         return;
     }
     if (acrylicPSO_ == nullptr || acrylicSRB_ == nullptr || acrylicConstants_ == nullptr) {
@@ -2241,7 +2241,7 @@ void DiligentBackend::RenderAcrylicComposite() {
         return;
     }
 
-    const bool isDark = (appState_ != nullptr) ? appState_->ui.isDarkMode : true;
+    const bool isDark = (appState_ != nullptr) ? appState_->ui.darkMode : true;
 
     auto updateCB = [&](float tintR, float tintG, float tintB, float baseOpacity, float saturation, float adaptive,
                         float exclusionStrength) {
@@ -3681,9 +3681,9 @@ void DiligentBackend::RenderOffscreen() {
             bool  invertX     = false;
             bool  invertY     = false;
             if (appState_ != nullptr) {
-                sensitivity = std::clamp(appState_->handParams.sensitivity, 0.1f, 3.0f);
-                invertX     = appState_->handParams.invertX;
-                invertY     = appState_->handParams.invertY;
+                sensitivity = std::clamp(appState_->gesture.sensitivity, 0.1f, 3.0f);
+                invertX     = appState_->gesture.invertX;
+                invertY     = appState_->gesture.invertY;
             }
 
             auto        applyInvert = [](float v, bool inv) -> float { return inv ? (1.0f - v) : v; };
@@ -3754,7 +3754,7 @@ void DiligentBackend::RenderOffscreen() {
                 // 对齐 OpenGL：pixelRatio / densityComp 由动态 LOD 或 UI 控制。
                 const float pixelRatio =
                     (appState_ != nullptr && appState_->render.pixelRatio > 0.0f) ? appState_->render.pixelRatio : 1.0f;
-                const float densityComp = (appState_ != nullptr) ? appState_->render.densityComp
+                const float densityComp = (appState_ != nullptr) ? appState_->render.densityCompensation
                                                                  : ComputeDensityComp(particleCount_, pixelRatio);
 
                 cb->RenderParams[0] = uScale;
@@ -4032,7 +4032,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
 
     // 优化：当 UI Blur 启用时，uiSceneColor_ 已经包含了合成结果（offscreen + bloom + tone mapping），
     // 直接复用它，避免重复执行一遍完全相同的全屏合成 pass。
-    const bool useUISceneAsSource = (appState_ != nullptr && appState_->ui.enableBlur && uiSceneSRV_ != nullptr);
+    const bool useUISceneAsSource = (appState_ != nullptr && appState_->ui.blurEnabled && uiSceneSRV_ != nullptr);
 
     // Bloom 强度（由 UI 控制）
     if (bloomConstants_ != nullptr) {
@@ -4178,12 +4178,12 @@ void DiligentBackend::RenderFrame() {
     // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
     if (appState_ != nullptr && frameDt > 0.0f) {
         const uint32_t prevBasisCount =
-            lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
+            lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.particleCount;
         const float prevBasisPR = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
 
-        // 确保初始值合理（Diligent 入口不一定会调用 AppState::InitDefaults）
-        if (appState_->render.activeParticleCount == 0) {
-            appState_->render.activeParticleCount = (particleCount_ != 0) ? particleCount_ : kParticleCountMax;
+        // 确保初始值合理（外壳未初始化 particleCount 时兜底）
+        if (appState_->render.particleCount == 0) {
+            appState_->render.particleCount = (particleCount_ != 0) ? particleCount_ : kParticleCountMax;
         }
         if (appState_->render.pixelRatio <= 0.0f) {
             appState_->render.pixelRatio = 1.0f;
@@ -4203,12 +4203,12 @@ void DiligentBackend::RenderFrame() {
                 // - 低于 38 FPS：优先降低粒子数（*0.95），降到 MIN 后再降 pixelRatio（-0.03，最低 0.7）
                 // - 高于 57 FPS：优先提高 pixelRatio（+0.03，最高 1.0），再提高粒子数（*1.05，最高 MAX）
                 if (smoothedFps < 38.0f) {
-                    if (appState_->render.activeParticleCount > kParticleCountMin) {
+                    if (appState_->render.particleCount > kParticleCountMin) {
                         uint32_t newCount =
-                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 0.95f);
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.particleCount) * 0.95f);
                         newCount = std::max(newCount, kParticleCountMin);
-                        if (newCount != appState_->render.activeParticleCount) {
-                            appState_->render.activeParticleCount = newCount;
+                        if (newCount != appState_->render.particleCount) {
+                            appState_->render.particleCount = newCount;
                             particleCountChanged                  = true;
                             appState_->lod.lastDecision           = 1;
                         }
@@ -4230,12 +4230,12 @@ void DiligentBackend::RenderFrame() {
                             pixelRatioChanged            = true;
                             appState_->lod.lastDecision  = 3;
                         }
-                    } else if (appState_->render.activeParticleCount < kParticleCountMax) {
+                    } else if (appState_->render.particleCount < kParticleCountMax) {
                         uint32_t newCount =
-                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 1.05f);
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.particleCount) * 1.05f);
                         newCount = std::min(newCount, kParticleCountMax);
-                        if (newCount != appState_->render.activeParticleCount) {
-                            appState_->render.activeParticleCount = newCount;
+                        if (newCount != appState_->render.particleCount) {
+                            appState_->render.particleCount = newCount;
                             particleCountChanged                  = true;
                             appState_->lod.lastDecision           = 4;
                         }
@@ -4245,14 +4245,14 @@ void DiligentBackend::RenderFrame() {
                 }
 
                 if (particleCountChanged || pixelRatioChanged) {
-                    appState_->render.densityComp =
-                        ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
+                    appState_->render.densityCompensation =
+                        ComputeDensityComp(appState_->render.particleCount, appState_->render.pixelRatio);
                 }
             }
         }
 
         // 将 UI/LOD 的 activeParticleCount 同步到后端实际渲染/Compute（particleCount_ + Indirect Args）。
-        uint32_t desiredCount = appState_->render.activeParticleCount;
+        uint32_t desiredCount = appState_->render.particleCount;
         desiredCount          = std::max(desiredCount, 1u);
         desiredCount          = std::min(desiredCount, kParticleCountMax);
 
@@ -4260,8 +4260,8 @@ void DiligentBackend::RenderFrame() {
             desiredCount = kParticleCountMin;
         }
 
-        if (desiredCount != appState_->render.activeParticleCount) {
-            appState_->render.activeParticleCount = desiredCount;
+        if (desiredCount != appState_->render.particleCount) {
+            appState_->render.particleCount = desiredCount;
         }
 
         if (desiredCount != particleCount_) {
@@ -4277,7 +4277,7 @@ void DiligentBackend::RenderFrame() {
         const bool basisChanged = (!lastLodBasisValid_) || desiredCount != prevBasisCount ||
                                   std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
         if (basisChanged) {
-            appState_->render.densityComp = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
+            appState_->render.densityCompensation = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
             lastLodParticleCount_         = desiredCount;
             lastLodPixelRatio_            = appState_->render.pixelRatio;
             lastLodBasisValid_            = true;
@@ -4291,7 +4291,7 @@ void DiligentBackend::RenderFrame() {
         if (handTracker_ && handTracker_->GetStatus() == HandTracking::Status::Ready) {
             handActive = handTracker_->GetLatestSample().hasHand;
         }
-        ErrorHandler::UpdateState(totalFrameCount_, appState_->render.activeParticleCount, appState_->render.pixelRatio,
+        ErrorHandler::UpdateState(totalFrameCount_, appState_->render.particleCount, appState_->render.pixelRatio,
                                   handActive /*handTrackingActive*/);
     }
 
@@ -4301,15 +4301,15 @@ void DiligentBackend::RenderFrame() {
 
         // MD3 新帧
         MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
-        MD3::SetDarkMode(appState_->ui.isDarkMode);
+        MD3::SetDarkMode(appState_->ui.darkMode);
         MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
 
         // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
-        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Strong_.RawPtr()) : nullptr,
-                            appState_->ui.enableBlur);
+        MD3::SetBlurTexture(appState_->ui.blurEnabled ? static_cast<void*>(uiAcrylicSRV_Strong_.RawPtr()) : nullptr,
+                            appState_->ui.blurEnabled);
         // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
-        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
-        MD3::SetNoiseTexture(appState_->ui.enableBlur ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
+        MD3::SetBlurTexture2(appState_->ui.blurEnabled ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
+        MD3::SetNoiseTexture(appState_->ui.blurEnabled ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
         MD3::SetNoiseIntensity((appState_ != nullptr) ? appState_->ui.noiseIntensity : 0.01f);
 
         // Error dialogs（统一错误处理）
@@ -4317,9 +4317,9 @@ void DiligentBackend::RenderFrame() {
 
         // 崩溃分析器窗口（使用模糊背景）
         ImTextureID crashBlurTex =
-            appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
-        CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
-                              appState_->ui.isDarkMode);
+            appState_->ui.blurEnabled ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
+        CrashAnalyzer::Render(appState_->ui.blurEnabled, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
+                              appState_->ui.darkMode);
 
         RenderDebugPanel();
 
@@ -4339,7 +4339,7 @@ void DiligentBackend::RenderFrame() {
 
     // 3.5 UI Blur：先把最终显示的场景颜色解析到中间纹理，再做低分辨率模糊
     // 注意：enableBlur=false 时必须整段跳过，否则会白跑大量 blur ping-pong pass。
-    const bool wantUIBlur = (appState_ != nullptr) ? appState_->ui.enableBlur : true;
+    const bool wantUIBlur = (appState_ != nullptr) ? appState_->ui.blurEnabled : true;
     if (wantUIBlur) {
         RenderUISceneForUI();
         RenderUIBlur();
@@ -4989,7 +4989,7 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
 
     // 获取源纹理的原生 SRV
     // 优化：当 UI Blur 启用时，复用 uiSceneSRV_
-    const bool    useUISceneAsSource = (appState_ != nullptr && appState_->ui.enableBlur && uiSceneSRV_ != nullptr);
+    const bool    useUISceneAsSource = (appState_ != nullptr && appState_->ui.blurEnabled && uiSceneSRV_ != nullptr);
     ITextureView* srcSRV             = useUISceneAsSource ? uiSceneSRV_.RawPtr() : offscreenSRV_.RawPtr();
     ITextureView* bloomSRV           = bloomSRV_B_ ? bloomSRV_B_.RawPtr() : offscreenSRV_.RawPtr();
 
@@ -5128,7 +5128,7 @@ bool DiligentBackend::SwitchTransparentMode(bool enableTransparent) {
     std::cout << "[DiligentBackend] Switching transparent mode: " << (enableTransparent ? "ON" : "OFF") << std::endl;
 
     // 1. 用深色/浅色清空当前帧，减少闪烁刺激
-    const bool  isDarkMode = (appState_ != nullptr) ? appState_->ui.isDarkMode : true;
+    const bool  isDarkMode = (appState_ != nullptr) ? appState_->ui.darkMode : true;
     const float clearR     = isDarkMode ? 0.0f : 1.0f;
     const float clearG     = isDarkMode ? 0.0f : 1.0f;
     const float clearB     = isDarkMode ? 0.0f : 1.0f;

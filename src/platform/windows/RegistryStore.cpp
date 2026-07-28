@@ -93,18 +93,18 @@ void SaveSession(const AppState& state, ParticleSaturn::Render::Backend backend)
     SaveBackend(backend);
 
     // 窗口状态
-    SaveWindowState(state.window.windowedX, state.window.windowedY, state.window.windowedW, state.window.windowedH,
-                    state.window.isFullscreen);
+    SaveWindowState(state.window.windowedX, state.window.windowedY, state.window.windowedWidth, state.window.windowedHeight,
+                    state.window.fullscreen);
 
     // UI 状态
     SetDWORD(L"UI_ShowDebugWindow", state.ui.showDebugWindow ? 1 : 0);
-    SetDWORD(L"UI_EnableBlur", state.ui.enableBlur ? 1 : 0);
+    SetDWORD(L"UI_EnableBlur", state.ui.blurEnabled ? 1 : 0);
     SetDWORD(L"UI_BlurStrength", static_cast<uint32_t>(state.ui.blurStrength * 100.0f));
     SetDWORD(L"UI_NoiseIntensity", static_cast<uint32_t>(state.ui.noiseIntensity * 10000.0f));
 
     // 渲染状态
     SetDWORD(L"Render_PixelRatio", static_cast<uint32_t>(state.render.pixelRatio * 100.0f));
-    SetDWORD(L"Render_ParticleCount", state.render.activeParticleCount);
+    SetDWORD(L"Render_ParticleCount", state.render.particleCount);
     // vsyncMode: -1, 0, 1 → 存储为 0, 1, 2（避免负数）
     SetDWORD(L"Render_VSync", static_cast<uint32_t>(state.render.vsyncMode + 1));
 
@@ -136,20 +136,20 @@ bool LoadSession(AppState& state) {
     if (ws.valid) {
         state.window.windowedX    = ws.x;
         state.window.windowedY    = ws.y;
-        state.window.windowedW    = ws.w;
-        state.window.windowedH    = ws.h;
-        state.window.isFullscreen = ws.fullscreen;
+        state.window.windowedWidth    = ws.w;
+        state.window.windowedHeight    = ws.h;
+        state.window.fullscreen = ws.fullscreen;
     }
 
     // UI 状态
     state.ui.showDebugWindow = GetDWORD(L"UI_ShowDebugWindow", 0) != 0;
-    state.ui.enableBlur      = GetDWORD(L"UI_EnableBlur", 1) != 0;
+    state.ui.blurEnabled      = GetDWORD(L"UI_EnableBlur", 1) != 0;
     state.ui.blurStrength    = static_cast<float>(GetDWORD(L"UI_BlurStrength", 200)) / 100.0f;
     state.ui.noiseIntensity  = static_cast<float>(GetDWORD(L"UI_NoiseIntensity", 100)) / 10000.0f;
 
     // 渲染状态
     state.render.pixelRatio          = static_cast<float>(GetDWORD(L"Render_PixelRatio", 100)) / 100.0f;
-    state.render.activeParticleCount = GetDWORD(L"Render_ParticleCount", 1200000);
+    state.render.particleCount = GetDWORD(L"Render_ParticleCount", 1200000);
     // vsyncMode: 存储值 0, 1, 2 → 实际值 -1, 0, 1
     state.render.vsyncMode = static_cast<int>(GetDWORD(L"Render_VSync", 2)) - 1;
 

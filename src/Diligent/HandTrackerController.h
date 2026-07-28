@@ -5,7 +5,8 @@
 #include <string>
 #include <thread>
 
-struct AppState;
+namespace ParticleSaturn::App { struct AppState; }
+using AppState = ParticleSaturn::App::AppState;
 
 struct HWND__;
 using HWND = HWND__*;

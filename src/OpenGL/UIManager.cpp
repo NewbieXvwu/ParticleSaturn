@@ -116,8 +116,8 @@ bool ToggleMD3(const char* label, bool* v, float dt) {
     s.knobPos.Update(dt, 14.0f);
     s.knobSize.Update(dt, 20.0f);
 
-    float       height = 28.0f * (s_appState ? s_appState->ui.dpiScale : 1.0f);
-    float       width  = 52.0f * (s_appState ? s_appState->ui.dpiScale : 1.0f);
+    float       height = 28.0f * (s_appState ? s_appState->window.dpiScale : 1.0f);
+    float       width  = 52.0f * (s_appState ? s_appState->window.dpiScale : 1.0f);
     ImVec2      p      = GetCursorScreenPos();
     ImDrawList* dl     = GetWindowDrawList();
 
@@ -178,16 +178,16 @@ void Init(GLFWwindow* window, AppState& state) {
     // 高 DPI 缩放
     float xscale, yscale;
     glfwGetWindowContentScale(window, &xscale, &yscale);
-    state.ui.dpiScale = (xscale > yscale) ? xscale : yscale;
-    if (state.ui.dpiScale < 1.0f) {
-        state.ui.dpiScale = 1.0f;
+    state.window.dpiScale = (xscale > yscale) ? xscale : yscale;
+    if (state.window.dpiScale < 1.0f) {
+        state.window.dpiScale = 1.0f;
     }
 
     // 加载系统字体
     ImFontConfig fontCfg;
     fontCfg.OversampleH = 2;
     fontCfg.OversampleV = 2;
-    float fontSize      = 16.0f * state.ui.dpiScale;
+    float fontSize      = 16.0f * state.window.dpiScale;
 
     // English fonts (primary) - fallback order
     const char* englishFonts[] = {"C:\\Windows\\Fonts\\CascadiaCode.ttf", "C:\\Windows\\Fonts\\CascadiaMono.ttf",
@@ -230,12 +230,12 @@ void Init(GLFWwindow* window, AppState& state) {
         std::cout << "[UI] Warning: No Chinese font loaded" << std::endl;
     }
 
-    ApplyMaterialYouTheme(state.ui.isDarkMode);
+    ApplyMaterialYouTheme(state.ui.darkMode);
 
     ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(state.ui.dpiScale);
-    std::cout << "[Main] DPI scale: " << state.ui.dpiScale << std::endl;
-    std::cout << "[Main] Theme: " << (state.ui.isDarkMode ? "Dark" : "Light") << std::endl;
+    style.ScaleAllSizes(state.window.dpiScale);
+    std::cout << "[Main] DPI scale: " << state.window.dpiScale << std::endl;
+    std::cout << "[Main] Theme: " << (state.ui.darkMode ? "Dark" : "Light") << std::endl;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
