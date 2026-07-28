@@ -9,11 +9,10 @@
 #include <iostream>
 #include <string>
 
-#include "imgui.h"
-
 #include "MD3.h"
 #include "MD3Log.h"
 #include "app/AppController.h"
+#include "imgui.h"
 #include "services/diagnostics/DiagnosticBus.h"
 
 namespace ParticleSaturn::Platform::MacOS {
@@ -23,7 +22,9 @@ template <class Command>
 void DispatchAndSave(ParticleSaturn::App::AppController& controller, const Command& command,
                      const Md3PanelCallbacks& callbacks) {
     controller.Dispatch(command);
-    if (callbacks.save) callbacks.save();
+    if (callbacks.save) {
+        callbacks.save();
+    }
 }
 
 const char* MaterialLabel(ParticleSaturn::App::WindowMaterial material) {
@@ -52,12 +53,14 @@ float CatmullRom(float p0, float p1, float p2, float p3, float t) {
 // FPS 显示历史：低频采样（50ms 一个样本）+ 滚动动画，行为与旧
 // OpenGL 版 RingBufferFPS 的显示部分一致。
 class FpsHistoryTracker {
-public:
-    static constexpr int HistorySize = 60;
+  public:
+    static constexpr int   HistorySize           = 60;
     static constexpr float SampleIntervalSeconds = 0.05f;
 
     FpsHistoryTracker() {
-        for (float& sample : history_) sample = 60.0f;
+        for (float& sample : history_) {
+            sample = 60.0f;
+        }
     }
 
     void AddFrame(float deltaSeconds) {
@@ -66,9 +69,9 @@ public:
         ++accumCount_;
         if (accumTime_ >= SampleIntervalSeconds) {
             history_[index_] = accumFps_ / static_cast<float>(accumCount_);
-            index_ = (index_ + 1) % HistorySize;
+            index_           = (index_ + 1) % HistorySize;
             accumTime_ -= SampleIntervalSeconds;
-            accumFps_ = 0.0f;
+            accumFps_   = 0.0f;
             accumCount_ = 0;
             // 重置滚动动画，保留本帧多出的进度，确保匀速滚动。
             scrollAnimTime_ = accumTime_;
@@ -86,66 +89,70 @@ public:
         return EaseOutCubic(t < 1.0f ? t : 1.0f);
     }
 
-private:
+  private:
     float history_[HistorySize];
-    int index_ = 0;
-    float accumTime_ = 0.0f;
-    float accumFps_ = 0.0f;
-    int accumCount_ = 0;
+    int   index_          = 0;
+    float accumTime_      = 0.0f;
+    float accumFps_       = 0.0f;
+    int   accumCount_     = 0;
     float scrollAnimTime_ = 0.0f;
 };
 
 void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::App::AppState& state,
                          const Md3PanelCallbacks& callbacks, float dpi) {
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
-    constexpr int historySize = FpsHistoryTracker::HistorySize;
-    const float scrollProgress = fpsHistory.ScrollProgress();
+    constexpr int historySize    = FpsHistoryTracker::HistorySize;
+    const float   scrollProgress = fpsHistory.ScrollProgress();
 
     // 目标 Y 轴范围：根据当前数据自适应。
     float dataMin = fpsHistory.Value(0);
     float dataMax = dataMin;
     for (int i = 1; i < historySize; ++i) {
         const float value = fpsHistory.Value(i);
-        dataMin = std::min(dataMin, value);
-        dataMax = std::max(dataMax, value);
+        dataMin           = std::min(dataMin, value);
+        dataMax           = std::max(dataMax, value);
     }
 
     // 最小显示范围，防止帧率稳定时过度放大。
     constexpr float MinDisplayRange = 30.0f;
     if (dataMax - dataMin < MinDisplayRange) {
         const float center = (dataMax + dataMin) * 0.5f;
-        dataMin = center - MinDisplayRange * 0.5f;
-        dataMax = center + MinDisplayRange * 0.5f;
+        dataMin            = center - MinDisplayRange * 0.5f;
+        dataMax            = center + MinDisplayRange * 0.5f;
     }
 
-    const float margin = (dataMax - dataMin) * 0.1f;
+    const float margin         = (dataMax - dataMin) * 0.1f;
     const float targetMinValue = std::max(0.0f, dataMin - margin);
     const float targetMaxValue = dataMax + margin;
 
     // Y 轴范围平滑动画。
-    static float animMinValue = 60.0f;
-    static float animMaxValue = 120.0f;
-    constexpr float animSpeed = 8.0f;
-    const float deltaTime = ImGui::GetIO().DeltaTime;
+    static float    animMinValue = 60.0f;
+    static float    animMaxValue = 120.0f;
+    constexpr float animSpeed    = 8.0f;
+    const float     deltaTime    = ImGui::GetIO().DeltaTime;
     animMinValue += (targetMinValue - animMinValue) * (1.0f - std::exp(-animSpeed * deltaTime));
     animMaxValue += (targetMaxValue - animMaxValue) * (1.0f - std::exp(-animSpeed * deltaTime));
-    if (std::abs(targetMinValue - animMinValue) < 0.1f) animMinValue = targetMinValue;
-    if (std::abs(targetMaxValue - animMaxValue) < 0.1f) animMaxValue = targetMaxValue;
+    if (std::abs(targetMinValue - animMinValue) < 0.1f) {
+        animMinValue = targetMinValue;
+    }
+    if (std::abs(targetMaxValue - animMaxValue) < 0.1f) {
+        animMaxValue = targetMaxValue;
+    }
 
-    const float minValue = animMinValue;
-    const float maxValue = animMaxValue;
+    const float minValue   = animMinValue;
+    const float maxValue   = animMaxValue;
     const float valueRange = std::max(1.0f, maxValue - minValue);
 
     const ImVec2 plotSize(ImGui::GetContentRegionAvail().x, 50.0f);
     const ImVec2 plotPos = ImGui::GetCursorScreenPos();
     const ImVec2 plotEnd(plotPos.x + plotSize.x, plotPos.y + plotSize.y);
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImDrawList*  drawList = ImGui::GetWindowDrawList();
 
-    const auto& md3Context = MD3::GetContext();
+    const auto& md3Context   = MD3::GetContext();
     const float cornerRadius = 6.0f * dpi;
-    const ImU32 lineColor = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
-    const ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
-    const ImU32 borderColor = md3Context.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
+    const ImU32 lineColor    = ImGui::GetColorU32(ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
+    const ImU32 axisColor    = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
+    const ImU32 borderColor  = md3Context.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
 
     // 背景：优先 1/12 弱模糊 Acrylic（OpenGL 着色器路径），其次后端回调
     // （Metal/Vulkan 的合成 Acrylic），否则退回纯色。
@@ -157,7 +164,7 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
                              IM_COL32(255, 255, 255, 255), cornerRadius);
         if (md3Context.noiseTextureID != 0 && md3Context.noiseIntensity > 0.0f) {
             const float intensity = std::clamp(md3Context.noiseIntensity, 0.0f, 0.1f);
-            const int alpha = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
+            const int   alpha     = std::clamp(static_cast<int>(intensity * 255.0f + 0.5f), 0, 64);
             MD3::AddImageRounded(drawList, md3Context.noiseTextureID, plotPos, plotEnd, uv0, uv1,
                                  IM_COL32(255, 255, 255, alpha), cornerRadius);
         }
@@ -173,15 +180,15 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
     drawList->PushClipRect(plotPos, plotEnd, true);
 
     const auto toScreen = [&](float logicalX, float value) {
-        const float adjustedX = logicalX - scrollProgress;
-        const float x = plotPos.x + (adjustedX / static_cast<float>(historySize - 1)) * plotSize.x;
+        const float adjustedX    = logicalX - scrollProgress;
+        const float x            = plotPos.x + (adjustedX / static_cast<float>(historySize - 1)) * plotSize.x;
         const float clampedValue = std::clamp(value, minValue, maxValue);
-        const float y = plotPos.y + plotSize.y - ((clampedValue - minValue) / valueRange) * plotSize.y;
+        const float y            = plotPos.y + plotSize.y - ((clampedValue - minValue) / valueRange) * plotSize.y;
         return ImVec2(x, y);
     };
 
     // Catmull-Rom 平滑曲线。
-    constexpr int subdivisions = 4;
+    constexpr int    subdivisions = 4;
     ImVector<ImVec2> points;
     points.reserve((historySize - 1) * subdivisions + 1);
     for (int i = 0; i < historySize - 1; ++i) {
@@ -190,14 +197,20 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
         const float p2 = fpsHistory.Value(i + 1);
         const float p3 = fpsHistory.Value(i + 2 < historySize ? i + 2 : historySize - 1);
         for (int j = 0; j < subdivisions; ++j) {
-            const float t = static_cast<float>(j) / subdivisions;
+            const float  t     = static_cast<float>(j) / subdivisions;
             const ImVec2 point = toScreen(static_cast<float>(i) + t, CatmullRom(p0, p1, p2, p3, t));
-            if (point.x >= plotPos.x - 5.0f && point.x <= plotEnd.x + 5.0f) points.push_back(point);
+            if (point.x >= plotPos.x - 5.0f && point.x <= plotEnd.x + 5.0f) {
+                points.push_back(point);
+            }
         }
     }
     const ImVec2 lastPoint = toScreen(static_cast<float>(historySize - 1), fpsHistory.Value(historySize - 1));
-    if (lastPoint.x >= plotPos.x - 5.0f && lastPoint.x <= plotEnd.x + 5.0f) points.push_back(lastPoint);
-    if (points.Size >= 2) drawList->AddPolyline(points.Data, points.Size, lineColor, ImDrawFlags_None, 1.5f);
+    if (lastPoint.x >= plotPos.x - 5.0f && lastPoint.x <= plotEnd.x + 5.0f) {
+        points.push_back(lastPoint);
+    }
+    if (points.Size >= 2) {
+        drawList->AddPolyline(points.Data, points.Size, lineColor, ImDrawFlags_None, 1.5f);
+    }
 
     drawList->PopClipRect();
 
@@ -212,8 +225,8 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
     ImGui::Dummy(plotSize);
     if (ImGui::IsItemHovered()) {
         const ImVec2 mousePos = ImGui::GetIO().MousePos;
-        const float relX = (mousePos.x - plotPos.x) / plotSize.x;
-        const int index = static_cast<int>(relX * static_cast<float>(historySize - 1) + scrollProgress + 0.5f);
+        const float  relX     = (mousePos.x - plotPos.x) / plotSize.x;
+        const int    index    = static_cast<int>(relX * static_cast<float>(historySize - 1) + scrollProgress + 0.5f);
         if (index >= 0 && index < historySize) {
             ImGui::BeginTooltip();
             ImGui::Text("%.0f FPS", fpsHistory.Value(index));
@@ -240,8 +253,8 @@ void SyncDiagnosticsToLog() {
     static std::chrono::system_clock::time_point lastSeen{};
     const auto records = ParticleSaturn::Services::Diagnostics::DiagnosticBus::Instance().SnapshotSince(lastSeen);
     for (const auto& record : records) {
-        const auto level = record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error
-            ? MD3::LogLevel::Error
+        const auto level =
+            record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error     ? MD3::LogLevel::Error
             : record.severity == ParticleSaturn::Services::Diagnostics::Severity::Warning ? MD3::LogLevel::Warn
                                                                                           : MD3::LogLevel::Info;
         MD3::DebugLog::Instance().Add(level, "[" + record.domain + "] " + record.code + ": " + record.message);
@@ -255,15 +268,15 @@ void DrawLogPauseButton(float buttonSize, float dpi) {
     ImGui::PushID("LogPauseBtn");
     ImGui::InvisibleButton("##btn", ImVec2(buttonSize, buttonSize));
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const ImVec2 btnMin = ImGui::GetItemRectMin();
-    const ImVec2 btnMax = ImGui::GetItemRectMax();
-    const bool hovered = ImGui::IsItemHovered();
-    const bool held = ImGui::IsItemActive();
-    const bool clicked = ImGui::IsItemClicked(0);
+    ImDrawList*  drawList = ImGui::GetWindowDrawList();
+    const ImVec2 btnMin   = ImGui::GetItemRectMin();
+    const ImVec2 btnMax   = ImGui::GetItemRectMax();
+    const bool   hovered  = ImGui::IsItemHovered();
+    const bool   held     = ImGui::IsItemActive();
+    const bool   clicked  = ImGui::IsItemClicked(0);
 
-    const MD3::MD3ColorScheme colors = MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
-    const float rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
+    const MD3::MD3ColorScheme colors   = MD3::IsDarkMode() ? MD3::GetDarkColorScheme() : MD3::GetLightColorScheme();
+    const float               rounding = std::min(12.0f * dpi, buttonSize * 0.5f);
 
     if (clicked) {
         MD3::TriggerRippleForCurrentItem(ImGui::GetItemID(), rounding);
@@ -276,7 +289,7 @@ void DrawLogPauseButton(float buttonSize, float dpi) {
     // 轻微阴影（更接近 MD3 elevation）
     {
         ImVec4 shadow = colors.shadow;
-        shadow.w = 0.18f;
+        shadow.w      = 0.18f;
         const ImVec2 shadowMin(btnMin.x, btnMin.y + 1.0f * dpi);
         const ImVec2 shadowMax(btnMax.x, btnMax.y + 1.0f * dpi);
         drawList->AddRectFilled(shadowMin, shadowMax, MD3::ColorToU32(shadow), rounding);
@@ -286,14 +299,14 @@ void DrawLogPauseButton(float buttonSize, float dpi) {
     ImVec4 bgColor = colors.surfaceContainerHigh;
     if (hovered || held) {
         const float alpha = held ? colors.stateLayerPressed : colors.stateLayerHover;
-        bgColor = MD3::ApplyStateLayer(bgColor, colors.onSurface, alpha);
+        bgColor           = MD3::ApplyStateLayer(bgColor, colors.onSurface, alpha);
     }
     drawList->AddRectFilled(btnMin, btnMax, MD3::ColorToU32(bgColor), rounding);
 
     // 图标（矢量绘制）：未暂停显示“暂停”双竖条，已暂停显示“播放”三角。
-    const float centerX = (btnMin.x + btnMax.x) * 0.5f;
-    const float centerY = (btnMin.y + btnMax.y) * 0.5f;
-    const float iconHalf = 7.0f * dpi;
+    const float centerX   = (btnMin.x + btnMax.x) * 0.5f;
+    const float centerY   = (btnMin.y + btnMax.y) * 0.5f;
+    const float iconHalf  = 7.0f * dpi;
     const ImU32 iconColor = MD3::ColorToU32(colors.onSurface);
     if (isPaused) {
         drawList->AddTriangleFilled(ImVec2(centerX - iconHalf * 0.6f, centerY - iconHalf),
@@ -301,7 +314,7 @@ void DrawLogPauseButton(float buttonSize, float dpi) {
                                     ImVec2(centerX + iconHalf, centerY), iconColor);
     } else {
         const float barWidth = iconHalf * 0.45f;
-        const float barGap = iconHalf * 0.35f;
+        const float barGap   = iconHalf * 0.35f;
         drawList->AddRectFilled(ImVec2(centerX - barGap - barWidth, centerY - iconHalf),
                                 ImVec2(centerX - barGap, centerY + iconHalf), iconColor, barWidth * 0.4f);
         drawList->AddRectFilled(ImVec2(centerX + barGap, centerY - iconHalf),
@@ -312,11 +325,11 @@ void DrawLogPauseButton(float buttonSize, float dpi) {
 
 void RenderLogSection(float dpi) {
     static char logSearchBuffer[128] = "";
-    static int logLevelFilter = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
+    static int  logLevelFilter       = 0; // 0=全部, 1=Info, 2=Warn, 3=Error
 
     // 第一行：级别过滤、搜索和暂停按钮
-    const float controlHeight = 40.0f * dpi; // MD3 标准控件高度（与 MD3::Combo 一致）
-    const float buttonSize = controlHeight;  // 暂停按钮尺寸（正方形）
+    const float controlHeight = 40.0f * dpi;   // MD3 标准控件高度（与 MD3::Combo 一致）
+    const float buttonSize    = controlHeight; // 暂停按钮尺寸（正方形）
 
     ImGui::SetNextItemWidth(80.0f * dpi);
     constexpr const char* levelLabels[] = {"All", "Info", "Warn", "Error"};
@@ -324,10 +337,10 @@ void RenderLogSection(float dpi) {
 
     ImGui::SameLine();
     // 搜索栏宽度 = 可用宽度 - 暂停按钮 - 间距 - 右侧留白
-    const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
-    const float rightMargin = 12.0f * dpi; // 让暂停按钮不要贴右边界
+    const float itemSpacingX   = ImGui::GetStyle().ItemSpacing.x;
+    const float rightMargin    = 12.0f * dpi; // 让暂停按钮不要贴右边界
     const float minSearchWidth = 120.0f * dpi;
-    const float contentAvailX = ImGui::GetContentRegionAvail().x;
+    const float contentAvailX  = ImGui::GetContentRegionAvail().x;
 
     float searchWidth = contentAvailX - buttonSize - itemSpacingX - rightMargin;
     if (searchWidth < minSearchWidth) {
@@ -340,7 +353,7 @@ void RenderLogSection(float dpi) {
 
     // InputText 走 ImGui 自带绘制：通过 FramePadding 精确对齐 MD3 的 40dp
     // 高度，并用圆角裁剪避免文字“顶出”圆角区域
-    const float padY = std::max(0.0f, (controlHeight - ImGui::GetFontSize()) * 0.5f);
+    const float padY          = std::max(0.0f, (controlHeight - ImGui::GetFontSize()) * 0.5f);
     const float inputRounding = controlHeight * 0.5f;
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * dpi, padY));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, inputRounding);
@@ -358,13 +371,13 @@ void RenderLogSection(float dpi) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
     if (ImGui::BeginPopupContextItem("##LogSearchContext")) {
         const char* clipText = ImGui::GetClipboardText();
-        const bool canPaste = clipText != nullptr && clipText[0] != '\0';
+        const bool  canPaste = clipText != nullptr && clipText[0] != '\0';
         if (MD3::MenuItem("Paste", canPaste, 36.0f * dpi)) {
             // 追加粘贴内容到搜索栏
             const size_t currentLen = std::strlen(logSearchBuffer);
-            size_t clipLen = std::strlen(clipText);
-            const size_t maxAppend = sizeof(logSearchBuffer) - 1 - currentLen;
-            clipLen = std::min(clipLen, maxAppend);
+            size_t       clipLen    = std::strlen(clipText);
+            const size_t maxAppend  = sizeof(logSearchBuffer) - 1 - currentLen;
+            clipLen                 = std::min(clipLen, maxAppend);
             if (clipLen > 0) {
                 std::memcpy(logSearchBuffer + currentLen, clipText, clipLen);
                 logSearchBuffer[currentLen + clipLen] = '\0';
@@ -394,18 +407,18 @@ void RenderLogSection(float dpi) {
 
 void RenderHandTrackingStatusCard(const Md3PanelHandTrackingStatus& handStatus, float dpi) {
     const char* statusText = "Unavailable";
-    ImVec4 statusColor(0.6f, 0.6f, 0.6f, 1.0f);
+    ImVec4      statusColor(0.6f, 0.6f, 0.6f, 1.0f);
     switch (handStatus.tracker) {
     case Md3PanelHandTrackingStatus::Tracker::Initializing:
-        statusText = "Initializing";
+        statusText  = "Initializing";
         statusColor = ImVec4(1.0f, 0.8f, 0.0f, 1.0f);
         break;
     case Md3PanelHandTrackingStatus::Tracker::Ready:
-        statusText = "Ready";
+        statusText  = "Ready";
         statusColor = ImVec4(0.3f, 1.0f, 0.3f, 1.0f);
         break;
     case Md3PanelHandTrackingStatus::Tracker::Failed:
-        statusText = "Failed";
+        statusText  = "Failed";
         statusColor = ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
         break;
     case Md3PanelHandTrackingStatus::Tracker::Unavailable:
@@ -460,7 +473,9 @@ void RenderHandTrackingStatusCard(const Md3PanelHandTrackingStatus& handStatus, 
 
 void InstallDebugLogCapture() {
     static bool installed = false;
-    if (installed) return;
+    if (installed) {
+        return;
+    }
     installed = true;
     static MD3::DebugStreamBuf coutCapture{std::cout.rdbuf(), MD3::LogLevel::Info};
     static MD3::DebugStreamBuf cerrCapture{std::cerr.rdbuf(), MD3::LogLevel::Error};
@@ -480,7 +495,9 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     SyncDiagnosticsToLog();
 
     auto& state = controller.MutableState();
-    if (!state.ui.showDebugWindow) return;
+    if (!state.ui.showDebugWindow) {
+        return;
+    }
 
     constexpr float dpi = 1.0f;
     ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
@@ -497,8 +514,8 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollWithMouse);
 
     const ImVec2 panelPosition = ImGui::GetWindowPos();
-    const ImVec2 panelSize = ImGui::GetWindowSize();
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 panelSize     = ImGui::GetWindowSize();
+    ImDrawList*  drawList      = ImGui::GetWindowDrawList();
     if (state.ui.blurEnabled && callbacks.drawAcrylicBackground) {
         callbacks.drawAcrylicBackground(drawList, panelPosition, panelSize, 12.0f * dpi);
     } else {
@@ -539,7 +556,9 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             MD3::SetDarkMode(darkMode);
         }
         bool blur = state.ui.blurEnabled;
-        if (MD3::Toggle("UI blur", &blur)) DispatchAndSave(controller, ParticleSaturn::App::SetBlurEnabled{blur}, callbacks);
+        if (MD3::Toggle("UI blur", &blur)) {
+            DispatchAndSave(controller, ParticleSaturn::App::SetBlurEnabled{blur}, callbacks);
+        }
         float blurStrength = state.ui.blurStrength;
         if (MD3::Slider("Blur strength", &blurStrength, 0.0f, 5.0f, "%.1f")) {
             DispatchAndSave(controller, ParticleSaturn::App::SetBlurStrength{blurStrength}, callbacks);
@@ -549,7 +568,9 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             DispatchAndSave(controller, ParticleSaturn::App::SetNoiseIntensity{noise}, callbacks);
         }
         bool bloom = state.render.bloomEnabled;
-        if (MD3::Toggle("Bloom", &bloom)) DispatchAndSave(controller, ParticleSaturn::App::SetBloomEnabled{bloom}, callbacks);
+        if (MD3::Toggle("Bloom", &bloom)) {
+            DispatchAndSave(controller, ParticleSaturn::App::SetBloomEnabled{bloom}, callbacks);
+        }
         float bloomStrength = state.render.bloomBlurStrength;
         if (MD3::Slider("Bloom radius", &bloomStrength, 0.0f, 5.0f, "%.1f")) {
             DispatchAndSave(controller, ParticleSaturn::App::SetBloomBlurStrength{bloomStrength}, callbacks);
@@ -559,24 +580,34 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
 
     if (MD3::BeginCollapsingHeader("Window", true)) {
         constexpr const char* materials[] = {"Solid", "Transparent", "System blur", "App Acrylic"};
-        int material = static_cast<int>(state.window.material);
+        int                   material    = static_cast<int>(state.window.material);
         if (MD3::Combo("Window material", &material, materials, IM_ARRAYSIZE(materials))) {
             const auto selected = static_cast<ParticleSaturn::App::WindowMaterial>(material);
             DispatchAndSave(controller, ParticleSaturn::App::SetWindowMaterial{selected}, callbacks);
-            if (callbacks.applyWindowMaterial) callbacks.applyWindowMaterial(selected);
+            if (callbacks.applyWindowMaterial) {
+                callbacks.applyWindowMaterial(selected);
+            }
         }
         ImGui::TextDisabled("Current: %s", MaterialLabel(state.window.material));
         constexpr const char* vsyncModes[] = {"Off", "On", "Adaptive"};
-        int vsync = state.render.vsyncMode == 0 ? 0 : state.render.vsyncMode == 1 ? 1 : 2;
+        int                   vsync        = state.render.vsyncMode == 0 ? 0 : state.render.vsyncMode == 1 ? 1 : 2;
         if (MD3::Combo("VSync", &vsync, vsyncModes, IM_ARRAYSIZE(vsyncModes))) {
-            DispatchAndSave(controller, ParticleSaturn::App::SetVSyncMode{vsync == 0 ? 0 : vsync == 1 ? 1 : -1}, callbacks);
+            DispatchAndSave(controller,
+                            ParticleSaturn::App::SetVSyncMode{vsync == 0   ? 0
+                                                              : vsync == 1 ? 1
+                                                                           : -1},
+                            callbacks);
         }
         if (MD3::TonalButton(state.window.fullscreen ? "Exit fullscreen" : "Fullscreen")) {
-            if (callbacks.toggleFullscreen) callbacks.toggleFullscreen();
+            if (callbacks.toggleFullscreen) {
+                callbacks.toggleFullscreen();
+            }
         }
         ImGui::SameLine();
         if (MD3::TonalButton("Camera")) {
-            if (callbacks.showCameraSelector) callbacks.showCameraSelector();
+            if (callbacks.showCameraSelector) {
+                callbacks.showCameraSelector();
+            }
         }
         MD3::EndCollapsingHeader();
     }
@@ -613,10 +644,14 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             DispatchAndSave(controller, ParticleSaturn::App::SetGestureSensitivity{sensitivity}, callbacks);
         }
         bool invertX = state.gesture.invertX;
-        if (MD3::Toggle("Invert horizontal", &invertX)) DispatchAndSave(controller, ParticleSaturn::App::SetGestureInvertX{invertX}, callbacks);
+        if (MD3::Toggle("Invert horizontal", &invertX)) {
+            DispatchAndSave(controller, ParticleSaturn::App::SetGestureInvertX{invertX}, callbacks);
+        }
         ImGui::SameLine(0.0f, 20.0f);
         bool invertY = state.gesture.invertY;
-        if (MD3::Toggle("Invert vertical", &invertY)) DispatchAndSave(controller, ParticleSaturn::App::SetGestureInvertY{invertY}, callbacks);
+        if (MD3::Toggle("Invert vertical", &invertY)) {
+            DispatchAndSave(controller, ParticleSaturn::App::SetGestureInvertY{invertY}, callbacks);
+        }
         float lostDelay = static_cast<float>(state.gesture.handLostDelay);
         if (MD3::Slider("Hand lost delay", &lostDelay, 1.0f, 30.0f, "%.0f")) {
             DispatchAndSave(controller, ParticleSaturn::App::SetHandLostDelay{static_cast<int>(lostDelay)}, callbacks);
@@ -626,7 +661,9 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             controller.Dispatch(ParticleSaturn::App::SetGestureInvertX{false});
             controller.Dispatch(ParticleSaturn::App::SetGestureInvertY{false});
             controller.Dispatch(ParticleSaturn::App::SetHandLostDelay{10});
-            if (callbacks.save) callbacks.save();
+            if (callbacks.save) {
+                callbacks.save();
+            }
         }
         ImGui::Separator();
         bool cameraDebug = state.ui.showCameraDebug;
@@ -638,22 +675,30 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
 
     if (MD3::BeginCollapsingHeader("Advanced")) {
         constexpr const char* apis[] = {"OpenGL 4.1", "Vulkan", "Metal"};
-        int api = static_cast<int>(state.render.graphicsApi);
+        int                   api    = static_cast<int>(state.render.graphicsApi);
         if (MD3::Combo("Graphics API", &api, apis, IM_ARRAYSIZE(apis))) {
-            const auto effect = controller.Dispatch(ParticleSaturn::App::SetGraphicsApi{
-                static_cast<ParticleSaturn::App::GraphicsApi>(api)});
-            if (callbacks.save) callbacks.save();
-            if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
+            const auto effect = controller.Dispatch(
+                ParticleSaturn::App::SetGraphicsApi{static_cast<ParticleSaturn::App::GraphicsApi>(api)});
+            if (callbacks.save) {
+                callbacks.save();
+            }
+            if (effect.restartRequired && callbacks.restartApplication) {
+                callbacks.restartApplication();
+            }
         }
         ImGui::TextDisabled("Current: %s", ApiLabel(state.render.graphicsApi));
         if (state.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
             constexpr const char* drivers[] = {"MoltenVK", "KosmicKrisp"};
-            int driver = static_cast<int>(state.render.vulkanDriver);
+            int                   driver    = static_cast<int>(state.render.vulkanDriver);
             if (MD3::Combo("Vulkan driver", &driver, drivers, IM_ARRAYSIZE(drivers))) {
-                const auto effect = controller.Dispatch(ParticleSaturn::App::SetVulkanDriver{
-                    static_cast<ParticleSaturn::App::VulkanDriver>(driver)});
-                if (callbacks.save) callbacks.save();
-                if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
+                const auto effect = controller.Dispatch(
+                    ParticleSaturn::App::SetVulkanDriver{static_cast<ParticleSaturn::App::VulkanDriver>(driver)});
+                if (callbacks.save) {
+                    callbacks.save();
+                }
+                if (effect.restartRequired && callbacks.restartApplication) {
+                    callbacks.restartApplication();
+                }
             }
         }
         if (features.analyticParticles) {
@@ -673,12 +718,16 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
 
     if (MD3::BeginCollapsingHeader("LOD control")) {
         bool lod = state.lod.locked;
-        if (MD3::Toggle("Lock dynamic LOD", &lod)) DispatchAndSave(controller, ParticleSaturn::App::SetLodLocked{lod}, callbacks);
+        if (MD3::Toggle("Lock dynamic LOD", &lod)) {
+            DispatchAndSave(controller, ParticleSaturn::App::SetLodLocked{lod}, callbacks);
+        }
         float particleCount = static_cast<float>(state.render.particleCount);
         if (MD3::Slider("Particle count", &particleCount,
                         static_cast<float>(ParticleSaturn::App::RenderSettings::MinParticles),
                         static_cast<float>(ParticleSaturn::App::RenderSettings::MaxParticles), "%.0f")) {
-            DispatchAndSave(controller, ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)}, callbacks);
+            DispatchAndSave(controller,
+                            ParticleSaturn::App::SetParticleCount{static_cast<std::uint32_t>(particleCount)},
+                            callbacks);
         }
         float pixelRatio = state.render.pixelRatio;
         if (MD3::Slider("Pixel ratio", &pixelRatio, 0.25f, 1.0f, "%.2f")) {
@@ -706,7 +755,8 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             ImGui::TextDisabled("No diagnostics");
         } else {
             const ImVec4 color = record.severity == ParticleSaturn::Services::Diagnostics::Severity::Error
-                ? MD3::GetContext().colors.error : MD3::GetContext().colors.primary;
+                                   ? MD3::GetContext().colors.error
+                                   : MD3::GetContext().colors.primary;
             ImGui::TextColored(color, "%s: %s", record.domain.c_str(), record.code.c_str());
             ImGui::TextWrapped("%s", record.message.c_str());
         }
@@ -724,7 +774,9 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     MD3::WindowResize(280.0f, 200.0f);
     bool panelOpen = state.ui.showDebugWindow;
     MD3::WindowTitleBar("Particle Saturn", &panelOpen);
-    if (!panelOpen) DispatchAndSave(controller, ParticleSaturn::App::ToggleDebugWindow{}, callbacks);
+    if (!panelOpen) {
+        DispatchAndSave(controller, ParticleSaturn::App::ToggleDebugWindow{}, callbacks);
+    }
     ImGui::End();
     ImGui::PopStyleVar(2);
 }

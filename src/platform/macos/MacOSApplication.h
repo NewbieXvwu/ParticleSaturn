@@ -2,9 +2,9 @@
 
 namespace ParticleSaturn::Platform::MacOS {
 
-int RunMetalApplication();
-int RunOpenGL41Application();
-int RunVulkanApplication();
+int  RunMetalApplication();
+int  RunOpenGL41Application();
+int  RunVulkanApplication();
 bool RestartApplication();
 
 } // namespace ParticleSaturn::Platform::MacOS

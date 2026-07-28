@@ -4,7 +4,11 @@
 
 namespace SIMDNormalize::Internal {
 
-enum class KernelOperation { Normalize, FlipNormalize, FlipBgrToRgb };
+enum class KernelOperation {
+    Normalize,
+    FlipNormalize,
+    FlipBgrToRgb
+};
 enum class KernelImplementation {
     Scalar,
     SSE2,
@@ -20,17 +24,17 @@ enum class KernelImplementation {
 };
 
 class KernelRegistry {
-public:
+  public:
     explicit KernelRegistry(CpuFeatureSet features) : features_{features} {}
 
     bool Supports(KernelImplementation implementation, KernelOperation operation) const;
 
-private:
+  private:
     CpuFeatureSet features_;
 };
 
 class KernelDispatcher {
-public:
+  public:
     static KernelImplementation Select(SIMDMode mode, KernelOperation operation, CpuFeatureSet features);
 };
 

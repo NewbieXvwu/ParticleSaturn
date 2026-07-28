@@ -5,10 +5,12 @@
 
 #if defined(__APPLE__)
 #import <Cocoa/Cocoa.h>
-#include "backends/imgui_impl_osx.h"
 #include <unistd.h>
+
+#include "backends/imgui_impl_osx.h"
 #else
 #include <windows.h>
+
 #include "backends/imgui_impl_win32.h"
 #endif
 
@@ -600,11 +602,10 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
         psoCI.PSODesc.Name         = "ImGui PSO";
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
-                                                        ? TEX_FORMAT_UNKNOWN
-                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.NumRenderTargets = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]    = rtvFormat;
+        psoCI.GraphicsPipeline.DSVFormat =
+            backend_ == Render::Backend::Vulkan ? TEX_FORMAT_UNKNOWN : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
@@ -652,11 +653,10 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
         psoCI.PSODesc.Name         = "ImGui PSO StencilWrite";
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
-                                                        ? TEX_FORMAT_UNKNOWN
-                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.NumRenderTargets = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]    = rtvFormat;
+        psoCI.GraphicsPipeline.DSVFormat =
+            backend_ == Render::Backend::Vulkan ? TEX_FORMAT_UNKNOWN : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
@@ -710,11 +710,10 @@ bool ImGuiDiligent::CreatePipelineStates(IRenderDevice* device, TEXTURE_FORMAT r
         psoCI.PSODesc.Name         = "ImGui PSO StencilTest";
         psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
 
-        psoCI.GraphicsPipeline.NumRenderTargets  = 1;
-        psoCI.GraphicsPipeline.RTVFormats[0]     = rtvFormat;
-        psoCI.GraphicsPipeline.DSVFormat         = backend_ == Render::Backend::Vulkan
-                                                        ? TEX_FORMAT_UNKNOWN
-                                                        : TEX_FORMAT_D24_UNORM_S8_UINT;
+        psoCI.GraphicsPipeline.NumRenderTargets = 1;
+        psoCI.GraphicsPipeline.RTVFormats[0]    = rtvFormat;
+        psoCI.GraphicsPipeline.DSVFormat =
+            backend_ == Render::Backend::Vulkan ? TEX_FORMAT_UNKNOWN : TEX_FORMAT_D24_UNORM_S8_UINT;
         psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
         psoCI.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;

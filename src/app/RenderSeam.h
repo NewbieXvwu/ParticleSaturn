@@ -1,11 +1,11 @@
 #pragma once
 
-#include "app/FrameCoordinator.h"
-
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
+
+#include "app/FrameCoordinator.h"
 
 struct ImDrawList;
 struct ImVec2;
@@ -27,17 +27,17 @@ namespace ParticleSaturn::App {
 // 后端可绘制表面尺寸（中立化自 macOS DrawableSize；Windows 侧亦以此表达，
 // scale 承载 DPI 缩放，非 Retina 平台默认 1.0）。
 struct SurfaceSize {
-    std::uint32_t width = 0;
+    std::uint32_t width  = 0;
     std::uint32_t height = 0;
-    float scale = 1.0f;
+    float         scale  = 1.0f;
 };
 
 // 后端能力申报（接缝的 Capabilities 面）：特性开关只在外壳一处按
 // "能力 ∧ 用户设置" 解析，面板按能力显隐；故意的实验分歧（D-004）在此登记，
 // RunApp 启动时发布到 DiagnosticBus 留档。
 struct BackendCapabilities {
-    bool analyticParticles = false;      // 解析式粒子双策略（GL41）
-    bool objectShaderParticles = false;  // object/mesh shader 粒子路径（Metal 3）
+    bool                     analyticParticles     = false; // 解析式粒子双策略（GL41）
+    bool                     objectShaderParticles = false; // object/mesh shader 粒子路径（Metal 3）
     std::vector<std::string> declaredDivergences;
 };
 
@@ -49,13 +49,13 @@ struct BackendPanelHooks {
 
 // 外壳每帧交给后端 RenderFrame 的共享帧描述（D-002）。
 struct FrameContext {
-    AppState& state;                      // 帧协调后的状态；窗口字段已由外壳镜像
-    float deltaTime = 0.0f;
-    bool handTracked = false;
+    AppState&           state; // 帧协调后的状态；窗口字段已由外壳镜像
+    float               deltaTime   = 0.0f;
+    bool                handTracked = false;
     const GestureInput& gesture;
-    std::uint32_t framesPerSecond = 60;
-    SurfaceSize drawableSize{};
-    bool nativeFullscreen = false;
+    std::uint32_t       framesPerSecond = 60;
+    SurfaceSize         drawableSize{};
+    bool                nativeFullscreen = false;
     // 后端在其 ImGui 帧内调用：外壳据此绘制 MD3 面板（标题/回调/手势状态）。
     const std::function<void(const BackendPanelHooks&)>& drawPanel;
 };
@@ -65,14 +65,14 @@ struct FrameContext {
 // Init/Resize/Shutdown 留在各后端的对象生命周期里（构造前 / RenderFrame 内 /
 // RunApp 返回后），不强行入接口——外壳无须驱动它们。
 class IRenderBackend {
-public:
+  public:
     virtual ~IRenderBackend() = default;
     // 能力申报与声明分歧（D-004）：外壳按"能力 ∧ 用户设置"解析并发布留档。
     virtual const BackendCapabilities& Capabilities() const = 0;
     // 后端一帧：返回 false 表示本帧中止（后端已自行处理失败/退出请求）。
     virtual bool RenderFrame(const FrameContext& frame) = 0;
     // P4 读回面（Readback）：确定性基线是否已写盘。捕获机制保持原生
-    //（GL glReadPixels / Metal blit+fp16 / Vulkan staging 拷贝，均在各自帧
+    // （GL glReadPixels / Metal blit+fp16 / Vulkan staging 拷贝，均在各自帧
     // 管线的正确挂点），外壳在冒烟捕获模式下据此收束运行循环。
     virtual bool BaselineCaptured() const = 0;
 };

@@ -5,7 +5,7 @@
 namespace SIMDNormalize::Internal {
 
 class CpuFeatureDetector {
-public:
+  public:
     static CpuFeatureSet Detect();
 };
 

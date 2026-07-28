@@ -1,17 +1,17 @@
 // SIMDNormalize.cpp - 面向调用方的归一化接口和运行时分派
 
+#include <iostream>
+
 #include "CpuFeatureDetector.h"
 #include "SIMDNormalizeDispatch.h"
 #include "SIMDNormalizeKernels.h"
 
-#include <iostream>
-
 namespace SIMDNormalize {
 namespace {
 
-bool g_initialized = false;
+bool          g_initialized = false;
 CpuFeatureSet g_features{};
-SIMDMode g_currentMode = SIMDMode::Auto;
+SIMDMode      g_currentMode = SIMDMode::Auto;
 
 Internal::KernelImplementation Select(Internal::KernelOperation operation) {
     return Internal::KernelDispatcher::Select(g_currentMode, operation, g_features);
@@ -19,12 +19,18 @@ Internal::KernelImplementation Select(Internal::KernelOperation operation) {
 
 const char* ImplementationName(Internal::KernelImplementation implementation, bool automatic) {
     switch (implementation) {
-    case Internal::KernelImplementation::NEON: return automatic ? "NEON (auto)" : "NEON (forced)";
-    case Internal::KernelImplementation::AVX2: return automatic ? "AVX2 (auto)" : "AVX2 (forced)";
-    case Internal::KernelImplementation::SSE41: return automatic ? "SSE4.1 (auto)" : "SSE4.1 (forced)";
-    case Internal::KernelImplementation::SSSE3: return automatic ? "SSSE3 (auto)" : "SSSE3 (forced)";
-    case Internal::KernelImplementation::SSE2: return automatic ? "SSE2 (auto)" : "SSE2 (forced)";
-    case Internal::KernelImplementation::Scalar: return automatic ? "Scalar (auto)" : "Scalar (forced fallback)";
+    case Internal::KernelImplementation::NEON:
+        return automatic ? "NEON (auto)" : "NEON (forced)";
+    case Internal::KernelImplementation::AVX2:
+        return automatic ? "AVX2 (auto)" : "AVX2 (forced)";
+    case Internal::KernelImplementation::SSE41:
+        return automatic ? "SSE4.1 (auto)" : "SSE4.1 (forced)";
+    case Internal::KernelImplementation::SSSE3:
+        return automatic ? "SSSE3 (auto)" : "SSSE3 (forced)";
+    case Internal::KernelImplementation::SSE2:
+        return automatic ? "SSE2 (auto)" : "SSE2 (forced)";
+    case Internal::KernelImplementation::Scalar:
+        return automatic ? "Scalar (auto)" : "Scalar (forced fallback)";
     case Internal::KernelImplementation::AVX512:
     case Internal::KernelImplementation::FMA:
     case Internal::KernelImplementation::DotProd:
@@ -62,23 +68,28 @@ bool IsModeSupported(SIMDMode mode) {
 } // namespace
 
 void Init() {
-    if (g_initialized) return;
-    g_features = Internal::CpuFeatureDetector::Detect();
+    if (g_initialized) {
+        return;
+    }
+    g_features    = Internal::CpuFeatureDetector::Detect();
     g_initialized = true;
     std::cout << "[SIMD] CPU features detected - NEON: " << (g_features.neon ? "Yes" : "No")
-              << ", AVX2: " << (g_features.avx2 ? "Yes" : "No")
-              << ", SSE4.1: " << (g_features.sse41 ? "Yes" : "No")
-              << ", SSSE3: " << (g_features.ssse3 ? "Yes" : "No")
-              << ", SSE2: " << (g_features.sse2 ? "Yes" : "No") << std::endl;
+              << ", AVX2: " << (g_features.avx2 ? "Yes" : "No") << ", SSE4.1: " << (g_features.sse41 ? "Yes" : "No")
+              << ", SSSE3: " << (g_features.ssse3 ? "Yes" : "No") << ", SSE2: " << (g_features.sse2 ? "Yes" : "No")
+              << std::endl;
 }
 
 CpuFeatureSet GetCpuFeatures() {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     return g_features;
 }
 
 void SetMode(SIMDMode mode) {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     if (!IsModeSupported(mode)) {
         std::cout << "[SIMD] Requested mode is unavailable; keeping " << GetCurrentImplementation() << std::endl;
         return;
@@ -87,20 +98,37 @@ void SetMode(SIMDMode mode) {
     std::cout << "[SIMD] Mode set to: " << GetCurrentImplementation() << std::endl;
 }
 
-SIMDMode GetMode() { return g_currentMode; }
+SIMDMode GetMode() {
+    return g_currentMode;
+}
 
-bool IsAVX2Supported() { return GetCpuFeatures().avx2; }
-bool IsSSE2Supported() { return GetCpuFeatures().sse2; }
-bool IsSSE41Supported() { return GetCpuFeatures().sse41; }
-bool IsNEONSupported() { return GetCpuFeatures().neon; }
+bool IsAVX2Supported() {
+    return GetCpuFeatures().avx2;
+}
+
+bool IsSSE2Supported() {
+    return GetCpuFeatures().sse2;
+}
+
+bool IsSSE41Supported() {
+    return GetCpuFeatures().sse41;
+}
+
+bool IsNEONSupported() {
+    return GetCpuFeatures().neon;
+}
 
 const char* GetCurrentImplementation() {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     return ImplementationName(Select(Internal::KernelOperation::Normalize), g_currentMode == SIMDMode::Auto);
 }
 
 void NormalizeRGB(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     switch (Select(Internal::KernelOperation::Normalize)) {
     case Internal::KernelImplementation::NEON:
 #if PARTICLESATURN_SIMD_HAS_NEON_KERNEL
@@ -139,7 +167,9 @@ void NormalizeRGB(const std::uint8_t* src, float* dst, std::size_t pixelCount) {
 }
 
 void FlipHorizontalAndNormalize(const std::uint8_t* src, float* dst, int width, int height) {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     switch (Select(Internal::KernelOperation::FlipNormalize)) {
     case Internal::KernelImplementation::AVX2:
 #if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL
@@ -166,7 +196,9 @@ void FlipHorizontalAndNormalize(const std::uint8_t* src, float* dst, int width, 
 }
 
 void FlipHorizontalAndBGR2RGB(const std::uint8_t* src, std::uint8_t* dst, int width, int height) {
-    if (!g_initialized) Init();
+    if (!g_initialized) {
+        Init();
+    }
     switch (Select(Internal::KernelOperation::FlipBgrToRgb)) {
     case Internal::KernelImplementation::AVX2:
 #if PARTICLESATURN_SIMD_HAS_AVX2_KERNEL

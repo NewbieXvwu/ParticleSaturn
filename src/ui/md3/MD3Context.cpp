@@ -5,24 +5,24 @@
 //   - Windows Diligent 目标（MD3_BACKEND_DILIGENT，无 OpenGL）
 
 #if defined(MD3_BACKEND_DILIGENT)
-    // Diligent 后端：Ripple/Stencil 使用 Diligent PSO，不使用 OpenGL
-    #include "ImGuiDiligent.h"
-    #include "Buffer.h"
-    #include "DeviceContext.h"
-    #include "GraphicsTypes.h"
-    #include "PipelineState.h"
-    #include "RefCntAutoPtr.hpp"
-    #include "RenderDevice.h"
-    #include "ShaderResourceBinding.h"
+// Diligent 后端：Ripple/Stencil 使用 Diligent PSO，不使用 OpenGL
+#include "Buffer.h"
+#include "DeviceContext.h"
+#include "GraphicsTypes.h"
+#include "ImGuiDiligent.h"
+#include "PipelineState.h"
+#include "RefCntAutoPtr.hpp"
+#include "RenderDevice.h"
+#include "ShaderResourceBinding.h"
 #elif defined(__APPLE__)
-    #include <TargetConditionals.h>
-    #if TARGET_OS_OSX
-        #include <OpenGL/gl3.h>
-        #define MD3_HAS_OPENGL 1
-    #endif
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#include <OpenGL/gl3.h>
+#define MD3_HAS_OPENGL 1
+#endif
 #elif defined(_WIN32)
-    #include <glad/glad.h>
-    #define MD3_HAS_OPENGL 1
+#include <glad/glad.h>
+#define MD3_HAS_OPENGL 1
 #endif
 
 #include <imgui.h>
@@ -449,7 +449,8 @@ void Init(float dpiScale, bool useOpenGL) {
 #endif
 
     g_context.initialized = true;
-    std::cout << "[MD3] Material Design 3 UI system initialized (OpenGL: " << (useOpenGL ? "yes" : "no") << ")" << std::endl;
+    std::cout << "[MD3] Material Design 3 UI system initialized (OpenGL: " << (useOpenGL ? "yes" : "no") << ")"
+              << std::endl;
 }
 #endif // MD3_BACKEND_DILIGENT (Init selection)
 
@@ -948,7 +949,7 @@ void DrawRipples() {
         dl->PopClipRect();
     }
 }
-#else // MD3_BACKEND_DILIGENT
+#else  // MD3_BACKEND_DILIGENT
 
 void DrawRipples() {
     auto& ctx = GetContext();
@@ -1691,8 +1692,8 @@ void ApplyImGuiStyle() {
 }
 #endif // MD3_BACKEND_DILIGENT
 
-void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
+void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min,
+                     const ImVec2& uv_max, unsigned int col, float rounding, int flags) {
     if ((col & IM_COL32_A_MASK) == 0 || rounding < 0.5f) {
         // 无透明度或无圆角，直接使用普通 AddImage
         dl->AddImage((ImTextureID)tex_id, p_min, p_max, uv_min, uv_max, col);

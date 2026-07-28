@@ -5,13 +5,13 @@
 namespace ParticleSaturn::Services::Settings::MacOS {
 
 class NSUserDefaultsStore final {
-public:
+  public:
     explicit NSUserDefaultsStore(void* nativeDefaults = nullptr) : nativeDefaults_{nativeDefaults} {}
 
     App::AppState Load(const App::AppState& defaults) const;
-    void Save(const App::AppState& state);
+    void          Save(const App::AppState& state);
 
-private:
+  private:
     void* nativeDefaults_ = nullptr;
 };
 

@@ -20,8 +20,6 @@
 #include "../Settings.h"
 #include "../ShaderCompileProgress.h"
 #include "../generated/LogControlIcons.h"
-#include "ShaderBytecodes.h"  // 构建期生成于 ${CMAKE_BINARY_DIR}/generated，经 include 目录解析
-
 #include "ArchiverFactoryLoader.h"
 #include "CommandQueueD3D12.h"
 #include "CrashAnalyzer.h"
@@ -40,6 +38,7 @@
 #include "RenderDeviceD3D11.h"
 #include "RenderDeviceD3D12.h"
 #include "Sampler.h"
+#include "ShaderBytecodes.h"  // 构建期生成于 ${CMAKE_BINARY_DIR}/generated，经 include 目录解析
 #include "TextureViewD3D11.h" // For ITextureViewD3D11 in native D3D11 blit
 #include "VulkanD3D12Interop.h"
 #include "Win32WindowManager.h"

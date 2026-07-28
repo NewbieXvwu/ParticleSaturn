@@ -10,8 +10,8 @@ Gpu::TextureHandle TexturePool::Acquire(const Gpu::TextureDesc& desc, std::uint6
     }
     for (std::uint32_t index = 0; index < entries_.size(); ++index) {
         auto& entry = entries_[index];
-        if (!entry.leased && entry.availableAfterFrame <= completedFrame &&
-            entry.desc.width == desc.width && entry.desc.height == desc.height && entry.desc.mipLevels == desc.mipLevels) {
+        if (!entry.leased && entry.availableAfterFrame <= completedFrame && entry.desc.width == desc.width &&
+            entry.desc.height == desc.height && entry.desc.mipLevels == desc.mipLevels) {
             entry.leased = true;
             return {index, entry.generation};
         }
@@ -28,7 +28,7 @@ void TexturePool::Release(Gpu::TextureHandle texture, std::uint64_t retireAfterF
     if (!entry.leased || entry.generation != texture.generation) {
         throw std::logic_error{"texture handle is stale or already released"};
     }
-    entry.leased = false;
+    entry.leased              = false;
     entry.availableAfterFrame = retireAfterFrame;
     ++entry.generation;
     if (entry.generation == 0) {

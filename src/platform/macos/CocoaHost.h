@@ -1,10 +1,10 @@
 #pragma once
 
-#include "app/RenderSeam.h"
-#include "app/state/AppStates.h"
-
 #include <cstdint>
 #include <functional>
+
+#include "app/RenderSeam.h"
+#include "app/state/AppStates.h"
 
 namespace ParticleSaturn::Platform::MacOS {
 
@@ -31,11 +31,11 @@ enum class HostAction : std::uint8_t {
 };
 
 class CocoaHost {
-public:
+  public:
     CocoaHost(std::uint32_t width, std::uint32_t height, const char* title);
     ~CocoaHost();
 
-    CocoaHost(const CocoaHost&) = delete;
+    CocoaHost(const CocoaHost&)            = delete;
     CocoaHost& operator=(const CocoaHost&) = delete;
 
     void Show();
@@ -50,25 +50,25 @@ public:
     // 结束 [NSApp run] 并让控制流回到调用方 main，使失败退出码可传播
     // （terminate: 恒以 0 结束进程，main 里的 return 1 永远执行不到）。
     // 供未持有 CocoaHost 实例的宿主（OpenGL41Main）复用同一退出语义。
-    static void StopRunLoop();
-    void SetPresentationMode(int vsyncMode);
-    void SetWindowMaterial(App::WindowMaterial material);
+    static void  StopRunLoop();
+    void         SetPresentationMode(int vsyncMode);
+    void         SetWindowMaterial(App::WindowMaterial material);
     DrawableSize CurrentDrawableSize() const;
-    void* NativeMetalLayer() const noexcept;
-    void* NativeView() const noexcept;
+    void*        NativeMetalLayer() const noexcept;
+    void*        NativeView() const noexcept;
 
-private:
+  private:
     void PresentFullscreenBackdrop();
 
-    void* window_ = nullptr;
-    void* layer_ = nullptr;
-    void* metalView_ = nullptr;
-    void* visualEffectView_ = nullptr;
-    void* windowDelegate_ = nullptr;
-    void* eventMonitor_ = nullptr;
+    void*                           window_           = nullptr;
+    void*                           layer_            = nullptr;
+    void*                           metalView_        = nullptr;
+    void*                           visualEffectView_ = nullptr;
+    void*                           windowDelegate_   = nullptr;
+    void*                           eventMonitor_     = nullptr;
     std::function<void(HostAction)> actionCallback_;
-    App::WindowMaterial windowMaterial_ = App::WindowMaterial::Solid;
-    bool fullscreen_ = false;
+    App::WindowMaterial             windowMaterial_ = App::WindowMaterial::Solid;
+    bool                            fullscreen_     = false;
 };
 
 } // namespace ParticleSaturn::Platform::MacOS
