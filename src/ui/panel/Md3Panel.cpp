@@ -1,4 +1,4 @@
-#include "MacOSMd3Panel.h"
+#include "ui/panel/Md3Panel.h"
 
 #include <algorithm>
 #include <chrono>
@@ -16,7 +16,7 @@
 #include "app/AppController.h"
 #include "services/diagnostics/DiagnosticBus.h"
 
-namespace ParticleSaturn::Platform::MacOS {
+namespace ParticleSaturn::UI {
 namespace {
 
 template <class Command>
@@ -432,12 +432,23 @@ void RenderHandTrackingStatusCard(const Md3PanelHandTrackingStatus& handStatus, 
             ImGui::PopStyleColor();
         }
 
+        // 错误码（当追踪器失败且平台提供了错误码时展示，复刻 Windows 面板）。
+        if (handStatus.tracker == Md3PanelHandTrackingStatus::Tracker::Failed && handStatus.errorCode != 0) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("Error code");
+            ImGui::TableNextColumn();
+            ImGui::Text("%d", handStatus.errorCode);
+        }
+
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextDisabled("Camera");
         ImGui::TableNextColumn();
         if (handStatus.tracker == Md3PanelHandTrackingStatus::Tracker::Ready && !handStatus.cameraInfo.empty()) {
             ImGui::TextUnformatted(handStatus.cameraInfo.c_str());
+        } else if (handStatus.selectedCamera >= 0) {
+            ImGui::Text("#%d", handStatus.selectedCamera);
         } else {
             ImGui::TextDisabled("N/A");
         }
@@ -571,6 +582,11 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
         if (MD3::Combo("VSync", &vsync, vsyncModes, IM_ARRAYSIZE(vsyncModes))) {
             DispatchAndSave(controller, ParticleSaturn::App::SetVSyncMode{vsync == 0 ? 0 : vsync == 1 ? 1 : -1}, callbacks);
         }
+        // Mesh Shader 开关（D3D12 且硬件支持时点亮；其它平台不申报即隐藏）。
+        if (features.meshShaderSupported && callbacks.setMeshShaderEnabled) {
+            bool meshShader = features.meshShaderEnabled;
+            if (MD3::Toggle("Mesh shader", &meshShader)) callbacks.setMeshShaderEnabled(meshShader);
+        }
         if (MD3::TonalButton(state.window.fullscreen ? "Exit fullscreen" : "Fullscreen")) {
             if (callbacks.toggleFullscreen) callbacks.toggleFullscreen();
         }
@@ -583,6 +599,22 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
 
     if (MD3::BeginCollapsingHeader("Gestures")) {
         RenderHandTrackingStatusCard(handStatus, dpi);
+
+        // 摄像头选择（复刻 Windows：重启并弹出选择器）。
+        if (callbacks.showCameraSelector) {
+            if (MD3::TonalButton("Select camera")) callbacks.showCameraSelector();
+        }
+
+        // SIMD 实现选择（追踪器支持且平台提供 setSimdMode 时点亮，复刻 Windows）。
+        if (handStatus.simdSupported && callbacks.setSimdMode) {
+            constexpr const char* simdModes[] = {"Auto", "AVX2", "SSE", "Scalar"};
+            int simdMode = handStatus.simdMode;
+            if (MD3::Combo("SIMD mode", &simdMode, simdModes, IM_ARRAYSIZE(simdModes))) callbacks.setSimdMode(simdMode);
+            if (!handStatus.simdImplementation.empty()) {
+                ImGui::TextDisabled("Current: %s", handStatus.simdImplementation.c_str());
+            }
+        }
+
         ImGui::Separator();
 
         // 原始手势数值（追踪器输出的归一化姿态）。
@@ -632,6 +664,8 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
         bool cameraDebug = state.ui.showCameraDebug;
         if (MD3::Toggle("Camera debug", &cameraDebug)) {
             DispatchAndSave(controller, ParticleSaturn::App::SetShowCameraDebug{cameraDebug}, callbacks);
+            // 若平台提供了追踪器侧调试叠加开关，一并驱动（复刻 Windows）。
+            if (callbacks.setHandDebugMode) callbacks.setHandDebugMode(cameraDebug);
         }
         MD3::EndCollapsingHeader();
     }
@@ -667,6 +701,10 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
             if (MD3::Toggle("Object shader (Metal 3)", &objectShader)) {
                 DispatchAndSave(controller, ParticleSaturn::App::SetUseObjectShader{objectShader}, callbacks);
             }
+        }
+        // 星数/几何计数（平台提供时展示，复刻 Windows 高级区域）。
+        if (features.starCount > 0) {
+            ImGui::TextDisabled("Stars: %u", features.starCount);
         }
         MD3::EndCollapsingHeader();
     }
@@ -729,4 +767,4 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     ImGui::PopStyleVar(2);
 }
 
-} // namespace ParticleSaturn::Platform::MacOS
+} // namespace ParticleSaturn::UI

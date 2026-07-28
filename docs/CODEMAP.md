@@ -44,7 +44,8 @@
 | 冒烟/基线统一支撑 | `src/platform/macos/SmokeHarness.{h,cpp}` | SmokeConfig 环境解析+状态钉死、启动几何、逐帧性能/全屏状态机；三 main 共用 |
 | 唯一应用外壳 | `src/platform/macos/AppShell.{h,mm}`（RunApp + AppHost + IRenderBackend + FrameContext） | D-002 帧高度接缝正名：后端经 IRenderBackend（Capabilities/RenderFrame/BaselineCaptured 读回面）接入；基线捕获的退出收束在外壳一处；GL41 以 AppHost shim 保留自建窗口栈 |
 | Cocoa 宿主/窗口 | `src/platform/macos/CocoaHost.*`、MacOSApplication.* | 全屏/材质/事件 |
-| macOS MD3 调试面板 | `src/platform/macos/MacOSMd3Panel.*` | 三后端共用 |
+| 跨平台 MD3 调试面板 | `src/ui/panel/Md3Panel.{h,cpp}`（namespace `ParticleSaturn::UI`，lib `ParticleSaturnMd3Panel`） | **唯一现行版**（D-015）：平台中立（imgui+MD3+AppController+DiagnosticBus，无 Cocoa/Win32）；契约可表达两平台全部特性（Mesh Shader/SIMD/摄像头序号/追踪器调试/错误码/星数按能力位或回调点亮）；macOS 与 Windows 外壳共用 |
+| macOS 面板垫片 | `src/platform/macos/MacOSMd3Panel.h` | 薄垫片，把 `ParticleSaturn::UI` 符号别名进 `Platform::MacOS`（原 `.cpp` 已提升到 `src/ui/panel`） |
 | Windows 入口 | `src/Diligent/Main.cpp`、`src/OpenGL/Main.cpp` | 冻结 |
 
 ## 测试与基准

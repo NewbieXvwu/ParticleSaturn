@@ -35,8 +35,7 @@ add_executable(ParticleSaturn.macOS MACOSX_BUNDLE
     LauncherMain.mm
     Main.mm
     OpenGL41Main.mm
-    VulkanMain.mm
-    MacOSMd3Panel.cpp)
+    VulkanMain.mm)
 set_target_properties(ParticleSaturn.macOS PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/Info.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.particlesaturn.app"
@@ -46,6 +45,7 @@ target_link_libraries(ParticleSaturn.macOS PRIVATE
     ParticleSaturnMetalBackend
     ParticleSaturnOpenGL41Backend
     ParticleSaturnMacOSSettings
+    ParticleSaturnMd3Panel
     ParticleSaturnMD3)
 target_link_libraries(ParticleSaturn.macOS PRIVATE ParticleSaturnMacOSCamera ParticleSaturnMacOSHandTrackingWorker)
 if(TARGET ParticleSaturnMacOSHandTracking)

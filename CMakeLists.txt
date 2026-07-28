@@ -112,6 +112,7 @@ add_subdirectory(src/gpu)
 add_subdirectory(src/render)
 add_subdirectory(src/shaders/abi)
 add_subdirectory(src/ui/md3)
+add_subdirectory(src/ui/panel)
 
 add_library(ParticleSaturnSimd STATIC
     HandTracker/CpuFeatureDetector.cpp
