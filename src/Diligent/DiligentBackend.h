@@ -42,6 +42,11 @@ class DiligentBackend final {
     DiligentBackend(DiligentBackend&&)                 = delete;
     DiligentBackend& operator=(DiligentBackend&&)      = delete;
 
+    // 粒子数上下界（LOD/UI 共用；原为 DiligentBackend.cpp 匿名命名空间文件局部常量，
+    // 因 RenderDebugPanel 定义迁到独立 TU 而上提为类级单一定义，避免重复/漂移）。
+    static constexpr uint32_t kParticleCountMax = 1200000u;
+    static constexpr uint32_t kParticleCountMin = 200000u;
+
     bool Init(Backend backend, HWND hwnd, SurfaceSize initialSize, AppState* state);
     void Shutdown();
 

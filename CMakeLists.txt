@@ -475,6 +475,7 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/platform/windows/Win32AppHost.cpp     # Win32 窗口/DPI/后端选择辅助（原 Main.cpp 自由函数平移）
     src/platform/windows/Win32InputMapper.cpp
     src/platform/windows/RegistryStore.cpp  # 注册表持久化（原 src/Diligent/Settings.cpp 平移）
+    src/platform/windows/DiligentDebugPanel.cpp  # MD3 调试/设置面板（原 DiligentBackend.cpp 内联，定义平移）
 
     # MD3 UI system (unified source under src/ui/md3, Diligent backend selected via MD3_BACKEND_DILIGENT)
     src/ui/md3/MD3Theme.cpp
