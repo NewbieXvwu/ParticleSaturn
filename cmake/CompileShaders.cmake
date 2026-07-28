@@ -140,17 +140,19 @@ endif()
 # ============================================================================
 
 set(SHADERS
-    # Format: Name;HasVS;HasPS;HasCS;HasMS;HasHLSL;HasGLSL
-    "FullscreenQuad;1;1;0;0;1;1"
-    "BloomDownsample;1;1;0;0;1;1"
-    "BloomBlur;1;1;0;0;1;1"
-    "AcrylicComposite;1;1;0;0;1;1"
-    "Star;1;1;0;0;1;1"
-    "SaturnParticle;1;1;0;0;1;1"
-    "SevenSeg;1;1;0;0;1;1"
-    "SaturnCompute;0;0;1;0;1;1"
-    "SaturnInit;0;0;1;0;1;1"
-    "SaturnParticleMesh;0;1;0;1;1;0"
+    # Format: Name|HasVS|HasPS|HasCS|HasMS|HasHLSL|HasGLSL
+    # 字段分隔符用 '|'：CMake 会把带 ';' 的字符串拍平成一维列表，
+    # 导致 foreach 只拿到单个 token、list(GET ... 1) 越界。
+    "FullscreenQuad|1|1|0|0|1|1"
+    "BloomDownsample|1|1|0|0|1|1"
+    "BloomBlur|1|1|0|0|1|1"
+    "AcrylicComposite|1|1|0|0|1|1"
+    "Star|1|1|0|0|1|1"
+    "SaturnParticle|1|1|0|0|1|1"
+    "SevenSeg|1|1|0|0|1|1"
+    "SaturnCompute|0|0|1|0|1|1"
+    "SaturnInit|0|0|1|0|1|1"
+    "SaturnParticleMesh|0|1|0|1|1|0"
 )
 
 # ============================================================================
@@ -379,7 +381,7 @@ set(FAIL_COUNT 0)
 set(SKIP_COUNT 0)
 
 foreach(SHADER_DEF ${SHADERS})
-    string(REPLACE ";" ";" SHADER_PARTS "${SHADER_DEF}")
+    string(REPLACE "|" ";" SHADER_PARTS "${SHADER_DEF}")
     list(GET SHADER_PARTS 0 NAME)
     list(GET SHADER_PARTS 1 HAS_VS)
     list(GET SHADER_PARTS 2 HAS_PS)
