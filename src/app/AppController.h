@@ -5,14 +5,14 @@
 namespace ParticleSaturn::App {
 
 class AppController {
-public:
+  public:
     explicit AppController(AppState initialState = {});
 
     const AppState& State() const noexcept;
-    AppState& MutableState() noexcept;
-    CommandEffect Dispatch(const AppCommand& command);
+    AppState&       MutableState() noexcept;
+    CommandEffect   Dispatch(const AppCommand& command);
 
-private:
+  private:
     AppState state_;
 };
 

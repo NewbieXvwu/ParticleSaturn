@@ -17,7 +17,8 @@ typedef unsigned int ImGuiID;
 
 #if defined(MD3_BACKEND_DILIGENT)
 // Diligent 后端：Ripple/Stencil 使用 Diligent PSO，需要 RenderBackend 枚举与 Diligent 前向声明
-    #include "RenderBackend.h"
+#include "RenderBackend.h"
+
 namespace Diligent {
 class IRenderDevice;
 class IDeviceContext;
@@ -327,7 +328,8 @@ struct CollapsingHeaderAnimState {
           openState(0.0f, 350.0f, 26.0f),
 #endif
           arrowRotation(0.0f, 350.0f, 26.0f),
-          lastContentHeight(0.0f) {}
+          lastContentHeight(0.0f) {
+    }
 };
 
 // Window 窗口动画状态
@@ -700,8 +702,9 @@ unsigned int ColorToU32(const ImVec4& color);
 ImVec4 HexToColor(unsigned int hex, float alpha = 1.0f);
 
 // 绘制带圆角的图片（解决模糊背景黑边问题）
-void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max,
-                     const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
+void AddImageRounded(ImDrawList* dl, void* tex_id, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min,
+                     const ImVec2& uv_max, unsigned int col, float rounding, int flags = 0);
+
 inline void AddImageRounded(ImDrawList* dl, unsigned int tex_id, const ImVec2& p_min, const ImVec2& p_max,
                             const ImVec2& uv_min, const ImVec2& uv_max, unsigned int col, float rounding,
                             int flags = 0) {

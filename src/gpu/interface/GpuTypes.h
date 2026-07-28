@@ -5,19 +5,20 @@
 
 namespace ParticleSaturn::Gpu {
 
-template <typename Tag>
-struct Handle {
-    std::uint32_t index = 0;
+template <typename Tag> struct Handle {
+    std::uint32_t index      = 0;
     std::uint32_t generation = 0;
 
     explicit operator bool() const noexcept { return generation != 0; }
+
     friend bool operator==(Handle, Handle) = default;
 };
 
 struct BufferTag {};
+
 struct TextureTag {};
 
-using BufferHandle = Handle<BufferTag>;
+using BufferHandle  = Handle<BufferTag>;
 using TextureHandle = Handle<TextureTag>;
 
 enum class ResourceUsage : std::uint8_t {
@@ -32,13 +33,13 @@ enum class ResourceUsage : std::uint8_t {
 };
 
 enum class BufferUsage : std::uint32_t {
-    None = 0,
-    Vertex = 1U << 0U,
-    Index = 1U << 1U,
-    Uniform = 1U << 2U,
-    Storage = 1U << 3U,
-    Indirect = 1U << 4U,
-    CopySource = 1U << 5U,
+    None            = 0,
+    Vertex          = 1U << 0U,
+    Index           = 1U << 1U,
+    Uniform         = 1U << 2U,
+    Storage         = 1U << 3U,
+    Indirect        = 1U << 4U,
+    CopySource      = 1U << 5U,
     CopyDestination = 1U << 6U,
 };
 
@@ -51,14 +52,14 @@ constexpr bool HasUsage(BufferUsage usage, BufferUsage value) noexcept {
 }
 
 struct BufferDesc {
-    std::size_t size = 0;
+    std::size_t size          = 0;
     std::size_t elementStride = 0;
-    BufferUsage usage = BufferUsage::None;
+    BufferUsage usage         = BufferUsage::None;
 };
 
 struct TextureDesc {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
+    std::uint32_t width     = 0;
+    std::uint32_t height    = 0;
     std::uint32_t mipLevels = 1;
 };
 

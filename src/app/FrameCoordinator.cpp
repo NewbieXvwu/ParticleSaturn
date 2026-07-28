@@ -26,17 +26,22 @@ FrameSnapshot FrameCoordinator::Advance(AppController& controller, double elapse
 }
 
 void FrameCoordinator::UpdateLod(AppState& state, double elapsedSeconds) {
-    if (elapsedSeconds <= 0.0) return;
+    if (elapsedSeconds <= 0.0) {
+        return;
+    }
     const float frameSeconds = static_cast<float>(elapsedSeconds);
     state.lod.smoothedFrameSeconds += (frameSeconds - state.lod.smoothedFrameSeconds) * 0.1f;
-    if (state.lod.locked) return;
+    if (state.lod.locked) {
+        return;
+    }
 
     constexpr float SlowFrameSeconds = 1.0f / 50.0f;
     constexpr float FastFrameSeconds = 1.0f / 75.0f;
     if (state.lod.smoothedFrameSeconds > SlowFrameSeconds) {
         if (state.render.particleCount > RenderSettings::MinParticles) {
-            state.render.particleCount = std::max(RenderSettings::MinParticles,
-                state.render.particleCount - std::max(10'000U, state.render.particleCount / 10U));
+            state.render.particleCount =
+                std::max(RenderSettings::MinParticles,
+                         state.render.particleCount - std::max(10'000U, state.render.particleCount / 10U));
         } else {
             state.render.pixelRatio = std::max(0.25f, state.render.pixelRatio - 0.05f);
         }
@@ -44,8 +49,9 @@ void FrameCoordinator::UpdateLod(AppState& state, double elapsedSeconds) {
         if (state.render.pixelRatio < 1.0f) {
             state.render.pixelRatio = std::min(1.0f, state.render.pixelRatio + 0.05f);
         } else {
-            state.render.particleCount = std::min(RenderSettings::MaxParticles,
-                state.render.particleCount + std::max(10'000U, state.render.particleCount / 20U));
+            state.render.particleCount =
+                std::min(RenderSettings::MaxParticles,
+                         state.render.particleCount + std::max(10'000U, state.render.particleCount / 20U));
         }
     }
 }
@@ -58,9 +64,9 @@ void FrameCoordinator::Update(AppState& state, const GestureInput& gesture) {
     if (!gesture.tracked) {
         // 严格保持旧 OpenGL/Diligent 的时间尺度：0.005 * 180 每秒。
         state.scene.autoAnimationTime += static_cast<float>(fixedStepSeconds_ * (0.005 * 180.0));
-        const float targetZoom = 1.0f + std::sin(state.scene.autoAnimationTime) * 0.2f;
+        const float targetZoom      = 1.0f + std::sin(state.scene.autoAnimationTime) * 0.2f;
         const float targetRotationX = 0.4f + std::sin(state.scene.autoAnimationTime * 0.3f) * 0.15f;
-        const float alpha = 1.0f - std::pow(1.0f - 0.08f, static_cast<float>(fixedStepSeconds_ * 180.0));
+        const float alpha           = 1.0f - std::pow(1.0f - 0.08f, static_cast<float>(fixedStepSeconds_ * 180.0));
         state.scene.zoom += (targetZoom - state.scene.zoom) * alpha;
         state.scene.rotationX += (targetRotationX - state.scene.rotationX) * alpha;
         state.scene.rotationY += (0.0f - state.scene.rotationY) * alpha;
@@ -70,11 +76,11 @@ void FrameCoordinator::Update(AppState& state, const GestureInput& gesture) {
     if (gesture.hasAbsolutePose) {
         const float rotX01 = state.gesture.invertX ? 1.0f - gesture.rotationXNormalized : gesture.rotationXNormalized;
         const float rotY01 = state.gesture.invertY ? 1.0f - gesture.rotationYNormalized : gesture.rotationYNormalized;
-        const float sensitivity = Clamp(state.gesture.sensitivity, 0.1f, 3.0f);
-        const float targetZoom = gesture.scale;
+        const float sensitivity     = Clamp(state.gesture.sensitivity, 0.1f, 3.0f);
+        const float targetZoom      = gesture.scale;
         const float targetRotationX = (-0.6f + rotY01 * 1.6f) * sensitivity;
         const float targetRotationY = ((rotX01 - 0.5f) * 2.0f) * sensitivity;
-        const float alpha = 1.0f - std::pow(1.0f - 0.25f, static_cast<float>(fixedStepSeconds_ * 180.0));
+        const float alpha           = 1.0f - std::pow(1.0f - 0.25f, static_cast<float>(fixedStepSeconds_ * 180.0));
         state.scene.zoom += (targetZoom - state.scene.zoom) * alpha;
         state.scene.rotationX += (targetRotationX - state.scene.rotationX) * alpha;
         state.scene.rotationY += (targetRotationY - state.scene.rotationY) * alpha;

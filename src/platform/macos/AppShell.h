@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
 #include "CocoaHost.h"
 #include "MacOSMd3Panel.h"
 #include "SmokeHarness.h"
@@ -7,11 +12,6 @@
 #include "app/FrameCoordinator.h"
 #include "app/RenderSeam.h"
 #include "services/settings/macos/NSUserDefaultsStore.h"
-
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <vector>
 
 namespace ParticleSaturn::Platform::MacOS {
 
@@ -27,38 +27,48 @@ namespace ParticleSaturn::Platform::MacOS {
 // 宿主窗口抽象：Metal/Vulkan 直接适配 CocoaHost；GL41 保留自建 NSOpenGL 窗口栈
 // （材质/全屏行为不因合并而改变），以本接口接入外壳。
 class AppHost {
-public:
-    virtual ~AppHost() = default;
-    virtual DrawableSize CurrentDrawableSize() = 0;
-    virtual void WindowPosition(std::int32_t& x, std::int32_t& y) = 0;
-    virtual bool NativeFullscreen() = 0;
-    virtual void ToggleFullscreen() = 0;                       // 应用语义切换（含背景处理）
-    virtual void SetWindowMaterial(App::WindowMaterial material) = 0;
-    virtual void SetPresentationMode(int vsyncMode) = 0;
-    virtual void RequestExit() = 0;
-    virtual void Show() = 0;
-    virtual void Run(const std::function<void()>& frameCallback) = 0;
-    virtual void SetActionCallback(std::function<void(HostAction)> callback) = 0;
+  public:
+    virtual ~AppHost()                                                    = default;
+    virtual DrawableSize CurrentDrawableSize()                            = 0;
+    virtual void         WindowPosition(std::int32_t& x, std::int32_t& y) = 0;
+    virtual bool         NativeFullscreen()                               = 0;
+    virtual void         ToggleFullscreen()                              = 0; // 应用语义切换（含背景处理）
+    virtual void         SetWindowMaterial(App::WindowMaterial material) = 0;
+    virtual void         SetPresentationMode(int vsyncMode)              = 0;
+    virtual void         RequestExit()                                   = 0;
+    virtual void         Show()                                          = 0;
+    virtual void         Run(const std::function<void()>& frameCallback) = 0;
+    virtual void         SetActionCallback(std::function<void(HostAction)> callback) = 0;
 };
 
 // CocoaHost 直通适配（Metal / Vulkan 共用）。
 class CocoaAppHost final : public AppHost {
-public:
+  public:
     explicit CocoaAppHost(CocoaHost& host) : host_{host} {}
+
     DrawableSize CurrentDrawableSize() override { return host_.CurrentDrawableSize(); }
+
     void WindowPosition(std::int32_t& x, std::int32_t& y) override { host_.GetWindowPosition(x, y); }
+
     bool NativeFullscreen() override;
+
     void ToggleFullscreen() override { host_.ToggleFullscreen(); }
+
     void SetWindowMaterial(App::WindowMaterial material) override { host_.SetWindowMaterial(material); }
+
     void SetPresentationMode(int vsyncMode) override { host_.SetPresentationMode(vsyncMode); }
+
     void RequestExit() override { host_.RequestExit(); }
+
     void Show() override { host_.Show(); }
+
     void Run(const std::function<void()>& frameCallback) override { host_.Run(frameCallback); }
+
     void SetActionCallback(std::function<void(HostAction)> callback) override {
         host_.SetActionCallback(std::move(callback));
     }
 
-private:
+  private:
     CocoaHost& host_;
 };
 
@@ -71,20 +81,20 @@ using App::FrameContext;
 using App::IRenderBackend;
 
 struct RunAppConfig {
-    AppHost& host;
-    App::AppController& controller;
+    AppHost&                                        host;
+    App::AppController&                             controller;
     Services::Settings::MacOS::NSUserDefaultsStore& settings;
-    SmokeConfig smoke;
-    SmokeHarness& smokeHarness;
-    StartupGeometry startup;
-    std::string panelTitle;               // MD3 面板抬头（按值持有：adapter 名在设备恢复时可能重建）
-    bool persistSettings = true;          // 冒烟/基线模式不读写用户设置
-    bool cameraEnabled = true;            // Vulkan 帧数冒烟禁用相机
-    float fixedDeltaTime = 0.0f;          // >0 时替代真实帧时（Vulkan lod 冒烟用 0.05）
+    SmokeConfig                                     smoke;
+    SmokeHarness&                                   smokeHarness;
+    StartupGeometry                                 startup;
+    std::string panelTitle; // MD3 面板抬头（按值持有：adapter 名在设备恢复时可能重建）
+    bool        persistSettings = true; // 冒烟/基线模式不读写用户设置
+    bool        cameraEnabled   = true; // Vulkan 帧数冒烟禁用相机
+    float       fixedDeltaTime  = 0.0f; // >0 时替代真实帧时（Vulkan lod 冒烟用 0.05）
     // 动作回调安装后、运行循环前调用；返回非零则中止并作为进程退出码（Vulkan
     // 交互冒烟用）。可为空。
     std::function<int()> preRun;
-    IRenderBackend* backend = nullptr;    // 帧高度接缝（D-002），构造后必须注入
+    IRenderBackend*      backend = nullptr; // 帧高度接缝（D-002），构造后必须注入
 };
 
 // 唯一应用外壳。返回进程退出码（冒烟失败→1）。后端资源的构建与析构都在调用方

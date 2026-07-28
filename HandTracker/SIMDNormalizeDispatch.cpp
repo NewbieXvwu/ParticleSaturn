@@ -67,13 +67,13 @@ bool KernelRegistry::Supports(KernelImplementation implementation, KernelOperati
 
 KernelImplementation KernelDispatcher::Select(SIMDMode mode, KernelOperation operation, CpuFeatureSet features) {
     const KernelRegistry registry{features};
-    const auto supports = [&registry, operation](KernelImplementation implementation) {
+    const auto           supports = [&registry, operation](KernelImplementation implementation) {
         return registry.Supports(implementation, operation);
     };
     const auto selectAutomatic = [&supports] {
-        for (const auto implementation : {KernelImplementation::NEON, KernelImplementation::AVX2,
-                                          KernelImplementation::SSE41, KernelImplementation::SSSE3,
-                                          KernelImplementation::SSE2}) {
+        for (const auto implementation :
+             {KernelImplementation::NEON, KernelImplementation::AVX2, KernelImplementation::SSE41,
+              KernelImplementation::SSSE3, KernelImplementation::SSE2}) {
             if (supports(implementation)) {
                 return implementation;
             }
@@ -87,20 +87,40 @@ KernelImplementation KernelDispatcher::Select(SIMDMode mode, KernelOperation ope
     case SIMDMode::NEON:
         return supports(KernelImplementation::NEON) ? KernelImplementation::NEON : KernelImplementation::Scalar;
     case SIMDMode::AVX2:
-        if (supports(KernelImplementation::AVX2)) return KernelImplementation::AVX2;
-        if (supports(KernelImplementation::SSE41)) return KernelImplementation::SSE41;
-        if (supports(KernelImplementation::SSSE3)) return KernelImplementation::SSSE3;
-        if (supports(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
+        if (supports(KernelImplementation::AVX2)) {
+            return KernelImplementation::AVX2;
+        }
+        if (supports(KernelImplementation::SSE41)) {
+            return KernelImplementation::SSE41;
+        }
+        if (supports(KernelImplementation::SSSE3)) {
+            return KernelImplementation::SSSE3;
+        }
+        if (supports(KernelImplementation::SSE2)) {
+            return KernelImplementation::SSE2;
+        }
         return KernelImplementation::Scalar;
     case SIMDMode::SSE41:
-        if (supports(KernelImplementation::SSE41)) return KernelImplementation::SSE41;
-        if (supports(KernelImplementation::SSSE3)) return KernelImplementation::SSSE3;
-        if (supports(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
+        if (supports(KernelImplementation::SSE41)) {
+            return KernelImplementation::SSE41;
+        }
+        if (supports(KernelImplementation::SSSE3)) {
+            return KernelImplementation::SSSE3;
+        }
+        if (supports(KernelImplementation::SSE2)) {
+            return KernelImplementation::SSE2;
+        }
         return KernelImplementation::Scalar;
     case SIMDMode::SSE:
-        if (supports(KernelImplementation::SSE41)) return KernelImplementation::SSE41;
-        if (supports(KernelImplementation::SSSE3)) return KernelImplementation::SSSE3;
-        if (supports(KernelImplementation::SSE2)) return KernelImplementation::SSE2;
+        if (supports(KernelImplementation::SSE41)) {
+            return KernelImplementation::SSE41;
+        }
+        if (supports(KernelImplementation::SSSE3)) {
+            return KernelImplementation::SSSE3;
+        }
+        if (supports(KernelImplementation::SSE2)) {
+            return KernelImplementation::SSE2;
+        }
         return KernelImplementation::Scalar;
     case SIMDMode::Auto:
         return selectAutomatic();

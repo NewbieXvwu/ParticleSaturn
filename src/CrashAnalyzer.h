@@ -442,8 +442,8 @@ inline void Render(bool enableBlur = false, CrashBlurTex blurTex = 0, unsigned i
                     a = 64;
                 }
                 const ImU32 noiseCol = IM_COL32(255, 255, 255, a);
-                MD3::AddImageRounded(dl, MD3::GetContext().noiseTextureID, pos,
-                                     ImVec2(pos.x + size.x, pos.y + size.y), uv0, uv1, noiseCol, style.WindowRounding);
+                MD3::AddImageRounded(dl, MD3::GetContext().noiseTextureID, pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                                     uv0, uv1, noiseCol, style.WindowRounding);
             }
 
             ImU32 highlight = isDarkMode ? IM_COL32(255, 255, 255, 40) : IM_COL32(255, 255, 255, 120);

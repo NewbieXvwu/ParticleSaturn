@@ -6,7 +6,7 @@ namespace ParticleSaturn::Platform::MacOS {
 
 struct BackendSelection {
     App::GraphicsApi graphicsApi;
-    bool acceptedOverride = true;
+    bool             acceptedOverride = true;
 };
 
 BackendSelection SelectBackend(App::GraphicsApi persistedApi, const char* environmentOverride);

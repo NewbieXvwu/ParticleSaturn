@@ -3,11 +3,11 @@
 namespace ParticleSaturn::Gpu::OpenGL41 {
 
 class OpenGL41Surface {
-public:
+  public:
     explicit OpenGL41Surface(void* nativeView);
     ~OpenGL41Surface();
 
-    OpenGL41Surface(const OpenGL41Surface&) = delete;
+    OpenGL41Surface(const OpenGL41Surface&)            = delete;
     OpenGL41Surface& operator=(const OpenGL41Surface&) = delete;
 
     bool MakeCurrent();
@@ -17,7 +17,7 @@ public:
     bool SetVSyncMode(int vsyncMode);
     void Present();
 
-private:
+  private:
     void* context_ = nullptr;
 };
 
