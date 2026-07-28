@@ -1,4 +1,12 @@
-#include "../Settings.h"
+// RegistryStore - Windows 注册表持久化实现（D-015 重启 · 决策②：服务落 src/platform/windows/）
+//
+// 本文件从 src/Diligent/Settings.cpp 平移而来（API/命名空间不变），把设置持久化这一
+// "服务"职责从渲染后端目录挪进平台树，镜像 macOS 的 services/settings/macos/。
+// 低层原语（Reg* / CreateProcessW 重启）为 Windows 专有，Phase C 收敛为
+// Services::Settings::Windows::RegistryStore 类时仍原样复用，仅高层 Save/Load 签名
+// 改吃 App::AppState。
+
+#include "../../Settings.h"
 
 #include <iostream>
 
@@ -7,7 +15,7 @@
 #endif
 #include <windows.h>
 
-#include "../AppState.h"
+#include "../../AppState.h"
 #include "RenderBackend.h"
 #include "imgui.h"
 
