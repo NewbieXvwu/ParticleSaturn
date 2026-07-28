@@ -102,6 +102,8 @@ class DiligentBackend final {
     void UpdateFullscreenQuadBindings();
     void SimulateParticles(float dt, float handScale, float handHas);
     void RenderSevenSegmentFPS();
+    // MD3 调试/设置面板（从 RenderFrame 抽出；仍在同一 GPU 叶子内，后续再迁到 Windows 外壳）
+    void RenderDebugPanel();
 
     // Debug Log Panel icons (pause/resume)
     Diligent::ITextureView* GetOrCreateLogControlIconSRV(bool pausedState /* true=resume icon, false=pause icon */);

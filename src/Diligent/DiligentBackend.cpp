@@ -4083,245 +4083,7 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
     immediateContext_->Draw(draw);
 }
 
-void DiligentBackend::RenderFrame() {
-    if (!IsInitialized()) {
-        return;
-    }
-
-    // 延迟 resize：避免在 WndProc 的 WM_SIZE 里做重资源操作导致卡顿/假死。
-    // 如果 ResizeBuffers 因 DXGI_ERROR_INVALID_CALL 暂时失败，保持 pending 状态，下一帧继续尝试。
-    if (hasPendingResize_) {
-        const auto target = pendingResize_;
-        Resize(target);
-        if (surfaceSize_.Width == target.Width && surfaceSize_.Height == target.Height) {
-            hasPendingResize_ = false;
-        }
-    }
-
-    // HandTracker：每帧轮询一次初始化状态（非阻塞）。
-    if (handTracker_) {
-        handTracker_->Tick();
-    }
-
-    // 计算帧时间和 FPS（移动平均）
-    const auto now     = std::chrono::steady_clock::now();
-    float      frameDt = 0.0f;
-    if (lastFrameTime_ != std::chrono::steady_clock::time_point{}) {
-        frameDt = std::chrono::duration<float>(now - lastFrameTime_).count();
-        if (frameDt > 0.0f && frameDt < 1.0f) {
-            frameDtSamples_[fpsSampleIndex_] = frameDt;
-            fpsSampleIndex_                  = (fpsSampleIndex_ + 1) % kFpsSampleCount;
-
-            // 计算平均 FPS（帧时间调和平均：N / Σdt）
-            float sumDt = 0.0f;
-            for (int i = 0; i < kFpsSampleCount; ++i) {
-                sumDt += frameDtSamples_[i];
-            }
-            currentFps_ = (sumDt > 0.0f) ? (static_cast<float>(kFpsSampleCount) / sumDt) : 60.0f;
-
-            // FPS 历史曲线采样（低频）
-            fpsHistorySampleTimer_ += frameDt;
-            if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
-                // 使用减法保留超出时间（与 OpenGL 版一致）
-                fpsHistorySampleTimer_ -= kFpsHistorySampleInterval;
-
-                // 获取即将被覆盖的旧值
-                const float oldValue = fpsHistory_[fpsHistoryIndex_];
-                const float newValue = currentFps_;
-
-                fpsHistory_[fpsHistoryIndex_] = newValue;
-                fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
-
-                // 增量更新 min/max 缓存
-                if (fpsHistoryValidCount_ < kFpsHistorySize) {
-                    // 还在填充阶段，直接更新
-                    fpsHistoryValidCount_++;
-                    if (fpsHistoryValidCount_ == 1) {
-                        fpsHistoryCachedMin_ = newValue;
-                        fpsHistoryCachedMax_ = newValue;
-                    } else {
-                        if (newValue < fpsHistoryCachedMin_) {
-                            fpsHistoryCachedMin_ = newValue;
-                        }
-                        if (newValue > fpsHistoryCachedMax_) {
-                            fpsHistoryCachedMax_ = newValue;
-                        }
-                    }
-                } else {
-                    // 缓冲区已满，需要检查旧值是否是极值
-                    bool wasMin = (oldValue <= fpsHistoryCachedMin_ + 0.001f);
-                    bool wasMax = (oldValue >= fpsHistoryCachedMax_ - 0.001f);
-
-                    if (wasMin || wasMax) {
-                        // 旧值是极值，需要重新遍历计算
-                        fpsHistoryCacheDirty_ = true;
-                    } else {
-                        // 旧值不是极值，只需检查新值
-                        if (newValue < fpsHistoryCachedMin_) {
-                            fpsHistoryCachedMin_ = newValue;
-                        }
-                        if (newValue > fpsHistoryCachedMax_) {
-                            fpsHistoryCachedMax_ = newValue;
-                        }
-                    }
-                }
-
-                // 滚动动画时间与采样计时器同步
-                fpsGraphScrollAnimTime_ = fpsHistorySampleTimer_;
-            } else {
-                // 正常累加动画时间
-                fpsGraphScrollAnimTime_ += frameDt;
-            }
-        }
-    }
-    lastFrameTime_ = now;
-
-    // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
-    if (appState_ != nullptr && frameDt > 0.0f) {
-        const uint32_t prevBasisCount =
-            lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
-        const float prevBasisPR = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
-
-        // 确保初始值合理（Diligent 入口不一定会调用 AppState::InitDefaults）
-        if (appState_->render.activeParticleCount == 0) {
-            appState_->render.activeParticleCount = (particleCount_ != 0) ? particleCount_ : kParticleCountMax;
-        }
-        if (appState_->render.pixelRatio <= 0.0f) {
-            appState_->render.pixelRatio = 1.0f;
-        }
-
-        lodUpdateTimer_ += frameDt;
-        if (lodUpdateTimer_ >= 0.5f) {
-            lodUpdateTimer_ = 0.0f;
-
-            if (!appState_->lod.locked) {
-                const float smoothedFps = currentFps_;
-
-                bool particleCountChanged = false;
-                bool pixelRatioChanged    = false;
-
-                // OpenGL 版阈值与步进：
-                // - 低于 38 FPS：优先降低粒子数（*0.95），降到 MIN 后再降 pixelRatio（-0.03，最低 0.7）
-                // - 高于 57 FPS：优先提高 pixelRatio（+0.03，最高 1.0），再提高粒子数（*1.05，最高 MAX）
-                if (smoothedFps < 38.0f) {
-                    if (appState_->render.activeParticleCount > kParticleCountMin) {
-                        uint32_t newCount =
-                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 0.95f);
-                        newCount = std::max(newCount, kParticleCountMin);
-                        if (newCount != appState_->render.activeParticleCount) {
-                            appState_->render.activeParticleCount = newCount;
-                            particleCountChanged                  = true;
-                            appState_->lod.lastDecision           = 1;
-                        }
-                    } else if (appState_->render.pixelRatio > 0.7f) {
-                        float pr = appState_->render.pixelRatio - 0.03f;
-                        pr       = std::max(pr, 0.7f);
-                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
-                            appState_->render.pixelRatio = pr;
-                            pixelRatioChanged            = true;
-                            appState_->lod.lastDecision  = 2;
-                        }
-                    }
-                } else if (smoothedFps > 57.0f) {
-                    if (appState_->render.pixelRatio < 1.0f) {
-                        float pr = appState_->render.pixelRatio + 0.03f;
-                        pr       = std::min(pr, 1.0f);
-                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
-                            appState_->render.pixelRatio = pr;
-                            pixelRatioChanged            = true;
-                            appState_->lod.lastDecision  = 3;
-                        }
-                    } else if (appState_->render.activeParticleCount < kParticleCountMax) {
-                        uint32_t newCount =
-                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 1.05f);
-                        newCount = std::min(newCount, kParticleCountMax);
-                        if (newCount != appState_->render.activeParticleCount) {
-                            appState_->render.activeParticleCount = newCount;
-                            particleCountChanged                  = true;
-                            appState_->lod.lastDecision           = 4;
-                        }
-                    }
-                } else {
-                    appState_->lod.lastDecision = 0;
-                }
-
-                if (particleCountChanged || pixelRatioChanged) {
-                    appState_->render.densityComp =
-                        ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
-                }
-            }
-        }
-
-        // 将 UI/LOD 的 activeParticleCount 同步到后端实际渲染/Compute（particleCount_ + Indirect Args）。
-        uint32_t desiredCount = appState_->render.activeParticleCount;
-        desiredCount          = std::max(desiredCount, 1u);
-        desiredCount          = std::min(desiredCount, kParticleCountMax);
-
-        if (desiredCount < kParticleCountMin) {
-            desiredCount = kParticleCountMin;
-        }
-
-        if (desiredCount != appState_->render.activeParticleCount) {
-            appState_->render.activeParticleCount = desiredCount;
-        }
-
-        if (desiredCount != particleCount_) {
-            particleCount_ = desiredCount;
-            if (particleIndirectArgs_ != nullptr && immediateContext_ != nullptr) {
-                // args = { NumVertices(6), NumInstances(particleCount_), StartVertex(0), FirstInstance(0) }
-                immediateContext_->UpdateBuffer(particleIndirectArgs_, sizeof(uint32_t), sizeof(uint32_t),
-                                                &particleCount_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-            }
-        }
-
-        // OpenGL 版：当粒子数或 pixelRatio 发生变化时，重新推导 densityComp（保持亮度/遮蔽观感）。
-        const bool basisChanged = (!lastLodBasisValid_) || desiredCount != prevBasisCount ||
-                                  std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
-        if (basisChanged) {
-            appState_->render.densityComp = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
-            lastLodParticleCount_         = desiredCount;
-            lastLodPixelRatio_            = appState_->render.pixelRatio;
-            lastLodBasisValid_            = true;
-        }
-    }
-
-    // 更新崩溃诊断状态（用于 ErrorHandler 的崩溃报告/对话框）
-    if (appState_ != nullptr) {
-        totalFrameCount_++;
-        bool handActive = false;
-        if (handTracker_ && handTracker_->GetStatus() == HandTracking::Status::Ready) {
-            handActive = handTracker_->GetLatestSample().hasHand;
-        }
-        ErrorHandler::UpdateState(totalFrameCount_, appState_->render.activeParticleCount, appState_->render.pixelRatio,
-                                  handActive /*handTrackingActive*/);
-    }
-
-    // ImGui 新帧
-    if (imgui_) {
-        imgui_->NewFrame();
-
-        // MD3 新帧
-        MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
-        MD3::SetDarkMode(appState_->ui.isDarkMode);
-        MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
-
-        // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
-        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Strong_.RawPtr()) : nullptr,
-                            appState_->ui.enableBlur);
-        // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
-        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
-        MD3::SetNoiseTexture(appState_->ui.enableBlur ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
-        MD3::SetNoiseIntensity((appState_ != nullptr) ? appState_->ui.noiseIntensity : 0.01f);
-
-        // Error dialogs（统一错误处理）
-        ErrorHandler::RenderErrorDialog(frameDt);
-
-        // 崩溃分析器窗口（使用模糊背景）
-        ImTextureID crashBlurTex =
-            appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
-        CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
-                              appState_->ui.isDarkMode);
-
+void DiligentBackend::RenderDebugPanel() {
         // Debug 窗口（默认关闭，F3 切换）- 使用 MD3 无标题栏样式
         if (appState_ != nullptr && appState_->ui.showDebugWindow) {
             ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
@@ -5169,6 +4931,248 @@ void DiligentBackend::RenderFrame() {
 
             ImGui::End();
         }
+}
+
+void DiligentBackend::RenderFrame() {
+    if (!IsInitialized()) {
+        return;
+    }
+
+    // 延迟 resize：避免在 WndProc 的 WM_SIZE 里做重资源操作导致卡顿/假死。
+    // 如果 ResizeBuffers 因 DXGI_ERROR_INVALID_CALL 暂时失败，保持 pending 状态，下一帧继续尝试。
+    if (hasPendingResize_) {
+        const auto target = pendingResize_;
+        Resize(target);
+        if (surfaceSize_.Width == target.Width && surfaceSize_.Height == target.Height) {
+            hasPendingResize_ = false;
+        }
+    }
+
+    // HandTracker：每帧轮询一次初始化状态（非阻塞）。
+    if (handTracker_) {
+        handTracker_->Tick();
+    }
+
+    // 计算帧时间和 FPS（移动平均）
+    const auto now     = std::chrono::steady_clock::now();
+    float      frameDt = 0.0f;
+    if (lastFrameTime_ != std::chrono::steady_clock::time_point{}) {
+        frameDt = std::chrono::duration<float>(now - lastFrameTime_).count();
+        if (frameDt > 0.0f && frameDt < 1.0f) {
+            frameDtSamples_[fpsSampleIndex_] = frameDt;
+            fpsSampleIndex_                  = (fpsSampleIndex_ + 1) % kFpsSampleCount;
+
+            // 计算平均 FPS（帧时间调和平均：N / Σdt）
+            float sumDt = 0.0f;
+            for (int i = 0; i < kFpsSampleCount; ++i) {
+                sumDt += frameDtSamples_[i];
+            }
+            currentFps_ = (sumDt > 0.0f) ? (static_cast<float>(kFpsSampleCount) / sumDt) : 60.0f;
+
+            // FPS 历史曲线采样（低频）
+            fpsHistorySampleTimer_ += frameDt;
+            if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
+                // 使用减法保留超出时间（与 OpenGL 版一致）
+                fpsHistorySampleTimer_ -= kFpsHistorySampleInterval;
+
+                // 获取即将被覆盖的旧值
+                const float oldValue = fpsHistory_[fpsHistoryIndex_];
+                const float newValue = currentFps_;
+
+                fpsHistory_[fpsHistoryIndex_] = newValue;
+                fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
+
+                // 增量更新 min/max 缓存
+                if (fpsHistoryValidCount_ < kFpsHistorySize) {
+                    // 还在填充阶段，直接更新
+                    fpsHistoryValidCount_++;
+                    if (fpsHistoryValidCount_ == 1) {
+                        fpsHistoryCachedMin_ = newValue;
+                        fpsHistoryCachedMax_ = newValue;
+                    } else {
+                        if (newValue < fpsHistoryCachedMin_) {
+                            fpsHistoryCachedMin_ = newValue;
+                        }
+                        if (newValue > fpsHistoryCachedMax_) {
+                            fpsHistoryCachedMax_ = newValue;
+                        }
+                    }
+                } else {
+                    // 缓冲区已满，需要检查旧值是否是极值
+                    bool wasMin = (oldValue <= fpsHistoryCachedMin_ + 0.001f);
+                    bool wasMax = (oldValue >= fpsHistoryCachedMax_ - 0.001f);
+
+                    if (wasMin || wasMax) {
+                        // 旧值是极值，需要重新遍历计算
+                        fpsHistoryCacheDirty_ = true;
+                    } else {
+                        // 旧值不是极值，只需检查新值
+                        if (newValue < fpsHistoryCachedMin_) {
+                            fpsHistoryCachedMin_ = newValue;
+                        }
+                        if (newValue > fpsHistoryCachedMax_) {
+                            fpsHistoryCachedMax_ = newValue;
+                        }
+                    }
+                }
+
+                // 滚动动画时间与采样计时器同步
+                fpsGraphScrollAnimTime_ = fpsHistorySampleTimer_;
+            } else {
+                // 正常累加动画时间
+                fpsGraphScrollAnimTime_ += frameDt;
+            }
+        }
+    }
+    lastFrameTime_ = now;
+
+    // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
+    if (appState_ != nullptr && frameDt > 0.0f) {
+        const uint32_t prevBasisCount =
+            lastLodBasisValid_ ? lastLodParticleCount_ : appState_->render.activeParticleCount;
+        const float prevBasisPR = lastLodBasisValid_ ? lastLodPixelRatio_ : appState_->render.pixelRatio;
+
+        // 确保初始值合理（Diligent 入口不一定会调用 AppState::InitDefaults）
+        if (appState_->render.activeParticleCount == 0) {
+            appState_->render.activeParticleCount = (particleCount_ != 0) ? particleCount_ : kParticleCountMax;
+        }
+        if (appState_->render.pixelRatio <= 0.0f) {
+            appState_->render.pixelRatio = 1.0f;
+        }
+
+        lodUpdateTimer_ += frameDt;
+        if (lodUpdateTimer_ >= 0.5f) {
+            lodUpdateTimer_ = 0.0f;
+
+            if (!appState_->lod.locked) {
+                const float smoothedFps = currentFps_;
+
+                bool particleCountChanged = false;
+                bool pixelRatioChanged    = false;
+
+                // OpenGL 版阈值与步进：
+                // - 低于 38 FPS：优先降低粒子数（*0.95），降到 MIN 后再降 pixelRatio（-0.03，最低 0.7）
+                // - 高于 57 FPS：优先提高 pixelRatio（+0.03，最高 1.0），再提高粒子数（*1.05，最高 MAX）
+                if (smoothedFps < 38.0f) {
+                    if (appState_->render.activeParticleCount > kParticleCountMin) {
+                        uint32_t newCount =
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 0.95f);
+                        newCount = std::max(newCount, kParticleCountMin);
+                        if (newCount != appState_->render.activeParticleCount) {
+                            appState_->render.activeParticleCount = newCount;
+                            particleCountChanged                  = true;
+                            appState_->lod.lastDecision           = 1;
+                        }
+                    } else if (appState_->render.pixelRatio > 0.7f) {
+                        float pr = appState_->render.pixelRatio - 0.03f;
+                        pr       = std::max(pr, 0.7f);
+                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
+                            appState_->render.pixelRatio = pr;
+                            pixelRatioChanged            = true;
+                            appState_->lod.lastDecision  = 2;
+                        }
+                    }
+                } else if (smoothedFps > 57.0f) {
+                    if (appState_->render.pixelRatio < 1.0f) {
+                        float pr = appState_->render.pixelRatio + 0.03f;
+                        pr       = std::min(pr, 1.0f);
+                        if (std::abs(pr - appState_->render.pixelRatio) > 1e-6f) {
+                            appState_->render.pixelRatio = pr;
+                            pixelRatioChanged            = true;
+                            appState_->lod.lastDecision  = 3;
+                        }
+                    } else if (appState_->render.activeParticleCount < kParticleCountMax) {
+                        uint32_t newCount =
+                            static_cast<uint32_t>(static_cast<float>(appState_->render.activeParticleCount) * 1.05f);
+                        newCount = std::min(newCount, kParticleCountMax);
+                        if (newCount != appState_->render.activeParticleCount) {
+                            appState_->render.activeParticleCount = newCount;
+                            particleCountChanged                  = true;
+                            appState_->lod.lastDecision           = 4;
+                        }
+                    }
+                } else {
+                    appState_->lod.lastDecision = 0;
+                }
+
+                if (particleCountChanged || pixelRatioChanged) {
+                    appState_->render.densityComp =
+                        ComputeDensityComp(appState_->render.activeParticleCount, appState_->render.pixelRatio);
+                }
+            }
+        }
+
+        // 将 UI/LOD 的 activeParticleCount 同步到后端实际渲染/Compute（particleCount_ + Indirect Args）。
+        uint32_t desiredCount = appState_->render.activeParticleCount;
+        desiredCount          = std::max(desiredCount, 1u);
+        desiredCount          = std::min(desiredCount, kParticleCountMax);
+
+        if (desiredCount < kParticleCountMin) {
+            desiredCount = kParticleCountMin;
+        }
+
+        if (desiredCount != appState_->render.activeParticleCount) {
+            appState_->render.activeParticleCount = desiredCount;
+        }
+
+        if (desiredCount != particleCount_) {
+            particleCount_ = desiredCount;
+            if (particleIndirectArgs_ != nullptr && immediateContext_ != nullptr) {
+                // args = { NumVertices(6), NumInstances(particleCount_), StartVertex(0), FirstInstance(0) }
+                immediateContext_->UpdateBuffer(particleIndirectArgs_, sizeof(uint32_t), sizeof(uint32_t),
+                                                &particleCount_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+        }
+
+        // OpenGL 版：当粒子数或 pixelRatio 发生变化时，重新推导 densityComp（保持亮度/遮蔽观感）。
+        const bool basisChanged = (!lastLodBasisValid_) || desiredCount != prevBasisCount ||
+                                  std::abs(appState_->render.pixelRatio - prevBasisPR) > 1e-6f;
+        if (basisChanged) {
+            appState_->render.densityComp = ComputeDensityComp(desiredCount, appState_->render.pixelRatio);
+            lastLodParticleCount_         = desiredCount;
+            lastLodPixelRatio_            = appState_->render.pixelRatio;
+            lastLodBasisValid_            = true;
+        }
+    }
+
+    // 更新崩溃诊断状态（用于 ErrorHandler 的崩溃报告/对话框）
+    if (appState_ != nullptr) {
+        totalFrameCount_++;
+        bool handActive = false;
+        if (handTracker_ && handTracker_->GetStatus() == HandTracking::Status::Ready) {
+            handActive = handTracker_->GetLatestSample().hasHand;
+        }
+        ErrorHandler::UpdateState(totalFrameCount_, appState_->render.activeParticleCount, appState_->render.pixelRatio,
+                                  handActive /*handTrackingActive*/);
+    }
+
+    // ImGui 新帧
+    if (imgui_) {
+        imgui_->NewFrame();
+
+        // MD3 新帧
+        MD3::BeginFrame(frameDt > 0.0f ? frameDt : (1.0f / 60.0f));
+        MD3::SetDarkMode(appState_->ui.isDarkMode);
+        MD3::SetScreenSize(static_cast<float>(surfaceSize_.Width), static_cast<float>(surfaceSize_.Height));
+
+        // 传递 Acrylic 合成纹理给 MD3（已包含：饱和度增强 + 近似 exclusion + tint 调制）
+        MD3::SetBlurTexture(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Strong_.RawPtr()) : nullptr,
+                            appState_->ui.enableBlur);
+        // 传递次级模糊纹理（用于折叠区域 Acrylic 效果，1/12 分辨率弱模糊）
+        MD3::SetBlurTexture2(appState_->ui.enableBlur ? static_cast<void*>(uiAcrylicSRV_Weak_.RawPtr()) : nullptr);
+        MD3::SetNoiseTexture(appState_->ui.enableBlur ? static_cast<void*>(uiNoiseSRV_.RawPtr()) : nullptr);
+        MD3::SetNoiseIntensity((appState_ != nullptr) ? appState_->ui.noiseIntensity : 0.01f);
+
+        // Error dialogs（统一错误处理）
+        ErrorHandler::RenderErrorDialog(frameDt);
+
+        // 崩溃分析器窗口（使用模糊背景）
+        ImTextureID crashBlurTex =
+            appState_->ui.enableBlur ? reinterpret_cast<ImTextureID>(uiAcrylicSRV_Strong_.RawPtr()) : 0;
+        CrashAnalyzer::Render(appState_->ui.enableBlur, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
+                              appState_->ui.isDarkMode);
+
+        RenderDebugPanel();
 
         // MD3 帧结束
         MD3::EndFrame();
