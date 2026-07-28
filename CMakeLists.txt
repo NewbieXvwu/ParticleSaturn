@@ -472,6 +472,9 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Win32WindowManager.cpp
     src/Diligent/Settings.cpp
 
+    # Windows 平台外壳单元（D-015 重启 Phase A：外壳职责从 backend/Main 抽出）
+    src/platform/windows/Win32InputMapper.cpp
+
     # MD3 UI system (unified source under src/ui/md3, Diligent backend selected via MD3_BACKEND_DILIGENT)
     src/ui/md3/MD3Theme.cpp
     src/ui/md3/MD3Context.cpp
