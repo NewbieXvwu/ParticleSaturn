@@ -472,6 +472,7 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Win32WindowManager.cpp
 
     # Windows 平台外壳单元（D-015 重启 Phase A：外壳职责从 backend/Main 抽出）
+    src/platform/windows/Win32AppHost.cpp     # Win32 窗口/DPI/后端选择辅助（原 Main.cpp 自由函数平移）
     src/platform/windows/Win32InputMapper.cpp
     src/platform/windows/RegistryStore.cpp  # 注册表持久化（原 src/Diligent/Settings.cpp 平移）
 

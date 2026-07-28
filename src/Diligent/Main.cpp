@@ -16,6 +16,7 @@
 #include "RenderBackend.h"
 #include "Win32WindowManager.h"
 #include "md3/MD3.h"
+#include "platform/windows/Win32AppHost.h"
 #include "platform/windows/Win32InputMapper.h"
 
 namespace {
@@ -23,106 +24,13 @@ namespace {
 constexpr wchar_t kWindowClassName[] = L"ParticleSaturn.Diligent";
 constexpr wchar_t kWindowTitle[]     = L"Particle Saturn (Diligent)";
 
-// 检测 Windows 版本是否支持 DirectComposition 透明窗口 + Mica
-// Win11 22H2+ (Build 22621+) 支持 DWMWA_SYSTEMBACKDROP_TYPE
-// Win10 1803+ (Build 17134+) 支持 WS_EX_NOREDIRECTIONBITMAP 但不支持 Mica
-bool IsDirectCompositionSupported() {
-    // 使用 RtlGetVersion 获取真实版本（不受兼容性 shim 影响）
-    using RtlGetVersionPtr = NTSTATUS(WINAPI*)(PRTL_OSVERSIONINFOW);
-
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (ntdll == nullptr) {
-        return false;
-    }
-
-    auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
-    if (RtlGetVersion == nullptr) {
-        return false;
-    }
-
-    RTL_OSVERSIONINFOW osvi{};
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    if (RtlGetVersion(&osvi) != 0) {
-        return false;
-    }
-
-    // Win10 1803+ (Build 17134+) 支持 WS_EX_NOREDIRECTIONBITMAP + DirectComposition
-    // Win11 (Build 22000+) 支持 Mica
-    // 保守起见，只在 Win10 1809+ (Build 17763+) 启用
-    const bool isWin10_1809OrLater =
-        (osvi.dwMajorVersion > 10) || (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 17763);
-
-    if (isWin10_1809OrLater) {
-        std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << " Build "
-                  << osvi.dwBuildNumber << " - DirectComposition supported" << std::endl;
-        return true;
-    }
-
-    std::cout << "[Main] Windows " << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << " Build "
-              << osvi.dwBuildNumber << " - DirectComposition NOT supported" << std::endl;
-    return false;
-}
-
-// 获取窗口的 DPI 缩放因子（相对于 96 DPI）
-float GetDpiScaleForWindow(HWND hwnd) {
-    // 优先使用 GetDpiForWindow (Win10 1607+)
-    UINT dpi = GetDpiForWindow(hwnd);
-    if (dpi == 0) {
-        // 回退到系统 DPI
-        HDC hdc = GetDC(hwnd);
-        if (hdc) {
-            dpi = static_cast<UINT>(GetDeviceCaps(hdc, LOGPIXELSX));
-            ReleaseDC(hwnd, hdc);
-        }
-    }
-    if (dpi == 0) {
-        dpi = 96; // 默认 96 DPI
-    }
-    return static_cast<float>(dpi) / 96.0f;
-}
-
-ParticleSaturn::Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdLine) {
-    // 优先级：命令行参数 > 注册表 > 默认值
-    //
-    // 支持：
-    //   --backend=d3d11
-    //   --backend=d3d12
-    //   --backend=vulkan
-
-    // 1. 命令行参数优先
-    if (cmdLine.find(L"--backend=vulkan") != std::wstring::npos ||
-        cmdLine.find(L"--backend=vk") != std::wstring::npos) {
-        return ParticleSaturn::Render::Backend::Vulkan;
-    }
-    if (cmdLine.find(L"--backend=d3d11") != std::wstring::npos ||
-        cmdLine.find(L"--backend=dx11") != std::wstring::npos) {
-        return ParticleSaturn::Render::Backend::D3D11;
-    }
-    if (cmdLine.find(L"--backend=d3d12") != std::wstring::npos ||
-        cmdLine.find(L"--backend=dx12") != std::wstring::npos) {
-        return ParticleSaturn::Render::Backend::D3D12;
-    }
-
-    // 2. 注册表次之
-    int savedBackend = Settings::GetSavedBackend();
-    if (savedBackend >= 0 && savedBackend <= 2) {
-        std::cout << "[Main] Using saved backend from registry" << std::endl;
-        return static_cast<ParticleSaturn::Render::Backend>(savedBackend);
-    }
-
-    // 3. 默认 D3D12
-    return ParticleSaturn::Render::Backend::D3D12;
-}
-
-ParticleSaturn::Render::SurfaceSize GetClientSize(HWND hwnd) {
-    RECT rc{};
-    if (!GetClientRect(hwnd, &rc)) {
-        return {};
-    }
-    const auto w = static_cast<uint32_t>(rc.right - rc.left);
-    const auto h = static_cast<uint32_t>(rc.bottom - rc.top);
-    return {w, h};
-}
+// Win32 应用外壳辅助（IsDirectCompositionSupported / GetDpiScaleForWindow /
+// ParseBackendFromCmdLine / GetClientSize）已抽出到
+// ParticleSaturn::Platform::Windows（Win32AppHost.h，D-015 重启 Phase A）。
+using ParticleSaturn::Platform::Windows::GetClientSize;
+using ParticleSaturn::Platform::Windows::GetDpiScaleForWindow;
+using ParticleSaturn::Platform::Windows::IsDirectCompositionSupported;
+using ParticleSaturn::Platform::Windows::ParseBackendFromCmdLine;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto* backend = reinterpret_cast<ParticleSaturn::Render::DiligentBackend*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
