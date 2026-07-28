@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/RenderSeam.h"
 #include "app/state/AppStates.h"
 
 #include <cstdint>
@@ -7,11 +8,9 @@
 
 namespace ParticleSaturn::Platform::MacOS {
 
-struct DrawableSize {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    float scale = 1.0f;
-};
+// 中立化后（D-015 重启）：可绘制表面尺寸的规范定义移入 app/RenderSeam.h，
+// 此处保留 DrawableSize 名字作别名，宿主/全屏/Retina 语义不变。
+using DrawableSize = App::SurfaceSize;
 
 enum class HostAction : std::uint8_t {
     ToggleDebugWindow,

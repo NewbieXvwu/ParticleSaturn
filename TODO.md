@@ -3,7 +3,7 @@
 > **现行工作清单。** 历史与已完成：`docs/MIGRATION_LOG.md`（旧计划原文冻结归档，章节引用 §n）；架构决策：`docs/DECISIONS.md`（D-xxx）；代码库地图：`docs/CODEMAP.md`；技术债明细：`docs/AUDIT_2026-07.md`。
 > **引用约定**：`AUDIT P0-1`~`P3-7` 指审计文档**第一部分**的条目编号（去重后的权威清单，含位置/量化影响/建议）；与本文件的阶段名 P0–P4 是两套编号，审计引用一律带 `AUDIT` 前缀。
 
-> **状态（2026-07-27）**：P0 5/5、P1 5/5、P3 单源试点收束（tonemap+bloom 单源、场景着色器经逐 pass 数据定案不单源）、P4 四后端对比矩阵含逐 pass 指标跑通、性能速修全清。**P2 五项此前被错误地整体推迟到"Windows 环境"——已纠正（2026-07-27 用户裁定）**：每项拆为「代码实现+静态验证（本机必做）」与「Windows 构建/运行验证（遗留）」两段；本机段未完成前不得声称"macOS 可做项全清"。其余未勾项："遗留人工验收"节待真人真机；"Windows 侧"节按 D-015 冻结。
+> **状态（2026-07-27）**：P0 5/5、P1 5/5、P3 单源试点收束（tonemap+bloom 单源、场景着色器经逐 pass 数据定案不单源）、P4 四后端对比矩阵含逐 pass 指标跑通、性能速修全清。**P2 五项此前被错误地整体推迟到"Windows 环境"——已纠正（2026-07-27 用户裁定）**：每项拆为「代码实现+静态验证（本机必做）」与「Windows 构建/运行验证（遗留）」两段；本机段未完成前不得声称"macOS 可做项全清"。其余未勾项："遗留人工验收"节待真人真机；**"Windows 侧"节 D-015 重启已于 2026-07-28 启动（解冻），做满 Phase A+B+C，真机 `192.168.0.114` 可远程编译回验**。
 
 ## 冷启动协议（被要求"按 TODO 干活"时从这里开始）
 
@@ -90,12 +90,17 @@
 - [ ] 摄像头异常状态交互验收（拔线恢复、权限流程；无硬件部分已测）
 - [ ] 四种 macOS 模式构建/启动/呈现/交互总验收；设置持久化、主题、材质、垂直同步、快捷键、LOD 行为对齐（交互部分）
 
-## Windows 侧（冻结中，重启时按 D-015 走窄接缝）
+## Windows 侧（D-015 重启进行中——2026-07-28 解冻，用户裁定做满 A+B+C）
 
+> **重启已启动（2026-07-28 用户裁定）**：D-015 原文"Windows 后端未来作为 IRenderBackend 窄接缝实现接入"指的就是本节；启动此节 = 执行 D-015，而非推翻它。真机就位并验通：`192.168.0.114`（x64 / VS Community 2026 / Vulkan SDK 1.4.335 自带 dxc / DiligentCore 目录就位），经 SSH + PowerShell DefaultShell 通道可远程编译回验；仓库已同步到含 P2 成果的 `2f8c777`，`libs/imgui` 已回钉定 `a726bde`。
+> **三决策已锁（2026-07-28）**：① 接缝中立化——`IRenderBackend/FrameContext/BackendCapabilities/BackendPanelHooks` 从 macOS `AppShell.h` 上提到平台中立头 `src/app/RenderSeam.h`（`DrawableSize`→`SurfaceSize`）；② 新单元落 `src/platform/windows/`（镜像 `src/platform/macos/`）；③ 状态模型收敛（Phase C）**纳入本次重启**——不留两套 `AppState`、不交第二次"重启税"（否认了此前的"触发式延后"，因为启动重启那一刻触发条件即成立，逻辑自我击穿）。
+> **护栏（防"拆完重长"，AUDIT P0-4）**：`DiligentBackend.*` 编译期禁止 include 任何 window/settings/input/MD3 面板头，只允许接缝头 + Diligent + ImGui 绑定；加 CI grep 断言。每 Phase 结束跑对比模式(P4) + smoke，证明逐位不回归（验收铁律）。
+
+- [ ] **Phase A — 拆分（项 98，D-009，AUDIT P0-4）**：建 `src/app/RenderSeam.h` 中立接缝，令 macOS `AppShell` 复用它（本机 Metal 先验证不回归）；`DiligentBackend.cpp`(6221 行) 瘦为纯 GPU 叶子（移除 `appState_/hwnd_/handTracker_` 所有权与 FPS/LOD/anim 成员，`RenderFrame` 改吃 `FrameContext`，实现 `Capabilities/BaselineCaptured`）；越界职责抽出到 `src/platform/windows/`：`Win32AppHost`（吞 Win32 窗口/全屏/DPI/backdrop + `Win32WindowManager`）、`Win32InputMapper`（WndProc 按键/尺寸/DPI → HostAction/AppCommand，不再直戳 AppState 字段）、`Services::Settings::Windows::RegistryStore`（收敛 `Settings.cpp`）、Windows composition root（`wWinMain` 瘦身到只构造+调 RunApp）
+- [ ] **Phase B — 三后端一致恢复（项 96，D-015）**：D3D11/D3D12/Vulkan（同一 `DiligentBackend` 靠 `Backend` enum 分支，非三个类）经外壳跑通并对齐；DComp / D3D11 原生 blit / Vulkan-D3D12 interop 透明路径不回归；接入对比模式(P4) 出行为基线
+- [ ] **Phase C — 状态模型收敛**：Windows `AppState`（src/AppState.h 遗留全局模型）→ 共享 `App::AppState`（src/app/state/AppStates.h）；Windows 与 macOS 共用同一 `RunApp/AppController/FrameCoordinator`；平台特有窗口态（backdrop/material）留在各自 `AppHost` 之后
 - [ ] 旧渲染器回归验证（承接阶段 2 尾项：状态拆分无回归）
-- [ ] Windows 三后端行为一致恢复——方法重定义：作为 IRenderBackend 实现接入，不经 RHI（D-015）
-- [ ] `patches/imgui-md3.patch` 从未格式化基线重生成（2.4MB→数百行，AUDIT P1-10，D-007）
-- [ ] `DiligentBackend.cpp`（6221 行）拆分——依赖方向规则（D-009）确立后进行，防止拆完重长（AUDIT P0-4）
+- [ ] `patches/imgui-md3.patch` 从未格式化基线重生成（2.4MB→数百行，AUDIT P1-10，D-007）；真机 imgui 已备于钉定 `a726bde`
 
 ## 验收铁律（承袭 MIGRATION_LOG §17 并新增）
 
