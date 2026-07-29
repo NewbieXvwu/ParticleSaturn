@@ -2,7 +2,7 @@
 
 #include <Windows.h>
 
-#include "../AppState.h"
+#include "AppState.h"
 
 namespace ParticleSaturn::Win32WindowManager {
 

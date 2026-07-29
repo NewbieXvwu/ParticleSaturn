@@ -4,9 +4,9 @@
 
 #include <chrono>
 
-#include "../AppState.h"
-#include "../ErrorHandler.h"
-#include "../Localization.h"
+#include "AppState.h"
+#include "ErrorHandler.h"
+#include "Localization.h"
 #include "CameraSelector/CameraSelector.h"
 #include "HandTracker.h"
 

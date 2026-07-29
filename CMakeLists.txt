@@ -465,16 +465,24 @@ particlesaturn_apply_third_party_patch(imgui-md3)
 add_executable(ParticleSaturn.Diligent WIN32
     src/Diligent/Main.cpp
     src/Diligent/DiligentBackend.cpp
+    # D-015 后续（cc8e4a）：DiligentBackend 巨物按功能拆出的聚焦 TU（同一类，跨 TU 定义）
+    src/Diligent/DiligentSevenSegment.cpp
+    src/Diligent/DiligentStarField.cpp
+    src/Diligent/DiligentBloom.cpp
+    src/Diligent/DiligentUiComposite.cpp
+    src/Diligent/DiligentParticleSystem.cpp
+    src/Diligent/DiligentRenderTargets.cpp
+    src/Diligent/DiligentPresent.cpp
     src/Diligent/DiligentShaderSources.cpp
     src/Diligent/DirectCompositionSwapChain.cpp
     src/Diligent/VulkanD3D12Interop.cpp
     src/Diligent/ImGuiDiligent.cpp
-    src/Diligent/HandTrackerController.cpp
-    src/Diligent/Win32WindowManager.cpp
+    src/services/hand_tracking/windows/HandTrackerController.cpp  # 手部追踪 Windows 实现（2c35f3：从 src/Diligent 收敛到 services 层，对齐 macOS）
 
     # Windows 平台外壳单元（D-015 重启 Phase A：外壳职责从 backend/Main 抽出）
     src/platform/windows/Win32AppHost.cpp     # Win32 窗口/DPI/后端选择辅助（原 Main.cpp 自由函数平移）
     src/platform/windows/Win32InputMapper.cpp
+    src/platform/windows/Win32WindowManager.cpp  # DWM Backdrop/暗色标题栏（2c35f3：从 src/Diligent 平移到 platform/windows）
     src/platform/windows/RegistryStore.cpp  # 注册表持久化（原 src/Diligent/Settings.cpp 平移）
     src/platform/windows/DiligentDebugPanel.cpp  # MD3 调试/设置面板（原 DiligentBackend.cpp 内联，定义平移）
 
