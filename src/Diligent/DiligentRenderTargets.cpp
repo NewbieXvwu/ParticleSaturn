@@ -73,18 +73,8 @@ bool DiligentBackend::CreateFullscreenQuadPSO() {
 
     RefCntAutoPtr<IShader> vs, ps;
 
-    if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, FullscreenQuad_VS_SPIRV,
-                                      sizeof(FullscreenQuad_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, FullscreenQuad_PS_SPIRV,
-                                      sizeof(FullscreenQuad_PS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, FullscreenQuad_VS_DXBC,
-                                      sizeof(FullscreenQuad_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, FullscreenQuad_PS_DXBC,
-                                      sizeof(FullscreenQuad_PS_DXBC));
-    }
+    vs = PS_SHADER_FROM_BYTECODE(device_, backend_, "FullscreenQuad VS", SHADER_TYPE_VERTEX, FullscreenQuad_VS);
+    ps = PS_SHADER_FROM_BYTECODE(device_, backend_, "FullscreenQuad PS", SHADER_TYPE_PIXEL, FullscreenQuad_PS);
 
     if (vs == nullptr || ps == nullptr) {
         return false;

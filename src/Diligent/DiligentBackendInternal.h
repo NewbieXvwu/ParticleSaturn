@@ -113,6 +113,16 @@ inline RefCntAutoPtr<IShader> CreateShaderFromBytecode(IRenderDevice* device, co
     return shader;
 }
 
+// 按后端选预编译字节码变体建 shader：Vulkan→SPIRV，D3D11/D3D12→DXBC。
+// 用宏是因为两变体是不同符号（symBase##_SPIRV / _DXBC）且 sizeof 须作用于数组本体，
+// 内联函数无法承载。调用点需已 `using namespace ShaderBytecodes;`。
+#define PS_SHADER_FROM_BYTECODE(device, backend, name, shaderType, symBase)          \
+    ((backend) == Backend::Vulkan                                                    \
+         ? CreateShaderFromBytecode((device), (name), (shaderType), symBase##_SPIRV, \
+                                    sizeof(symBase##_SPIRV))                          \
+         : CreateShaderFromBytecode((device), (name), (shaderType), symBase##_DXBC,  \
+                                    sizeof(symBase##_DXBC)))
+
 // 创建 Graphics PSO 的辅助函数
 inline void CreateGraphicsPSO(IRenderDevice* device, const GraphicsPipelineStateCreateInfo& psoCI,
                               IPipelineState** ppPSO) {

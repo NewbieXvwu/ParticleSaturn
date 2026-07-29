@@ -73,18 +73,8 @@ bool DiligentBackend::CreateSevenSegmentPSO() {
 
     RefCntAutoPtr<IShader> vs, ps;
 
-    if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX, SevenSeg_VS_SPIRV,
-                                      sizeof(SevenSeg_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL, SevenSeg_PS_SPIRV,
-                                      sizeof(SevenSeg_PS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "SevenSegment VS", SHADER_TYPE_VERTEX, SevenSeg_VS_DXBC,
-                                      sizeof(SevenSeg_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "SevenSegment PS", SHADER_TYPE_PIXEL, SevenSeg_PS_DXBC,
-                                      sizeof(SevenSeg_PS_DXBC));
-    }
+    vs = PS_SHADER_FROM_BYTECODE(device_, backend_, "SevenSegment VS", SHADER_TYPE_VERTEX, SevenSeg_VS);
+    ps = PS_SHADER_FROM_BYTECODE(device_, backend_, "SevenSegment PS", SHADER_TYPE_PIXEL, SevenSeg_PS);
 
     if (vs == nullptr || ps == nullptr) {
         return false;

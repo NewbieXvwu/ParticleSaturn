@@ -73,26 +73,10 @@ bool DiligentBackend::CreateBloomPSO() {
 
     RefCntAutoPtr<IShader> downVS, downPS, blurVS, blurPS;
 
-    if (backend_ == Backend::Vulkan) {
-        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, BloomDownsample_VS_SPIRV,
-                                          sizeof(BloomDownsample_VS_SPIRV));
-        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, BloomDownsample_PS_SPIRV,
-                                          sizeof(BloomDownsample_PS_SPIRV));
-        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, BloomBlur_VS_SPIRV,
-                                          sizeof(BloomBlur_VS_SPIRV));
-        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, BloomBlur_PS_SPIRV,
-                                          sizeof(BloomBlur_PS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        downVS = CreateShaderFromBytecode(device_, "BloomDownsample VS", SHADER_TYPE_VERTEX, BloomDownsample_VS_DXBC,
-                                          sizeof(BloomDownsample_VS_DXBC));
-        downPS = CreateShaderFromBytecode(device_, "BloomDownsample PS", SHADER_TYPE_PIXEL, BloomDownsample_PS_DXBC,
-                                          sizeof(BloomDownsample_PS_DXBC));
-        blurVS = CreateShaderFromBytecode(device_, "BloomBlur VS", SHADER_TYPE_VERTEX, BloomBlur_VS_DXBC,
-                                          sizeof(BloomBlur_VS_DXBC));
-        blurPS = CreateShaderFromBytecode(device_, "BloomBlur PS", SHADER_TYPE_PIXEL, BloomBlur_PS_DXBC,
-                                          sizeof(BloomBlur_PS_DXBC));
-    }
+    downVS = PS_SHADER_FROM_BYTECODE(device_, backend_, "BloomDownsample VS", SHADER_TYPE_VERTEX, BloomDownsample_VS);
+    downPS = PS_SHADER_FROM_BYTECODE(device_, backend_, "BloomDownsample PS", SHADER_TYPE_PIXEL, BloomDownsample_PS);
+    blurVS = PS_SHADER_FROM_BYTECODE(device_, backend_, "BloomBlur VS", SHADER_TYPE_VERTEX, BloomBlur_VS);
+    blurPS = PS_SHADER_FROM_BYTECODE(device_, backend_, "BloomBlur PS", SHADER_TYPE_PIXEL, BloomBlur_PS);
 
     if (downVS == nullptr || downPS == nullptr || blurVS == nullptr || blurPS == nullptr) {
         return false;

@@ -225,14 +225,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
 
     RefCntAutoPtr<IShader> cs;
 
-    if (backend_ == Backend::Vulkan) {
-        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, SaturnInit_CS_SPIRV,
-                                      sizeof(SaturnInit_CS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        cs = CreateShaderFromBytecode(device_, "SaturnInit CS", SHADER_TYPE_COMPUTE, SaturnInit_CS_DXBC,
-                                      sizeof(SaturnInit_CS_DXBC));
-    }
+    cs = PS_SHADER_FROM_BYTECODE(device_, backend_, "SaturnInit CS", SHADER_TYPE_COMPUTE, SaturnInit_CS);
 
     if (cs == nullptr) {
         MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleInitPSO] Compute shader creation failed");
@@ -494,18 +487,8 @@ bool DiligentBackend::CreateParticlePSO() {
 
     RefCntAutoPtr<IShader> vs, ps;
 
-    if (backend_ == Backend::Vulkan) {
-        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, SaturnParticle_VS_SPIRV,
-                                      sizeof(SaturnParticle_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, SaturnParticle_PS_SPIRV,
-                                      sizeof(SaturnParticle_PS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "SaturnParticle VS", SHADER_TYPE_VERTEX, SaturnParticle_VS_DXBC,
-                                      sizeof(SaturnParticle_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "SaturnParticle PS", SHADER_TYPE_PIXEL, SaturnParticle_PS_DXBC,
-                                      sizeof(SaturnParticle_PS_DXBC));
-    }
+    vs = PS_SHADER_FROM_BYTECODE(device_, backend_, "SaturnParticle VS", SHADER_TYPE_VERTEX, SaturnParticle_VS);
+    ps = PS_SHADER_FROM_BYTECODE(device_, backend_, "SaturnParticle PS", SHADER_TYPE_PIXEL, SaturnParticle_PS);
 
     if (vs == nullptr || ps == nullptr) {
         return false;
@@ -702,14 +685,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
 
     RefCntAutoPtr<IShader> cs;
 
-    if (backend_ == Backend::Vulkan) {
-        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, SaturnCompute_CS_SPIRV,
-                                      sizeof(SaturnCompute_CS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        cs = CreateShaderFromBytecode(device_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, SaturnCompute_CS_DXBC,
-                                      sizeof(SaturnCompute_CS_DXBC));
-    }
+    cs = PS_SHADER_FROM_BYTECODE(device_, backend_, "SaturnCompute CS", SHADER_TYPE_COMPUTE, SaturnCompute_CS);
 
     if (cs == nullptr) {
         MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleComputePSO] Compute shader creation failed");

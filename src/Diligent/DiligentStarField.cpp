@@ -148,15 +148,8 @@ bool DiligentBackend::CreateStarfieldPSO() {
 
     RefCntAutoPtr<IShader> vs, ps;
 
-    if (backend_ == Backend::Vulkan) {
-        vs =
-            CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX, Star_VS_SPIRV, sizeof(Star_VS_SPIRV));
-        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL, Star_PS_SPIRV, sizeof(Star_PS_SPIRV));
-    } else {
-        // D3D11/D3D12 use DXBC
-        vs = CreateShaderFromBytecode(device_, "Starfield VS", SHADER_TYPE_VERTEX, Star_VS_DXBC, sizeof(Star_VS_DXBC));
-        ps = CreateShaderFromBytecode(device_, "Starfield PS", SHADER_TYPE_PIXEL, Star_PS_DXBC, sizeof(Star_PS_DXBC));
-    }
+    vs = PS_SHADER_FROM_BYTECODE(device_, backend_, "Starfield VS", SHADER_TYPE_VERTEX, Star_VS);
+    ps = PS_SHADER_FROM_BYTECODE(device_, backend_, "Starfield PS", SHADER_TYPE_PIXEL, Star_PS);
 
     if (vs == nullptr || ps == nullptr) {
         return false;
