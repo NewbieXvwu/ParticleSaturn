@@ -104,4 +104,31 @@ Render::SurfaceSize GetClientSize(HWND hwnd) {
     return {w, h};
 }
 
+void ToggleFullscreen(HWND hwnd, AppState& state) {
+    state.window.fullscreen = !state.window.fullscreen;
+    if (state.window.fullscreen) {
+        // 保存窗口位置
+        RECT wr;
+        GetWindowRect(hwnd, &wr);
+        state.window.windowedX      = wr.left;
+        state.window.windowedY      = wr.top;
+        state.window.windowedWidth  = wr.right - wr.left;
+        state.window.windowedHeight = wr.bottom - wr.top;
+        // 进入全屏
+        HMONITOR    hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi   = {sizeof(mi)};
+        GetMonitorInfoW(hMon, &mi);
+        SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top,
+                     mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
+                     SWP_FRAMECHANGED | SWP_NOACTIVATE);
+    } else {
+        // 退出全屏
+        SetWindowLongPtrW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+        SetWindowPos(hwnd, nullptr, state.window.windowedX, state.window.windowedY,
+                     state.window.windowedWidth, state.window.windowedHeight,
+                     SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+}
+
 } // namespace ParticleSaturn::Platform::Windows

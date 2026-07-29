@@ -1,4 +1,4 @@
-#include "FrameCoordinator.h"
+﻿#include "FrameCoordinator.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +29,7 @@ void FrameCoordinator::UpdateLod(AppState& state, double elapsedSeconds) {
     if (elapsedSeconds <= 0.0) return;
     const float frameSeconds = static_cast<float>(elapsedSeconds);
     state.lod.smoothedFrameSeconds += (frameSeconds - state.lod.smoothedFrameSeconds) * 0.1f;
+    if (!lodEnabled_) return;
     if (state.lod.locked) return;
 
     constexpr float SlowFrameSeconds = 1.0f / 50.0f;

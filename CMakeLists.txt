@@ -483,6 +483,11 @@ add_executable(ParticleSaturn.Diligent WIN32
     src/ui/md3/MD3Context.cpp
     src/ui/md3/MD3Widgets.cpp
 
+    # 跨平台共享的 MD3 调试/设置面板（D-015 Phase B）。直接编入本 exe 以随目标带上
+    # MD3_BACKEND_DILIGENT（void* 纹理布局），不链接 ParticleSaturnMd3Panel 静态库
+    # （后者以默认 MD3 布局构建，与本 exe 的 Diligent 布局 ABI 不兼容）。
+    src/ui/panel/Md3Panel.cpp
+
     # Camera selector (used by HandTracker)
     src/CameraSelector/CameraEnumerator.cpp
     src/CameraSelector/CameraPreview.cpp
@@ -525,6 +530,7 @@ target_link_libraries(ParticleSaturn.Diligent PRIVATE
     Diligent-GraphicsEngineVk-static
     Diligent-GraphicsTools    # For RenderStateCache
     Diligent-Archiver-static  # For shader caching
+    ParticleSaturnAppCore     # AppController/FrameCoordinator（无 MD3 依赖，AppState 布局与后端无关）
     dwmapi
     dcomp
     d3d11

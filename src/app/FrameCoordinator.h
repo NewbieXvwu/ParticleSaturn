@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "AppController.h"
 
@@ -31,6 +31,11 @@ public:
 
     FrameSnapshot Advance(AppController& controller, double elapsedSeconds, const GestureInput& gesture = {});
 
+    // 动态 LOD 开关（默认开启）。macOS 三后端由本协调器统一做 LOD；Windows Diligent
+    // 后端保留其自有的 38/57 FPS 阈值 + densityCompensation + IndirectArgs 同步，
+    // 故外壳将其关闭，只借用本协调器的固定步长相机动画与平滑帧时度量。
+    void SetLodEnabled(bool enabled) { lodEnabled_ = enabled; }
+
 private:
     void Update(AppState& state, const GestureInput& gesture);
     void UpdateLod(AppState& state, double elapsedSeconds);
@@ -38,6 +43,7 @@ private:
     double fixedStepSeconds_;
     double accumulator_ = 0.0;
     std::uint64_t frameIndex_ = 0;
+    bool lodEnabled_ = true;
 };
 
 } // namespace ParticleSaturn::App

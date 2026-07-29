@@ -1,5 +1,7 @@
 #include <windows.h>
 
+#include <algorithm>
+#include <chrono>
 #include <imm.h> // IME 控制
 #include <iostream>
 #include <shellscalingapi.h> // GetDpiForWindow (Win10 1607+)
@@ -13,11 +15,18 @@
 #include "../Localization.h"
 #include "../Settings.h"
 #include "DiligentBackend.h"
+#include "HandTrackerController.h"
 #include "RenderBackend.h"
 #include "Win32WindowManager.h"
+#include "app/AppController.h"
+#include "app/FpsMeter.h"
+#include "app/FrameCoordinator.h"
+#include "app/RenderSeam.h"
 #include "md3/MD3.h"
+#include "md3/MD3Log.h"
 #include "platform/windows/Win32AppHost.h"
 #include "platform/windows/Win32InputMapper.h"
+#include "ui/panel/Md3Panel.h"
 
 namespace {
 
@@ -65,10 +74,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     // 最早的日志：使用 OutputDebugString，在任何 C++ 初始化之前
     OutputDebugStringW(L"[ParticleSaturn] wWinMain entry\n");
 
-    // 将 stdout/stderr 重定向到 DebugLog（用于 ImGui 日志面板）
+    // 将 stdout/stderr 重定向到 MD3::DebugLog（供共享 RenderMd3Panel 的 Log 区展示）
     // 说明：DebugStreamBuf 会同时把内容写回原始 streambuf，因此 DebugView/VS Output 里仍能看到。
-    static DebugStreamBuf s_debugOut(std::cout.rdbuf(), LogLevel::Info);
-    static DebugStreamBuf s_debugErr(std::cerr.rdbuf(), LogLevel::Error);
+    static MD3::DebugStreamBuf s_debugOut(std::cout.rdbuf(), MD3::LogLevel::Info);
+    static MD3::DebugStreamBuf s_debugErr(std::cerr.rdbuf(), MD3::LogLevel::Error);
     std::cout.rdbuf(&s_debugOut);
     std::cerr.rdbuf(&s_debugErr);
 
@@ -153,8 +162,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     OutputDebugStringW(L"[ParticleSaturn] Creating DiligentBackend\n");
     ParticleSaturn::Render::DiligentBackend backend{};
-    AppState                                appState{};
+    // AppController 作为 AppState 单一真源；appState 作为其内部状态的引用别名，
+    // 原有全部初始化/Init/WndProc/SaveSession 均共享这一份状态（D-015 Phase B）。
+    ParticleSaturn::App::AppController controller{};
+    AppState&                               appState = controller.MutableState();
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&backend));
+    backend.SetController(&controller);
 
     // 标记是否支持透明效果（影响后续 SwapChain 选择和 UI 显示）
     appState.backdrop.transparentSupported = useDComp;
@@ -221,6 +234,150 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     ErrorHandler::SetStage(ErrorHandler::AppStage::RENDER_LOOP);
     std::cout << "[Main] Diligent backend initialized" << std::endl;
 
+    // D-015 Phase B（全对称上移）：手部追踪由外壳持有，与 macOS 外壳一致。后端不再
+    // 引用 HandTracking::Controller，只经 FrameContext.handTracked 得知本帧有无手。
+    // 模型随可执行文件分发（构建时把 HandTracker/models 复制到 exe 同目录）。
+    ParticleSaturn::HandTracking::Controller handTracker;
+    if (handTracker.Init(hwnd, &appState)) {
+        // 非阻塞启动：后续每帧在 pollGesture() 里 Tick() 轮询就绪状态。
+        handTracker.StartWithCameraSelector(false);
+    }
+
+    // D-002 帧高度接缝 / D-015 Phase B：Win32 外壳帧循环。
+    // 外壳职责（接缝以上）：固定步长推进相机动画（FrameCoordinator，与 macOS 共享）、
+    // FPS 度量（FpsMeter，D-001 单一实现）、每帧组装 FrameContext 交给后端渲染。
+    // Diligent 后端保留其自有的 38/57 FPS 动态 LOD（densityCompensation + IndirectArgs），
+    // 故此处关闭协调器 LOD，只借用其相机动画与平滑帧时度量。
+    ParticleSaturn::App::FrameCoordinator coordinator;
+    coordinator.SetLodEnabled(false);
+    ParticleSaturn::App::FpsMeter fpsMeter;
+    auto lastFrameTime = std::chrono::steady_clock::now();
+
+    // 手部追踪 → 平台中立手势：轮询追踪器，就绪且有手时归一化原始 scale/rotX/rotY
+    // （灵敏度/反转由 FrameCoordinator 统一施加，与 macOS 手势路径一致）。
+    auto pollGesture = [&]() -> ParticleSaturn::App::GestureInput {
+        ParticleSaturn::App::GestureInput gesture;
+        handTracker.Tick();
+        if (handTracker.GetStatus() == ParticleSaturn::HandTracking::Status::Ready) {
+            const ParticleSaturn::HandTracking::Sample sample = handTracker.GetLatestSample();
+            if (sample.hasHand) {
+                gesture.tracked             = true;
+                gesture.hasAbsolutePose     = true;
+                gesture.scale               = sample.scale;
+                gesture.rotationXNormalized = sample.rotX;
+                gesture.rotationYNormalized = sample.rotY;
+            }
+        }
+        return gesture;
+    };
+
+    // 面板由外壳绘制（接缝以上）：后端在其 ImGui 帧内回调 frame.drawPanel(BuildPanelHooks())，
+    // 把每帧仅在渲染期有效的 acrylic 纹理经 hooks 交给外壳。外壳据此组装共享
+    // RenderMd3Panel 的能力位/手部状态/回调——Windows 独有特性（后端切换、Mesh Shader、
+    // 透明合成、SIMD、摄像头选择、追踪器调试/错误码/星数）全部由外壳按契约点亮。
+    const std::function<void(const ParticleSaturn::App::BackendPanelHooks&)> drawPanel =
+        [&](const ParticleSaturn::App::BackendPanelHooks& hooks) {
+            using ParticleSaturn::Render::Backend;
+            const Backend curBackend = backend.GetBackend();
+
+            // 能力位 + Windows 扩展。
+            ParticleSaturn::UI::Md3PanelBackendFeatures features;
+            features.analyticParticles           = backend.Capabilities().analyticParticles;
+            features.objectShaderParticles       = backend.Capabilities().objectShaderParticles;
+            features.meshShaderSupported         = backend.MeshShaderSupported();
+            features.meshShaderEnabled           = backend.MeshShaderEnabled();
+            features.starCount                   = backend.StarCount();
+            features.backendOptions              = {"D3D11", "D3D12", "Vulkan"};
+            features.backendIndex                = static_cast<int>(curBackend);
+            features.transparentBackdropSupported =
+                appState.backdrop.transparentSupported &&
+                (curBackend == Backend::D3D12 || curBackend == Backend::D3D11);
+            features.transparentBackdropEnabled = appState.backdrop.useTransparent;
+
+            // 手部追踪状态（由外壳持有的 handTracker 直接汇报）。
+            using Tracker = ParticleSaturn::UI::Md3PanelHandTrackingStatus::Tracker;
+            ParticleSaturn::UI::Md3PanelHandTrackingStatus handStatus;
+            const ParticleSaturn::HandTracking::Status st = handTracker.GetStatus();
+            switch (st) {
+            case ParticleSaturn::HandTracking::Status::Ready:
+                handStatus.tracker = Tracker::Ready;
+                break;
+            case ParticleSaturn::HandTracking::Status::Starting:
+            case ParticleSaturn::HandTracking::Status::NotStarted:
+                handStatus.tracker = Tracker::Initializing;
+                break;
+            case ParticleSaturn::HandTracking::Status::Failed:
+                handStatus.tracker = Tracker::Failed;
+                break;
+            default:
+                handStatus.tracker = Tracker::Unavailable;
+                break;
+            }
+            handStatus.selectedCamera = handTracker.GetSelectedCamera();
+            if (st == ParticleSaturn::HandTracking::Status::Failed) {
+                handStatus.errorCode    = handTracker.GetLastErrorCode();
+                handStatus.errorMessage = handTracker.GetLastErrorMessageUtf8();
+            }
+            if (st == ParticleSaturn::HandTracking::Status::Ready) {
+                const ParticleSaturn::HandTracking::Sample sample = handTracker.GetLatestSample();
+                handStatus.handDetected = sample.hasHand;
+                handStatus.rawScale     = sample.scale;
+                handStatus.rawRotX      = sample.rotX;
+                handStatus.rawRotY      = sample.rotY;
+            }
+            int simdMode = 0;
+            if (handTracker.GetSIMDMode(&simdMode)) {
+                handStatus.simdSupported      = true;
+                handStatus.simdMode           = simdMode;
+                handStatus.simdImplementation = handTracker.GetSIMDImplementation();
+            }
+            bool debugEnabled = false;
+            if (handTracker.GetDebugMode(&debugEnabled)) {
+                handStatus.debugMode = debugEnabled;
+            }
+
+            // 面板回调（平台动作：外壳/后端/追踪器分发；未设置的控件由面板自动隐藏）。
+            ParticleSaturn::UI::Md3PanelCallbacks callbacks;
+            callbacks.save             = [&] { Settings::SaveSession(appState, backend.GetBackend()); };
+            callbacks.toggleFullscreen = [&] {
+                ParticleSaturn::Platform::Windows::ToggleFullscreen(hwnd, appState);
+            };
+            callbacks.showCameraSelector = [&] { handTracker.RestartWithCameraSelector(true); };
+            callbacks.restartApplication = [&] {
+                if (Settings::RestartWithBackend(backend.GetBackend(), appState)) {
+                    PostQuitMessage(0);
+                }
+            };
+            callbacks.setSimdMode         = [&](int mode) { handTracker.SetSIMDMode(mode); };
+            callbacks.setHandDebugMode    = [&](bool enabled) { handTracker.SetDebugMode(enabled); };
+            callbacks.setMeshShaderEnabled = [&](bool enabled) { backend.SetMeshShaderEnabled(enabled); };
+            callbacks.switchBackend       = [&](int index) {
+                const auto newBackend = static_cast<Backend>(index);
+                if (newBackend != backend.GetBackend() && Settings::RestartWithBackend(newBackend, appState)) {
+                    PostQuitMessage(0);
+                }
+            };
+            callbacks.setTransparentBackdrop = [&](bool transparent) {
+                const int newMode = transparent ? 3 : 0; // 透明=Mica，不透明=Solid
+                if (backend.SetBackdropMode(newMode)) {
+                    for (int i = 0; i < static_cast<int>(appState.backdrop.availableBackdrops.size()); ++i) {
+                        if (appState.backdrop.availableBackdrops[i] == newMode) {
+                            appState.backdrop.backdropIndex = i;
+                            break;
+                        }
+                    }
+                }
+            };
+            callbacks.drawAcrylicBackground = hooks.drawAcrylicBackground;
+            callbacks.drawGraphAcrylic      = hooks.drawGraphAcrylic;
+
+            const char* const backendName = (curBackend == Backend::D3D11)    ? "D3D11"
+                                            : (curBackend == Backend::Vulkan) ? "Vulkan"
+                                                                              : "D3D12";
+            ParticleSaturn::UI::RenderMd3Panel(controller, backendName, fpsMeter.Value(), features, callbacks,
+                                               handStatus);
+        };
+
     MSG msg{};
     while (true) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -238,6 +395,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                 }
                 Settings::SaveSession(appState, requestedBackend);
 
+                handTracker.Shutdown();
                 backend.Shutdown();
                 ErrorHandler::SetStage(ErrorHandler::AppStage::SHUTDOWN);
                 return static_cast<int>(msg.wParam);
@@ -246,6 +404,30 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             DispatchMessageW(&msg);
         }
 
-        backend.RenderFrame();
+        // 1) 计算本帧 dt（限幅 [0,0.25]，与 macOS 外壳一致）。
+        const auto now = std::chrono::steady_clock::now();
+        const float deltaTime =
+            std::clamp(std::chrono::duration<float>(now - lastFrameTime).count(), 0.0f, 0.25f);
+        lastFrameTime = now;
+
+        // 2) 手部追踪 → 归一化手势；固定步长推进相机动画（写入 state.scene.*）。
+        const ParticleSaturn::App::GestureInput gesture = pollGesture();
+        coordinator.Advance(controller, deltaTime, gesture);
+        fpsMeter.AddSample(deltaTime);
+
+        // 3) 组装本帧接缝上下文并交给后端渲染一帧。
+        const auto client = GetClientSize(hwnd);
+        appState.window.width  = client.Width;
+        appState.window.height = client.Height;
+        const ParticleSaturn::App::SurfaceSize drawable{client.Width, client.Height, appState.window.dpiScale};
+        const ParticleSaturn::App::FrameContext context{appState,
+                                                        deltaTime,
+                                                        gesture.tracked,
+                                                        gesture,
+                                                        fpsMeter.Value(),
+                                                        drawable,
+                                                        appState.window.fullscreen,
+                                                        drawPanel};
+        backend.RenderFrame(context);
     }
 }

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "../AppState.h"
+#include "app/RenderSeam.h"
 #include "Buffer.h"
 #include "BufferView.h"
 #include "DeviceContext.h"
@@ -26,13 +27,13 @@ namespace ParticleSaturn::UI {
 class ImGuiDiligent;
 }
 
-namespace ParticleSaturn::HandTracking {
-class Controller;
+namespace ParticleSaturn::App {
+class AppController;
 }
 
 namespace ParticleSaturn::Render {
 
-class DiligentBackend final {
+class DiligentBackend final : public App::IRenderBackend {
   public:
     DiligentBackend();
     ~DiligentBackend();
@@ -52,7 +53,16 @@ class DiligentBackend final {
 
     void Resize(SurfaceSize newSize);
     void RequestResize(SurfaceSize newSize);
-    void RenderFrame();
+
+    // ============================================================================
+    // D-002 帧高度接缝端点：Diligent 后端经 App::IRenderBackend 接入 Win32 外壳。
+    // 外壳每帧交付 FrameContext（已由 FrameCoordinator 推进相机动画 + FpsMeter 度量），
+    // 后端读取 state.scene.* / deltaTime / framesPerSecond 渲染一帧。
+    // ============================================================================
+    bool RenderFrame(const App::FrameContext& frame) override;
+    const App::BackendCapabilities& Capabilities() const override { return capabilities_; }
+    // Windows Diligent 无确定性基线捕获路径（对比实验的基线由 macOS 侧负责）。
+    bool BaselineCaptured() const override { return false; }
 
     // 处理 Win32 消息（ImGui 输入）
     bool HandleWin32Message(HWND hwnd, unsigned int msg, unsigned long long wParam, long long lParam);
@@ -63,6 +73,14 @@ class DiligentBackend final {
 
     Backend GetBackend() const { return backend_; }
 
+    // D-015 Phase B（全对称）：MD3 面板已上移到 Win32 外壳，外壳按后端能力组装
+    // 共享的 Md3PanelBackendFeatures 并驱动 Mesh Shader 开关，故后端公开以下只读
+    // 能力与设置入口（Mesh Shader 状态仍由后端持有，因其决定 PSO 选择）。
+    bool          MeshShaderSupported() const { return meshShaderSupported_; }
+    bool          MeshShaderEnabled() const { return useMeshShaders_; }
+    void          SetMeshShaderEnabled(bool enabled);
+    std::uint32_t StarCount() const { return starCount_; }
+
     bool IsInitialized() const {
         return swapChain_ != nullptr || dcompSwapChain_.IsInitialized() ||
                (useVkD3D12Interop_ && vkD3D12Interop_ && vkD3D12Interop_->IsInitialized());
@@ -71,6 +89,11 @@ class DiligentBackend final {
     const std::wstring& GetLastError() const { return lastError_; }
 
     AppState* GetAppState() const { return appState_; }
+
+    // D-015 Phase B：Windows 外壳用共享 RenderMd3Panel 时，面板需要 AppController
+    // 作为状态单一真源。由 Main.cpp 在构造后注入（生命周期由调用方管理）。
+    void SetController(App::AppController* controller) { controller_ = controller; }
+    App::AppController* GetController() const { return controller_; }
 
   private:
     void SetLastError(const wchar_t* msg) { lastError_ = (msg != nullptr) ? msg : L""; }
@@ -107,8 +130,9 @@ class DiligentBackend final {
     void UpdateFullscreenQuadBindings();
     void SimulateParticles(float dt, float handScale, float handHas);
     void RenderSevenSegmentFPS();
-    // MD3 调试/设置面板（从 RenderFrame 抽出；仍在同一 GPU 叶子内，后续再迁到 Windows 外壳）
-    void RenderDebugPanel();
+    // D-015 Phase B（全对称）：MD3 面板内容已上移到 Win32 外壳（接缝之上）。后端只在
+    // 其 ImGui 编码点经此构造本帧 acrylic 纹理钩子，交由 FrameContext::drawPanel 使用。
+    App::BackendPanelHooks BuildPanelHooks();
 
     // Debug Log Panel icons (pause/resume)
     Diligent::ITextureView* GetOrCreateLogControlIconSRV(bool pausedState /* true=resume icon, false=pause icon */);
@@ -129,6 +153,10 @@ class DiligentBackend final {
     Backend      backend_ = Backend::D3D12;
     SurfaceSize  surfaceSize_{};
     std::wstring lastError_;
+
+    // 帧高度接缝能力申报（D-004）：Diligent 粒子路径为 compute + vertex/mesh pulling，
+    // 不属于 GL41 解析式双策略或 Metal object/mesh shader，两项均 false，无声明分歧。
+    App::BackendCapabilities capabilities_{};
 
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice>  device_;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediateContext_;
@@ -189,18 +217,16 @@ class DiligentBackend final {
     Diligent::IShaderResourceVariable* particleSRVVar_     = nullptr; // g_Particles (vertex)
 
     std::chrono::steady_clock::time_point startTime_    = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point lastAnimTime_ = std::chrono::steady_clock::time_point{};
-    float                                 animAutoTime_ = 0.0f;
-    float                                 animScale_    = 1.0f;
-    float                                 animRotX_     = 0.4f;
-    float                                 animRotY_     = 0.0f;
 
-    // FPS 计算（帧时间调和平均）
-    static constexpr int                  kFpsSampleCount = 60;
-    float                                 frameDtSamples_[kFpsSampleCount]{};
-    int                                   fpsSampleIndex_ = 0;
-    float                                 currentFps_     = 60.0f;
-    std::chrono::steady_clock::time_point lastFrameTime_{};
+    // D-015 Phase B：相机动画（自动正弦 / 手部绝对姿态）的平滑已上移到共享
+    // App::FrameCoordinator（外壳固定步长驱动，结果写入 state.scene.*）。后端不再
+    // 持有 anim* 局部平滑量，只在渲染时读取 state.scene.zoom/rotationX/rotationY。
+    // 外壳每帧经 FrameContext 交付这两个量，供粒子物理 SimulateParticles 使用。
+    float frameDeltaTime_ = 0.0f; // 本帧 dt（来自 FrameContext.deltaTime）
+    bool  handTracked_    = false; // 本帧是否有手（来自 FrameContext.handTracked）
+
+    // FPS（度量已上移到外壳 App::FpsMeter；后端仅缓存本帧值供七段管显示与 LOD 用）
+    float currentFps_ = 60.0f;
 
     // 动态 LOD（对齐 OpenGL：每 0.5s 检查一次，自动调节粒子数与 pixelRatio）
     float    lodUpdateTimer_       = 0.0f;
@@ -208,25 +234,6 @@ class DiligentBackend final {
     float    lastLodPixelRatio_    = 0.0f;
     bool     lastLodBasisValid_    = false;
     int      totalFrameCount_      = 0;
-
-    // FPS 历史曲线（低频采样）
-    static constexpr int   kFpsHistorySize = 60;
-    float                  fpsHistory_[kFpsHistorySize]{};
-    int                    fpsHistoryIndex_          = 0;
-    float                  fpsHistorySampleTimer_    = 0.0f;
-    static constexpr float kFpsHistorySampleInterval = 0.05f; // 50ms 采样一次 (与 OpenGL 版一致)
-
-    // FPS 曲线增量更新缓存
-    float fpsHistoryCachedMin_  = 0.0f;   // 缓存的最小值
-    float fpsHistoryCachedMax_  = 120.0f; // 缓存的最大值
-    bool  fpsHistoryCacheDirty_ = true;   // 缓存是否需要重新计算
-    int   fpsHistoryValidCount_ = 0;      // 有效数据点数量
-
-    // FPS 曲线动画
-    float fpsGraphAnimMinVal_     = 0.0f;   // Y 轴最小值动画
-    float fpsGraphAnimMaxVal_     = 120.0f; // Y 轴最大值动画
-    float fpsGraphScrollAnimTime_ = 0.0f;   // 滚动动画累计时间（用于平滑滚动）
-    bool  fpsGraphFirstFrame_     = true;   // 首帧标记
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         starPSO_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> starSRB_;
@@ -272,9 +279,10 @@ class DiligentBackend final {
 
     // Bloom constants for fullscreen quad
     Diligent::RefCntAutoPtr<Diligent::IBuffer> bloomConstants_;
-    float                                      bloomStrength_             = 0.5f;
+    // D-015 Phase B：Bloom 开关/强度已迁入共享 AppState.render（bloomEnabled /
+    // bloomBlurStrength），RenderBloom / D3D11 原生 blit 直接读 state，共享面板直接改 state。
+    // 仅保留“开启透明前的辉光值”作为后端瞬态，供关闭透明时恢复到 state。
     float                                      bloomStrengthBeforeTransp_ = 0.5f; // 开启透明前的辉光值
-    bool                                       bloomEnabled_              = true; // Bloom 开关（默认启用）
 
     // Bloom blur pipeline（低分辨率 Kawase blur）
     Diligent::RefCntAutoPtr<Diligent::IPipelineState>         bloomDownsamplePSO_;
@@ -365,11 +373,11 @@ class DiligentBackend final {
     std::unique_ptr<UI::ImGuiDiligent> imgui_;
     HWND                               hwnd_ = nullptr;
 
-    // Hand tracking (MediaPipe/TFLite via HandTracker library)
-    std::unique_ptr<HandTracking::Controller> handTracker_;
-
     // 全局应用状态（由外部传入，生命周期由调用方管理）
     AppState* appState_ = nullptr;
+
+    // 共享面板状态源（由外部传入，生命周期由调用方管理；见 SetController）。
+    App::AppController* controller_ = nullptr;
 };
 
 } // namespace ParticleSaturn::Render

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace ParticleSaturn::App {
 class AppController;
@@ -40,6 +41,11 @@ struct Md3PanelCallbacks {
     std::function<void(bool)> setHandDebugMode;
     // D3D12 Mesh Shader 开关（仅在 features.meshShaderSupported 时点亮）。
     std::function<void(bool)> setMeshShaderEnabled;
+    // Windows 后端切换（D3D11/D3D12/Vulkan 等，需重启）；设置后 Window 区显示后端下拉。
+    // 与 macOS 的“Graphics API”下拉互斥：设置了 switchBackend 即隐藏 Graphics API 下拉。
+    std::function<void(int)> switchBackend;
+    // Windows 透明/背景材质切换（透明桌面合成）；受 features.transparentBackdropSupported 门控。
+    std::function<void(bool)> setTransparentBackdrop;
 };
 
 struct Md3PanelHandTrackingStatus {
@@ -78,6 +84,13 @@ struct Md3PanelBackendFeatures {
     bool meshShaderSupported = false;  // 硬件+后端支持 Mesh Shader（D3D12）。
     bool meshShaderEnabled = false;    // 当前是否启用（受 setMeshShaderEnabled 控制）。
     std::uint32_t starCount = 0;       // 高级区域展示的星体/几何计数（0 表示不展示）。
+
+    // Windows 后端切换下拉的可选项与当前项（配合 callbacks.switchBackend）。
+    std::vector<std::string> backendOptions;
+    int backendIndex = -1;
+    // Windows 透明背景开关（配合 callbacks.setTransparentBackdrop）。
+    bool transparentBackdropSupported = false;
+    bool transparentBackdropEnabled = false;
 };
 
 void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* backendName, std::uint32_t fps,

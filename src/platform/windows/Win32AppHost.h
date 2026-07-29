@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "AppState.h"
 #include "RenderBackend.h"
 
 namespace ParticleSaturn::Platform::Windows {
@@ -26,5 +27,9 @@ Render::Backend ParseBackendFromCmdLine(const std::wstring& cmdLine);
 
 // 获取窗口客户区尺寸。
 Render::SurfaceSize GetClientSize(HWND hwnd);
+
+// 切换全屏/窗口化：翻转 state.window.fullscreen 并应用窗口样式/位置。
+// 供 F11 快捷键与共享面板的 Fullscreen 按钮共用（D-015 Phase B）。
+void ToggleFullscreen(HWND hwnd, AppState& state);
 
 } // namespace ParticleSaturn::Platform::Windows

@@ -45,6 +45,7 @@
 #include "Win32WindowManager.h"
 #include "imgui.h"
 #include "md3/MD3.h"
+#include "md3/MD3Log.h"  // D-015 Phase B：后端日志改写入 MD3::DebugLog，供共享面板 Log 区展示
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -861,11 +862,6 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     // 注意：Win32 的 WM_SIZE/ClientRect 尺寸在某些 DPI/缩放配置下可能与 SwapChain 实际尺寸不完全一致。
     // 后续渲染/点精灵的像素尺寸换算依赖"真实 RT 尺寸"，这里 surfaceSize_ 已在上面设置。
     startTime_    = std::chrono::steady_clock::now();
-    lastAnimTime_ = std::chrono::steady_clock::time_point{};
-    animAutoTime_ = 0.0f;
-    animScale_    = 1.0f;
-    animRotX_     = 0.4f;
-    animRotY_     = 0.0f;
 
     // 预编译字节码模式：着色器创建是瞬时的，不需要显示进度条
     const bool needsCompile = false;
@@ -1020,7 +1016,7 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     if (useGPUParticleInit_) {
         particleInitSuccess = CreateParticleBuffersGPU(kParticleCountMax);
         if (!particleInitSuccess) {
-            DebugLog::Instance().Add(LogLevel::Warn, "[Init] GPU particle init failed, falling back to CPU");
+            MD3::DebugLog::Instance().Add(MD3::LogLevel::Warn, "[Init] GPU particle init failed, falling back to CPU");
         }
     }
     if (!particleInitSuccess) {
@@ -1095,19 +1091,19 @@ bool DiligentBackend::Init(Backend backend, HWND hwnd, SurfaceSize initialSize, 
     Settings::LoadImGuiLayout();
 
     // 如果启动时透明模式已开启，将辉光设为 0（保留默认值在 bloomStrengthBeforeTransp_ 中）
+    // D-015 Phase B：Bloom 强度/开关迁入 state。Windows 历史上由后端成员固定默认
+    // 0.5f（不随会话持久化），此处在 state 上显式建立同一默认，保持既有观感。
+    if (appState_ != nullptr) {
+        appState_->render.bloomEnabled     = true;
+        appState_->render.bloomBlurStrength = 0.5f;
+    }
     if (appState_ != nullptr && appState_->backdrop.useTransparent) {
-        bloomStrength_ = 0.0f;
+        appState_->render.bloomBlurStrength = 0.0f;
         // bloomStrengthBeforeTransp_ 保持默认值 0.5f，用于关闭透明时恢复
     }
 
-    // HandTracker：启动时与 OpenGL 版一致，弹出（必要时）摄像头选择，并异步初始化追踪器。
-    // 模型采用"随可执行文件分发"的策略：构建时会把 HandTracker/models 下的两份 tflite 复制到 exe 同目录。
-    handTracker_ = std::make_unique<HandTracking::Controller>();
-    if (handTracker_->Init(hwnd, appState_)) {
-        // 非阻塞启动：后续在 RenderFrame() 的 Tick() 中轮询 IsTrackerReady()。
-        handTracker_->StartWithCameraSelector(false);
-    }
-
+    // D-015 Phase B（全对称）：手部追踪（HandTracking::Controller）已上移到 Win32 外壳，
+    // 由外壳在此后 Init/StartWithCameraSelector、每帧 Tick 并构建 GestureInput / 面板状态。
     return true;
 }
 
@@ -1115,11 +1111,6 @@ void DiligentBackend::Shutdown() {
     // 保存会话状态到注册表（在释放资源之前）
     if (appState_ != nullptr) {
         Settings::SaveSession(*appState_, backend_);
-    }
-
-    if (handTracker_) {
-        handTracker_->Shutdown();
-        handTracker_.reset();
     }
 
     // 先关闭 MD3（在 ImGui 之前）
@@ -1358,10 +1349,10 @@ bool DiligentBackend::SetBackdropMode(int mode) {
     const bool wasTransparent = (appState_->backdrop.useTransparent);
     if (wasTransparent != wantTransparent) {
         if (wantTransparent) {
-            bloomStrengthBeforeTransp_ = bloomStrength_;
-            bloomStrength_             = 0.0f;
+            bloomStrengthBeforeTransp_          = appState_->render.bloomBlurStrength;
+            appState_->render.bloomBlurStrength = 0.0f;
         } else {
-            bloomStrength_ = bloomStrengthBeforeTransp_;
+            appState_->render.bloomBlurStrength = bloomStrengthBeforeTransp_;
         }
     }
 
@@ -2666,7 +2657,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
     }
 
     if (cs == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] Compute shader creation failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleInitPSO] Compute shader creation failed");
         return false;
     }
 
@@ -2686,7 +2677,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
     particleInitSRB_.Release();
     CreateComputePSO(device_, psoCI, &particleInitPSO_);
     if (particleInitPSO_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateComputePipelineState failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleInitPSO] CreateComputePipelineState failed");
         return false;
     }
 
@@ -2709,7 +2700,7 @@ bool DiligentBackend::CreateParticleInitPSO() {
         particleInitConstants_.Release();
         device_->CreateBuffer(cbDesc, nullptr, &particleInitConstants_);
         if (particleInitConstants_ == nullptr) {
-            DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateBuffer(Init Constants) failed");
+            MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleInitPSO] CreateBuffer(Init Constants) failed");
             return false;
         }
     }
@@ -2719,14 +2710,14 @@ bool DiligentBackend::CreateParticleInitPSO() {
     if (var != nullptr) {
         var->Set(particleInitConstants_);
     } else {
-        DebugLog::Instance().Add(LogLevel::Error,
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error,
                                  "[CreateParticleInitPSO] GetStaticVariableByName(InitConstants) returned nullptr");
         return false;
     }
 
     particleInitPSO_->CreateShaderResourceBinding(&particleInitSRB_, true);
     if (particleInitSRB_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleInitPSO] CreateShaderResourceBinding failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleInitPSO] CreateShaderResourceBinding failed");
         return false;
     }
 
@@ -2775,7 +2766,7 @@ bool DiligentBackend::CreateParticleBuffersGPU(uint32_t maxParticles) {
 
     // 创建初始化 PSO
     if (!CreateParticleInitPSO()) {
-        DebugLog::Instance().Add(LogLevel::Warn,
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Warn,
                                  "[CreateParticleBuffersGPU] CreateParticleInitPSO failed, falling back to CPU");
         return false;
     }
@@ -2909,7 +2900,7 @@ bool DiligentBackend::CreateParticleBuffersGPU(uint32_t maxParticles) {
     particleReadIdx_   = 0;
     particleWriteIdx_  = 1;
 
-    DebugLog::Instance().Add(LogLevel::Info, "[GPU] Particle initialization completed on GPU (" +
+    MD3::DebugLog::Instance().Add(MD3::LogLevel::Info, "[GPU] Particle initialization completed on GPU (" +
                                                  std::to_string(maxParticles) + " particles)");
 
     return true;
@@ -3014,17 +3005,17 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
             const auto& features = device_->GetDeviceInfo().Features;
 
             // 记录设备信息以便调试
-            DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader feature state: " +
+            MD3::DebugLog::Instance().Add(MD3::LogLevel::Info, "[GPU] Mesh Shader feature state: " +
                                                          std::to_string(static_cast<int>(features.MeshShaders)));
 
             // Mesh Shader 仅 D3D12 支持（Vulkan 需要额外扩展，暂不启用）
             if (backend_ == Backend::D3D12 && features.MeshShaders == DEVICE_FEATURE_STATE_ENABLED) {
                 meshShaderSupported_ = true;
                 useMeshShaders_      = true; // 默认启用
-                DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
+                MD3::DebugLog::Instance().Add(MD3::LogLevel::Info, "[GPU] Mesh Shaders supported and enabled");
             } else {
                 std::string reason = (backend_ != Backend::D3D12) ? "not D3D12 backend" : "hardware not supported";
-                DebugLog::Instance().Add(LogLevel::Info,
+                MD3::DebugLog::Instance().Add(MD3::LogLevel::Info,
                                          "[GPU] Mesh Shaders not available (" + reason + "), using Vertex Pulling");
             }
         }
@@ -3044,7 +3035,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     RefCntAutoPtr<IShader> ms = CreateShaderFromBytecode(
         device_, "SaturnParticle MS", SHADER_TYPE_MESH, SaturnParticleMesh_MS_DXIL, sizeof(SaturnParticleMesh_MS_DXIL));
     if (ms == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader creation failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Warn, "[CreateParticleMeshShaderPSO] Mesh Shader creation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3053,7 +3044,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
         CreateShaderFromBytecode(device_, "SaturnParticle PS (Mesh)", SHADER_TYPE_PIXEL, SaturnParticleMesh_MeshPS_DXIL,
                                  sizeof(SaturnParticleMesh_MeshPS_DXIL));
     if (ps == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader creation failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Warn, "[CreateParticleMeshShaderPSO] Pixel Shader creation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3092,7 +3083,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
     particleMeshPSO_.Release();
     device_->CreateGraphicsPipelineState(psoCI, &particleMeshPSO_);
     if (particleMeshPSO_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Warn, "[CreateParticleMeshShaderPSO] PSO creation failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Warn, "[CreateParticleMeshShaderPSO] PSO creation failed");
         useMeshShaders_ = false;
         return false;
     }
@@ -3120,7 +3111,7 @@ bool DiligentBackend::CreateParticleMeshShaderPSO() {
         return false;
     }
 
-    DebugLog::Instance().Add(LogLevel::Info, "[GPU] Mesh Shader PSO created successfully");
+    MD3::DebugLog::Instance().Add(MD3::LogLevel::Info, "[GPU] Mesh Shader PSO created successfully");
     return true;
 }
 
@@ -3143,7 +3134,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
     }
 
     if (cs == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] Compute shader creation failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleComputePSO] Compute shader creation failed");
         return false;
     }
 
@@ -3170,7 +3161,7 @@ bool DiligentBackend::CreateParticleComputePSO() {
     particleComputeSRB_.Release();
     CreateComputePSO(device_, psoCI, &particleComputePSO_);
     if (particleComputePSO_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateComputePipelineState failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleComputePSO] CreateComputePipelineState failed");
         return false;
     }
 
@@ -3178,14 +3169,14 @@ bool DiligentBackend::CreateParticleComputePSO() {
         var != nullptr) {
         var->Set(particleComputeConstants_);
     } else {
-        DebugLog::Instance().Add(
-            LogLevel::Error, "[CreateParticleComputePSO] GetStaticVariableByName(ComputeConstants) returned nullptr");
+        MD3::DebugLog::Instance().Add(
+            MD3::LogLevel::Error, "[CreateParticleComputePSO] GetStaticVariableByName(ComputeConstants) returned nullptr");
         return false;
     }
 
     particleComputePSO_->CreateShaderResourceBinding(&particleComputeSRB_, true);
     if (particleComputeSRB_ == nullptr) {
-        DebugLog::Instance().Add(LogLevel::Error, "[CreateParticleComputePSO] CreateShaderResourceBinding failed");
+        MD3::DebugLog::Instance().Add(MD3::LogLevel::Error, "[CreateParticleComputePSO] CreateShaderResourceBinding failed");
     } else {
         // 缓存热路径变量指针
         particleInVar_  = particleComputeSRB_->GetVariableByName(SHADER_TYPE_COMPUTE, "g_ParticlesIn");
@@ -3400,7 +3391,7 @@ void DiligentBackend::UpdateFullscreenQuadBindings() {
 void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas) {
     if (immediateContext_ == nullptr || particleComputePSO_ == nullptr || particleComputeSRB_ == nullptr ||
         particleComputeConstants_ == nullptr) {
-        DebugLog::Instance().AddOnce("SimulateParticles_Null", LogLevel::Warn,
+        MD3::DebugLog::Instance().AddOnce("SimulateParticles_Null", MD3::LogLevel::Warn,
                                      "[SimulateParticles] skipped: compute pipeline not ready");
         return;
     }
@@ -3412,7 +3403,7 @@ void DiligentBackend::SimulateParticles(float dt, float handScale, float handHas
     // - writeIdx：本帧计算着色器的输出
     // - renderIdx：本帧渲染使用的数据（Swap 后等于上一帧的 readIdx）
     if (particleSRVs_[particleReadIdx_] == nullptr || particleUAVs_[particleWriteIdx_] == nullptr) {
-        DebugLog::Instance().AddOnce("SimulateParticles_SrvUavNull", LogLevel::Warn,
+        MD3::DebugLog::Instance().AddOnce("SimulateParticles_SrvUavNull", MD3::LogLevel::Warn,
                                      "[SimulateParticles] skipped: SRV/UAV is null");
         return;
     }
@@ -3534,7 +3525,7 @@ void DiligentBackend::RenderOffscreen() {
 
     // 添加空指针检查，避免 Vulkan 上因无效 RTV 导致崩溃
     if (offscreenRTV_ == nullptr) {
-        DebugLog::Instance().AddOnce("RenderOffscreen_NoRTV", LogLevel::Warn,
+        MD3::DebugLog::Instance().AddOnce("RenderOffscreen_NoRTV", MD3::LogLevel::Warn,
                                      "[RenderOffscreen] offscreenRTV_ is null, skipping");
         return;
     }
@@ -3638,75 +3629,18 @@ void DiligentBackend::RenderOffscreen() {
         const auto now   = std::chrono::steady_clock::now();
         const auto secsF = std::chrono::duration<float>(now - startTime_).count();
 
-        // 改为与帧率无关：保持“当前 180fps 下”的播放速度 + 平滑强度。
-        // - 旧版：autoTime 每帧 +0.005 -> 180fps 等价每秒 +0.9
-        // - 旧版：每帧 lerpFactor=0.08 -> dt 下等效 alpha = 1 - (1-0.08)^(dt*180)
-        float dt = 0.0f;
-        if (lastAnimTime_ != std::chrono::steady_clock::time_point{}) {
-            dt = std::chrono::duration<float>(now - lastAnimTime_).count();
-        }
-        lastAnimTime_ = now;
-        if (dt < 0.0f) {
-            dt = 0.0f;
-        }
-        if (dt > 0.2f) {
-            dt = 0.2f;
-        }
-
-        // Hand tracking (对齐 OpenGL)：
-        // - 无手：沿用自动动画（正弦）
-        // - 有手：由 HandTracker 的 scale/rot 映射到土星旋转/缩放，并做 dt 相关平滑
-        HandTracking::Sample handSample{};
-        bool                 hasHand = false;
-        if (handTracker_ != nullptr && handTracker_->GetStatus() == HandTracking::Status::Ready) {
-            handSample = handTracker_->GetLatestSample();
-            hasHand    = handSample.hasHand;
-        }
-
-        float targetScale = 1.0f;
-        float targetRotX  = 0.4f;
-        float targetRotY  = 0.0f;
-
-        float perFrameAlpha = 0.08f; // OpenGL auto animation smoothing
-
-        if (!hasHand) {
-            animAutoTime_ += dt * (0.005f * 180.0f);
-            targetScale = 1.0f + std::sin(animAutoTime_) * 0.2f;
-            targetRotX  = 0.4f + std::sin(animAutoTime_ * 0.3f) * 0.15f;
-            targetRotY  = 0.0f;
-        } else {
-            targetScale = handSample.scale;
-
-            float sensitivity = 1.0f;
-            bool  invertX     = false;
-            bool  invertY     = false;
-            if (appState_ != nullptr) {
-                sensitivity = std::clamp(appState_->gesture.sensitivity, 0.1f, 3.0f);
-                invertX     = appState_->gesture.invertX;
-                invertY     = appState_->gesture.invertY;
-            }
-
-            auto        applyInvert = [](float v, bool inv) -> float { return inv ? (1.0f - v) : v; };
-            const float rotX01      = applyInvert(handSample.rotX, invertX);
-            const float rotY01      = applyInvert(handSample.rotY, invertY);
-
-            // 对齐 OpenGL 映射：
-            // targetRotX = -0.6 + rotY*1.6
-            // targetRotY = (rotX-0.5)*2
-            targetRotX = (-0.6f + rotY01 * 1.6f) * sensitivity;
-            targetRotY = ((rotX01 - 0.5f) * 2.0f) * sensitivity;
-
-            perFrameAlpha = 0.25f; // OpenGL hand-driven smoothing
-        }
-
-        const float alpha = 1.0f - std::pow(1.0f - perFrameAlpha, dt * 180.0f);
-        animScale_        = animScale_ + (targetScale - animScale_) * alpha;
-        animRotX_         = animRotX_ + (targetRotX - animRotX_) * alpha;
-        animRotY_         = animRotY_ + (targetRotY - animRotY_) * alpha;
+        // D-015 Phase B：相机动画（自动正弦 / 手部绝对姿态映射 + dt 相关平滑）已上移到
+        // 共享 App::FrameCoordinator（外壳固定步长驱动，含灵敏度/反转/暂停），平滑结果写入
+        // state.scene.*。后端只读取这三个量，本帧 dt / 是否有手来自 FrameContext。
+        const float dt        = frameDeltaTime_;
+        const bool  hasHand   = handTracked_;
+        const float animScale = (appState_ != nullptr) ? appState_->scene.zoom : 1.0f;
+        const float animRotX  = (appState_ != nullptr) ? appState_->scene.rotationX : 0.4f;
+        const float animRotY  = (appState_ != nullptr) ? appState_->scene.rotationY : 0.0f;
 
         // 阶段 3（第 2 步）：接入 GPU ComputeSaturn（物理模拟）并用三缓冲轮转避免读写冲突。
         // uHandHas：1 表示有手，0 表示无手（只影响 compute 的交互分支）。
-        SimulateParticles(dt, animScale_, hasHand ? 1.0f : 0.0f);
+        SimulateParticles(dt, animScale, hasHand ? 1.0f : 0.0f);
 
         {
             PVoid mapped = nullptr;
@@ -3720,9 +3654,9 @@ void DiligentBackend::RenderOffscreen() {
                 const Mat4Rows proj = PerspectiveRH_OpenGL(1.047f, aspect, 1.0f, 10000.0f);
 
                 // 复刻 OpenGL 的角度逻辑：mSat = Rx(rotX) * Ry(rotY) * Rz(0.466)
-                const float uScale = animScale_;
-                const float rotX   = animRotX_;
-                const float rotY   = animRotY_;
+                const float uScale = animScale;
+                const float rotX   = animRotX;
+                const float rotY   = animRotY;
                 const float rotZ   = 0.466f;
 
                 const Mat4Rows model = Mul(Mul(RotationX(rotX), RotationY(rotY)), RotationZ(rotZ));
@@ -4048,7 +3982,10 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
 
             auto* cb = static_cast<BloomCB*>(mapped);
             // 当复用 uiSceneColor_ 时，bloom 已经在 RenderUISceneForUI() 中处理过，这里设为 0 避免二次叠加
-            cb->strength    = useUISceneAsSource ? 0.0f : (bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f);
+            cb->strength    = useUISceneAsSource ? 0.0f
+                : ((appState_ != nullptr && appState_->render.bloomEnabled)
+                       ? std::max(0.0f, appState_->render.bloomBlurStrength)
+                       : 0.0f);
             cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
             cb->isD3D11     = (backend_ == Backend::D3D11) ? 1.0f : 0.0f;
             cb->pad         = 0.0f;
@@ -4082,10 +4019,17 @@ void DiligentBackend::BlitOffscreenToBackBuffer() {
     immediateContext_->Draw(draw);
 }
 
-void DiligentBackend::RenderFrame() {
+bool DiligentBackend::RenderFrame(const App::FrameContext& frame) {
     if (!IsInitialized()) {
-        return;
+        return false;
     }
+    // D-002 帧高度接缝：本帧的 dt / FPS / 是否有手均由外壳交付。相机动画平滑由
+    // FrameCoordinator 完成并已写入 state.scene.*，FPS 度量由外壳 FpsMeter 完成，
+    // 手部追踪的 Tick 已在外壳 pollGesture() 步骤完成（HandTracking::Controller 由外壳持有）。
+    frameDeltaTime_ = frame.deltaTime;
+    handTracked_    = frame.handTracked;
+    currentFps_     = static_cast<float>(frame.framesPerSecond);
+    const float frameDt = frame.deltaTime;
 
     // 延迟 resize：避免在 WndProc 的 WM_SIZE 里做重资源操作导致卡顿/假死。
     // 如果 ResizeBuffers 因 DXGI_ERROR_INVALID_CALL 暂时失败，保持 pending 状态，下一帧继续尝试。
@@ -4096,84 +4040,6 @@ void DiligentBackend::RenderFrame() {
             hasPendingResize_ = false;
         }
     }
-
-    // HandTracker：每帧轮询一次初始化状态（非阻塞）。
-    if (handTracker_) {
-        handTracker_->Tick();
-    }
-
-    // 计算帧时间和 FPS（移动平均）
-    const auto now     = std::chrono::steady_clock::now();
-    float      frameDt = 0.0f;
-    if (lastFrameTime_ != std::chrono::steady_clock::time_point{}) {
-        frameDt = std::chrono::duration<float>(now - lastFrameTime_).count();
-        if (frameDt > 0.0f && frameDt < 1.0f) {
-            frameDtSamples_[fpsSampleIndex_] = frameDt;
-            fpsSampleIndex_                  = (fpsSampleIndex_ + 1) % kFpsSampleCount;
-
-            // 计算平均 FPS（帧时间调和平均：N / Σdt）
-            float sumDt = 0.0f;
-            for (int i = 0; i < kFpsSampleCount; ++i) {
-                sumDt += frameDtSamples_[i];
-            }
-            currentFps_ = (sumDt > 0.0f) ? (static_cast<float>(kFpsSampleCount) / sumDt) : 60.0f;
-
-            // FPS 历史曲线采样（低频）
-            fpsHistorySampleTimer_ += frameDt;
-            if (fpsHistorySampleTimer_ >= kFpsHistorySampleInterval) {
-                // 使用减法保留超出时间（与 OpenGL 版一致）
-                fpsHistorySampleTimer_ -= kFpsHistorySampleInterval;
-
-                // 获取即将被覆盖的旧值
-                const float oldValue = fpsHistory_[fpsHistoryIndex_];
-                const float newValue = currentFps_;
-
-                fpsHistory_[fpsHistoryIndex_] = newValue;
-                fpsHistoryIndex_              = (fpsHistoryIndex_ + 1) % kFpsHistorySize;
-
-                // 增量更新 min/max 缓存
-                if (fpsHistoryValidCount_ < kFpsHistorySize) {
-                    // 还在填充阶段，直接更新
-                    fpsHistoryValidCount_++;
-                    if (fpsHistoryValidCount_ == 1) {
-                        fpsHistoryCachedMin_ = newValue;
-                        fpsHistoryCachedMax_ = newValue;
-                    } else {
-                        if (newValue < fpsHistoryCachedMin_) {
-                            fpsHistoryCachedMin_ = newValue;
-                        }
-                        if (newValue > fpsHistoryCachedMax_) {
-                            fpsHistoryCachedMax_ = newValue;
-                        }
-                    }
-                } else {
-                    // 缓冲区已满，需要检查旧值是否是极值
-                    bool wasMin = (oldValue <= fpsHistoryCachedMin_ + 0.001f);
-                    bool wasMax = (oldValue >= fpsHistoryCachedMax_ - 0.001f);
-
-                    if (wasMin || wasMax) {
-                        // 旧值是极值，需要重新遍历计算
-                        fpsHistoryCacheDirty_ = true;
-                    } else {
-                        // 旧值不是极值，只需检查新值
-                        if (newValue < fpsHistoryCachedMin_) {
-                            fpsHistoryCachedMin_ = newValue;
-                        }
-                        if (newValue > fpsHistoryCachedMax_) {
-                            fpsHistoryCachedMax_ = newValue;
-                        }
-                    }
-                }
-
-                // 滚动动画时间与采样计时器同步
-                fpsGraphScrollAnimTime_ = fpsHistorySampleTimer_;
-            } else {
-                // 正常累加动画时间
-                fpsGraphScrollAnimTime_ += frameDt;
-            }
-        }
-    }
-    lastFrameTime_ = now;
 
     // 动态 LOD（对齐 OpenGL）：每 0.5s 根据平滑 FPS 自动调节粒子数 / pixelRatio，并更新密度补偿。
     if (appState_ != nullptr && frameDt > 0.0f) {
@@ -4287,10 +4153,7 @@ void DiligentBackend::RenderFrame() {
     // 更新崩溃诊断状态（用于 ErrorHandler 的崩溃报告/对话框）
     if (appState_ != nullptr) {
         totalFrameCount_++;
-        bool handActive = false;
-        if (handTracker_ && handTracker_->GetStatus() == HandTracking::Status::Ready) {
-            handActive = handTracker_->GetLatestSample().hasHand;
-        }
+        const bool handActive = frame.handTracked; // 手部追踪已上移到外壳，本帧结果经接缝交付
         ErrorHandler::UpdateState(totalFrameCount_, appState_->render.particleCount, appState_->render.pixelRatio,
                                   handActive /*handTrackingActive*/);
     }
@@ -4321,7 +4184,9 @@ void DiligentBackend::RenderFrame() {
         CrashAnalyzer::Render(appState_->ui.blurEnabled, crashBlurTex, surfaceSize_.Width, surfaceSize_.Height,
                               appState_->ui.darkMode);
 
-        RenderDebugPanel();
+        // D-015 Phase B（全对称）：MD3 面板内容在接缝之上（Win32 外壳）绘制。后端在此
+        // 交付本帧 acrylic 纹理钩子，外壳据此渲染共享面板；后端不再自绘面板。
+        frame.drawPanel(BuildPanelHooks());
 
         // MD3 帧结束
         MD3::EndFrame();
@@ -4400,6 +4265,7 @@ void DiligentBackend::RenderFrame() {
         }
     }
     PresentFrame(presentInterval);
+    return true;
 }
 
 void DiligentBackend::RenderSevenSegmentFPS() {
@@ -5034,7 +4900,10 @@ void DiligentBackend::BlitOffscreenToBackBufferD3D11() {
         };
 
         auto* cb        = static_cast<BloomCB*>(mapped.pData);
-        cb->strength    = useUISceneAsSource ? 0.0f : (bloomEnabled_ ? std::max(0.0f, bloomStrength_) : 0.0f);
+        cb->strength    = useUISceneAsSource ? 0.0f
+            : ((appState_ != nullptr && appState_->render.bloomEnabled)
+                   ? std::max(0.0f, appState_->render.bloomBlurStrength)
+                   : 0.0f);
         cb->transparent = (appState_ != nullptr && appState_->backdrop.useTransparent) ? 1.0f : 0.0f;
         cb->isD3D11     = 1.0f;
         cb->pad         = 0.0f;

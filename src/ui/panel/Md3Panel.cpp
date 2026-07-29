@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "imgui.h"
 
@@ -147,10 +148,14 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
     const ImU32 axisColor = ImGui::GetColorU32(ImVec4(0.6f, 0.6f, 0.6f, 0.9f));
     const ImU32 borderColor = md3Context.isDarkMode ? IM_COL32(255, 255, 255, 30) : IM_COL32(0, 0, 0, 20);
 
-    // 背景：优先 1/12 弱模糊 Acrylic（OpenGL 着色器路径），其次后端回调
-    // （Metal/Vulkan 的合成 Acrylic），否则退回纯色。
-    if (md3Context.blurEnabled && md3Context.blurTextureID2 != 0 && md3Context.screenWidth > 0.0f &&
-        md3Context.screenHeight > 0.0f) {
+    // 背景：优先后端回调（Metal/Vulkan/Windows 合成 Acrylic，D3D 纹理坐标正向、
+    // 无 Y 翻转），其次内建 1/12 弱模糊 Acrylic（OpenGL 着色器路径，需 Y 翻转），
+    // 否则退回纯色。
+    if (state.ui.blurEnabled && callbacks.drawGraphAcrylic) {
+        callbacks.drawGraphAcrylic(drawList, plotPos, plotSize, cornerRadius);
+        drawList->AddRect(plotPos, plotEnd, borderColor, cornerRadius, 0, 1.0f);
+    } else if (md3Context.blurEnabled && md3Context.blurTextureID2 != 0 && md3Context.screenWidth > 0.0f &&
+               md3Context.screenHeight > 0.0f) {
         const ImVec2 uv0(plotPos.x / md3Context.screenWidth, 1.0f - plotPos.y / md3Context.screenHeight);
         const ImVec2 uv1(plotEnd.x / md3Context.screenWidth, 1.0f - plotEnd.y / md3Context.screenHeight);
         MD3::AddImageRounded(drawList, md3Context.blurTextureID2, plotPos, plotEnd, uv0, uv1,
@@ -161,9 +166,6 @@ void DrawFpsHistoryGraph(FpsHistoryTracker& fpsHistory, const ParticleSaturn::Ap
             MD3::AddImageRounded(drawList, md3Context.noiseTextureID, plotPos, plotEnd, uv0, uv1,
                                  IM_COL32(255, 255, 255, alpha), cornerRadius);
         }
-        drawList->AddRect(plotPos, plotEnd, borderColor, cornerRadius, 0, 1.0f);
-    } else if (state.ui.blurEnabled && callbacks.drawGraphAcrylic) {
-        callbacks.drawGraphAcrylic(drawList, plotPos, plotSize, cornerRadius);
         drawList->AddRect(plotPos, plotEnd, borderColor, cornerRadius, 0, 1.0f);
     } else {
         drawList->AddRectFilled(plotPos, plotEnd, MD3::ColorToU32(md3Context.colors.surfaceContainerHigh),
@@ -569,14 +571,33 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     }
 
     if (MD3::BeginCollapsingHeader("Window", true)) {
-        constexpr const char* materials[] = {"Solid", "Transparent", "System blur", "App Acrylic"};
-        int material = static_cast<int>(state.window.material);
-        if (MD3::Combo("Window material", &material, materials, IM_ARRAYSIZE(materials))) {
-            const auto selected = static_cast<ParticleSaturn::App::WindowMaterial>(material);
-            DispatchAndSave(controller, ParticleSaturn::App::SetWindowMaterial{selected}, callbacks);
-            if (callbacks.applyWindowMaterial) callbacks.applyWindowMaterial(selected);
+        // Window material 下拉仅在平台提供 applyWindowMaterial 时显示（macOS）。
+        // Windows 外壳不提供该回调，改用下方的 Transparent 开关表达等价能力。
+        if (callbacks.applyWindowMaterial) {
+            constexpr const char* materials[] = {"Solid", "Transparent", "System blur", "App Acrylic"};
+            int material = static_cast<int>(state.window.material);
+            if (MD3::Combo("Window material", &material, materials, IM_ARRAYSIZE(materials))) {
+                const auto selected = static_cast<ParticleSaturn::App::WindowMaterial>(material);
+                DispatchAndSave(controller, ParticleSaturn::App::SetWindowMaterial{selected}, callbacks);
+                callbacks.applyWindowMaterial(selected);
+            }
+            ImGui::TextDisabled("Current: %s", MaterialLabel(state.window.material));
         }
-        ImGui::TextDisabled("Current: %s", MaterialLabel(state.window.material));
+        // Windows 后端切换下拉（D3D11/D3D12/Vulkan，需重启）。
+        if (callbacks.switchBackend && !features.backendOptions.empty()) {
+            std::vector<const char*> items;
+            items.reserve(features.backendOptions.size());
+            for (const auto& name : features.backendOptions) items.push_back(name.c_str());
+            int backend = features.backendIndex;
+            if (MD3::Combo("Backend", &backend, items.data(), static_cast<int>(items.size()))) {
+                callbacks.switchBackend(backend);
+            }
+        }
+        // Windows 透明背景开关（受后端能力门控）。
+        if (features.transparentBackdropSupported && callbacks.setTransparentBackdrop) {
+            bool transparent = features.transparentBackdropEnabled;
+            if (MD3::Toggle("Transparent", &transparent)) callbacks.setTransparentBackdrop(transparent);
+        }
         constexpr const char* vsyncModes[] = {"Off", "On", "Adaptive"};
         int vsync = state.render.vsyncMode == 0 ? 0 : state.render.vsyncMode == 1 ? 1 : 2;
         if (MD3::Combo("VSync", &vsync, vsyncModes, IM_ARRAYSIZE(vsyncModes))) {
@@ -671,23 +692,27 @@ void RenderMd3Panel(ParticleSaturn::App::AppController& controller, const char* 
     }
 
     if (MD3::BeginCollapsingHeader("Advanced")) {
-        constexpr const char* apis[] = {"OpenGL 4.1", "Vulkan", "Metal"};
-        int api = static_cast<int>(state.render.graphicsApi);
-        if (MD3::Combo("Graphics API", &api, apis, IM_ARRAYSIZE(apis))) {
-            const auto effect = controller.Dispatch(ParticleSaturn::App::SetGraphicsApi{
-                static_cast<ParticleSaturn::App::GraphicsApi>(api)});
-            if (callbacks.save) callbacks.save();
-            if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
-        }
-        ImGui::TextDisabled("Current: %s", ApiLabel(state.render.graphicsApi));
-        if (state.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
-            constexpr const char* drivers[] = {"MoltenVK", "KosmicKrisp"};
-            int driver = static_cast<int>(state.render.vulkanDriver);
-            if (MD3::Combo("Vulkan driver", &driver, drivers, IM_ARRAYSIZE(drivers))) {
-                const auto effect = controller.Dispatch(ParticleSaturn::App::SetVulkanDriver{
-                    static_cast<ParticleSaturn::App::VulkanDriver>(driver)});
+        // Graphics API 下拉与 Windows 的 Backend 下拉互斥：Windows 提供 switchBackend
+        // 时改由 Window 区的 Backend 下拉承担后端切换，这里隐藏以免重复表达。
+        if (!callbacks.switchBackend) {
+            constexpr const char* apis[] = {"OpenGL 4.1", "Vulkan", "Metal"};
+            int api = static_cast<int>(state.render.graphicsApi);
+            if (MD3::Combo("Graphics API", &api, apis, IM_ARRAYSIZE(apis))) {
+                const auto effect = controller.Dispatch(ParticleSaturn::App::SetGraphicsApi{
+                    static_cast<ParticleSaturn::App::GraphicsApi>(api)});
                 if (callbacks.save) callbacks.save();
                 if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
+            }
+            ImGui::TextDisabled("Current: %s", ApiLabel(state.render.graphicsApi));
+            if (state.render.graphicsApi == ParticleSaturn::App::GraphicsApi::Vulkan) {
+                constexpr const char* drivers[] = {"MoltenVK", "KosmicKrisp"};
+                int driver = static_cast<int>(state.render.vulkanDriver);
+                if (MD3::Combo("Vulkan driver", &driver, drivers, IM_ARRAYSIZE(drivers))) {
+                    const auto effect = controller.Dispatch(ParticleSaturn::App::SetVulkanDriver{
+                        static_cast<ParticleSaturn::App::VulkanDriver>(driver)});
+                    if (callbacks.save) callbacks.save();
+                    if (effect.restartRequired && callbacks.restartApplication) callbacks.restartApplication();
+                }
             }
         }
         if (features.analyticParticles) {

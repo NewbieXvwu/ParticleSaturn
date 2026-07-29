@@ -6,6 +6,7 @@
 
 #include "MacOSApplication.h"
 #include "MD3.h"
+#include "app/FpsMeter.h"
 #include "services/diagnostics/DiagnosticBus.h"
 #include "services/camera/macos/AVFoundationCamera.h"
 #include "services/camera/macos/CameraSelectorWindow.h"
@@ -24,32 +25,6 @@
 #include <utility>
 
 namespace ParticleSaturn::Platform::MacOS {
-
-namespace {
-
-// 三条路径共用的 FPS 度量（D-001：测量方法只有一份）。
-class FpsMeter {
-public:
-    void AddSample(float deltaTime) {
-        if (deltaTime <= 0.0f || deltaTime >= 1.0f) return;
-        samples_[next_] = deltaTime;
-        next_ = (next_ + 1U) % samples_.size();
-        float total = 0.0f;
-        for (const float sample : samples_) total += sample;
-        framesPerSecond_ = total > 0.0f ? static_cast<float>(samples_.size()) / total : 60.0f;
-    }
-
-    std::uint32_t Value() const {
-        return static_cast<std::uint32_t>(std::clamp(framesPerSecond_, 0.0f, 999.0f));
-    }
-
-private:
-    std::array<float, 60> samples_{};
-    std::size_t next_ = 0;
-    float framesPerSecond_ = 60.0f;
-};
-
-} // namespace
 
 bool CocoaAppHost::NativeFullscreen() {
     return ([[(NSView*)host_.NativeView() window] styleMask] & NSWindowStyleMaskFullScreen) != 0;
@@ -157,7 +132,7 @@ int RunApp(RunAppConfig& config) {
     host.SetPresentationMode(appliedVsyncMode);
 
     App::FrameCoordinator coordinator;
-    FpsMeter fpsMeter;
+    App::FpsMeter fpsMeter;
     auto lastFrameTime = std::chrono::steady_clock::now();
 
     host.Show();
